@@ -1,3 +1,5 @@
+require 'jwt'
+
 class JsonWebToken
 	# The secret key for encoding/decoding the token
 	SECRET_KEY = Rails.application.credentials.secret_key_base

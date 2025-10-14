@@ -1,5 +1,5 @@
 module V1
-	class AuthenticateController < ApplicationController
+	class AuthenticationController < ApplicationController
 		# Skip JWT check for login
 		skip_before_action :authenticate_request!, only: [:login]
 

@@ -2,7 +2,7 @@ Rails.application.routes.draw do
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # API Namespace
-  namespacce :v1 do
+  namespace :v1 do
     # Authentication endpoints (Login)
     post 'auth/login', to: 'authentication#login'
 

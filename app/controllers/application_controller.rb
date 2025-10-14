@@ -1,3 +1,6 @@
+require Rails.root.join('app/lib/custom_error')
+require Rails.root.join('app/services/json_web_token')
+
 class ApplicationController < ActionController::API
 	# --- Pundit Authorization ---
 	include Pundit::Authorization
@@ -26,19 +29,19 @@ class ApplicationController < ActionController::API
 		header = request.headers['Authorization']
 		# Extract the token string
 		header = header.split(' ').last if header
-	end
 
-	# Check for token existence and validity
-	begin
-		@decoded = JsonWebToken.decode(header)
-		# Find the user by user_id stored in the token payload
-		@current_user = User.find(@decoded[:user_id])
-	rescue CustomError::Unauthorized => e
-		# Re-raise the custom error for the rescue_from handler to catch
-		raise e
-	rescue ActiveRecord::RecordNotFound
-		# If user_id is in token but user does not exist (e.g., deleted), unauthorized
-		raise CustomError::Unauthorized.new('User associated with token is not found.')
+		# Check for token existence and validity
+		begin
+			@decoded = JsonWebToken.decode(header)
+			# Find the user by user_id stored in the token payload
+			@current_user = User.find(@decoded[:user_id])
+		rescue CustomError::Unauthorized => e
+			# Re-raise the custom error for the rescue_from handler to catch
+			raise e
+		rescue ActiveRecord::RecordNotFound
+			# If user_id is in token but user does not exist (e.g., deleted), unauthorized
+			raise CustomError::Unauthorized.new('User associated with token is not found.')
+		end
 	end
 
 
