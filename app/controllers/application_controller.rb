@@ -47,13 +47,17 @@ class ApplicationController < ActionController::API
 
 	# --- Pundit Error Handler ---
 
-	def user_not_authorized(exception)
-		policy_name = exception.policy.class.to_s.underscore
-		message = I18n.t("#{policy_name}.#{exception.query}", scope: 'pundit', default: :default)
+	# def user_not_authorized(exception)
+	# 	policy_name = exception.policy.class.to_s.underscore
+	# 	message = I18n.t("#{policy_name}.#{exception.query}", scope: 'pundit', default: :default)
 
-		# Raise custom forbidden error
-		raise CustomError::Forbidden.new(message)
-	end
+	# 	# Raise custom forbidden error
+	# 	raise CustomError::Forbidden.new(message)
+	# end
+	def user_not_authorized(exception)
+    	message = "You are not authorized to #{exception.query} this #{exception.record.class.name.downcase}."
+    	render json: { error: message }, status: :forbidden
+  	end
 
 	# --- Custom API Error Responses (Private Handlers) ---
 

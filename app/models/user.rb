@@ -11,6 +11,7 @@ class User < ApplicationRecord
 	# Events where User is a Team Member
 	has_many :event_team_members, dependent: :destroy
 	has_many :events_managed, through: :event_team_members, source: :event
+	has_many :events, dependent: :destroy
 
 	def is_superadmin?
 		role == 'superadmin'

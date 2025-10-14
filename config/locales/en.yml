@@ -29,3 +29,14 @@
 
 en:
   hello: "Hello world"
+  pundit:
+    default: "You are not authorized to perform this action."
+
+    event_policy:
+      create?: "Only Superadmins are authorized to create events."
+      show?: "You are not authorized to view this event."
+      update?: "You are not authorized to update this event."
+      destroy?: "You are not authorized to delete this event."
+
+      index?: "You are not authorized to view the list of events."
+

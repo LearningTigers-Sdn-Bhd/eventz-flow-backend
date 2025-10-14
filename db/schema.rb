@@ -33,11 +33,15 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_040434) do
   end
 
   create_table "events", force: :cascade do |t|
-    t.string "title"
+    t.string "title", null: false
     t.text "description"
+    t.integer "status", default: 0, null: false
+    t.boolean "multiple_scans", default: false, null: false
     t.datetime "start_date"
     t.datetime "end_date"
     t.string "location"
+    t.string "webhook_url"
+    t.jsonb "labels_data", default: {}
     t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false

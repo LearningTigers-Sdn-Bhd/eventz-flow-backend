@@ -9,6 +9,8 @@ Rails.application.routes.draw do
     # User registration endpoint
     resources :users, only: [:create]
 
+    resources :events
+
     # Other resources to be added here
   end
 

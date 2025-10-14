@@ -1,24 +1,34 @@
 require 'jwt'
+# Required to use HashWithIndifferentAccess in a service object outside a controller context
+require 'active_support/core_ext/hash/indifferent_access' 
 
 class JsonWebToken
-	# The secret key for encoding/decoding the token
-	SECRET_KEY = Rails.application.credentials.secret_key_base
+    # Use Rails.application.secret_key_base which is the standard Rails way
+    # and is automatically loaded from credentials.
+    SECRET_KEY = Rails.application.secret_key_base 
 
-	def self.encode(payload, exp = 24.hours.from_now)
-		# Set expiration time
-		payload[:exp] = exp.to_i
+    # Class method to encode a payload into a JWT token
+    # Sets expiration (exp) claim automatically
+    def self.encode(payload, exp = 24.hours.from_now)
+        # Use deep dup to ensure the original payload isn't modified
+        payload_with_exp = payload.dup
+        payload_with_exp[:exp] = exp.to_i 
+        
+        # Sign token with application secret
+        JWT.encode(payload_with_exp, SECRET_KEY)
+    end
 
-		# Sign token with application secret
-		JWT.encode(payload, SECRET_KEY)
-	end
+    # Class method to decode a JWT token
+    def self.decode(token)
+        # JWT.decode returns an array of [payload, header]. We only need the payload ([0])
+        decoded = JWT.decode(token, SECRET_KEY)[0]
+        
+        # FIX: Corrected the typo and used the full namespace for the constant
+        ActiveSupport::HashWithIndifferentAccess.new(decoded)
 
-	def self.decode(token)
-		# Decode token. JWT.decode raises JWT::DecodeError on failure (e.g., token expired)
-		decoded = JWT.decode(token, SECRET_KEY)[0]
-		HasWithIndifferentAccess.new decoded
-
-	rescue JWT::DecodeError => e
-		# Re-raise as Unauthorized to be caught by the ApplicationController
-		raise CustomError:Unauthorized.new(e.message)
-	end
+    rescue JWT::DecodeError => e
+        # FIX: Explicitly reference the exception class with the scope operator
+        # This re-raises an unauthorized error for the ApplicationController to handle
+        raise CustomError::Unauthorized, e.message
+    end
 end
