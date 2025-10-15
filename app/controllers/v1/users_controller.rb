@@ -1,33 +1,52 @@
-module V1
-	class UsersController < ApplicationController
-		# Skip JWT check for registration
-		skip_before_action :authenticate_request!, only: [:create]
+class V1::UsersController < ApplicationController
+  # Skip JWT check for registration
+  skip_before_action :authenticate_request!, only: [:create]
 
-		# Create action will only be used for registration
+  # POST /v1/users (Registration)
+  def create
+    # Default role is 'member' as set in the model
+    @user = User.new(user_params)
+    
+    # Authorize the action using the UserPolicy (even though it's registration, 
+    # the policy will ensure only 'member' role can be created)
+    authorize @user, policy_class: UserPolicy 
 
-		def create
-			# Default role is participant as set in the model/migration
-			@user = User.new(user_params)
+    if @user.save
+      token = JsonWebToken.encode(user_id: @user.id)
+      render json: { user: @user.slice(:id, :full_name, :email, :role), token: token }, status: :created
+    else
+      render json: { errors: @user.errors.full_messages }, status: :unprocessable_entity
+    end
+  end
 
-			# Authorize the action using the UserPolicy
-			authorize @user
+  # GET /v1/users/me (Show Profile)
+  def show
+    # current_user is set by authenticate_request!
+    authorize current_user, policy_class: UserPolicy 
+    render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+  end
 
-			if @user.save
-				# Automatically log the user in after successful registration
-				token = JsonWebToken.encode(user_id: @user.id)
-				render json: {
-					user: @user,
-					token: token
-				}, status: :created
-			else
-				render json: { errors: @user.errors.full_messages }, status: :unprocessable_content
-			end
-		end
+  # PUT/PATCH /v1/users/me (Update Profile)
+  def update
+    authorize current_user, policy_class: UserPolicy
 
-		private
+    # Ensure user can only update safe fields like name, password, but not role.
+    if current_user.update(update_user_params)
+      render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+    else
+      render json: { errors: current_user.errors.full_messages }, status: :unprocessable_entity
+    end
+  end
 
-		def user_params
-			params.expect(user: [:email, :password, :password_confirmation, :full_name, :phone])
-		end
-	end
+  private
+
+  # Params for registration (includes password for has_secure_password)
+  def user_params
+    params.require(:user).permit(:email, :password, :password_confirmation, :full_name, :phone)
+  end
+  
+  # Params for updating profile (does not require full password set unless changing password)
+  def update_user_params
+    params.require(:user).permit(:full_name, :phone, :password, :password_confirmation)
+  end
 end

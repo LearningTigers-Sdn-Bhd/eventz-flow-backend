@@ -4,7 +4,8 @@ Rails.application.routes.draw do
   # API Namespace
   namespace :v1 do
     # Authentication endpoints (Login)
-    post 'auth/login', to: 'authentication#login'
+    # post 'auth/login', to: 'authentication#login'
+    post 'login', to: 'sessions#create'
 
     # User registration endpoint
     resources :users, only: [:create]

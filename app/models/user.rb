@@ -1,27 +1,67 @@
+# app/models/user.rb
+
 class User < ApplicationRecord
-	has_secure_password
+  # --- Authentication ---
+  has_secure_password
 
-	enum :role, { superadmin: 0, admin: 1, team_member: 2, participant: 3 }
-	validates :email, presence: true, uniqueness: { case_sensitive: false }
+  # --- Roles (Finalized and Future-Proofed) ---
+  # 0: org_owner (System Owner/Superadmin)
+  # 1: manager (Event Organizer/Admin)
+  # 2: member (Standard User/Participant)
+  enum :role, { org_owner: 0, manager: 1, member: 2 }
 
-	# Events assigned to User as an Admin
-	has_many :event_admins, dependent: :destroy
-	has_many :assigned_events, through: :event_admins, source: :event
+  # Ensures new users default to the lowest privilege role
+  after_initialize :set_default_role, if: :new_record?
 
-	# Events where User is a Team Member
-	has_many :event_team_members, dependent: :destroy
-	has_many :events_managed, through: :event_team_members, source: :event
-	has_many :events, dependent: :destroy
+  # --- Validations ---
+  validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :role, presence: true
+  validates :full_name, presence: true # Assuming full_name is required
 
-	def is_superadmin?
-		role == 'superadmin'
-	end
+  # --- Associations (The user is linked to events via THREE distinct ways) ---
+  
+  # 1. Management/Ownership: Events where the user is an assigned organizer (Event Admin)
+  has_many :event_admins, dependent: :destroy
+  has_many :managed_events, through: :event_admins, source: :event # Renamed for clarity
 
-	def is_admin?
-		role.in?(['superadmin', 'admin'])
-	end
+  # 2. Staff/Scanning Access: Events where the user is a team member
+  has_many :event_team_members, dependent: :destroy
+  has_many :staffed_events, through: :event_team_members, source: :event # Renamed for clarity
 
-	def is_team_member?
-		role == 'team_member'
-	end
+  # 3. Participation: Tickets bought by the user
+  has_many :tickets, dependent: :destroy # Links user to events they bought tickets for
+
+  # NOTE: The original `has_many :events, dependent: :destroy` is removed. 
+  # In our current design, users don't directly own events; they are assigned via EventAdmin. 
+  # Direct ownership would require an `owner_id` column on the `events` table, which is redundant 
+  # when `EventAdmin` serves as the ownership link.
+
+  # --- Role Helper Methods (Directly checking the ENUM value) ---
+
+  # Checks if the user is the highest system authority
+  def is_org_owner?
+    org_owner? # Use the Rails enum helper method
+  end
+
+  # Checks if the user is a high-level manager (Org Owner or Manager)
+  # This is usually used for permissions like 'Can view all reports/users in the org'
+  def is_manager_or_higher?
+    org_owner? || manager?
+  end
+
+  # Checks if the user has the base system manager role (Event Organizer)
+  def is_manager?
+    manager?
+  end
+
+  # Checks if the user is a standard platform member/participant
+  def is_member?
+    member?
+  end
+
+  private
+
+  def set_default_role
+    self.role ||= :member
+  end
 end
