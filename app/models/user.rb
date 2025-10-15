@@ -22,7 +22,8 @@ class User < ApplicationRecord
   
   # 1. Management/Ownership: Events where the user is an assigned organizer (Event Admin)
   has_many :event_admins, dependent: :destroy
-  has_many :managed_events, through: :event_admins, source: :event # Renamed for clarity
+  has_many :assigned_events, through: :event_admins, source: :event
+
 
   # 2. Staff/Scanning Access: Events where the user is a team member
   has_many :event_team_members, dependent: :destroy
@@ -51,7 +52,7 @@ class User < ApplicationRecord
 
   # Checks if the user has the base system manager role (Event Organizer)
   def is_manager?
-    manager?
+    role.in?(['org_owner', 'manager'])
   end
 
   # Checks if the user is a standard platform member/participant

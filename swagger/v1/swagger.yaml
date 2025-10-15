@@ -1,0 +1,397 @@
+---
+openapi: 3.0.1
+info:
+  title: API V1
+  version: v1
+paths:
+  "/v1/events":
+    post:
+      summary: Creates a new event (ORG_OWNER ONLY)
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Event created by Org Owner
+        '403':
+          description: Forbidden (Not Org Owner)
+        '401':
+          description: Unauthorized (Missing Token)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                start_date:
+                  type: string
+                  format: date_time
+                end_date:
+                  type: string
+                  format: date_time
+              required:
+              - title
+    get:
+      summary: Lists events managed or staffed by the user
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Empty list for member user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    payment_status:
+                      type: string
+  "/v1/events/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Retrieves a specific event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Event found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  title:
+                    type: string
+                    example: Paid Event
+                  description:
+                    type: string
+                    example: Event description.
+                  status:
+                    type: string
+                    example: draft
+                  multiple_scans:
+                    type: boolean
+                    example: false
+                  start_date:
+                    type: string
+                    format: date_time
+                  end_date:
+                    type: string
+                    format: date_time
+                  location:
+                    type: string
+                    example: New York City
+                  webhook_url:
+                    type: string
+                    nullable: true
+                  labels_data:
+                    type: object
+                  payment_status:
+                    type: string
+                    example: paid
+                  price:
+                    type: string
+                    example: '100.0'
+                required:
+                - id
+                - title
+                - status
+                - start_date
+                - end_date
+                - payment_status
+                - price
+        '404':
+          description: Event not found
+    put:
+      summary: Updates event details
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Update successful (Manager & Paid)
+        '403':
+          description: Forbidden (Member user)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: New Title
+    delete:
+      summary: Deletes/Archives the event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deletion successful
+        '403':
+          description: Forbidden (Member user)
+  "/v1/login":
+    post:
+      summary: Authenticates user and retrieves JWT token
+      tags:
+      - Authentication
+      parameters: []
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                        - org_owner
+                        - manager
+                        - member
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+                  message:
+                    type: string
+                    example: Invalid email or password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  example: member@example.com
+                password:
+                  type: string
+                  example: password123
+              required:
+              - email
+              - password
+  "/v1/users":
+    post:
+      summary: Registers a new user (Member role)
+      tags:
+      - User Management
+      parameters: []
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      full_name:
+                        type: string
+                      role:
+                        type: string
+        '422':
+          description: Validation error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  example: new_user@test.com
+                password:
+                  type: string
+                  example: securepass
+                password_confirmation:
+                  type: string
+                  example: securepass
+                full_name:
+                  type: string
+                  example: Jane Doe
+              required:
+              - email
+              - password
+              - password_confirmation
+              - full_name
+  "/v1/users/me":
+    get:
+      summary: Retrieves the authenticated user's profile
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  email:
+                    type: string
+                    format: email
+                  full_name:
+                    type: string
+                    nullable: true
+                  phone:
+                    type: string
+                    nullable: true
+                required:
+                - id
+                - email
+        '401':
+          description: Unauthorized (Missing JWT)
+    put:
+      summary: Updates the authenticated user's profile
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  email:
+                    type: string
+                    format: email
+                  full_name:
+                    type: string
+                    nullable: true
+                  phone:
+                    type: string
+                    nullable: true
+                required:
+                - id
+                - email
+        '422':
+          description: Validation error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: Updated Name
+                phone:
+                  type: string
+                  example: '1234567890'
+servers:
+- url: https://{defaultHost}
+  variables:
+    defaultHost:
+      default: www.example.com

@@ -58,6 +58,7 @@ group :development, :test do
   # Test Data Generation
   gem "factory_bot_rails"
   gem "faker"
+  gem "rswag"
 end
 
 group :test do

@@ -1,4 +1,6 @@
 Rails.application.routes.draw do
+  mount Rswag::Ui::Engine => '/api-docs'
+  mount Rswag::Api::Engine => '/api-docs'
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # API Namespace
@@ -11,6 +13,9 @@ Rails.application.routes.draw do
     resources :users, only: [:create]
 
     resources :events
+
+    get 'users/me', to: 'users#show'
+    put 'users/me', to: 'users#update'
 
     # Other resources to be added here
   end

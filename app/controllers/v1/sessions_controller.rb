@@ -15,7 +15,7 @@ class V1::SessionsController < ApplicationController
       render json: { token: token, user: user.slice(:id, :full_name, :email, :role) }, status: :ok
     else
       # Raise CustomError::Unauthorized for 401 response
-      raise CustomError::Unauthorized.new('Invalid email or password.')
+      raise CustomError::Unauthorized.new('Invalid email or password')
     end
   end
 end

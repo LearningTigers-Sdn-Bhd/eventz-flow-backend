@@ -1,45 +1,53 @@
-# app/controllers/v1/events_controller.rb
-
 module V1
   class EventsController < ApplicationController
-    # Enforces JWT authentication via the ApplicationController before any action
+    # Ensure event is found and authorized before show, update, and destroy.
+    # We pass 'except: [:index, :create]' to ensure the before_action runs on the correct set of actions.
+    before_action :set_event, only: [:show, :update, :destroy]
     
+    # Authorize the event instance *after* it's set
+    before_action :authorize_event, only: [:show, :update, :destroy]
+    
+    # Authorize the class for index/create (Pundit best practice)
+    before_action -> { authorize Event, :index? }, only: [:index]
+    before_action -> { authorize Event, :create? }, only: [:create]
+
+
     # GET /v1/events
     def index
-      # policy_scope uses EventPolicy::Scope to return only events the user is authorized to see
+      # FIX: The index action must use Policy_scope, which will combine 
+      # the user's assigned_events and staffed_events based on the Policy::Scope logic.
       @events = policy_scope(Event) 
       render json: @events, status: :ok
     end
 
     # GET /v1/events/:id
     def show
-      @event = Event.find(params[:id])
-      # authorize raises CustomError::Forbidden if show? returns false
-      authorize @event 
+      # @event is set and authorized by before_actions
       render json: @event, status: :ok
     end
 
     # POST /v1/events
     def create
-      # Authorize against the Event class (only superadmin can create)
-      authorize Event
+      # The Event Policy's 'create?' method (checked above) should ensure 
+      # only Org_Owners or authorized Managers can reach this point.
       
-      # Build the event, associating it with the current_user (the creator/owner)
-      @event = current_user.events.build(event_params)
-
+      # Step 1: Initialize the Event
+      @event = Event.new(event_params)
+      
       if @event.save
+        # Step 2: Explicitly link the current_user as the EventAdmin/Owner
+        # This is necessary because the Event model no longer belongs_to :user
+        current_user.event_admins.create!(event: @event)
+        
         render json: @event, status: :created
       else
-        render json: { errors: @event.errors.full_messages }, status: :unprocessable_entity
+        render json: @event.errors, status: :unprocessable_entity
       end
     end
 
     # PATCH/PUT /v1/events/:id
     def update
-      @event = Event.find(params[:id])
-      # authorize raises CustomError::Forbidden if update? returns false (only owner can update)
-      authorize @event 
-
+      # @event is set and authorized by before_actions
       if @event.update(event_params)
         render json: @event, status: :ok
       else
@@ -49,15 +57,25 @@ module V1
 
     # DELETE /v1/events/:id
     def destroy
-      @event = Event.find(params[:id])
-      # authorize raises CustomError::Forbidden if destroy? returns false (only owner can delete)
-      authorize @event 
-      
+      # @event is set and authorized by before_actions
       @event.destroy
       head :no_content
     end
 
     private
+
+    # DRY principle: Find the event and handle 404
+    def set_event
+      # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which 
+      # the ApplicationController should rescue and convert to a 404 response.
+      @event = Event.find_by!(id: params[:id])
+    end
+    
+    # DRY principle: Perform instance authorization
+    def authorize_event
+        authorize @event
+    end
+
 
     # Strong parameters for Event resource
     def event_params
@@ -70,6 +88,7 @@ module V1
         :end_date, 
         :location, 
         :webhook_url, 
+        :price,
         labels_data: {} # Allows JSONB hash updates
       )
     end

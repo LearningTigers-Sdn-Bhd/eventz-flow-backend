@@ -48,7 +48,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 		end
 	end
 
-	describe 'POST /v1/auth/login (User Login)' do
+	describe 'POST /v1/login (User Login)' do
 		let(:valid_login_params) do
 			{ email: user.email, password: password }
 		end
@@ -59,7 +59,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 
 		context 'with valid credentials' do
 			it 'returns the user and a JWT token' do
-				post '/v1/auth/login', params: valid_login_params
+				post '/v1/login', params: valid_login_params
 
 			expect(response).to have_http_status(:ok)
 			json = JSON.parse(response.body)
@@ -71,7 +71,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 
 		context 'with invalid password' do
 			it 'returns an unauthorized error' do 
-				post '/v1/auth/login', params: invalid_login_params
+				post '/v1/login', params: invalid_login_params
 
 				expect(response).to have_http_status(:unauthorized)
 				json = JSON.parse(response.body)
@@ -83,7 +83,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 
 		context 'with non-existent email' do
 			it 'returns an unauthorized error' do
-				post '/v1/auth/login', params: { email: 'unknown@example.com', password: password }
+				post '/v1/login', params: { email: 'unknown@example.com', password: password }
 
 				expect(response).to have_http_status(:unauthorized)
 				json = JSON.parse(response.body)

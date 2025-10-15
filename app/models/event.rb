@@ -1,6 +1,4 @@
 class Event < ApplicationRecord
-  belongs_to :user
-
   has_many :event_admins, dependent: :destroy
   has_many :admins, through: :event_admins, source: :user
 
@@ -15,6 +13,7 @@ class Event < ApplicationRecord
   validate :end_date_must_be_after_start_date
 
   enum :status, { draft: 0, published: 1, cancelled: 2 }
+  enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
 
   private
 

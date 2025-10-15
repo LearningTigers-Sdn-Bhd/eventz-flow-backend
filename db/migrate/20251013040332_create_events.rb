@@ -10,7 +10,6 @@ class CreateEvents < ActiveRecord::Migration[8.0]
       t.string :location
       t.string :webhook_url
       t.jsonb :labels_data, default: {}
-      t.references :user, null: false, foreign_key: true
 
       t.timestamps
     end

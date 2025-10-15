@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_13_040434) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_15_020729) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,10 +42,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_040434) do
     t.string "location"
     t.string "webhook_url"
     t.jsonb "labels_data", default: {}
-    t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["user_id"], name: "index_events_on_user_id"
+    t.integer "payment_status", default: 0
+    t.decimal "price", precision: 8, scale: 2, default: "0.0"
   end
 
   create_table "users", force: :cascade do |t|
@@ -63,5 +63,4 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_040434) do
   add_foreign_key "event_admins", "users"
   add_foreign_key "event_team_members", "events"
   add_foreign_key "event_team_members", "users"
-  add_foreign_key "events", "users"
 end

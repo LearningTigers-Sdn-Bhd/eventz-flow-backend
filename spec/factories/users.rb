@@ -1,31 +1,39 @@
-FactoryBot.define do 
+# spec/factories/users.rb
+
+FactoryBot.define do
 	factory :user do
 		email { Faker::Internet.unique.email }
 		password { "secure_password123" }
 		password_confirmation { "secure_password123" }
 		full_name { Faker::Name.name }
-		phone { Faker::PhoneNumber.phone_number } 
+		phone { Faker::PhoneNumber.phone_number }
 
-		# Default role is participant
-		role { :participant }
+		# Default role is the base user role
+		role { :member }
 
 		# --- Role-Specific Factories (for convenience) ---
-		factory :superadmin, parent: :user do
-			role { :superadmin }
-			#Override the email to make Superadmin easily identifiable
-			email { "superadmin_#{Faker::Number.unique.number(digits: 5)}@eventzflow.com" }
+
+		# 1. Highest Authority (System Owner)
+		factory :org_owner, parent: :user do
+			role { :org_owner }
+			# Override the email to make the platform owner easily identifiable
+			email { "org_owner_#{Faker::Number.unique.number(digits: 5)}@platform.com" }
 		end
 
-		factory :admin_user, parent: :user do
-			role { :admin }
+		# 2. Event Organizer/Admin
+		factory :manager_user, parent: :user do
+			role { :manager }
 		end
 
-		factory :team_member_user, parent: :user do
-			role { :team_member }
+		# 3. Standard User/Participant
+		# Renamed from participant_user to explicitly show the base role
+		factory :member_user, parent: :user do
+			role { :member }
 		end
 
-		factory :participant_user, parent: :user do
-			role { :participant }
-		end
+		# DEPRECATED/Removed Factories:
+		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user' 
+		# factories are no longer used, as their logic is covered by :org_owner, :manager_user, 
+		# and the default :user/:member_user factory.
 	end
 end

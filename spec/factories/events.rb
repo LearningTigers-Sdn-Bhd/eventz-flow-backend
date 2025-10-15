@@ -14,9 +14,5 @@ FactoryBot.define do
     
     # 3. Fix Status: Explicitly set a valid enum value
     status { :draft } # or 0, but using the symbol is cleaner
-
-    # 4. Fix User Association (Crucial for `null: false`):
-    # This ensures a User record is created and associated unless overridden.
-    association :user 
   end
 end
