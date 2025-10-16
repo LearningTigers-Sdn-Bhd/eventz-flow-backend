@@ -4,7 +4,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
   # Configuration for local development
   allow do
     # ⚠️ Replace 3001 with the actual port your React dev server uses
-    origins 'http://localhost:3001' 
+    origins 'http://localhost:3001'
 
     resource '*',
       # Allow these common methods
@@ -14,6 +14,6 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
       # Allows sending cookies (if you use them for session/refresh tokens)
       credentials: true
   end
-  
+
   # ... (Add production block below)
 end

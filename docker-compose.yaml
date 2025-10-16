@@ -1,0 +1,26 @@
+# docker-compose.yml
+services:
+  postgres-db:
+    image: pgvector/pgvector:pg18-trixie
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - eventz-flow-postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - homework-ocr-network
+
+networks:
+  homework-ocr-network:
+    driver: bridge
+
+volumes:
+  eventz-flow-postgres-db-volume:
+    driver: local
