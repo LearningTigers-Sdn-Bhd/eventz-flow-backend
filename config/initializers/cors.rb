@@ -1,16 +1,19 @@
-# Be sure to restart your server when you modify this file.
+# config/initializers/cors.rb
 
-# Avoid CORS issues when API is called from the frontend app.
-# Handle Cross-Origin Resource Sharing (CORS) in order to accept cross-origin Ajax requests.
+Rails.application.config.middleware.insert_before 0, Rack::Cors do
+  # Configuration for local development
+  allow do
+    # ⚠️ Replace 3001 with the actual port your React dev server uses
+    origins 'http://localhost:3001' 
 
-# Read more: https://github.com/cyu/rack-cors
-
-# Rails.application.config.middleware.insert_before 0, Rack::Cors do
-#   allow do
-#     origins "example.com"
-#
-#     resource "*",
-#       headers: :any,
-#       methods: [:get, :post, :put, :patch, :delete, :options, :head]
-#   end
-# end
+    resource '*',
+      # Allow these common methods
+      methods: [:get, :post, :put, :patch, :delete, :options, :head],
+      # THIS IS CRITICAL: Explicitly allow the Authorization and Content-Type headers
+      headers: %w(Authorization Content-Type Accept),
+      # Allows sending cookies (if you use them for session/refresh tokens)
+      credentials: true
+  end
+  
+  # ... (Add production block below)
+end
