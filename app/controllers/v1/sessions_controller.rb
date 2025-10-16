@@ -9,6 +9,11 @@ class V1::SessionsController < ApplicationController
       raise CustomError::Unauthorized.new('Invalid email or password')
     end
 
+    # Check if user account is active
+    unless user.active?
+      raise CustomError::Unauthorized.new('Your account has been deactivated. Please contact support.')
+    end
+
     access_token = JsonWebToken.encode(user_id: user.id, exp: 15.minutes.from_now)
 
     raw_refresh_token  = AuthenticationService.generate_secure_token

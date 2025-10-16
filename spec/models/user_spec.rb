@@ -25,6 +25,21 @@ RSpec.describe User, type: :model do
 
 		# Test 4: Presence of Full Name
 		it { is_expected.to validate_presence_of(:full_name) }
+
+		# Test 5: Status Definition
+		it 'is valid with a defined status' do
+			# Test all defined statuses from the enum
+			%i[active inactive].each do |status|
+				user = build(:user, status: status)
+				expect(user).to be_valid
+			end
+		end
+
+		# Test 6: Default Status
+		it 'defaults to active status for new users' do
+			user = User.new(email: 'test@example.com', full_name: 'Test User', password: 'password123')
+			expect(user.status).to eq('active')
+		end
 	end
 
 	# Description: Test the crucial RBAC relationships defined on the model.
