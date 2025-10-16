@@ -125,7 +125,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_16_054022) do
     t.integer "role"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "status", default: 1, null: false
     t.index ["email"], name: "index_users_on_email"
+    t.index ["status"], name: "index_users_on_status"
   end
 
   add_foreign_key "api_keys", "users"
