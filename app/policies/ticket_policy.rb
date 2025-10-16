@@ -38,13 +38,13 @@ class TicketPolicy < ApplicationPolicy
   # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Managers).
   def update?
     # Use the EventPolicy#show? permission as a proxy for "is this person staff for this event?"
-    event_policy&.show? || false
+    user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
   
   # Deletion/Refunds are usually restricted to Managers/Owners.
   def destroy?
     # Delegate to the event's update permission, which is restricted to managers/owners.
-    event_policy&.update? || false
+    user.is_event_admin?(record.event)
   end
 
   # =========================================================================
