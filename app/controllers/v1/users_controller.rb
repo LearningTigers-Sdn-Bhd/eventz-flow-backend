@@ -19,14 +19,14 @@ class V1::UsersController < ApplicationController
     end
   end
 
-  # GET /v1/users/me (Show Profile)
+  # GET /v1/users/profile (Show Profile)
   def show
     # current_user is set by authenticate_request!
     authorize current_user, policy_class: UserPolicy 
     render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
   end
 
-  # PUT/PATCH /v1/users/me (Update Profile)
+  # PUT/PATCH /v1/users/profile (Update Profile)
   def update
     authorize current_user, policy_class: UserPolicy
 

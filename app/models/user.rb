@@ -69,6 +69,16 @@ class User < ApplicationRecord
     member?
   end
 
+  def is_event_admin?(event)
+    return false unless event.present?
+    event_admins.exists?(event_id: event.id)
+  end
+
+  def is_event_team_member?(event)
+    return false unless event.present?
+    event_team_members.exists?(event_id: event.id)
+  end
+
   private
 
   def set_default_role

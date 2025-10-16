@@ -6,7 +6,7 @@ info:
 paths:
   "/v1/events":
     post:
-      summary: Creates a new event (ORG_OWNER ONLY)
+      summary: Creates a new event (ORG_OWNER or MANAGER ONLY)
       tags:
       - Events
       security:
@@ -20,9 +20,9 @@ paths:
           type: string
       responses:
         '201':
-          description: Event created by Org Owner (API Key)
+          description: Event created by Org Owner or Manager (API Key)
         '403':
-          description: Forbidden (Not Org Owner)
+          description: Forbidden (Not Org Owner or Manager)
         '401':
           description: Unauthorized (Missing Token)
       requestBody:
@@ -363,7 +363,7 @@ paths:
               - password
               - password_confirmation
               - full_name
-  "/v1/users/me":
+  "/v1/users/profile":
     get:
       summary: Retrieves the authenticated user's profile
       tags:

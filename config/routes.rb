@@ -14,10 +14,16 @@ Rails.application.routes.draw do
     # User registration endpoint
     resources :users, only: [:create]
 
-    resources :events
+    resources :events do
+      resources :tickets, only: [:index, :create, :show] do
+        member do
+          patch :check_in
+        end
+      end
+    end
 
-    get 'users/me', to: 'users#show'
-    put 'users/me', to: 'users#update'
+    get 'users/profile', to: 'users#show'
+    put 'users/profile', to: 'users#update'
 
     # Team members management
     resources :team_members do
