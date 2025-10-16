@@ -19,6 +19,13 @@ Rails.application.routes.draw do
     get 'users/me', to: 'users#show'
     put 'users/me', to: 'users#update'
 
+    # Team members management
+    resources :team_members do
+      member do
+        patch :toggle_status
+      end
+    end
+
     # Other resources to be added here
   end
 
