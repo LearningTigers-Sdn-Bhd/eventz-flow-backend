@@ -8,6 +8,8 @@ Rails.application.routes.draw do
     # Authentication endpoints (Login)
     # post 'auth/login', to: 'authentication#login'
     post 'login', to: 'sessions#create'
+    post 'refresh', to: 'sessions#refresh'
+    delete 'logout', to: 'sessions#destroy'
 
     # User registration endpoint
     resources :users, only: [:create]

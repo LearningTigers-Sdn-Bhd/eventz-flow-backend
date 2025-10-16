@@ -22,13 +22,13 @@ RSpec.describe 'V1::Sessions', type: :request do
       }
 
       response '200', 'Successful login' do
-        let(:credentials) { { email: 'member@example.com', password: 'password123' } }
+        let(:credentials) { { user: { email: 'member@example.com', password: 'password123' } } }
         
         run_test!
         
         schema type: :object,
           properties: {
-            token: { type: :string },
+            access_token: { type: :string },
             user: {
               type: :object,
               properties: {
@@ -41,7 +41,7 @@ RSpec.describe 'V1::Sessions', type: :request do
       end
 
       response '401', 'Invalid credentials' do
-        let(:credentials) { { email: 'member@example.com', password: 'wrongpassword' } }
+        let(:credentials) { { user: { email: 'member@example.com', password: 'wrongpassword' } } }
         
         run_test! do
           json = JSON.parse(response.body)

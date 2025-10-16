@@ -15,12 +15,12 @@ paths:
       - name: Authorization
         in: header
         required: true
-        description: Bearer JWT
+        description: Bearer JWT or Raw API Key
         schema:
           type: string
       responses:
         '201':
-          description: Event created by Org Owner
+          description: Event created by Org Owner (API Key)
         '403':
           description: Forbidden (Not Org Owner)
         '401':
@@ -56,7 +56,7 @@ paths:
       - name: Authorization
         in: header
         required: true
-        description: Bearer JWT
+        description: Bearer JWT or Raw API Key
         schema:
           type: string
       responses:
@@ -93,12 +93,12 @@ paths:
       - name: Authorization
         in: header
         required: true
-        description: Bearer JWT
+        description: Bearer JWT or Raw API Key
         schema:
           type: string
       responses:
         '200':
-          description: Event found
+          description: Event found (API Key)
           content:
             application/json:
               schema:
@@ -159,12 +159,12 @@ paths:
       - name: Authorization
         in: header
         required: true
-        description: Bearer JWT
+        description: Bearer JWT or Raw API Key
         schema:
           type: string
       responses:
         '200':
-          description: Update successful (Manager & Paid)
+          description: Update successful (Manager & Paid - API Key)
         '403':
           description: Forbidden (Member user)
       requestBody:
@@ -186,12 +186,12 @@ paths:
       - name: Authorization
         in: header
         required: true
-        description: Bearer JWT
+        description: Bearer JWT or Raw API Key
         schema:
           type: string
       responses:
         '204':
-          description: Deletion successful
+          description: Deletion successful (API Key)
         '403':
           description: Forbidden (Member user)
   "/v1/login":
@@ -208,7 +208,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  token:
+                  access_token:
                     type: string
                   user:
                     type: object
@@ -265,7 +265,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  token:
+                  access_token:
                     type: string
                   user:
                     type: object

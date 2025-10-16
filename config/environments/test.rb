@@ -42,6 +42,8 @@ Rails.application.configure do
   # Print deprecation notices to the stderr.
   config.active_support.deprecation = :stderr
 
+  config.secret_key_base = ENV['SECRET_KEY_BASE'] || 'test_secret_key_base_please_change_me'
+
   # Raises error for missing translations.
   # config.i18n.raise_on_missing_translations = true
 

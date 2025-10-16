@@ -9,13 +9,13 @@ class JsonWebToken
 
     # Class method to encode a payload into a JWT token
     # Sets expiration (exp) claim automatically
-    def self.encode(payload, exp = 24.hours.from_now)
+    def self.encode(payload, exp = 15.minutes.from_now)
         # Use deep dup to ensure the original payload isn't modified
         payload_with_exp = payload.dup
         payload_with_exp[:exp] = exp.to_i 
         
         # Sign token with application secret
-        JWT.encode(payload_with_exp, SECRET_KEY)
+        JWT.encode(payload_with_exp, SECRET_KEY, 'HS256')
     end
 
     # Class method to decode a JWT token

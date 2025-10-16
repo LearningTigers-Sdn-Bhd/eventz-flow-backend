@@ -1,6 +1,6 @@
 require_relative "boot"
 
-require "rails"
+require "rails/all"
 # Pick the frameworks you want:
 require "active_model/railtie"
 require "active_job/railtie"
@@ -13,6 +13,7 @@ require "action_text/engine"
 require "action_view/railtie"
 require "action_cable/engine"
 # require "rails/test_unit/railtie"
+
 
 # Require the gems listed in Gemfile, including any gems
 # you've limited to :test, :development, or :production.
@@ -40,6 +41,14 @@ module EventzFlowApi
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
+
+    # ✅ Add cookie + session middleware
+    config.middleware.use ActionDispatch::Cookies
+    config.middleware.use ActionDispatch::Session::CookieStore, key: '_eventz_flow_session'
+    config.middleware.use ActionDispatch::Flash  # optional, safe to include
+
+    # Allow cookies in responses (important for Set-Cookie visibility)
+    config.action_dispatch.cookies_serializer = :json
     
     # --- 1. CORS Configuration (Crucial for React Frontend) ---
     # This must be inserted before other middleware

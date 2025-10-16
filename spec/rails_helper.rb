@@ -1,11 +1,14 @@
+# frozen_string_literal: true
+
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
 require_relative '../config/environment'
+
 # Prevent database truncation if the environment is production
 abort("The Rails environment is running in production mode!") if Rails.env.production?
+
 require 'rspec/rails'
-# Add additional requires below this line. Rails is not loaded until this point!
 require 'shoulda/matchers'
 
 # --- Shoulda Matchers Configuration ---
@@ -16,75 +19,64 @@ Shoulda::Matchers.configure do |config|
   end
 end
 
-# Requires supporting ruby files with custom matchers and macros, etc, in
-# spec/support/ and its subdirectories. Files matching `spec/**/*_spec.rb` are
-# run as spec files by default. This means that files in spec/support that end
-# in _spec.rb will both be required and run as specs, causing the specs to be
-# run twice. It is recommended that you do not name files matching this glob to
-# end with _spec.rb. You can configure this pattern with the --pattern
-# option on the command line or in ~/.rspec, .rspec or `.rspec-local`.
-#
-# The following line is provided for convenience purposes. It has the downside
-# of increasing the boot-up time by auto-requiring all files in the support
-# directory. Alternatively, in the individual `*_spec.rb` files, manually
-# require only the support files necessary.
-#
-# Rails.root.glob('spec/support/**/*.rb').sort_by(&:to_s).each { |f| require f }
+# --- Require support files (helpers, shared contexts, etc.) ---
+Dir[Rails.root.join('spec/support/**/*.rb')].sort.each { |f| require f }
 
-# Checks for pending migrations and applies them before tests are run.
-# If you are not using ActiveRecord, you can remove these lines.
+# --- Maintain test schema ---
 begin
   ActiveRecord::Migration.maintain_test_schema!
 rescue ActiveRecord::PendingMigrationError => e
   abort e.to_s.strip
 end
-RSpec.configure do |config|
-  # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
-  config.fixture_paths = [
-    Rails.root.join('spec/fixtures')
-  ]
 
-  # If you're not using ActiveRecord, or you'd prefer not to run each of your
-  # examples within a transaction, remove the following line or assign false
-  # instead of true.
+# --- RSpec Core Configuration ---
+RSpec.configure do |config|
+  # Fixture path
+  config.fixture_paths = [Rails.root.join('spec/fixtures')]
+
+  # FactoryBot methods (build, create, etc.)
+  config.include FactoryBot::Syntax::Methods
+
+  # Include custom request helpers (json helper, etc.)
+  config.include RequestSpecHelper, type: :request if defined?(RequestSpecHelper)
+
+  # --- DatabaseCleaner setup ---
   config.use_transactional_fixtures = true
 
-  # Setting up DatabaseCleaner Strategy
   config.before(:suite) do
-    # Clean the database before the entire test suite runs
-    DatabaseCleaner.clean_with(:truncation) 
+    DatabaseCleaner.clean_with(:truncation)
   end
 
   config.before(:each) do
-    # Use the transaction strategy for speed unless specified otherwise
-    DatabaseCleaner.strategy = :transaction 
+    DatabaseCleaner.strategy = :transaction
   end
 
-  config.before(:each, js: true) do 
-    # Use the truncation strategy for JavaScript/system tests 
-    # (though less relevant for API-only, it's good practice)
-    DatabaseCleaner.strategy = :truncation 
+  config.before(:each, js: true) do
+    DatabaseCleaner.strategy = :truncation
   end
 
   config.before(:each) do
-    # Start the cleaning process before each example
-    DatabaseCleaner.start 
+    DatabaseCleaner.start
   end
 
   config.after(:each) do
-    # Clean the database after each example
-    DatabaseCleaner.clean 
+    DatabaseCleaner.clean
   end
 
-  # ... (Other configurations like factory_bot syntax, etc.)
-  config.include FactoryBot::Syntax::Methods
+  # --- Ensure cookie jar works in API-only request specs ---
+  # This patch restores cookie support for ActionDispatch in API mode.
+  config.before(:each, type: :request) do
+    allow_any_instance_of(ActionDispatch::Request)
+      .to receive(:cookie_jar)
+      .and_return(ActionDispatch::Cookies::CookieJar.build(request, {}))
+  end
 
-  # The different available types are documented in the features, such as in
-  # https://rspec.info/features/6-0/rspec-rails
+  # Automatically infer spec type (model, request, etc.) from file location
   config.infer_spec_type_from_file_location!
 
-  # Filter lines from Rails gems in backtraces.
+  # Filter Rails gems in backtraces
   config.filter_rails_from_backtrace!
-  # arbitrary gems may also be filtered via:
+
+  # Uncomment if you want to filter out specific gems
   # config.filter_gems_from_backtrace("gem name")
 end

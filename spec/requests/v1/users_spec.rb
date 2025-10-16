@@ -34,7 +34,7 @@ RSpec.describe 'V1::Users', type: :request do
         end
         
         schema type: :object, properties: { 
-          token: { type: :string }, 
+          access_token: { type: :string }, 
           user: { 
             type: :object, 
             properties: {

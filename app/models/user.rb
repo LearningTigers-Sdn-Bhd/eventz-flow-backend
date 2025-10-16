@@ -32,6 +32,9 @@ class User < ApplicationRecord
   # 3. Participation: Tickets bought by the user
   has_many :tickets, dependent: :destroy # Links user to events they bought tickets for
 
+  has_many :refresh_tokens, dependent: :destroy
+  has_many :api_keys, dependent: :destroy
+
   # NOTE: The original `has_many :events, dependent: :destroy` is removed. 
   # In our current design, users don't directly own events; they are assigned via EventAdmin. 
   # Direct ownership would require an `owner_id` column on the `events` table, which is redundant 
