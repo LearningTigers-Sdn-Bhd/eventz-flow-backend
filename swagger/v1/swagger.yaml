@@ -251,6 +251,66 @@ paths:
               required:
               - email
               - password
+  "/v1/refresh":
+    post:
+      summary: Refreshes JWT access token using the Refresh Token cookie
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: New access token generated successfully
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: refresh_token=NEW_TOKEN_HASH; HttpOnly; Secure; SameSite=Strict
+              description: Sets a new secure HttpOnly Refresh Token cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: The new, short-lived JWT Access Token
+                required:
+                - access_token
+        '401':
+          description: Unauthorized (Invalid or missing Refresh Token)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+                  message:
+                    type: string
+                    example: Refresh token is invalid or expired.
+  "/v1/logout":
+    delete:
+      summary: Logs out the user by deleting the Refresh Token cookie
+      tags:
+      - Authentication
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT Access Token for user identification.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Logout successful (No Content)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;
+                  Secure; SameSite=Strict
+              description: Deletes the Refresh Token cookie by setting an expiration
+                date in the past.
   "/v1/users":
     post:
       summary: Registers a new user (Member role)
