@@ -1,6 +1,7 @@
 FactoryBot.define do
   factory :event_team_member do
-    user { nil }
-    event { nil }
+    # Create associated user and event using their respective factories
+    association :user
+    association :event
   end
 end

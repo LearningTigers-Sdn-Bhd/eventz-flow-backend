@@ -1,7 +1,7 @@
 class V1::ApiKeysController < ApplicationController
   before_action :set_api_key, only: [:destroy]
   
-  # GET /v1/users/me/api_keys
+  # GET /v1/users/profile/api_keys
   def index
     # Current user is set via the JWT authentication middleware
     keys = current_user.api_keys.where(is_active: true).select(:id, :last_used_at, :created_at)
@@ -10,7 +10,7 @@ class V1::ApiKeysController < ApplicationController
     render json: keys.map { |k| k.attributes.merge(truncated_key: "XXXX-#{k.key_hash[-4..-1]}") }, status: :ok
   end
 
-  # POST /v1/users/me/api_keys
+  # POST /v1/users/profile/api_keys
   def create
     # 1. Generate the plain text key
     plain_text_key = AuthenticationService.generate_secure_token + SecureRandom.alphanumeric(16)
@@ -29,7 +29,7 @@ class V1::ApiKeysController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
-  # DELETE /v1/users/me/api_keys/{id}
+  # DELETE /v1/users/profile/api_keys/{id}
   def destroy
     @api_key.update(is_active: false)
     head :no_content

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_15_070801) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_16_054022) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -58,6 +58,12 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_15_070801) do
     t.datetime "updated_at", null: false
     t.integer "payment_status", default: 0
     t.decimal "price", precision: 8, scale: 2, default: "0.0"
+    t.boolean "published", default: false, null: false
+  end
+
+  create_table "orders", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "refresh_tokens", force: :cascade do |t|
@@ -72,6 +78,45 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_15_070801) do
     t.index ["user_id"], name: "index_refresh_tokens_on_user_id"
   end
 
+  create_table "ticket_types", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.decimal "price", precision: 8, scale: 2, default: "0.0", null: false
+    t.integer "quantity", default: 0, null: false
+    t.integer "max_per_order", default: 10, null: false
+    t.datetime "sale_starts_at"
+    t.datetime "sale_ends_at"
+    t.integer "status", default: 0
+    t.boolean "hidden", default: false
+    t.jsonb "custom_fields_data", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "status"], name: "index_ticket_types_on_event_id_and_status"
+    t.index ["event_id"], name: "index_ticket_types_on_event_id"
+  end
+
+  create_table "tickets", force: :cascade do |t|
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
+    t.bigint "event_id", null: false
+    t.bigint "ticket_type_id", null: false
+    t.bigint "user_id"
+    t.bigint "order_id"
+    t.string "attendee_name", null: false
+    t.string "attendee_email", null: false
+    t.boolean "checked_in", default: false, null: false
+    t.datetime "check_in_at"
+    t.integer "status", default: 0, null: false
+    t.jsonb "custom_fields_data", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
+    t.index ["event_id"], name: "index_tickets_on_event_id"
+    t.index ["order_id"], name: "index_tickets_on_order_id"
+    t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
+    t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
+    t.index ["user_id"], name: "index_tickets_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email"
     t.string "password_digest"
@@ -80,7 +125,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_15_070801) do
     t.integer "role"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "status", default: 1, null: false
     t.index ["email"], name: "index_users_on_email"
+    t.index ["status"], name: "index_users_on_status"
   end
 
   add_foreign_key "api_keys", "users"
@@ -89,4 +136,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_15_070801) do
   add_foreign_key "event_team_members", "events"
   add_foreign_key "event_team_members", "users"
   add_foreign_key "refresh_tokens", "users"
+  add_foreign_key "ticket_types", "events"
+  add_foreign_key "tickets", "events"
+  add_foreign_key "tickets", "ticket_types"
+  add_foreign_key "tickets", "users"
 end

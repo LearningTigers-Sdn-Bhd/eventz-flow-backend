@@ -5,6 +5,9 @@ class Event < ApplicationRecord
   has_many :event_team_members, dependent: :destroy
   has_many :team_members, through: :event_team_members, source: :user
 
+  has_many :ticket_types, dependent: :destroy
+  has_many :tickets, through: :ticket_types, dependent: :destroy
+
   validates :title, presence: true, length: { maximum: 100 }
   validates :status, presence: true
   validates :start_date, presence: true

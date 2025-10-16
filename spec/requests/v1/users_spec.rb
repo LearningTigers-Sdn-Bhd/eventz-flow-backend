@@ -54,10 +54,10 @@ RSpec.describe 'V1::Users', type: :request do
     end
   end
 
-  # --- /v1/users/me (Profile Management) ---
-  path '/v1/users/me' do
+  # --- /v1/users/profile (Profile Management) ---
+  path '/v1/users/profile' do
     
-    # --- GET /v1/users/me ---
+    # --- GET /v1/users/profile ---
     get 'Retrieves the authenticated user\'s profile' do
       tags 'User Management'
       produces 'application/json'
@@ -86,7 +86,7 @@ RSpec.describe 'V1::Users', type: :request do
       end
     end
 
-    # --- PUT /v1/users/me ---
+    # --- PUT /v1/users/profile ---
     put 'Updates the authenticated user\'s profile' do
       tags 'User Management'
       consumes 'application/json'

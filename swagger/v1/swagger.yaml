@@ -6,7 +6,7 @@ info:
 paths:
   "/v1/events":
     post:
-      summary: Creates a new event (ORG_OWNER ONLY)
+      summary: Creates a new event (ORG_OWNER or MANAGER ONLY)
       tags:
       - Events
       security:
@@ -20,9 +20,9 @@ paths:
           type: string
       responses:
         '201':
-          description: Event created by Org Owner (API Key)
+          description: Event created by Org Owner or Manager (API Key)
         '403':
-          description: Forbidden (Not Org Owner)
+          description: Forbidden (Not Org Owner or Manager)
         '401':
           description: Unauthorized (Missing Token)
       requestBody:
@@ -311,6 +311,137 @@ paths:
                   Secure; SameSite=Strict
               description: Deletes the Refresh Token cookie by setting an expiration
                 date in the past.
+  "/v1/events/{event_id}/tickets":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the parent Event
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Lists all tickets for a specific event
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Returns list of tickets for authorized staff
+        '403':
+          description: Forbidden for unauthorized member user
+    post:
+      summary: Creates a new ticket (Staff Manual Entry)
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Ticket created by Manager
+        '403':
+          description: Forbidden for event staff (Team Member)
+        '422':
+          description: Validation failure
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket:
+                  type: object
+                  properties:
+                    attendee_name:
+                      type: string
+                    attendee_email:
+                      type: string
+                      format: email
+                    ticket_type_id:
+                      type: integer
+                    custom_fields_data:
+                      type: object
+                  required:
+                  - attendee_name
+                  - attendee_email
+              required:
+              - ticket
+  "/v1/events/{event_id}/tickets/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket Public ID (UUID)
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Retrieves a specific ticket
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Ticket found and viewable by staff
+        '404':
+          description: Not found for non-existent ticket
+        '403':
+          description: Forbidden for unauthorized member user
+  "/v1/events/{event_id}/tickets/{id}/check_in":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket Public ID (UUID)
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Marks a ticket as checked in
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Check-in successful by staff
+        '422':
+          description: Already checked in
+        '403':
+          description: Forbidden by unauthorized member user
   "/v1/users":
     post:
       summary: Registers a new user (Member role)
@@ -363,7 +494,7 @@ paths:
               - password
               - password_confirmation
               - full_name
-  "/v1/users/me":
+  "/v1/users/profile":
     get:
       summary: Retrieves the authenticated user's profile
       tags:

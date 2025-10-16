@@ -10,8 +10,14 @@ class User < ApplicationRecord
   # 2: member (Standard User/Participant)
   enum :role, { org_owner: 0, manager: 1, member: 2 }
 
-  # Ensures new users default to the lowest privilege role
+  # --- Status ---
+  # 1: active (Can log in and use the system)
+  # 0: inactive (Account disabled, cannot log in)
+  enum :status, { active: 1, inactive: 0 }
+
+  # Ensures new users default to the lowest privilege role and active status
   after_initialize :set_default_role, if: :new_record?
+  after_initialize :set_default_status, if: :new_record?
 
   # --- Validations ---
   validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -63,9 +69,23 @@ class User < ApplicationRecord
     member?
   end
 
+  def is_event_admin?(event)
+    return false unless event.present?
+    event_admins.exists?(event_id: event.id)
+  end
+
+  def is_event_team_member?(event)
+    return false unless event.present?
+    event_team_members.exists?(event_id: event.id)
+  end
+
   private
 
   def set_default_role
     self.role ||= :member
+  end
+
+  def set_default_status
+    self.status ||= :active
   end
 end

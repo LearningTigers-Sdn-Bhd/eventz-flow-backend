@@ -50,7 +50,17 @@ module EventzFlowApi
     # Allow cookies in responses (important for Set-Cookie visibility)
     config.action_dispatch.cookies_serializer = :json
 
-    # CORS is configured in `config/initializers/cors.rb` to avoid insecure wildcard origins.
+    # --- 1. CORS Configuration (Crucial for React Frontend) ---
+    # This must be inserted before other middleware
+    # config.middleware.insert_before 0, Rack::Cors do
+    #   allow do
+    #     origins '*'
+
+    #     resource '*',
+    #       headers: :any,
+    #       methods: [:get, :post, :put, :patch, :delete, :options, :head]
+    #   end
+    # end
 
     # --- 2. Active Job Adapter (for Sidekiq) ---
     # Set the queue adapter for webhooks and notifications

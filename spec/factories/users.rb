@@ -20,7 +20,7 @@ FactoryBot.define do
 			email { "org_owner_#{Faker::Number.unique.number(digits: 5)}@platform.com" }
 		end
 
-		# 2. Event Organizer/Admin
+		# 2. Manager User
 		factory :manager_user, parent: :user do
 			role { :manager }
 		end
@@ -30,6 +30,13 @@ FactoryBot.define do
 		factory :member_user, parent: :user do
 			role { :member }
 		end
+
+		factory :staff_user, parent: :user do
+			# This creates a generic user who will be assigned the EventTeamMember role in the tests.
+		end
+
+
+
 
 		# DEPRECATED/Removed Factories:
 		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user' 

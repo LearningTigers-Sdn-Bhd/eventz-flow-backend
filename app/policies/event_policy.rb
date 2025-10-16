@@ -1,65 +1,81 @@
+# app/policies/event_policy.rb
 class EventPolicy < ApplicationPolicy
+  # ============================================================
+  # Helper methods
+  # ============================================================
 
-    # Helper method to check if the user is an assigned administrator for the event
-    def is_event_admin?
-        # Check if the user is in the 'admins' association on the Event model
-        EventAdmin.exists?(user_id: user.id, event_id: record.id)
+  def is_event_admin?
+    return false if user.blank? || record.blank?
+    EventAdmin.exists?(user_id: user.id, event_id: record.id)
+  end
+
+  def is_event_team_member?
+    return false if user.blank? || record.blank?
+    EventTeamMember.exists?(user_id: user.id, event_id: record.id)
+  end
+
+  # ============================================================
+  # Basic CRUD Permissions
+  # ============================================================
+
+  def index?
+    user.present?
+  end
+
+  # Only Org Owner or Manager can create events
+  def create?
+    user&.is_org_owner? || user&.is_manager?
+  end
+
+  # Can view if:
+  # - Event is published
+  # - User is org owner, manager, admin, or team member
+  def show?
+    return false if record.blank?
+    record.published? ||
+      user&.is_org_owner? ||
+      user&.is_manager? ||
+      is_event_admin? ||
+      is_event_team_member?
+  end
+
+  # Can update if:
+  # - Org owner
+  # - Manager or event admin AND event is paid or waived
+  def update?
+    return false if record.blank?
+    user&.is_org_owner? ||
+      ((user&.is_manager? || is_event_admin?) && (record.respond_to?(:paid?) && (record.paid? || record.try(:waived?))))
+  end
+
+  # Destroy follows same logic as update
+  def destroy?
+    update?
+  end
+
+  # ============================================================
+  # Ticket creation (fixes rspec failure)
+  # ============================================================
+
+  # Managers or Event Admins can create tickets for their events
+  def create_ticket?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_manager? || is_event_admin?
+  end
+
+  # ============================================================
+  # Scope for Index (GET /v1/events)
+  # ============================================================
+
+  class Scope < Scope
+    def resolve
+      return scope.none unless user.present?
+
+      admin_event_ids = EventAdmin.where(user_id: user.id).pluck(:event_id)
+      team_event_ids  = EventTeamMember.where(user_id: user.id).pluck(:event_id)
+      assigned_ids    = (admin_event_ids + team_event_ids).uniq
+
+      scope.where(published: true).or(scope.where(id: assigned_ids)).distinct
     end
-    
-    # Helper method to check if the user is staff for the event
-    def is_event_staff?
-        # Check if the user is in the 'team_members' association on the Event model
-        EventTeamMember.exists?(user_id: user.id, event_id: record.id)
-    end
-
-    def index?
-    	user.present?
-    end
-
-    # POST /v1/events
-    def create?
-        user.present? && user.is_org_owner?
-    end
-
-    # GET /v1/events/:id
-    def show?
-        user.is_org_owner? ||
-        is_event_admin? ||
-        is_event_staff?
-    end
-
-    # PATCH/PUT /v1/events/:id
-    def update?
-        allowed_to_edit = user.is_org_owner? || is_event_admin?
-
-        allowed_to_edit && (user.is_org_owner? || record.paid?)
-    end
-
-    # DELETE /v1/events/:id
-    def destroy?
-        # FIX for the failed test: Allow Org Owners or the event's assigned Administrators to destroy
-        # The manager_user needs to be able to destroy their managed/paid event.
-        user.is_org_owner? || is_event_admin?
-    end
-
-    
-    # =========================================================================
-    # Scope for Index (GET /v1/events)
-    # =========================================================================
-
-    class Scope < Scope
-        def resolve
-            # FIX: Remove all references to the non-existent events.user_id column.
-            # Use the associations defined on the User model for efficiency.
-            
-            # 1. Events where the user is an assigned admin (assigned_events)
-            admin_event_ids = EventAdmin.where(user_id: user.id).select(:event_id)
-            
-            # 2. Events where the user is a staff/team member (staffed_events)
-            staff_event_ids = EventTeamMember.where(user_id: user.id).select(:event_id)
-            
-            # Combine the two relations and ensure distinct results
-            scope.where(id: admin_event_ids).or(scope.where(id: staff_event_ids)).distinct
-        end
-    end
+  end
 end
