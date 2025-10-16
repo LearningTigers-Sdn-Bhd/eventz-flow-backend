@@ -51,7 +51,7 @@ RSpec.describe 'V1::Events', type: :request do
   path '/v1/events' do
     
     # --- POST - Create ---
-    post 'Creates a new event (ORG_OWNER ONLY)' do
+    post 'Creates a new event (ORG_OWNER or MANAGER ONLY)' do
       tags 'Events'
       consumes 'application/json'
       produces 'application/json'
@@ -73,23 +73,23 @@ RSpec.describe 'V1::Events', type: :request do
       }
 
       # 1. Existing Test: JWT
-      response '201', 'Event created by Org Owner (JWT)' do
-        let(:Authorization) { "Bearer #{org_owner_token}" }
+      response '201', 'Event created by Org Owner or Manager (JWT)' do
+        let(:Authorization) { "Bearer #{org_owner_token}" || "Bearer #{manager_token}" }
         let(:event) { valid_create_params }
         run_test!
       end
 
       # 2. ADDED Test: API Key
-      response '201', 'Event created by Org Owner (API Key)' do
+      response '201', 'Event created by Org Owner or Manager (API Key)' do
         # Passing the raw API Key in the Authorization header
-        let(:Authorization) { org_owner_api_key } 
+        let(:Authorization) { org_owner_api_key || manager_api_key } 
         let(:event) { valid_create_params }
         run_test!
       end
 
       # 3. Existing Test: Forbidden (Manager JWT)
-      response '403', 'Forbidden (Not Org Owner)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '403', 'Forbidden (Not Org Owner or Manager)' do
+        let(:Authorization) { "Bearer #{member_token}" }
         let(:event) { valid_create_params }
         run_test! do
           expect(Event.count).to eq(2)
