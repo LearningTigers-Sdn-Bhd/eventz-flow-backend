@@ -15,11 +15,12 @@ Rails.application.routes.draw do
     resources :users, only: [:create]
 
     resources :events do
-      resources :tickets do
-        member do
-          patch :check_in
-        end
-      end
+      resources :ticket_types
+      resources :tickets
+    end
+
+    resources :tickets, param: :public_id do
+      patch :check_in, on: :member
     end
 
     get 'users/profile', to: 'users#show'

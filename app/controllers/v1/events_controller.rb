@@ -86,9 +86,7 @@ module V1
         :multiple_scans, 
         :start_date, 
         :end_date, 
-        :location, 
-        :webhook_url, 
-        :price,
+        :webhook_url,
         labels_data: {} # Allows JSONB hash updates
       )
     end

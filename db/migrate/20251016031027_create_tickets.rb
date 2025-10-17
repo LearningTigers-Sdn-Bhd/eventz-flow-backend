@@ -10,8 +10,7 @@ class CreateTickets < ActiveRecord::Migration[8.0]
       # Associations
       t.references :event, null: false, foreign_key: true
       t.references :ticket_type, null: false, foreign_key: true
-      t.references :user, foreign_key: true
-      t.references :order # Anticipating an Order model for payment grouping
+      # t.references :order # Anticipating an Order model for payment grouping (hidden for now)
 
       # Attendee Details
       t.string :attendee_name, null: false
@@ -20,6 +19,7 @@ class CreateTickets < ActiveRecord::Migration[8.0]
       # Operational Status
       t.boolean :checked_in, null: false, default: false
       t.datetime :check_in_at
+      t.references :scanned_by, foreign_key: { to_table: :users }, null: true
       t.integer :status, null: false, default: 0 # 0: purchased, 1: scanned, 2: refunded, 3: canceled
 
       # Custom Fields (JSONB to store data captured during registration)

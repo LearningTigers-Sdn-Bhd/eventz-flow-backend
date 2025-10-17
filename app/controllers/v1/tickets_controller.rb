@@ -55,8 +55,13 @@ module V1
         return render json: { error: 'Ticket is already checked in.' }, status: :unprocessable_entity
       end
 
-      # Use a direct update call for clarity
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+      # Use a direct update call for clarity, including scanned_by_id
+      if @ticket.update(
+        checked_in: true, 
+        check_in_at: Time.current, 
+        status: :scanned,
+        scanned_by_id: current_user.id
+      )
         render json: @ticket, status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_entity

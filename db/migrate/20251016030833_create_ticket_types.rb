@@ -2,7 +2,7 @@ class CreateTicketTypes < ActiveRecord::Migration[8.0]
   def change
     create_table :ticket_types do |t|
       # Associations
-      t.references :event, null: false, foreign_key: true
+      t.references :event, null: true, foreign_key: true
       
       # Core Ticket Details
       t.string :name, null: false
