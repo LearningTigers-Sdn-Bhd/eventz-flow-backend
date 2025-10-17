@@ -19,9 +19,7 @@ Rails.application.routes.draw do
       resources :tickets
     end
 
-    resources :tickets, param: :public_id do
-      patch :check_in, on: :member
-    end
+    patch 'tickets/:public_id/check_in', to: 'tickets#global_check_in'
 
     get 'users/profile', to: 'users#show'
     put 'users/profile', to: 'users#update'

@@ -71,6 +71,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_17_031740) do
     t.boolean "multiple_scans", default: false, null: false
     t.datetime "start_date"
     t.datetime "end_date"
+    t.string "location"
     t.string "webhook_url"
     t.jsonb "labels_data", default: {}
     t.datetime "created_at", null: false
@@ -98,7 +99,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_17_031740) do
   end
 
   create_table "ticket_types", force: :cascade do |t|
-    t.bigint "event_id"
+    t.bigint "event_id", null: false
     t.string "name", null: false
     t.decimal "price", precision: 8, scale: 2, default: "0.0", null: false
     t.integer "quantity", default: 0, null: false
@@ -118,20 +119,22 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_17_031740) do
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.bigint "event_id", null: false
     t.bigint "ticket_type_id", null: false
+    t.bigint "user_id"
+    t.bigint "order_id"
     t.string "attendee_name", null: false
     t.string "attendee_email", null: false
     t.boolean "checked_in", default: false, null: false
     t.datetime "check_in_at"
-    t.bigint "scanned_by_id"
     t.integer "status", default: 0, null: false
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id"], name: "index_tickets_on_event_id"
+    t.index ["order_id"], name: "index_tickets_on_order_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
-    t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
+    t.index ["user_id"], name: "index_tickets_on_user_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -159,5 +162,5 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_17_031740) do
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
-  add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "tickets", "users"
 end
