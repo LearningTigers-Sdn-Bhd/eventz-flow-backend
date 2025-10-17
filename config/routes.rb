@@ -15,7 +15,7 @@ Rails.application.routes.draw do
     resources :users, only: [:create]
 
     resources :events do
-      resources :tickets, only: [:index, :create, :show] do
+      resources :tickets do
         member do
           patch :check_in
         end

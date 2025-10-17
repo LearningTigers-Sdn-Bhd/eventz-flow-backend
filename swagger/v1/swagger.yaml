@@ -334,6 +334,27 @@ paths:
       responses:
         '200':
           description: Returns list of tickets for authorized staff
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    public_id:
+                      type: string
+                      format: uuid
+                    attendee_name:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - purchased
+                      - scanned
+                      - refunded
+                      - canceled
         '403':
           description: Forbidden for unauthorized member user
     post:
@@ -353,8 +374,6 @@ paths:
           description: Ticket created by Manager
         '403':
           description: Forbidden for event staff (Team Member)
-        '422':
-          description: Validation failure
       requestBody:
         content:
           application/json:
@@ -406,10 +425,60 @@ paths:
       responses:
         '200':
           description: Ticket found and viewable by staff
-        '404':
-          description: Not found for non-existent ticket
         '403':
-          description: Forbidden for unauthorized member user
+          description: Not found by member user
+    patch:
+      summary: Updates a specific ticket
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Ticket successfully updated by staff
+        '403':
+          description: Forbidden for unauthorized user
+        '404':
+          description: Not Found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket:
+                  type: object
+                  properties:
+                    attendee_name:
+                      type: string
+                    attendee_email:
+                      type: string
+                      format: email
+    delete:
+      summary: Cancels/Deletes a ticket (Soft Delete)
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Ticket successfully canceled by Manager
+        '403':
+          description: Forbidden for event staff
+        '404':
+          description: Not Found
   "/v1/events/{event_id}/tickets/{id}/check_in":
     parameters:
     - name: event_id
