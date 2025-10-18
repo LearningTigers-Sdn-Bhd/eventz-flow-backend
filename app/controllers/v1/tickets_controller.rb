@@ -4,10 +4,10 @@ module V1
     before_action :authenticate_request!
     
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize
+    before_action :set_event_and_authorize, except: [:global_check_in]
     
     # Load the specific ticket for actions that require it (only show, check_in now)
-    before_action :set_ticket, only: [:show, :update, :destroy, :check_in]
+    before_action :set_ticket, only: [:show, :update, :destroy]
 
     # GET /v1/events/:event_id/tickets
     def index
@@ -46,28 +46,6 @@ module V1
       end
     end
 
-    # PATCH /v1/events/:event_id/tickets/:id/check_in
-    def check_in
-      # Authorize the specific ticket record against the check_in? policy
-      authorize @ticket, :check_in? # Explicitly use check_in? instead of update? for clarity
-      
-      if @ticket.checked_in?
-        return render json: { error: 'Ticket is already checked in.' }, status: :unprocessable_entity
-      end
-
-      # Use a direct update call for clarity, including scanned_by_id
-      if @ticket.update(
-        checked_in: true, 
-        check_in_at: Time.current, 
-        status: :scanned,
-        scanned_by_id: current_user.id
-      )
-        render json: @ticket, status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_entity
-      end
-    end
-
     def update
       # Authorization check: Can the user (Manager/Staff) update this ticket?
       authorize @ticket, :update?
@@ -92,6 +70,28 @@ module V1
         # This might fail if the status change is invalid (e.g., trying to cancel a canceled ticket without logic to prevent it).
         render json: @ticket.errors, status: :unprocessable_entity
       end
+    end
+
+    def global_check_in
+      # 1. Global Lookup (Find the ticket by its UUID)
+      @ticket = Ticket.find_by!(public_id: params[:public_id])
+      
+      # 2. Authorization (Must authorize against the found ticket's event)
+      # The user must be staff/manager for @ticket.event
+      authorize @ticket, :check_in? 
+      
+      # 3. Perform Check-in Logic
+      if @ticket.checked_in?
+        render json: { error: 'Ticket has already been checked in.' }, status: :unprocessable_entity and return
+      end
+
+      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+        render json: @ticket, status: :ok
+      else
+        render json: @ticket.errors, status: :unprocessable_entity
+      end
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Ticket not found' }, status: :not_found
     end
 
     private

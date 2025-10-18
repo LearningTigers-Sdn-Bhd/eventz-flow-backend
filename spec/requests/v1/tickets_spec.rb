@@ -163,7 +163,7 @@ RSpec.describe 'V1::Tickets', type: :request do
     end
 
     # ---------------------------------------------------------------------
-    # --- NEW: PATCH - Update ---
+    # --- PATCH - Update ---
     # ---------------------------------------------------------------------
     patch 'Updates a specific ticket' do
       tags 'Tickets'
@@ -213,7 +213,7 @@ RSpec.describe 'V1::Tickets', type: :request do
     end
 
     # ---------------------------------------------------------------------
-    # --- NEW: DELETE - Destroy (Cancel/Refund) ---
+    # --- DELETE - Destroy (Cancel/Refund) ---
     # ---------------------------------------------------------------------
     delete 'Cancels/Deletes a ticket (Soft Delete)' do
       tags 'Tickets'
@@ -251,36 +251,43 @@ RSpec.describe 'V1::Tickets', type: :request do
   # Custom Route: /v1/events/:event_id/tickets/:id/check_in
   # =========================================================================
 
-  path '/v1/events/{event_id}/tickets/{id}/check_in' do
-    parameter name: :event_id, in: :path, type: :integer
-    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'  
+  path '/v1/tickets/{public_id}/check_in' do
+    parameter name: :public_id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'  
 
-    # --- PATCH - Check-in ---
-    patch 'Marks a ticket as checked in' do
+    # --- PATCH - Global Check-in ---
+    patch 'Performs a global check-in using only the Ticket Public ID' do
       tags 'Tickets'
       consumes 'application/json'
       produces 'application/json'
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
 
-      let(:event_id) { manager_event.id }
+      # Use the ticket that is NOT checked in yet.
+      let(:public_id) { purchased_ticket.public_id }
       
-      response '200', 'Check-in successful by staff' do
-        # Use a fresh, purchased ticket (relying on transaction rollback from previous tests)
-        let(:id) { purchased_ticket.public_id }
-        let(:Authorization) { "Bearer #{staff_token}" }
-        run_test!
+      response '200', 'Check-in successful via global scan by staff' do
+        let(:Authorization) { "Bearer #{staff_token}" } # Staff can perform check-in
+        run_test! do
+          purchased_ticket.reload
+          expect(purchased_ticket.checked_in).to be true
+          expect(purchased_ticket.status).to eq('scanned')
+        end
       end
 
       response '422', 'Already checked in' do
-        let(:id) { checked_in_ticket.public_id }
+        let(:public_id) { checked_in_ticket.public_id }
         let(:Authorization) { "Bearer #{staff_token}" }
         run_test!
       end
 
-      response '403', 'Forbidden by unauthorized member user' do
-        let(:id) { purchased_ticket.public_id }
+      response '403', 'Forbidden for unauthorized user (member or staff of another event)' do
         let(:Authorization) { "Bearer #{member_token}" }
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:public_id) { '00000000-0000-0000-0000-000000000000' }
+        let(:Authorization) { "Bearer #{staff_token}" }
         run_test!
       end
     end

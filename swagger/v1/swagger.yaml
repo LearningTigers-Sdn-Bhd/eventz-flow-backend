@@ -479,21 +479,16 @@ paths:
           description: Forbidden for event staff
         '404':
           description: Not Found
-  "/v1/events/{event_id}/tickets/{id}/check_in":
+  "/v1/tickets/{public_id}/check_in":
     parameters:
-    - name: event_id
-      in: path
-      required: true
-      schema:
-        type: integer
-    - name: id
+    - name: public_id
       in: path
       description: Ticket Public ID (UUID)
       required: true
       schema:
         type: string
     patch:
-      summary: Marks a ticket as checked in
+      summary: Performs a global check-in using only the Ticket Public ID
       tags:
       - Tickets
       security:
@@ -506,11 +501,14 @@ paths:
           type: string
       responses:
         '200':
-          description: Check-in successful by staff
+          description: Check-in successful via global scan by staff
         '422':
           description: Already checked in
         '403':
-          description: Forbidden by unauthorized member user
+          description: Forbidden for unauthorized user (member or staff of another
+            event)
+        '404':
+          description: Not Found
   "/v1/users":
     post:
       summary: Registers a new user (Member role)
