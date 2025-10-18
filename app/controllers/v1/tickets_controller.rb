@@ -34,6 +34,8 @@ module V1
 
       # Build the ticket using ONLY the strong parameters.
       @ticket = @event.tickets.build(ticket_params)
+
+      @ticket.user = current_user
       
       # KEEP THIS LINE: Explicitly assign event_id to prevent the mysterious "must exist" error 
       # seen in the test environment, even if @event.tickets.build is supposed to do it.
