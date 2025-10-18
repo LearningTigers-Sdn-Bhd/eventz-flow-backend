@@ -9,7 +9,7 @@ class Ticket < ApplicationRecord
   belongs_to :event
   belongs_to :ticket_type
   belongs_to :user, optional: true
-  belongs_to :order, optional: true
+  # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
 
   # --- Enums ---

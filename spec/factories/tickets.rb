@@ -16,9 +16,11 @@ FactoryBot.define do
     # public_id { SecureRandom.uuid } 
     
     # Optional attributes (only used if explicitly passed in the test)
-    user { nil }
-    order { nil }
+    # user { nil }
+    # order { nil }
     custom_fields_data { {} } 
+
+    association :user, factory: :user
     
     # A trait for creating an already checked-in ticket for specific tests
     trait :checked_in do

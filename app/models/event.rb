@@ -4,6 +4,7 @@ class Event < ApplicationRecord
 
   has_many :event_team_members, dependent: :destroy
   has_many :team_members, through: :event_team_members, source: :user
+  has_many :event_locations, dependent: :destroy, inverse_of: :event
 
   has_many :ticket_types, dependent: :destroy
   has_many :tickets, dependent: :destroy
