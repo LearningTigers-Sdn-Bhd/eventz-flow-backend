@@ -1,40 +1,65 @@
+# config/routes.rb
+
 Rails.application.routes.draw do
+  # Rswag Documentation Endpoints
   mount Rswag::Ui::Engine => '/api-docs'
   mount Rswag::Api::Engine => '/api-docs'
-  # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
-  # API Namespace
+  get "up" => "rails/health#show", as: :rails_health_check
+
+  # ====================================================================
+  # API Namespace V1
+  # ====================================================================
   namespace :v1 do
-    # Authentication endpoints (Login)
-    # post 'auth/login', to: 'authentication#login'
+
+    # 1. AUTHENTICATION AND SESSIONS
     post 'login', to: 'sessions#create'
     post 'refresh', to: 'sessions#refresh'
     delete 'logout', to: 'sessions#destroy'
 
-    # User registration endpoint
-    resources :users, only: [:create]
-
+    # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
+    resources :users, only: [:create] do
+      
+      # GET /v1/users/profile  <- Maps to users#show
+      # PUT /v1/users/profile  <- Maps to users#update
+      # This replaces the singular resource :profile to fix the RSpec routing error
+      collection do
+        # Note: If your controller uses a dedicated action (e.g., profile_show) 
+        # you would update the 'to:' parameter here. Assuming users#show/update work with current_user.
+        get :profile, to: 'users#show' 
+        put :profile, to: 'users#update'
+      end
+      
+      # PUT /v1/users/:id/role (Global Role Management)
+      member do
+        put :role, to: 'users#update_role'
+      end
+    end
+    
+    # 3. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
-      resources :ticket_types
-      resources :tickets
+      resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
+      resources :tickets, only: [:index, :show, :create, :update, :destroy]
+
+      # New: Event Staff Management (POST/DELETE)
+      resources :staff, only: [:create], controller: 'event_staff' do
+        # DELETE /v1/events/:event_id/staff/:user_id
+        delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
+      end
     end
 
-    patch 'tickets/:public_id/check_in', to: 'tickets#global_check_in'
-
-    get 'users/profile', to: 'users#show'
-    put 'users/profile', to: 'users#update'
-
-    # Team members management
-    resources :team_members do
+    # 4. GLOBAL TICKET ACTIONS
+    # PATCH /v1/tickets/:public_id/check_in
+    resources :tickets, only: [] do
+      patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
+    end
+    
+    # 5. TEAM MEMBERS MANAGEMENT
+    resources :team_members, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
       end
     end
-
-    # Other resources to be added here
-  end
-
-  # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
-  # Can be used by load balancers and uptime monitors to verify that the app is live.
-  get "up" => "rails/health#show", as: :rails_health_check
+    
+  end # end of namespace :v1
 end

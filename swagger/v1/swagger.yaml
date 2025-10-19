@@ -4,6 +4,106 @@ info:
   title: API V1
   version: v1
 paths:
+  "/v1/events/{event_id}/staff":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: ID of the parent event
+      schema:
+        type: integer
+    post:
+      summary: Appoints a user to an event role
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: event_id
+        in: path
+        required: true
+        description: Event ID
+        schema:
+          type: integer
+      responses:
+        '201':
+          description: Staff appointed successfully
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Forbidden
+                  message:
+                    type: string
+                    example: Only an organization owner or manager can manage event
+                      staff.
+                required:
+                - error
+                - message
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                staff_assignment:
+                  type: object
+                  properties:
+                    user_id:
+                      type: integer
+                    role:
+                      type: string
+                  required:
+                  - user_id
+                  - role
+              required:
+              - staff_assignment
+        required: true
+  "/v1/events/{event_id}/staff/{user_id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: user_id
+      in: path
+      required: true
+      description: User ID to remove
+      schema:
+        type: integer
+    delete:
+      summary: Removes a user from an event staff role
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Staff removed successfully
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
   "/v1/events":
     post:
       summary: Creates a new event (ORG_OWNER or MANAGER ONLY)
@@ -20,85 +120,7 @@ paths:
           type: string
       responses:
         '201':
-          description: Event created by Org Owner or Manager (API Key)
-        '403':
-          description: Forbidden (Not Org Owner or Manager)
-        '401':
-          description: Unauthorized (Missing Token)
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                description:
-                  type: string
-                price:
-                  type: number
-                  format: float
-                start_date:
-                  type: string
-                  format: date_time
-                end_date:
-                  type: string
-                  format: date_time
-              required:
-              - title
-    get:
-      summary: Lists events managed or staffed by the user
-      tags:
-      - Events
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        description: Bearer JWT or Raw API Key
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Empty list for member user
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: integer
-                    title:
-                      type: string
-                    payment_status:
-                      type: string
-  "/v1/events/{id}":
-    parameters:
-    - name: id
-      in: path
-      description: Event ID
-      required: true
-      schema:
-        type: integer
-    get:
-      summary: Retrieves a specific event
-      tags:
-      - Events
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        description: Bearer JWT or Raw API Key
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Event found (API Key)
+          description: Event created by API Key
           content:
             application/json:
               schema:
@@ -139,6 +161,9 @@ paths:
                   price:
                     type: string
                     example: '100.0'
+                  published:
+                    type: boolean
+                    example: true
                 required:
                 - id
                 - title
@@ -147,6 +172,139 @@ paths:
                 - end_date
                 - payment_status
                 - price
+                - published
+        '403':
+          description: Forbidden (Not Org Owner or Manager)
+        '401':
+          description: Unauthorized (Missing Token)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                start_date:
+                  type: string
+                  format: date_time
+                end_date:
+                  type: string
+                  format: date_time
+              required:
+              - title
+              - start_date
+              - end_date
+    get:
+      summary: Lists events managed or staffed by the user
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Empty list for member user (no published or assigned events)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    payment_status:
+                      type: string
+  "/v1/events/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Retrieves a specific event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Event found via API Key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  title:
+                    type: string
+                    example: Paid Event
+                  description:
+                    type: string
+                    example: Event description.
+                  status:
+                    type: string
+                    example: draft
+                  multiple_scans:
+                    type: boolean
+                    example: false
+                  start_date:
+                    type: string
+                    format: date_time
+                  end_date:
+                    type: string
+                    format: date_time
+                  location:
+                    type: string
+                    example: New York City
+                  webhook_url:
+                    type: string
+                    nullable: true
+                  labels_data:
+                    type: object
+                  payment_status:
+                    type: string
+                    example: paid
+                  price:
+                    type: string
+                    example: '100.0'
+                  published:
+                    type: boolean
+                    example: true
+                required:
+                - id
+                - title
+                - status
+                - start_date
+                - end_date
+                - payment_status
+                - price
+                - published
         '404':
           description: Event not found
     put:
@@ -164,7 +322,59 @@ paths:
           type: string
       responses:
         '200':
-          description: Update successful (Manager & Paid - API Key)
+          description: Update successful (Manager)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  title:
+                    type: string
+                    example: Paid Event
+                  description:
+                    type: string
+                    example: Event description.
+                  status:
+                    type: string
+                    example: draft
+                  multiple_scans:
+                    type: boolean
+                    example: false
+                  start_date:
+                    type: string
+                    format: date_time
+                  end_date:
+                    type: string
+                    format: date_time
+                  location:
+                    type: string
+                    example: New York City
+                  webhook_url:
+                    type: string
+                    nullable: true
+                  labels_data:
+                    type: object
+                  payment_status:
+                    type: string
+                    example: paid
+                  price:
+                    type: string
+                    example: '100.0'
+                  published:
+                    type: boolean
+                    example: true
+                required:
+                - id
+                - title
+                - status
+                - start_date
+                - end_date
+                - payment_status
+                - price
+                - published
         '403':
           description: Forbidden (Member user)
       requestBody:
@@ -176,6 +386,16 @@ paths:
                 title:
                   type: string
                   example: New Title
+                description:
+                  type: string
+                location:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                  - draft
+                  - published
+                  - canceled
     delete:
       summary: Deletes/Archives the event
       tags:
@@ -191,7 +411,7 @@ paths:
           type: string
       responses:
         '204':
-          description: Deletion successful (API Key)
+          description: Deletion successful
         '403':
           description: Forbidden (Member user)
   "/v1/login":
@@ -372,6 +592,49 @@ paths:
       responses:
         '201':
           description: Ticket created by Manager
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    readOnly: true
+                    description: Internal database ID
+                  public_id:
+                    type: string
+                    format: uuid
+                    description: The unique ID used for scanning/check-in.
+                  attendee_name:
+                    type: string
+                  attendee_email:
+                    type: string
+                    format: email
+                  status:
+                    type: string
+                    enum:
+                    - purchased
+                    - scanned
+                    - refunded
+                    - canceled
+                  checked_in:
+                    type: boolean
+                    readOnly: true
+                  custom_fields_data:
+                    type: object
+                    description: 'E.g., {"t_shirt_size": "L"}'
+                  event_id:
+                    type: integer
+                    readOnly: true
+                  ticket_type_id:
+                    type: integer
+                required:
+                - public_id
+                - attendee_name
+                - attendee_email
+                - status
+                - event_id
+                - ticket_type_id
         '403':
           description: Forbidden for event staff (Team Member)
       requestBody:
@@ -385,16 +648,20 @@ paths:
                   properties:
                     attendee_name:
                       type: string
+                      example: John Doe
                     attendee_email:
                       type: string
                       format: email
+                      example: john.doe@example.com
                     ticket_type_id:
                       type: integer
+                      description: ID of the ticket type being purchased/issued
                     custom_fields_data:
                       type: object
                   required:
                   - attendee_name
                   - attendee_email
+                  - ticket_type_id
               required:
               - ticket
   "/v1/events/{event_id}/tickets/{id}":
@@ -425,6 +692,49 @@ paths:
       responses:
         '200':
           description: Ticket found and viewable by staff
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    readOnly: true
+                    description: Internal database ID
+                  public_id:
+                    type: string
+                    format: uuid
+                    description: The unique ID used for scanning/check-in.
+                  attendee_name:
+                    type: string
+                  attendee_email:
+                    type: string
+                    format: email
+                  status:
+                    type: string
+                    enum:
+                    - purchased
+                    - scanned
+                    - refunded
+                    - canceled
+                  checked_in:
+                    type: boolean
+                    readOnly: true
+                  custom_fields_data:
+                    type: object
+                    description: 'E.g., {"t_shirt_size": "L"}'
+                  event_id:
+                    type: integer
+                    readOnly: true
+                  ticket_type_id:
+                    type: integer
+                required:
+                - public_id
+                - attendee_name
+                - attendee_email
+                - status
+                - event_id
+                - ticket_type_id
         '403':
           description: Not found by member user
     patch:
@@ -442,6 +752,49 @@ paths:
       responses:
         '200':
           description: Ticket successfully updated by staff
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    readOnly: true
+                    description: Internal database ID
+                  public_id:
+                    type: string
+                    format: uuid
+                    description: The unique ID used for scanning/check-in.
+                  attendee_name:
+                    type: string
+                  attendee_email:
+                    type: string
+                    format: email
+                  status:
+                    type: string
+                    enum:
+                    - purchased
+                    - scanned
+                    - refunded
+                    - canceled
+                  checked_in:
+                    type: boolean
+                    readOnly: true
+                  custom_fields_data:
+                    type: object
+                    description: 'E.g., {"t_shirt_size": "L"}'
+                  event_id:
+                    type: integer
+                    readOnly: true
+                  ticket_type_id:
+                    type: integer
+                required:
+                - public_id
+                - attendee_name
+                - attendee_email
+                - status
+                - event_id
+                - ticket_type_id
         '403':
           description: Forbidden for unauthorized user
         '404':
@@ -457,9 +810,11 @@ paths:
                   properties:
                     attendee_name:
                       type: string
+                      example: Updated Name
                     attendee_email:
                       type: string
                       format: email
+                      example: new_email@example.com
     delete:
       summary: Cancels/Deletes a ticket (Soft Delete)
       tags:
@@ -502,6 +857,49 @@ paths:
       responses:
         '200':
           description: Check-in successful via global scan by staff
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    readOnly: true
+                    description: Internal database ID
+                  public_id:
+                    type: string
+                    format: uuid
+                    description: The unique ID used for scanning/check-in.
+                  attendee_name:
+                    type: string
+                  attendee_email:
+                    type: string
+                    format: email
+                  status:
+                    type: string
+                    enum:
+                    - purchased
+                    - scanned
+                    - refunded
+                    - canceled
+                  checked_in:
+                    type: boolean
+                    readOnly: true
+                  custom_fields_data:
+                    type: object
+                    description: 'E.g., {"t_shirt_size": "L"}'
+                  event_id:
+                    type: integer
+                    readOnly: true
+                  ticket_type_id:
+                    type: integer
+                required:
+                - public_id
+                - attendee_name
+                - attendee_email
+                - status
+                - event_id
+                - ticket_type_id
         '422':
           description: Already checked in
         '403':
@@ -509,6 +907,53 @@ paths:
             event)
         '404':
           description: Not Found
+  "/v1/users/{id}/role":
+    put:
+      summary: Updates a global user's role
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Role updated successfully
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    role:
+                      type: string
+                      enum:
+                      - org_owner
+                      - manager
+                      - member
+                      example: manager
+                  required:
+                  - role
+              required:
+              - user
+        required: true
   "/v1/users":
     post:
       summary: Registers a new user (Member role)
@@ -525,6 +970,7 @@ paths:
                 properties:
                   access_token:
                     type: string
+                    description: JWT token for immediate authentication.
                   user:
                     type: object
                     properties:
@@ -532,12 +978,37 @@ paths:
                         type: integer
                       email:
                         type: string
+                        format: email
                       full_name:
                         type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
                       role:
                         type: string
+                        description: The assigned user role (e.g., member).
+                    required:
+                    - id
+                    - email
+                    - role
         '422':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: General error message for 401, 403, 404.
+                  errors:
+                    type: array
+                    description: Validation errors (for 422 responses).
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
       requestBody:
         content:
           application/json:
@@ -599,6 +1070,21 @@ paths:
                 - email
         '401':
           description: Unauthorized (Missing JWT)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: General error message for 401, 403, 404.
+                  errors:
+                    type: array
+                    description: Validation errors (for 422 responses).
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
     put:
       summary: Updates the authenticated user's profile
       tags:
@@ -636,6 +1122,21 @@ paths:
                 - email
         '422':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: General error message for 401, 403, 404.
+                  errors:
+                    type: array
+                    description: Validation errors (for 422 responses).
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
       requestBody:
         content:
           application/json:

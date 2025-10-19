@@ -44,11 +44,15 @@ RSpec.describe User, type: :model do
 
 	# Description: Test the crucial RBAC relationships defined on the model.
 	describe 'Associations and RBAC Scopes' do
-		# Test 5: Relationships (Assuming these are the final, correct association names in the User model)
-		it { is_expected.to have_many(:event_admins).dependent(:destroy) }
-		it { is_expected.to have_many(:assigned_events).through(:event_admins).source(:event) }
-		it { is_expected.to have_many(:event_team_members).dependent(:destroy) }
-		it { is_expected.to have_many(:staffed_events).through(:event_team_members).source(:event) }
+		# --- REFACTORED ASSOCIATIONS ---
+		# Test 5: Relationships (Using the new unified EventAssignment model)
+		it { is_expected.to have_many(:event_assignments).dependent(:destroy) }
+		it { is_expected.to have_many(:assigned_events).through(:event_assignments).source(:event) }
+
+		# If you defined helper associations like `assigned_event_admins` in user.rb, test them too:
+		# it { is_expected.to have_many(:assigned_event_admins).dependent(:destroy).class_name('EventAssignment') }
+		# it { is_expected.to have_many(:assigned_event_team_members).dependent(:destroy).class_name('EventAssignment') }
+		# ------------------------------
 
 		# Test 6: Role Helper Methods
 		# NOTE: Using the correct factory names as defined in spec/factories/users.rb
