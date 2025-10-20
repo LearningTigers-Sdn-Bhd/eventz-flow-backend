@@ -49,61 +49,68 @@ class ApplicationController < ActionController::API
 	# end
 
 	def authenticate_request!
-	    @current_user = authenticate_via_jwt_or_api_key
+	    token = header_token if header_token.present?
+		return render json: { error: 'Missing token.' }, status: :unauthorized unless token
 
-	    # If user is still nil after checking both JWT and API Key, raise the error
-	    unless @current_user
-	        raise CustomError::Unauthorized.new('Authentication token or API key required.')
-	    end
+	    begin
+			decoded_token = JsonWebToken.decode(token)
+			@current_user = User.find_by(id: decoded_token[:user_id])
+		rescue JWT::ExpiredSignature
+			raise CustomError::Unauthorized.new('Token has expired')
+		rescue JWT::DecodeError
+			raise CustomError::Unauthorized.new('Invalid token')
+		rescue ActiveRecord::RecordNotFound
+			raise CustomError::Unauthorized.new('User associated with token is not found.')
+		end
 	end
 
 	# The core dual-authentication logic
-	def authenticate_via_jwt_or_api_key
-	    header = request.headers['Authorization']
-	    return nil unless header
-	    
-	    # 1. Prioritize checking for the Bearer token format (standard for JWT)
-	    if header.start_with?('Bearer ')
-	        token = header.split(' ').last
-	        
-	        # A. Try JWT Access Token first (for logged-in sessions)
-	        user = authenticate_via_jwt(token)
-	        return user if user
-	        
-	        # B. Fallback: Check if the value could be an API Key
-	        return authenticate_via_api_key(token)
+	# def authenticate_via_jwt_or_api_key
+	#     header = request.headers['Authorization']
+	#     return nil unless header
 
-	    # 2. Check for raw API Key (long string passed directly in the header)
-	    elsif header.length > 30 && !header.include?(' ')
-	        return authenticate_via_api_key(header)
-	    end
-	    
-	    nil
-	end
+	#     # 1. Prioritize checking for the Bearer token format (standard for JWT)
+	#     if header.start_with?('Bearer ')
+	#         token = header.split(' ').last
 
-	# Helper to validate JWT
-	def authenticate_via_jwt(token)
-	    decoded_token = JsonWebToken.decode(token)
-	    User.find_by(id: decoded_token[:user_id])
-	rescue CustomError::Unauthorized 
-	    nil
-	rescue ActiveRecord::RecordNotFound
-	    nil
-	end
+	#         # A. Try JWT Access Token first (for logged-in sessions)
+	#         user = authenticate_via_jwt(token)
+	#         return user if user
 
-	# Helper to validate API Key
-	def authenticate_via_api_key(api_key_string)
-	    return nil unless api_key_string.present?
-	    
-	    hashed_key = AuthenticationService.hash_token(api_key_string)
-	    
-	    # Use the fully qualified name to ensure the model is found
-	    api_key_record = ::ApiKey.find_by(key_hash: hashed_key, is_active: true)
-	    return nil unless api_key_record
-	    
-	    api_key_record.touch(:last_used_at)
-	    api_key_record.user
-	end
+	#         # B. Fallback: Check if the value could be an API Key
+	#         return authenticate_via_api_key(token)
+
+	#     # 2. Check for raw API Key (long string passed directly in the header)
+	#     elsif header.length > 30 && !header.include?(' ')
+	#         return authenticate_via_api_key(header)
+	#     end
+
+	#     nil
+	# end
+
+	# # Helper to validate JWT
+	# def authenticate_via_jwt(token)
+	#     decoded_token = JsonWebToken.decode(token)
+	#     User.find_by(id: decoded_token[:user_id])
+	# rescue CustomError::Unauthorized
+	#     nil
+	# rescue ActiveRecord::RecordNotFound
+	#     nil
+	# end
+
+	# # Helper to validate API Key
+	# def authenticate_via_api_key(api_key_string)
+	#     return nil unless api_key_string.present?
+
+	#     hashed_key = AuthenticationService.hash_token(api_key_string)
+
+	#     # Use the fully qualified name to ensure the model is found
+	#     api_key_record = ::ApiKey.find_by(key_hash: hashed_key, is_active: true)
+	#     return nil unless api_key_record
+
+	#     api_key_record.touch(:last_used_at)
+	#     api_key_record.user
+	# end
 
 
 	# --- Pundit Error Handler ---
@@ -132,5 +139,12 @@ class ApplicationController < ActionController::API
 
 	def handle_not_found(e)
 		render json: { error: 'Not Found', message: e.message }, status: :not_found
+	end
+
+	private
+	def header_token
+		header = request.headers['Authorization']
+		return nil unless header
+		header.split(' ').last
 	end
 end

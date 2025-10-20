@@ -7,9 +7,10 @@ Rails.application.routes.draw do
   namespace :v1 do
     # Authentication endpoints (Login)
     # post 'auth/login', to: 'authentication#login'
-    post 'login', to: 'sessions#create'
-    post 'refresh', to: 'sessions#refresh'
-    delete 'logout', to: 'sessions#destroy'
+    post 'login', to: 'sessions#login'
+    post 'register', to: 'sessions#register'
+    post 'refresh', to: 'refresh#refresh'
+    delete 'logout', to: 'sessions#logout'
 
     # User registration endpoint
     resources :users, only: [:create]

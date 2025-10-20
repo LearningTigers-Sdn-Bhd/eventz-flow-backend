@@ -1,98 +1,107 @@
 # app/controllers/v1/sessions_controller.rb
 class V1::SessionsController < ApplicationController
-  skip_before_action :authenticate_request!, only: %i[create refresh]
+  skip_before_action :authenticate_request!, only: %i[login register logout]
 
   # POST /v1/login
-  def create
+  def login
+    # Find user by email
     user = User.find_by(email: session_params[:email].downcase)
-    unless user&.authenticate(session_params[:password])
-      raise CustomError::Unauthorized.new('Invalid email or password')
-    end
 
     # Check if user account is active
     unless user.active?
       raise CustomError::Unauthorized.new('Your account has been deactivated. Please contact support.')
     end
 
-    access_token = JsonWebToken.encode(user_id: user.id, exp: 15.minutes.from_now)
+    # Check if user credentials are valid
+    if user&.authenticate(session_params[:password])
+      # Generate access token
+      access_token = JsonWebToken.encode(user_id: user.id)
 
-    raw_refresh_token  = AuthenticationService.generate_secure_token
-    refresh_token_hash = AuthenticationService.hash_token(raw_refresh_token)
+      # Generate refresh token
+      refresh_token = AuthenticationService.generate_secure_token
 
-    user.refresh_tokens.create!(
-      token_hash:  refresh_token_hash,
-      expires_at:  7.days.from_now
-    )
+      # If user has a refresh token, revoke it
+      if user.refresh_tokens.active.exists?
+        user.refresh_tokens.active.first.revoke!
+      end
 
-    # ✅ Manually add Set-Cookie header (bypasses ActionDispatch::Cookies)
-    response.set_header(
-      'Set-Cookie',
-      "refresh_token=#{raw_refresh_token}; " \
-      "Path=/; HttpOnly; SameSite=Lax; Expires=#{7.days.from_now.utc.httpdate}"
-    )
+      # Create new refresh token
+      user.refresh_tokens.create!(
+        token_hash: refresh_token,
+        expires_at: 7.days.from_now
+      )
+    else
+      raise CustomError::Unauthorized.new('Invalid email or password')
+    end
 
     render json: {
       access_token: access_token,
+      refresh_token: refresh_token,
       user: user.slice(:id, :full_name, :email, :role)
     }, status: :ok
   end
 
-  # POST /v1/refresh
-  def refresh
-    raw_token = request.cookies['refresh_token']
-    raise CustomError::Unauthorized.new('Refresh token missing or corrupt') unless raw_token
+  def register
+    @user = User.new(user_params)
 
-    token_hash = AuthenticationService.hash_token(raw_token)
-    token_record = RefreshToken.find_by(token_hash: token_hash)
-    unless token_record&.active?
-      clear_refresh_cookie
-      raise CustomError::Unauthorized.new('Invalid or expired refresh token. Please log in again.')
+    authorize @user, :create?
+    if @user.save
+      access_token = JsonWebToken.encode(user_id: @user.id)
+      refresh_token = AuthenticationService.generate_secure_token
+
+      @user.refresh_tokens.create!(
+        token_hash: refresh_token,
+        expires_at: 7.days.from_now
+      )
+
+      render json: {
+        access_token: access_token,
+        refresh_token: refresh_token,
+        user: @user.slice(:id, :full_name, :email, :role)
+      }, status: :created
+    else
+      render json: { errors: @user.errors.full_messages }, status: :unprocessable_entity
     end
-
-    token_record.revoke!
-    user = token_record.user
-
-    new_access_token = JsonWebToken.encode(user_id: user.id, exp: 15.minutes.from_now)
-    new_raw_token    = AuthenticationService.generate_secure_token
-    new_token_hash   = AuthenticationService.hash_token(new_raw_token)
-
-    user.refresh_tokens.create!(
-      token_hash:  new_token_hash,
-      expires_at:  7.days.from_now
-    )
-
-    response.set_header(
-      'Set-Cookie',
-      "refresh_token=#{new_raw_token}; " \
-      "Path=/; HttpOnly; SameSite=Lax; Expires=#{7.days.from_now.utc.httpdate}"
-    )
-
-    render json: { access_token: new_access_token }, status: :ok
   end
 
   # DELETE /v1/logout
-  def destroy
-    raw_token = request.cookies['refresh_token']
-    if raw_token
-      token_hash = AuthenticationService.hash_token(raw_token)
-      current_user.refresh_tokens.find_by(token_hash: token_hash)&.revoke!
+  def logout
+    # Find refresh token record
+    token_record = RefreshToken.find_by(token_hash: refresh_token)
+
+    unless token_record
+      raise CustomError::Unauthorized.new('User not found')
     end
+
+    # Revoke refresh token
+    token_record.revoke!
+
+    # Clear refresh cookie
     clear_refresh_cookie
-    head :no_content
+    render json: { message: 'Logged out successfully' }, status: :ok
   end
 
   private
 
     def clear_refresh_cookie
-        response.set_header(
-            'Set-Cookie',
-            "refresh_token=; Path=/; HttpOnly; SameSite=Lax; expires=Thu, 01 Jan 1970 00:00:00 GMT"
-        )
+        # Clear refresh cookie if it exists
+        response.delete_cookie(:refresh_token, path: '/')
     end
 
-  def session_params
-    params.require(:user).permit(:email, :password)
-  rescue ActionController::ParameterMissing
-    raise CustomError::Unauthorized.new('Missing login credentials.')
-  end
+
+    def session_params
+      params.require(:user).permit(:email, :password)
+    rescue ActionController::ParameterMissing
+      raise CustomError::Unauthorized.new('Missing login credentials.')
+    end
+
+    def user_params
+      params.require(:user).permit(:email, :password, :password_confirmation, :full_name, :phone)
+    end
+
+    def refresh_token
+      request.headers['HTTP_X_REFRESH_TOKEN'] ||
+          request.headers['HTTP_X_REFRESH_TOKEN'] ||
+          cookies['refresh_token']
+    end
 end
