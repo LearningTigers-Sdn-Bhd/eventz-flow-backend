@@ -40,6 +40,7 @@ Rails.application.routes.draw do
     resources :events do
       resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
       resources :tickets, only: [:index, :show, :create, :update, :destroy]
+      resources :event_locations, only: [:index, :show, :create, :update, :destroy]
 
       # New: Event Staff Management (POST/DELETE)
       resources :staff, only: [:create], controller: 'event_staff' do
