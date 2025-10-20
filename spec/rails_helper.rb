@@ -40,6 +40,9 @@ RSpec.configure do |config|
   # Include custom request helpers (json helper, etc.)
   config.include RequestSpecHelper, type: :request if defined?(RequestSpecHelper)
 
+  config.include AuthHelper, type: :request
+  config.include AuthHelper, type: :controller
+
   # --- DatabaseCleaner setup ---
   config.use_transactional_fixtures = true
 

@@ -37,7 +37,7 @@ module V1
       if @event.save
         # Step 2: Explicitly link the current_user as the EventAdmin/Owner
         # This is necessary because the Event model no longer belongs_to :user
-        current_user.event_admins.create!(event: @event)
+        current_user.assigned_event_admins.create!(event: @event)
         
         render json: @event, status: :created
       else

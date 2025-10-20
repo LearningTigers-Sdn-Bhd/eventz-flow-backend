@@ -11,7 +11,7 @@ TICKETS_PER_EVENT = 10
 BASE_DATE = Date.today + 1.week
 
 # Destroying records in reverse dependency order
-[Ticket, EventLocation, EventTeamMember, EventAdmin, TicketType, Event, User].each(&:destroy_all)
+[Ticket, EventLocationMember, EventLocation, EventAssignment, TicketType, Event, User].each(&:destroy_all)
 puts "Cleaned up existing records."
 
 # --- 1. USER GENERATION ---
@@ -79,21 +79,28 @@ all_events = NUM_EVENTS.times.map do |i|
     payment_status: payment_status,
     start_date: BASE_DATE + i.days,
     end_date: BASE_DATE + i.days + 1.day,
+    multiple_scans: i.even?, # Some events allow multiple scans
+    published: event_status == :published
   )
 
-  EventLocation.create!(
+  # Create event location(s)
+  event_location = EventLocation.create!(
     event: event,
     name: Faker::Address.full_address, # Use 'name' for the location string
     scan_limit: 100 
   )
   
-  # Assign a random manager as the EventAdmin
+  # Assign a random manager as the EventAdmin using EventAssignment
   admin_user = managers.sample
-  EventAdmin.create!(event: event, user: admin_user)
+  EventAssignment.create!(event: event, user: admin_user, role: :event_admin)
 
   # Assign a random team member as staff for ~50% of the events
   if i.odd?
-    EventTeamMember.create!(event: event, user: team_members.sample)
+    team_member = team_members.sample
+    EventAssignment.create!(event: event, user: team_member, role: :event_team_member)
+    
+    # Also assign this team member to the event location
+    EventLocationMember.create!(event_location: event_location, member: team_member)
   end
 
   puts "  -> Event #{i+1}: #{event.title} (Admin: #{admin_user.full_name})"
@@ -110,9 +117,17 @@ all_events.each_with_index do |event, i|
   # Create a couple of ticket types per event
   tt_ga = event.ticket_types.find_or_create_by!(name: 'General Admission') do |tt|
     tt.price = Faker::Commerce.price(range: 50.0..100.0)
+    tt.quantity = 100
+    tt.max_per_order = 5
+    tt.status = :published
+    tt.hidden = false
   end
   tt_vip = event.ticket_types.find_or_create_by!(name: 'VIP Pass') do |tt|
     tt.price = Faker::Commerce.price(range: 200.0..500.0)
+    tt.quantity = 50
+    tt.max_per_order = 2
+    tt.status = :published
+    tt.hidden = false
   end
   
   ticket_types = [tt_ga, tt_vip]
@@ -129,7 +144,7 @@ all_events.each_with_index do |event, i|
     ticket_attributes = {
       event: event,
       ticket_type: ticket_types.sample,
-      user: participant_user, # Assign to our participant user
+      user: participant_user, # Assign to our participant user (user_id is required)
       attendee_name: Faker::Name.name,
       attendee_email: Faker::Internet.email,
       status: status,
@@ -148,8 +163,11 @@ puts "Summary:"
 puts "  Total Users: #{User.count}"
 puts "  Total Events: #{Event.count}"
 puts "  Total Tickets: #{Ticket.count}"
+puts "  Total Event Assignments: #{EventAssignment.count}"
+puts "  Total Event Locations: #{EventLocation.count}"
+puts "  Total Event Location Members: #{EventLocationMember.count}"
 puts "\nLogin Credentials:"
-puts "  Superadmin (Org Owner): superadmin@example.com / 12345678"
-puts "  Manager (Alice Organizer): manager_1@example.com / 12345678"
+puts "  Superadmin (Org Owner): s@s.com / 12345678"
+puts "  Manager 1: manager_1@example.com / 12345678"
 puts "  Team Member (Staff 1): staff_1@example.com / 12345678"
 puts "  Participant: participant@example.com / 12345678"
