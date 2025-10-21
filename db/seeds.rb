@@ -10,8 +10,25 @@ NUM_EVENTS = 20
 TICKETS_PER_EVENT = 10
 BASE_DATE = Date.today + 1.week
 
-# Destroying records in reverse dependency order
-[Ticket, EventLocationMember, EventLocation, EventAssignment, TicketType, Event, User].each(&:destroy_all)
+# Destroying records in reverse dependency order to respect foreign key constraints
+puts "Cleaning up existing records..."
+
+# Use delete_all to bypass callbacks and foreign key constraints
+# This is more efficient and avoids foreign key issues
+ActiveRecord::Base.connection.disable_referential_integrity do
+  Ticket.delete_all
+  EventLocationMember.delete_all
+  EventAssignment.delete_all
+  TicketType.delete_all
+  EventLocation.delete_all
+  Event.delete_all
+  User.delete_all
+
+  # Clean up the separate event admin/team member tables if they exist
+  ActiveRecord::Base.connection.execute("DELETE FROM event_admins") if ActiveRecord::Base.connection.table_exists?('event_admins')
+  ActiveRecord::Base.connection.execute("DELETE FROM event_team_members") if ActiveRecord::Base.connection.table_exists?('event_team_members')
+end
+
 puts "Cleaned up existing records."
 
 # --- 1. USER GENERATION ---
@@ -87,9 +104,9 @@ all_events = NUM_EVENTS.times.map do |i|
   event_location = EventLocation.create!(
     event: event,
     name: Faker::Address.full_address, # Use 'name' for the location string
-    scan_limit: 100 
+    scan_limit: 100
   )
-  
+
   # Assign a random manager as the EventAdmin using EventAssignment
   admin_user = managers.sample
   EventAssignment.create!(event: event, user: admin_user, role: :event_admin)
@@ -98,7 +115,7 @@ all_events = NUM_EVENTS.times.map do |i|
   if i.odd?
     team_member = team_members.sample
     EventAssignment.create!(event: event, user: team_member, role: :event_team_member)
-    
+
     # Also assign this team member to the event location
     EventLocationMember.create!(event_location: event_location, member: team_member)
   end
@@ -112,7 +129,7 @@ puts "\n--- 3. Generating Ticket Types and Tickets (Total: ~#{NUM_EVENTS * TICKE
 
 all_events.each_with_index do |event, i|
   # Skip generating tickets for the first 3 events to simulate events without tickets
-  next if i < 3 
+  next if i < 3
 
   # Create a couple of ticket types per event
   tt_ga = event.ticket_types.find_or_create_by!(name: 'General Admission') do |tt|
@@ -129,18 +146,18 @@ all_events.each_with_index do |event, i|
     tt.status = :published
     tt.hidden = false
   end
-  
+
   ticket_types = [tt_ga, tt_vip]
-  
+
   # Generate tickets with varied statuses
   TICKETS_PER_EVENT.times do |j|
-    
+
     # Cycle through statuses: purchased, scanned, refunded, canceled
-    status = Ticket.statuses.keys[j % Ticket.statuses.keys.count] 
-    
+    status = Ticket.statuses.keys[j % Ticket.statuses.keys.count]
+
     # Get the user who is an admin or team member for the event to simulate a scanner
     scanner = event.admins.sample || event.team_members.sample
-    
+
     ticket_attributes = {
       event: event,
       ticket_type: ticket_types.sample,
