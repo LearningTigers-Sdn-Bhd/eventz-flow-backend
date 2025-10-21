@@ -7,6 +7,7 @@ FactoryBot.define do
     # Required Attributes (using Faker or simple defaults)
     attendee_name { "John Doe" }
     attendee_email { "john.doe@example.com" }
+    attendee_phone { "+1234567890" }
     
     # Non-nullable/Default Attributes
     checked_in { false }

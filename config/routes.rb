@@ -37,26 +37,29 @@ Rails.application.routes.draw do
       end
     end
 
-    # 3. EVENTS AND ASSOCIATED RESOURCES
+    # 3. GLOBAL TICKET TYPES (Templates - event_id is null)
+    resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
+
+    # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
       resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
       resources :tickets, only: [:index, :show, :create, :update, :destroy]
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
 
-      # New: Event Staff Management (POST/DELETE)
-      resources :staff, only: [:create], controller: 'event_staff' do
+      # New: Event Staff Management (GET/POST/DELETE)
+      resources :staff, only: [:index, :create], controller: 'event_staff' do
         # DELETE /v1/events/:event_id/staff/:user_id
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
     end
 
-    # 4. GLOBAL TICKET ACTIONS
+    # 5. GLOBAL TICKET ACTIONS
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
     end
 
-    # 5. TEAM MEMBERS MANAGEMENT
+    # 6. TEAM MEMBERS MANAGEMENT
     resources :team_members, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status

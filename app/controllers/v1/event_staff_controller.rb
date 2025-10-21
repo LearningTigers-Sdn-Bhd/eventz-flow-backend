@@ -4,6 +4,20 @@ module V1
     before_action :set_event
     before_action :authorize_staff_management! # Org Owner or Manager can manage staff
 
+    # GET /v1/events/:event_id/staff
+    def index
+      staff_assignments = @event.event_assignments.includes(:user)
+      
+      render json: staff_assignments.as_json(
+        only: [:id, :event_id, :user_id, :role],
+        include: {
+          user: {
+            only: [:id, :email, :full_name, :phone, :role, :status]
+          }
+        }
+      ), status: :ok
+    end
+
     # POST /v1/events/:event_id/staff
     def create
       assigned_user = User.find(staff_assignment_params[:user_id])

@@ -1,6 +1,7 @@
 class TicketType < ApplicationRecord
   # 🔑 This line is the fix: It creates the 'event' association and the 'event=' method.
-  belongs_to :event
+  # Made optional to support global ticket types (templates)
+  belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
 
   # Enums for Status
@@ -13,6 +14,8 @@ class TicketType < ApplicationRecord
   validates :max_per_order, presence: true, numericality: { greater_than_or_equal_to: 1 }
 
   # Scopes
+  scope :global, -> { where(event_id: nil) }
+  scope :event_specific, -> { where.not(event_id: nil) }
   scope :publicly_available, -> { published.where(hidden: false) }
   scope :on_sale, -> { 
     where('sale_starts_at IS NULL OR sale_starts_at <= ?', Time.current)

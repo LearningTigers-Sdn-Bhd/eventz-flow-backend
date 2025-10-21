@@ -28,10 +28,77 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   let(:common_headers) { |auth| { 'Authorization' => auth, 'Content-Type' => 'application/json' } }
 
   # ============================================================
-  # POST /v1/events/{event_id}/staff
+  # GET /v1/events/{event_id}/staff
   # ============================================================
   path '/v1/events/{event_id}/staff' do
     parameter name: :event_id, in: :path, type: :integer, required: true, description: 'ID of the parent event'
+
+    get 'Lists all staff assigned to an event' do
+      tags 'Events'
+      security [{ BearerAuth: [] }]
+      produces 'application/json'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
+      parameter name: :event_id, in: :path, type: :integer, required: true, description: 'Event ID'
+
+      let(:event_id) { event.id }
+      let(:Authorization) { auth_header_manager }
+
+      before do
+        # Create some staff assignments for the event
+        create(:event_assignment, event: event, user: member_user, role: 'event_team_member')
+        create(:event_assignment, event: event, user: manager, role: 'event_admin')
+      end
+
+      response '200', 'Returns list of staff assigned to the event' do
+        schema type: :array,
+          items: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              event_id: { type: :integer },
+              user_id: { type: :integer },
+              role: { type: :string },
+              user: {
+                type: :object,
+                properties: {
+                  id: { type: :integer },
+                  email: { type: :string },
+                  full_name: { type: :string, nullable: true },
+                  phone: { type: :string, nullable: true },
+                  role: { type: :string },
+                  status: { type: :string }
+                }
+              }
+            },
+            required: %w[id event_id user_id role]
+          }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data).to be_an(Array)
+          expect(data.length).to eq(2)
+          expect(data.first).to have_key('user')
+        end
+      end
+
+      response '403', 'Forbidden for non-manager/owner users' do
+        let(:Authorization) { auth_header_member }
+        schema EVENT_STAFF_ERROR_SCHEMA
+        run_test!
+      end
+
+      response '404', 'Event not found' do
+        let(:Authorization) { auth_header_manager }
+        let(:event_id) { 99999 }
+        schema type: :object,
+          properties: {
+            error: { type: :string },
+            message: { type: :string }
+          }
+        run_test!
+      end
+    end
 
     post 'Appoints a user to an event role' do
   tags 'Events'

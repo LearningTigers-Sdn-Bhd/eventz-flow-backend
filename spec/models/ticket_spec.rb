@@ -51,6 +51,14 @@ RSpec.describe Ticket, type: :model do
     it { is_expected.to allow_value('valid@email.com').for(:attendee_email) }
     it { is_expected.not_to allow_value('invalid-email').for(:attendee_email) }
 
+    # Phone format check
+    it { is_expected.to allow_value('+1234567890').for(:attendee_phone) }
+    it { is_expected.to allow_value('123-456-7890').for(:attendee_phone) }
+    it { is_expected.to allow_value('(123) 456-7890').for(:attendee_phone) }
+    it { is_expected.to allow_value('').for(:attendee_phone) } # Allow blank
+    it { is_expected.to allow_value(nil).for(:attendee_phone) } # Allow nil
+    it { is_expected.not_to allow_value('invalid@phone').for(:attendee_phone) }
+
     # Public ID validation check (only enforced on update in the refactored model)
     describe 'public_id presence' do
       # Test using the raw attributes to check the model's logic directly

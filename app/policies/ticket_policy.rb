@@ -57,12 +57,17 @@ class TicketPolicy < ApplicationPolicy
       # 1. Get the scope of events the user is authorized to view (EventPolicy::Scope).
       authorized_events_scope = Pundit.policy_scope(user, Event)
       
-      # 2. Get the IDs of all TicketTypes that belong to those authorized events.
+      # 2. Get the IDs of TicketTypes that belong to authorized events
       authorized_ticket_type_ids = TicketType.where(event: authorized_events_scope).select(:id)
+      
+      # 3. Get the IDs of GLOBAL TicketTypes (event_id is NULL)
+      global_ticket_type_ids = TicketType.where(event_id: nil).select(:id)
+      
+      # 4. Combine both: authorized event ticket types + global ticket types
+      all_allowed_ticket_type_ids = authorized_ticket_type_ids.or(global_ticket_type_ids)
 
-      # 3. Filter the current scope (Tickets) to only include those associated 
-      #    with authorized TicketTypes.
-      scope.where(ticket_type_id: authorized_ticket_type_ids)
+      # 5. Filter tickets to only include those with allowed ticket types
+      scope.where(ticket_type_id: all_allowed_ticket_type_ids)
     end
   end
 end

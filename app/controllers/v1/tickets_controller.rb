@@ -13,18 +13,18 @@ module V1
     def index
       # 1. Scope the tickets based on the authorized events and filter by the current event.
       # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
-      @tickets = policy_scope(Ticket).where(event: @event)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type)
       # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
       # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
       
-      render json: @tickets, status: :ok
+      render json: @tickets.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
     end
 
     # GET /v1/events/:event_id/tickets/:id
     def show
       # Authorize the specific ticket record against the show? policy
       authorize @ticket
-      render json: @ticket, status: :ok
+      render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
     end
 
     # POST /v1/events/:event_id/tickets
@@ -35,14 +35,15 @@ module V1
       # Build the ticket using ONLY the strong parameters.
       @ticket = @event.tickets.build(ticket_params)
 
-      @ticket.user = current_user
+      # @ticket.user = current_user # Hide this for now
       
       # KEEP THIS LINE: Explicitly assign event_id to prevent the mysterious "must exist" error 
       # seen in the test environment, even if @event.tickets.build is supposed to do it.
       @ticket.event_id = @event.id 
 
       if @ticket.save
-        render json: @ticket, status: :created
+        @ticket.reload
+        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_entity
       end
@@ -53,7 +54,7 @@ module V1
       authorize @ticket, :update?
 
       if @ticket.update(ticket_params)
-        render json: @ticket, status: :ok
+        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_entity
       end
@@ -88,7 +89,7 @@ module V1
       end
 
       if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
-        render json: @ticket, status: :ok
+        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_entity
       end
@@ -127,7 +128,8 @@ module V1
       # Fields allowed for creation and general attendee updates.
       allowed_params = [
         :attendee_name, 
-        :attendee_email, 
+        :attendee_email,
+        :attendee_phone, 
         :ticket_type_id, 
         custom_fields_data: {}
       ]

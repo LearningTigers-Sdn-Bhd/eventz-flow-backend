@@ -13,6 +13,7 @@ TICKET_SCHEMA = {
     public_id: { type: :string, format: :uuid, description: 'The unique ID used for scanning/check-in.' },
     attendee_name: { type: :string },
     attendee_email: { type: :string, format: :email },
+    attendee_phone: { type: [:string, :null] },
     status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
     checked_in: { type: :boolean, readOnly: true },
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
@@ -126,6 +127,7 @@ RSpec.describe 'V1::Tickets', type: :request do
             properties: {
               attendee_name: { type: :string, example: 'John Doe' },
               attendee_email: { type: :string, format: :email, example: 'john.doe@example.com' },
+              attendee_phone: { type: :string, example: '+1234567890' },
               ticket_type_id: { type: :integer, description: 'ID of the ticket type being purchased/issued' },
               custom_fields_data: { type: :object }
             },
@@ -209,7 +211,8 @@ RSpec.describe 'V1::Tickets', type: :request do
             type: :object,
             properties: {
               attendee_name: { type: :string, example: 'Updated Name' },
-              attendee_email: { type: :string, format: :email, example: 'new_email@example.com' }
+              attendee_email: { type: :string, format: :email, example: 'new_email@example.com' },
+              attendee_phone: { type: :string, example: '+1234567890' }
             }
           }
         }

@@ -26,15 +26,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.index ["user_id"], name: "index_api_keys_on_user_id"
   end
 
-  create_table "event_admins", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_admins_on_event_id"
-    t.index ["user_id"], name: "index_event_admins_on_user_id"
-  end
-
   create_table "event_assignments", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.bigint "user_id", null: false
@@ -64,15 +55,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.datetime "updated_at", null: false
     t.index ["event_id", "name"], name: "index_event_locations_on_event_id_and_name", unique: true
     t.index ["event_id"], name: "index_event_locations_on_event_id"
-  end
-
-  create_table "event_team_members", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_team_members_on_event_id"
-    t.index ["user_id"], name: "index_event_team_members_on_user_id"
   end
 
   create_table "events", force: :cascade do |t|
@@ -129,9 +111,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.bigint "event_id", null: false
     t.bigint "ticket_type_id", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.string "attendee_name", null: false
     t.string "attendee_email", null: false
+    t.string "attendee_phone"
     t.boolean "checked_in", default: false, null: false
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
@@ -161,15 +144,11 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
   end
 
   add_foreign_key "api_keys", "users"
-  add_foreign_key "event_admins", "events"
-  add_foreign_key "event_admins", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
-  add_foreign_key "event_team_members", "events"
-  add_foreign_key "event_team_members", "users"
   add_foreign_key "refresh_tokens", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
