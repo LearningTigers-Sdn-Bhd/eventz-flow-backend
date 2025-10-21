@@ -13,10 +13,10 @@ Rails.application.routes.draw do
   namespace :v1 do
     # Authentication endpoints (Login)
     # post 'auth/login', to: 'authentication#login'
-    post 'login', to: 'sessions#login'
-    post 'register', to: 'sessions#register'
+    post 'login', to: 'authentication#login'
+    post 'register', to: 'authentication#register'
     post 'refresh', to: 'refresh#refresh'
-    delete 'logout', to: 'sessions#logout'
+    delete 'logout', to: 'authentication#logout'
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
