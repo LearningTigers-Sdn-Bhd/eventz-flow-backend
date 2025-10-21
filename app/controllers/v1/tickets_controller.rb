@@ -13,11 +13,16 @@ module V1
     def index
       # 1. Scope the tickets based on the authorized events and filter by the current event.
       # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by)
       # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
       # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
       
-      render json: @tickets.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      render json: @tickets.as_json(
+        include: { 
+          ticket_type: { only: [:id, :name, :price] },
+          scanned_by: { only: [:id, :full_name] } 
+        }
+      ), status: :ok
     end
 
     # GET /v1/events/:event_id/tickets/:id
@@ -88,7 +93,7 @@ module V1
         render json: { error: 'Ticket has already been checked in.' }, status: :unprocessable_entity and return
       end
 
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
         render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_entity

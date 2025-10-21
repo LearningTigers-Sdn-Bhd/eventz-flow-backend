@@ -18,9 +18,18 @@ TICKET_SCHEMA = {
     checked_in: { type: :boolean, readOnly: true },
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
     event_id: { type: :integer, readOnly: true },
-    ticket_type_id: { type: :integer }
+    ticket_type_id: { type: :integer },
+    ticket_type: { 
+      type: :object,
+      properties: {
+        id: { type: :integer },
+        name: { type: :string },
+        price: { type: :string, description: 'Price as decimal string' }
+      }
+    }
   },
-  required: ['public_id', 'attendee_name', 'attendee_email', 'status', 'event_id', 'ticket_type_id']
+  required: ['public_id', 'attendee_name', 'attendee_email', 'status', 'event_id', 'ticket_type_id'],
+  additionalProperties: true
 }.freeze
 
 # The minimal schema for the index array response (/v1/events/:event_id/tickets GET).
@@ -30,8 +39,17 @@ TICKET_INDEX_ITEM_SCHEMA = {
     id: { type: :integer },
     public_id: { type: :string, format: :uuid },
     attendee_name: { type: :string },
-    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] }
-  }
+    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    ticket_type: { 
+      type: :object,
+      properties: {
+        id: { type: :integer },
+        name: { type: :string },
+        price: { type: :string, description: 'Price as decimal string' }
+      }
+    }
+  },
+  additionalProperties: true
 }.freeze
 
 
