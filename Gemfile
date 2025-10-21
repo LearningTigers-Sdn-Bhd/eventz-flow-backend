@@ -25,15 +25,15 @@ gem "bcrypt", "~> 3.1.7"
 
 # --- Authentication & Authorization ---
 # bcrypt is included by default via has_secure_password
-gem "pundit" 
+gem "pundit"
 
 
 # --- API Serialization (Performance) ---
 # fast_jsonapi is a high-performance serializer (fork of Netflix's)
-gem "fast_jsonapi" 
+gem "fast_jsonapi"
 
 # --- Background Processing (Webhooks, Notifications) ---
-gem "sidekiq" 
+gem "sidekiq"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
@@ -54,7 +54,7 @@ group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ]
   # Testing Framework
-  gem "rspec-rails", "~> 6.0" 
+  gem "rspec-rails", "~> 6.0"
   # Test Data Generation
   gem "factory_bot_rails"
   gem "faker"
@@ -65,11 +65,10 @@ group :test do
   # Shorthand matchers for testing models
   gem "shoulda-matchers"
   # Ensures a clean database slate between tests
-  gem "database_cleaner" 
+  gem "database_cleaner"
 end
 
 group :development do
   # Speed up commands on slow machines / big apps [https://github.com/rails/spring]
   # gem "spring"
 end
-

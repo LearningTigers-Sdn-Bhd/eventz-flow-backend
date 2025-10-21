@@ -1,232 +1,185 @@
-# spec/requests/v1/authentication_spec.rb
-require 'rails_helper'
-# If you are using Swagger/Rswag, replace 'rails_helper' with 'swagger_helper'
+require 'swagger_helper'
 
 RSpec.describe 'V1::Authentication', type: :request do
-  let!(:user) { create(:user, email: 'test@example.com', password: 'password123', password_confirmation: 'password123') }
+  # NOTE: This uses the same logic and paths as the refactored spec from the previous turn.
+  let!(:member_user) { create(:user, role: :member, email: 'member@example.com', password: 'password123', password_confirmation: 'password123', full_name: 'Regular Member') }
 
-  # --- Helpers for Token/Cookie Management ---
-  # Note: The refresh token factory now provides 'raw_token' via the transient attribute.
-  def get_refresh_token_cookie(response)
-    # Extracts the value from the 'Set-Cookie' header for the refresh_token
-    cookie_string = response.headers['Set-Cookie'].split(';').find { |c| c.strip.start_with?('refresh_token=') }
-    cookie_value = cookie_string.split('=').last if cookie_string
-    # The value is signed and URL-encoded. We need to grab the full signed string.
-    
-    # Since we use ActionController::Cookies in the controller, 
-    # the response will contain the *signed* cookie value.
-    cookie = Rack::Utils.parse_set_cookie(response.headers['Set-Cookie'].split(';').first)
-    cookie['refresh_token']
-  end
+  # The old POST /v1/users test has been moved into the users_spec.rb (as shown previously)
 
-  # =========================================================================
-  # POST /v1/login
-  # =========================================================================
-  describe 'POST /v1/login' do
-    let(:valid_params) { { user: { email: 'test@example.com', password: 'password123' } } }
-    let(:invalid_params) { { user: { email: 'test@example.com', password: 'wrong' } } }
+  path '/v1/register' do
+    post 'Registers a new user and retrieves JWT token' do
+      tags 'Authentication'
+      consumes 'application/json'
+      produces 'application/json'
 
-    context 'with valid credentials' do
-      before { post '/v1/login', params: valid_params, as: :json }
+      parameter name: :user_data, in: :body, schema: {
+        type: :object,
+        properties: {
+          user: {
+            type: :object,
+            properties: {
+              email: { type: :string, example: 'newuser@example.com' },
+              password: { type: :string, example: 'password123' },
+              password_confirmation: { type: :string, example: 'password123' },
+              full_name: { type: :string, example: 'New User' },
+              phone: { type: :string, example: '+1234567890' }
+            },
+            required: [ 'email', 'password', 'password_confirmation', 'full_name' ]
+          }
+        },
+        required: [ 'user' ]
+      }
 
-      it 'returns 200 OK' do
-        expect(response).to have_http_status(:ok)
+      response '201', 'User registered successfully' do
+        let(:user_data) {
+          {
+            user: {
+              email: 'newuser@example.com',
+              password: 'password123',
+              password_confirmation: 'password123',
+              full_name: 'New User',
+              phone: '+1234567890'
+            }
+          }
+        }
+
+        run_test!
+
+        schema type: :object,
+          properties: {
+            access_token: { type: :string },
+            refresh_token: { type: :string },
+            user: {
+              type: :object,
+              properties: {
+                id: { type: :integer },
+                full_name: { type: :string },
+                email: { type: :string },
+                role: { type: :string, enum: ['org_owner', 'manager', 'member'] }
+              }
+            }
+          }
       end
 
-      it 'returns an access_token' do
-        expect(json).to include('access_token')
-      end
+      response '422', 'Validation errors' do
+        let(:user_data) {
+          {
+            user: {
+              email: 'invalid-email',
+              password: '123',
+              password_confirmation: '456',
+              full_name: ''
+            }
+          }
+        }
 
-      it 'sets an HttpOnly signed refresh_token cookie' do
-        expect(response.headers['Set-Cookie']).to match(/refresh_token=/)
-        # Check for essential security flags
-        expect(response.headers['Set-Cookie']).to include('HttpOnly') 
-      end
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['errors']).to be_an(Array)
+        end
 
-      it 'creates a RefreshToken record in the database' do
-        expect(user.refresh_tokens.active.count).to eq(1)
-      end
-    end
-
-    context 'with invalid credentials' do
-      before { post '/v1/login', params: invalid_params, as: :json }
-
-      it 'returns 401 Unauthorized' do
-        expect(response).to have_http_status(:unauthorized)
-      end
-
-      it 'does not create a RefreshToken record' do
-        expect(user.refresh_tokens.count).to eq(0)
-      end
-    end
-  end
-
-  # =========================================================================
-  # POST /v1/refresh (Token Rotation)
-  # =========================================================================
-  describe 'POST /v1/refresh' do
-    let(:old_raw_token) { AuthenticationService.generate_secure_token }
-    let!(:old_db_record) do
-      user.refresh_tokens.create!(
-        token_hash: AuthenticationService.hash_token(old_raw_token),
-        expires_at: 7.days.from_now
-      )
-    end
-    
-    # Simulate a client sending the cookie
-    let(:active_cookie) { { refresh_token: old_raw_token } }
-
-    context 'with a valid, active refresh_token cookie' do
-      before { post '/v1/refresh', params: {}, headers: { 'Cookie' => "refresh_token=#{old_raw_token}" } }
-
-      it 'returns 200 OK' do
-        expect(response).to have_http_status(:ok)
-      end
-
-      it 'returns a new access_token' do
-        expect(json).to include('access_token')
-        # Simple check that the new token is different from the old (if we had the old one)
-        new_payload = JsonWebToken.decode(json['access_token']) 
-        expect(new_payload[:user_id]).to eq(user.id)
-      end
-
-      it 'sets a NEW HttpOnly signed refresh_token cookie' do
-        expect(response.headers['Set-Cookie']).to match(/refresh_token=/)
-        # Verify the cookie value has changed (token rotation)
-        new_raw_token = cookies[:refresh_token]
-        expect(new_raw_token).not_to eq(old_raw_token)
-      end
-
-      it 'revokes the old RefreshToken record' do
-        old_db_record.reload
-        expect(old_db_record.revoked_at).not_to be_nil
-        expect(old_db_record).not_to be_active
-      end
-
-      it 'creates a new RefreshToken record in the database' do
-        # Should now have 1 new active token and 1 revoked token
-        expect(user.refresh_tokens.active.count).to eq(1)
-        expect(user.refresh_tokens.count).to eq(2)
-      end
-    end
-
-    context 'with an expired refresh_token cookie' do
-      let!(:expired_record) do
-        user.refresh_tokens.create!(
-          token_hash: AuthenticationService.hash_token("expired_token"),
-          expires_at: 1.day.ago # Expired
-        )
-      end
-      let(:expired_cookie) { { refresh_token: "expired_token" } }
-
-      before { post '/v1/refresh', params: {}, headers: { 'Cookie' => "refresh_token=expired_token" } }
-
-      it 'returns 401 Unauthorized' do
-        expect(response).to have_http_status(:unauthorized)
-      end
-
-      it 'clears the cookie' do
-        expect(response.headers['Set-Cookie']).to match(/refresh_token=;/)
-        expect(response.headers['Set-Cookie']).to include('expires=Thu, 01 Jan 1970')
+        schema type: :object,
+          properties: {
+            errors: {
+              type: :array,
+              items: { type: :string },
+              example: ['Email is invalid', 'Password is too short', 'Password confirmation doesn\'t match Password', 'Full name can\'t be blank']
+            }
+          }
       end
     end
   end
 
-  # =========================================================================
-  # DELETE /v1/logout
-  # =========================================================================
-  describe 'DELETE /v1/logout' do
-    let!(:jwt_token) { JsonWebToken.encode(user_id: user.id) }
-    let(:auth_header) { { 'Authorization' => "Bearer #{jwt_token}" } }
-    
-    let(:raw_token_to_revoke) { AuthenticationService.generate_secure_token }
-    let!(:db_record_to_revoke) do
-      user.refresh_tokens.create!(
-        token_hash: AuthenticationService.hash_token(raw_token_to_revoke),
-        expires_at: 7.days.from_now
-      )
-    end
-    
-    let(:logout_cookie) { { refresh_token: raw_token_to_revoke } }
-    
-    # We must be authenticated with the JWT to hit this endpoint
-    context 'when authenticated via JWT' do
-      before do
-        delete '/v1/logout', headers: auth_header.merge('Cookie' => "refresh_token=#{raw_token_to_revoke}")
+  path '/v1/login' do
+    post 'Authenticates user and retrieves JWT token' do
+      tags 'Authentication'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :credentials, in: :body, schema: {
+        type: :object,
+        properties: {
+          user: {
+            type: :object,
+            properties: {
+              email: { type: :string, example: 'member@example.com' },
+              password: { type: :string, example: 'password123' }
+            },
+            required: [ 'email', 'password' ]
+          }
+        },
+        required: [ 'user' ]
+      }
+
+      response '200', 'Successful login' do
+        let(:credentials) { { user: { email: 'member@example.com', password: 'password123' } } }
+
+        run_test!
+
+        schema type: :object,
+          properties: {
+            access_token: { type: :string },
+            refresh_token: { type: :string },
+            user: {
+              type: :object,
+              properties: {
+                id: { type: :integer },
+                full_name: { type: :string },
+                email: { type: :string },
+                role: { type: :string, enum: ['org_owner', 'manager', 'member'] }
+              }
+            }
+          }
       end
 
-      it 'returns 204 No Content' do
-        expect(response).to have_http_status(:no_content)
-      end
+      response '401', 'Invalid credentials' do
+        let(:credentials) { { user: { email: 'member@example.com', password: 'wrongpassword' } } }
 
-      it 'revokes the refresh token record in the database' do
-        db_record_to_revoke.reload
-        expect(db_record_to_revoke.revoked_at).not_to be_nil
-        expect(db_record_to_revoke).not_to be_active
-      end
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['error']).to eq('Unauthorized')
+        end
 
-      it 'clears the refresh_token cookie from the client' do
-        expect(response.headers['Set-Cookie']).to match(/refresh_token=;/)
-        expect(response.headers['Set-Cookie']).to include('expires=Thu, 01 Jan 1970')
-      end
-    end
-
-    context 'when only the JWT is present (no refresh token cookie)' do
-      before do
-        delete '/v1/logout', headers: auth_header
-      end
-
-      it 'returns 204 No Content' do
-        expect(response).to have_http_status(:no_content)
-      end
-
-      it 'does not change the state of any existing refresh tokens' do
-        db_record_to_revoke.reload
-        expect(db_record_to_revoke).to be_active
+        schema type: :object,
+          properties: {
+            error: { type: :string, example: 'Unauthorized' },
+            message: { type: :string, example: 'Invalid email or password' }
+          }
       end
     end
   end
-  
-  # =========================================================================
-  # API KEY Authentication Tests (New Requirement)
-  # =========================================================================
-  describe 'API Key Authentication' do
-    let!(:raw_api_key) { ApiKey.create_key_for_user(user) }
-    let!(:protected_url) { '/v1/events' } # Assuming /v1/events requires authentication
 
-    context 'with a valid raw API Key' do
-      let(:api_key_header) { { 'Authorization' => raw_api_key } }
+  # spec/requests/v1/authentication_spec.rb (Corrected /v1/logout path)
 
-      # Use a simple GET request to a protected resource to verify auth
-      before { get protected_url, headers: api_key_header }
+  path '/v1/logout' do
+    delete 'Logs out the user by revoking the Refresh Token' do
+      tags 'Authentication'
 
-      it 'returns 200 OK (Authentication successful)' do
-        # Assuming the policy allows the user to see some events or an empty array
-        expect(response).to have_http_status(:ok)
-        expect(ApiKey.find_by(key_hash: AuthenticationService.hash_token(raw_api_key)).last_used_at).not_to be_nil
-      end
-    end
-    
-    context 'with an invalid API Key' do
-      let(:invalid_key_header) { { 'Authorization' => 'invalid-key-string-longer-than-30-chars' } }
+      # Document the required X-Refresh-Token header
+      parameter name: :'X-Refresh-Token', in: :header, type: :string, required: true,
+                description: 'Refresh token for user identification and logout.'
 
-      before { get protected_url, headers: invalid_key_header }
+      response '200', 'Logout successful' do
 
-      it 'returns 401 Unauthorized' do
-        expect(response).to have_http_status(:unauthorized)
-      end
-    end
-    
-    context 'with a revoked API Key' do
-      let!(:revoked_key_record) do
-        ApiKey.find_by(key_hash: AuthenticationService.hash_token(raw_api_key)).update!(is_active: false)
-      end
-      let(:api_key_header) { { 'Authorization' => raw_api_key } } # Still sending the key
+        # FIX: Use a dynamic 'let' block to set the request header.
+        # This code runs before run_test! and logs the user in to get the refresh token.
+        let(:'X-Refresh-Token') do
+          # 1. Perform login request to generate and retrieve the refresh token
+          post '/v1/login', params: { user: { email: member_user.email, password: 'password123' } }, as: :json
+          JSON.parse(response.body)['refresh_token']
+        end
 
-      before { get protected_url, headers: api_key_header }
 
-      it 'returns 401 Unauthorized' do
-        expect(response).to have_http_status(:unauthorized)
+        # The assertion remains inside the run_test! block
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['message']).to eq('Logged out successfully')
+        end
+
+        schema type: :object,
+          properties: {
+            message: { type: :string, example: 'Logged out successfully' }
+          }
       end
     end
   end

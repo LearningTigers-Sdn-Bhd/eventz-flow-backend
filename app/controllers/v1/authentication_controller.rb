@@ -1,101 +1,107 @@
 # app/controllers/v1/authentication_controller.rb
-module V1
-  class AuthenticationController < ApplicationController
-    include ActionController::Cookies
-    skip_before_action :authenticate_request!, only: [:login, :refresh]
+class V1::AuthenticationController < ApplicationController
+  skip_before_action :authenticate_request!, only: %i[login register logout]
 
-    # =========================================================================
-    # POST /v1/login
-    # =========================================================================
-    def login
-      user_params = params[:user] || {}
-      @user = User.find_by(email: user_params[:email])
+  # POST /v1/login
+  def login
+    # Find user by email
+    user = User.find_by(email: session_params[:email].downcase)
 
-      if @user&.authenticate(user_params[:password])
-        access_token = JsonWebToken.encode(user_id: @user.id)
-
-        # Generate secure random refresh token
-        raw_refresh_token = AuthenticationService.generate_secure_token
-
-        # Store hashed version in DB
-        @user.refresh_tokens.create!(
-          token_hash: AuthenticationService.hash_token(raw_refresh_token),
-          expires_at: 30.days.from_now
-        )
-
-        # ✅ Set refresh token as HttpOnly cookie (direct header write)
-        response.set_cookie(
-          :refresh_token,
-          value: raw_refresh_token,
-          httponly: true,
-          path: '/',
-          expires: 30.days.from_now
-        )
-
-        render json: { access_token: access_token }, status: :ok
-      else
-        render json: { error: 'Invalid email or password' }, status: :unauthorized
-      end
+    # Check if user account is active
+    unless user.active?
+      raise CustomError::Unauthorized.new('Your account has been deactivated. Please contact support.')
     end
 
-    # =========================================================================
-    # POST /v1/refresh
-    # =========================================================================
-    def refresh
-      raw_refresh_token = request.cookies['refresh_token']
+    # Check if user credentials are valid
+    if user&.authenticate(session_params[:password])
+      # Generate access token
+      access_token = JsonWebToken.encode(user_id: user.id)
 
-      unless raw_refresh_token.present?
-        return render json: { error: 'Unauthorized', message: 'Refresh token missing or corrupt' }, status: :unauthorized
+      # Generate refresh token
+      refresh_token = AuthenticationService.generate_secure_token
+
+      # If user has a refresh token, revoke it
+      if user.refresh_tokens.active.exists?
+        user.refresh_tokens.active.first.revoke!
       end
 
-      token_hash = AuthenticationService.hash_token(raw_refresh_token)
-      old_token = RefreshToken.active.find_by(token_hash: token_hash)
-
-      unless old_token
-        # Clear invalid/expired cookie
-        response.delete_cookie(:refresh_token, path: '/')
-        return render json: { error: 'Unauthorized', message: 'Refresh token missing or corrupt' }, status: :unauthorized
-      end
-
-      # ✅ Revoke old refresh token
-      old_token.revoke!
-
-      # ✅ Issue a new one
-      new_raw_token = AuthenticationService.generate_secure_token
-      old_token.user.refresh_tokens.create!(
-        token_hash: AuthenticationService.hash_token(new_raw_token),
-        expires_at: 30.days.from_now
+      # Create new refresh token
+      user.refresh_tokens.create!(
+        token_hash: refresh_token,
+        expires_at: 7.days.from_now
       )
-
-      # ✅ Set new HttpOnly cookie
-      response.set_cookie(
-        :refresh_token,
-        value: new_raw_token,
-        httponly: true,
-        path: '/',
-        expires: 30.days.from_now
-      )
-
-      new_access_token = JsonWebToken.encode(user_id: old_token.user.id)
-      render json: { access_token: new_access_token }, status: :ok
+    else
+      raise CustomError::Unauthorized.new('Invalid email or password')
     end
 
-    # =========================================================================
-    # DELETE /v1/logout
-    # =========================================================================
-    def logout
-      raw_refresh_token = request.cookies['refresh_token']
+    render json: {
+      access_token: access_token,
+      refresh_token: refresh_token,
+      user: user.slice(:id, :full_name, :email, :role)
+    }, status: :ok
+  end
 
-      if raw_refresh_token.present?
-        token_hash = AuthenticationService.hash_token(raw_refresh_token)
-        token = RefreshToken.find_by(token_hash: token_hash)
-        token&.revoke!
-      end
+  def register
+    @user = User.new(user_params)
 
-      # ✅ Explicitly clear refresh_token cookie for client
-      response.delete_cookie(:refresh_token, path: '/')
+    authorize @user, :create?
+    if @user.save
+      access_token = JsonWebToken.encode(user_id: @user.id)
+      refresh_token = AuthenticationService.generate_secure_token
 
-      head :no_content
+      @user.refresh_tokens.create!(
+        token_hash: refresh_token,
+        expires_at: 7.days.from_now
+      )
+
+      render json: {
+        access_token: access_token,
+        refresh_token: refresh_token,
+        user: @user.slice(:id, :full_name, :email, :role)
+      }, status: :created
+    else
+      render json: { errors: @user.errors.full_messages }, status: :unprocessable_entity
     end
   end
+
+  # DELETE /v1/logout
+  def logout
+    # Find refresh token record
+    token_record = RefreshToken.find_by(token_hash: refresh_token)
+
+    unless token_record
+      raise CustomError::Unauthorized.new('User not found')
+    end
+
+    # Revoke refresh token
+    token_record.revoke!
+
+    # Clear refresh cookie
+    clear_refresh_cookie
+    render json: { message: 'Logged out successfully' }, status: :ok
+  end
+
+  private
+
+    def clear_refresh_cookie
+        # Clear refresh cookie if it exists
+        response.delete_cookie(:refresh_token, path: '/')
+    end
+
+
+    def session_params
+      params.require(:user).permit(:email, :password)
+    rescue ActionController::ParameterMissing
+      raise CustomError::Unauthorized.new('Missing login credentials.')
+    end
+
+    def user_params
+      params.require(:user).permit(:email, :password, :password_confirmation, :full_name, :phone)
+    end
+
+    def refresh_token
+      request.headers['HTTP_X_REFRESH_TOKEN'] ||
+          request.headers['HTTP_X_REFRESH_TOKEN'] ||
+          cookies['refresh_token']
+    end
 end

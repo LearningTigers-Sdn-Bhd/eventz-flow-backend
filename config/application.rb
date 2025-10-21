@@ -49,7 +49,7 @@ module EventzFlowApi
 
     # Allow cookies in responses (important for Set-Cookie visibility)
     config.action_dispatch.cookies_serializer = :json
-    
+
     # --- 1. CORS Configuration (Crucial for React Frontend) ---
     # This must be inserted before other middleware
     # config.middleware.insert_before 0, Rack::Cors do

@@ -414,6 +414,124 @@ paths:
           description: Deletion successful
         '403':
           description: Forbidden (Member user)
+  "/v1/refresh":
+    post:
+      summary: Refreshes JWT access token using the Refresh Token header
+      tags:
+      - Authentication
+      parameters:
+      - name: X-Refresh-Token
+        in: header
+        required: true
+        description: Refresh token for generating new access token.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: New access token generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: The new, short-lived JWT Access Token
+                required:
+                - access_token
+        '401':
+          description: Unauthorized (Invalid or missing Refresh Token)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+                  message:
+                    type: string
+                    example: User not found
+  "/v1/register":
+    post:
+      summary: Registers a new user and retrieves JWT token
+      tags:
+      - Authentication
+      parameters: []
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                        - org_owner
+                        - manager
+                        - member
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Email is invalid
+                    - Password is too short
+                    - Password confirmation doesn't match Password
+                    - Full name can't be blank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      example: newuser@example.com
+                    password:
+                      type: string
+                      example: password123
+                    password_confirmation:
+                      type: string
+                      example: password123
+                    full_name:
+                      type: string
+                      example: New User
+                    phone:
+                      type: string
+                      example: "+1234567890"
+                  required:
+                  - email
+                  - password
+                  - password_confirmation
+                  - full_name
+              required:
+              - user
   "/v1/login":
     post:
       summary: Authenticates user and retrieves JWT token
@@ -430,11 +548,15 @@ paths:
                 properties:
                   access_token:
                     type: string
+                  refresh_token:
+                    type: string
                   user:
                     type: object
                     properties:
                       id:
                         type: integer
+                      full_name:
+                        type: string
                       email:
                         type: string
                       role:
@@ -462,75 +584,35 @@ paths:
             schema:
               type: object
               properties:
-                email:
-                  type: string
-                  example: member@example.com
-                password:
-                  type: string
-                  example: password123
+                user:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      example: member@example.com
+                    password:
+                      type: string
+                      example: password123
+                  required:
+                  - email
+                  - password
               required:
-              - email
-              - password
-  "/v1/refresh":
-    post:
-      summary: Refreshes JWT access token using the Refresh Token cookie
-      tags:
-      - Authentication
-      responses:
-        '200':
-          description: New access token generated successfully
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-                example: refresh_token=NEW_TOKEN_HASH; HttpOnly; Secure; SameSite=Strict
-              description: Sets a new secure HttpOnly Refresh Token cookie
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  access_token:
-                    type: string
-                    description: The new, short-lived JWT Access Token
-                required:
-                - access_token
-        '401':
-          description: Unauthorized (Invalid or missing Refresh Token)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Unauthorized
-                  message:
-                    type: string
-                    example: Refresh token is invalid or expired.
+              - user
   "/v1/logout":
     delete:
-      summary: Logs out the user by deleting the Refresh Token cookie
+      summary: Logs out the user by revoking the Refresh Token
       tags:
       - Authentication
       parameters:
-      - name: Authorization
+      - name: X-Refresh-Token
         in: header
         required: true
-        description: Bearer JWT Access Token for user identification.
+        description: Refresh token for user identification and logout.
         schema:
           type: string
       responses:
-        '204':
-          description: Logout successful (No Content)
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-                example: refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;
-                  Secure; SameSite=Strict
-              description: Deletes the Refresh Token cookie by setting an expiration
-                date in the past.
+        '200':
+          description: Logout successful
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id

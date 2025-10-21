@@ -11,31 +11,32 @@ Rails.application.routes.draw do
   # API Namespace V1
   # ====================================================================
   namespace :v1 do
-
-    # 1. AUTHENTICATION AND SESSIONS
-    post 'login', to: 'sessions#create'
-    post 'refresh', to: 'sessions#refresh'
-    delete 'logout', to: 'sessions#destroy'
+    # Authentication endpoints (Login)
+    # post 'auth/login', to: 'authentication#login'
+    post 'login', to: 'authentication#login'
+    post 'register', to: 'authentication#register'
+    post 'refresh', to: 'refresh#refresh'
+    delete 'logout', to: 'authentication#logout'
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
-      
+
       # GET /v1/users/profile  <- Maps to users#show
       # PUT /v1/users/profile  <- Maps to users#update
       # This replaces the singular resource :profile to fix the RSpec routing error
       collection do
-        # Note: If your controller uses a dedicated action (e.g., profile_show) 
+        # Note: If your controller uses a dedicated action (e.g., profile_show)
         # you would update the 'to:' parameter here. Assuming users#show/update work with current_user.
-        get :profile, to: 'users#show' 
+        get :profile, to: 'users#show'
         put :profile, to: 'users#update'
       end
-      
+
       # PUT /v1/users/:id/role (Global Role Management)
       member do
         put :role, to: 'users#update_role'
       end
     end
-    
+
     # 3. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
       resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
@@ -54,13 +55,13 @@ Rails.application.routes.draw do
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
     end
-    
+
     # 5. TEAM MEMBERS MANAGEMENT
     resources :team_members, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
       end
     end
-    
+
   end # end of namespace :v1
 end
