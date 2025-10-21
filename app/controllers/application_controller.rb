@@ -49,19 +49,33 @@ class ApplicationController < ActionController::API
 	# end
 
 	def authenticate_request!
-	    token = header_token if header_token.present?
-		return render json: { error: 'Missing token.' }, status: :unauthorized unless token
+	  header = request.headers['Authorization']
+	  return render json: { error: 'Missing token' }, status: :unauthorized unless header
 
+	  # Try JWT first (standard Bearer)
+	  if header.start_with?('Bearer ')
+	    token = header.split(' ').last
 	    begin
-			decoded_token = JsonWebToken.decode(token)
-			@current_user = User.find_by(id: decoded_token[:user_id])
-		rescue JWT::ExpiredSignature
-			raise CustomError::Unauthorized.new('Token has expired')
-		rescue JWT::DecodeError
-			raise CustomError::Unauthorized.new('Invalid token')
-		rescue ActiveRecord::RecordNotFound
-			raise CustomError::Unauthorized.new('User associated with token is not found.')
-		end
+	      decoded_token = JsonWebToken.decode(token)
+	      @current_user = User.find_by(id: decoded_token[:user_id])
+	      return if @current_user.present?
+	    rescue JWT::DecodeError, JWT::ExpiredSignature, ActiveRecord::RecordNotFound
+	      # fallback to API key check next
+	    end
+	  end
+
+	  # Try raw API Key (no Bearer prefix)
+	  if header.length > 30 && !header.include?(' ')
+	    hashed_key = AuthenticationService.hash_token(header)
+	    api_key_record = ::ApiKey.find_by(key_hash: hashed_key, is_active: true)
+	    if api_key_record
+	      api_key_record.touch(:last_used_at)
+	      @current_user = api_key_record.user
+	      return
+	    end
+	  end
+
+	  render json: { error: 'Unauthorized', message: 'Invalid token' }, status: :unauthorized
 	end
 
 	# The core dual-authentication logic
