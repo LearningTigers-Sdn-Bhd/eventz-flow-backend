@@ -2,8 +2,10 @@
 
 Rails.application.routes.draw do
   # Rswag Documentation Endpoints
-  mount Rswag::Ui::Engine => '/api-docs'
-  mount Rswag::Api::Engine => '/api-docs'
+  if defined?(Rswag)
+    mount Rswag::Ui::Engine => '/api-docs'
+    mount Rswag::Api::Engine => '/api-docs'
+  end
 
   get "up" => "rails/health#show", as: :rails_health_check
 
