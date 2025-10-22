@@ -1,26 +1,67 @@
-# docker-compose.yml
+version: "3.9"
+
+x-rails-env: &rails-env
+  RAILS_ENV: production
+  RAILS_SERVE_STATIC_FILES: "1"
+  RAILS_LOG_TO_STDOUT: "1"
+  RAILS_MAX_THREADS: "5"
+  REDIS_URL: "redis://redis:6379/1"
+  RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+  DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db:5432/eventz_flow_api_production}
+
+x-db-env: &db-env
+  POSTGRES_DB: eventz_flow_api_production
+  POSTGRES_USER: ${DATABASE_USER:-postgres}
+  POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+
 services:
+  web:
+    build: .
+    image: eventz-flow-backend:latest
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *rails-env
+    ports:
+      - "3000"
+    volumes:
+      - app-storage:/rails/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   postgres-db:
     image: pgvector/pgvector:pg18-trixie
-    ports:
-      - 5432:5432
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      <<: *db-env
     volumes:
-      - eventz-flow-postgres-db-volume:/var/lib/postgresql/data
+      - pg-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - homework-ocr-network
 
-networks:
-  homework-ocr-network:
-    driver: bridge
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
-  eventz-flow-postgres-db-volume:
-    driver: local
+  pg-data:
+  app-storage:
+
+networks:
+  coolify:
+    external: true
