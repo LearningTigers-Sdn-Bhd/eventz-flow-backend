@@ -11,52 +11,40 @@ module V1
 
     # GET /v1/analytics/total_scanned_tickets
     def total_scanned_tickets
-      count = scoped_tickets.where(checked_in: true).count
+      count = scoped_tickets.checked_in.count
       render json: { totalScannedTickets: count }, status: :ok
     end
 
     # GET /v1/analytics/total_unscanned_tickets
     def total_unscanned_tickets
-      total = scoped_active_tickets.count
-      scanned = scoped_tickets.where(checked_in: true).count
-      render json: { totalUnscannedTickets: (total - scanned) }, status: :ok
+      count = scoped_tickets.unscanned.count
+      render json: { totalUnscannedTickets: count }, status: :ok
     end
 
     # GET /v1/analytics/total_amount_price
     def total_amount_price
-      amount_cents = scoped_active_tickets
-        .joins(:ticket_type)
-        .sum("(ticket_types.price * 100.0)")
-
-      # Return integer cents to avoid float rounding issues in clients
+      amount_cents = scoped_active_tickets.total_revenue_cents
       render json: { totalAmountPrice: amount_cents.to_i }, status: :ok
     end
 
     # GET /v1/analytics/weekly_registered_tickets
     def weekly_registered_tickets
-      render json: { weeklyRegisteredTickets: series_for(scoped_active_tickets, :created_at) }, status: :ok
+      range = seven_day_range
+      data = scoped_active_tickets.weekly_series(:created_at, range)
+      render json: { weeklyRegisteredTickets: data }, status: :ok
     end
 
     # GET /v1/analytics/weekly_scanned_tickets
     def weekly_scanned_tickets
-      scanned_scope = scoped_tickets.where(checked_in: true)
-      render json: { weeklyScannedTickets: series_for(scanned_scope, :check_in_at) }, status: :ok
+      range = seven_day_range
+      data = scoped_tickets.checked_in.weekly_series(:check_in_at, range)
+      render json: { weeklyScannedTickets: data }, status: :ok
     end
 
     # GET /v1/analytics/weekly_sales_amount
     def weekly_sales_amount
-      scope = scoped_active_tickets.joins(:ticket_type)
       range = seven_day_range
-
-      grouped = scope
-        .where(created_at: range)
-        .group(Arel.sql("DATE(tickets.created_at)"))
-        .sum("(ticket_types.price * 100.0)")
-
-      data = dates_for(range).map do |date|
-        { date: date.to_s, count: grouped.fetch(date, 0).to_i }
-      end
-
+      data = scoped_active_tickets.weekly_revenue_series(range)
       render json: { weeklySalesAmount: data }, status: :ok
     end
 
@@ -80,23 +68,6 @@ module V1
     def seven_day_range
       today = Time.zone ? Time.zone.today : Date.today
       (today - 6)..today
-    end
-
-    def dates_for(range)
-      range.to_a
-    end
-
-    def series_for(scope, timestamp_column)
-      range = seven_day_range
-
-      grouped = scope
-        .where(timestamp_column => range)
-        .group(Arel.sql("DATE(#{ActiveRecord::Base.connection.quote_column_name(timestamp_column.to_s)})"))
-        .count
-
-      dates_for(range).map do |date|
-        { date: date.to_s, count: grouped.fetch(date, 0) }
-      end
     end
   end
 end
