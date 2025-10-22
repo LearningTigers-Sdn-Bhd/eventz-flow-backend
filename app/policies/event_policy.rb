@@ -18,10 +18,10 @@ class EventPolicy < ApplicationPolicy
   # Can view if: event is published OR user is staff/management
   def show?
     return false if record.blank?
-    
+
     # 1. Is the event public?
     return true if record.published?
-    
+
     # 2. Is the user staff/management?
     user.present? && (
       user.is_org_owner? ||
@@ -39,17 +39,32 @@ class EventPolicy < ApplicationPolicy
 
     # 1. Organization-level Management
     return true if user.is_org_owner? || user.is_manager?
-    
+
     # 2. Event-level Staff
     # Allows both Admin and Team Member to update their assigned event.
     return true if user.is_event_admin?(record) || user.is_event_team_member?(record)
-    
+
     false
   end
 
   # Destroy follows same logic as update (Permission to delete often mirrors update)
   def destroy?
     update?
+  end
+
+  # ============================================================
+  # Analytics permissions
+  # ============================================================
+
+  # Analytics access: Only event staff/managers, not general public
+  def analytics?
+    return false if user.blank? || record.blank?
+
+    # Only allow org owners, managers, and event staff
+    user.is_org_owner? ||
+    user.is_manager? ||
+    user.is_event_admin?(record) ||
+    user.is_event_team_member?(record)
   end
 
   # ============================================================

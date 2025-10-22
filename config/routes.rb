@@ -51,6 +51,15 @@ Rails.application.routes.draw do
         # DELETE /v1/events/:event_id/staff/:user_id
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
+
+      # Event Analytics Endpoints
+      get 'analytics/total_tickets', to: 'event_analytics#total_tickets'
+      get 'analytics/total_scanned_tickets', to: 'event_analytics#total_scanned_tickets'
+      get 'analytics/total_unscanned_tickets', to: 'event_analytics#total_unscanned_tickets'
+      get 'analytics/total_amount_price', to: 'event_analytics#total_amount_price'
+      get 'analytics/weekly_registered_tickets', to: 'event_analytics#weekly_registered_tickets'
+      get 'analytics/weekly_scanned_tickets', to: 'event_analytics#weekly_scanned_tickets'
+      get 'analytics/weekly_sales_amount', to: 'event_analytics#weekly_sales_amount'
     end
 
     # 5. GLOBAL TICKET ACTIONS
@@ -64,6 +73,17 @@ Rails.application.routes.draw do
       member do
         patch :toggle_status
       end
+    end
+
+    # 7. GLOBAL ANALYTICS
+    namespace :analytics do
+      get 'total_tickets'
+      get 'total_scanned_tickets'
+      get 'total_unscanned_tickets'
+      get 'total_amount_price'
+      get 'weekly_registered_tickets'
+      get 'weekly_scanned_tickets'
+      get 'weekly_sales_amount'
     end
 
   end # end of namespace :v1
