@@ -28,16 +28,18 @@ module V1
 
     # POST /v1/events
     def create
-      # The Event Policy's 'create?' method (checked above) should ensure 
-      # only Org_Owners or authorized Managers can reach this point.
-      
-      # Step 1: Initialize the Event
-      @event = Event.new(event_params)
+      @event = Event.new(event_params.except(:event_admin_id))
       
       if @event.save
-        # Step 2: Explicitly link the current_user as the EventAdmin/Owner
-        # This is necessary because the Event model no longer belongs_to :user
-        current_user.assigned_event_admins.create!(event: @event)
+        # Step 2: Assign event admin
+        # If event_admin_id is provided, assign that user; otherwise assign current_user
+        admin_user = if event_params[:event_admin_id].present?
+                      User.find(event_params[:event_admin_id])
+                    else
+                      current_user
+                    end
+        
+        admin_user.assigned_event_admins.create!(event: @event)
         
         render json: @event, status: :created
       else
@@ -87,6 +89,8 @@ module V1
         :start_date, 
         :end_date, 
         :webhook_url,
+        :visibility,
+        :event_admin_id, # This will make assigned user as the event admin
         labels_data: {} # Allows JSONB hash updates
       )
     end
