@@ -4,6 +4,902 @@ info:
   title: API V1
   version: v1
 paths:
+  "/v1/analytics/total_tickets":
+    get:
+      summary: Get total tickets count across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTickets:
+                    type: integer
+                    description: Total number of active tickets across all events
+        '403':
+          description: Forbidden - insufficient permissions
+        '401':
+          description: Unauthorized
+  "/v1/analytics/total_scanned_tickets":
+    get:
+      summary: Get total scanned tickets count across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalScannedTickets:
+                    type: integer
+                    description: Total number of scanned tickets across all events
+  "/v1/analytics/total_unscanned_tickets":
+    get:
+      summary: Get total unscanned tickets count across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total unscanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUnscannedTickets:
+                    type: integer
+                    description: Total number of unscanned tickets across all events
+  "/v1/analytics/total_amount_price":
+    get:
+      summary: Get total sales amount across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalAmountPrice:
+                    type: integer
+                    description: Total sales amount in cents across all events
+  "/v1/analytics/weekly_registered_tickets":
+    get:
+      summary: Get weekly registered tickets data across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly registered tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyRegisteredTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                          description: Date in YYYY-MM-DD format
+                        count:
+                          type: integer
+                          description: Number of tickets registered on this date
+  "/v1/analytics/weekly_scanned_tickets":
+    get:
+      summary: Get weekly scanned tickets data across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyScannedTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                          description: Date in YYYY-MM-DD format
+                        count:
+                          type: integer
+                          description: Number of tickets scanned on this date
+  "/v1/analytics/weekly_sales_amount":
+    get:
+      summary: Get weekly sales amount data across all accessible events
+      tags:
+      - Global Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklySalesAmount:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                          description: Date in YYYY-MM-DD format
+                        count:
+                          type: integer
+                          description: Sales amount in cents for this date
+  "/v1/register":
+    post:
+      summary: Registers a new user and retrieves JWT token
+      tags:
+      - Authentication
+      parameters: []
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                        - org_owner
+                        - manager
+                        - member
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Email is invalid
+                    - Password is too short
+                    - Password confirmation doesn't match Password
+                    - Full name can't be blank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      example: newuser@example.com
+                    password:
+                      type: string
+                      example: password123
+                    password_confirmation:
+                      type: string
+                      example: password123
+                    full_name:
+                      type: string
+                      example: New User
+                    phone:
+                      type: string
+                      example: "+1234567890"
+                  required:
+                  - email
+                  - password
+                  - password_confirmation
+                  - full_name
+              required:
+              - user
+  "/v1/login":
+    post:
+      summary: Authenticates user and retrieves JWT token
+      tags:
+      - Authentication
+      parameters: []
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                        - org_owner
+                        - manager
+                        - member
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+                  message:
+                    type: string
+                    example: Invalid email or password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      example: member@example.com
+                    password:
+                      type: string
+                      example: password123
+                  required:
+                  - email
+                  - password
+              required:
+              - user
+  "/v1/logout":
+    delete:
+      summary: Logs out the user by revoking the Refresh Token
+      tags:
+      - Authentication
+      parameters:
+      - name: X-Refresh-Token
+        in: header
+        required: true
+        description: Refresh token for user identification and logout.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Logout successful
+  "/v1/events/{event_id}/analytics/total_tickets":
+    get:
+      summary: Get total tickets count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTickets:
+                    type: integer
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Event not found
+  "/v1/events/{event_id}/analytics/total_scanned_tickets":
+    get:
+      summary: Get total scanned tickets count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalScannedTickets:
+                    type: integer
+  "/v1/events/{event_id}/analytics/total_unscanned_tickets":
+    get:
+      summary: Get total unscanned tickets count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total unscanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUnscannedTickets:
+                    type: integer
+  "/v1/events/{event_id}/analytics/total_amount_price":
+    get:
+      summary: Get total sales amount for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalAmountPrice:
+                    type: integer
+                    description: Amount in cents
+  "/v1/events/{event_id}/analytics/weekly_registered_tickets":
+    get:
+      summary: Get weekly registered tickets data for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly registered tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyRegisteredTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/events/{event_id}/analytics/weekly_scanned_tickets":
+    get:
+      summary: Get weekly scanned tickets data for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyScannedTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/events/{event_id}/analytics/weekly_sales_amount":
+    get:
+      summary: Get weekly sales amount data for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklySalesAmount:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+                          description: Amount in cents
+  "/v1/events/{event_id}/event_locations":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Lists all event locations for an event
+      tags:
+      - Event Locations
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Event locations returned via API Key
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    event_id:
+                      type: integer
+                      example: 1
+                    name:
+                      type: string
+                      example: Main Hall
+                    scan_limit:
+                      type: integer
+                      example: 100
+                    created_at:
+                      type: string
+                      format: date_time
+                    updated_at:
+                      type: string
+                      format: date_time
+                    members:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
+                  required:
+                  - id
+                  - event_id
+                  - name
+                  - scan_limit
+        '403':
+          description: Forbidden (Not authorized to view event)
+        '401':
+          description: Unauthorized (Missing Token)
+        '404':
+          description: Event not found
+    post:
+      summary: Creates a new event location
+      tags:
+      - Event Locations
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Event location created by API Key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  event_id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Main Hall
+                  scan_limit:
+                    type: integer
+                    example: 100
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                required:
+                - id
+                - event_id
+                - name
+                - scan_limit
+        '422':
+          description: Unprocessable Entity (Duplicate location name)
+        '403':
+          description: Forbidden (Not authorized to create locations)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Main Stage
+                scan_limit:
+                  type: integer
+                  example: 200
+                member_ids:
+                  type: array
+                  items:
+                    type: integer
+                  example:
+                  - 1
+                  - 2
+                  - 3
+                  description: 'Optional: Array of user IDs to assign as location
+                    members'
+              required:
+              - name
+              - scan_limit
+  "/v1/events/{event_id}/event_locations/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Event Location ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Retrieves a specific event location
+      tags:
+      - Event Locations
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Event location found via API Key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  event_id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Main Hall
+                  scan_limit:
+                    type: integer
+                    example: 100
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                required:
+                - id
+                - event_id
+                - name
+                - scan_limit
+        '404':
+          description: Event location not found
+        '403':
+          description: Forbidden (Not authorized to view event)
+    put:
+      summary: Updates an event location
+      tags:
+      - Event Locations
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Update successful via API Key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  event_id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Main Hall
+                  scan_limit:
+                    type: integer
+                    example: 100
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                required:
+                - id
+                - event_id
+                - name
+                - scan_limit
+        '422':
+          description: Unprocessable Entity (Invalid params)
+        '403':
+          description: Forbidden (Not authorized to update)
+        '404':
+          description: Event location not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Updated Hall Name
+                scan_limit:
+                  type: integer
+                  example: 250
+                member_ids:
+                  type: array
+                  items:
+                    type: integer
+                  example:
+                  - 1
+                  - 2
+                  - 3
+                  description: 'Optional: Array of user IDs to assign as location
+                    members'
+    delete:
+      summary: Deletes an event location
+      tags:
+      - Event Locations
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deletion successful via API Key
+        '403':
+          description: Forbidden (Not authorized to delete)
+        '404':
+          description: Event location not found
   "/v1/events/{event_id}/staff":
     parameters:
     - name: event_id
@@ -12,6 +908,93 @@ paths:
       description: ID of the parent event
       schema:
         type: integer
+    get:
+      summary: Lists all staff assigned to an event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: event_id
+        in: path
+        required: true
+        description: Event ID
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Returns list of staff assigned to the event
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    event_id:
+                      type: integer
+                    user_id:
+                      type: integer
+                    role:
+                      type: string
+                    user:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        email:
+                          type: string
+                        full_name:
+                          type: string
+                          nullable: true
+                        phone:
+                          type: string
+                          nullable: true
+                        role:
+                          type: string
+                        status:
+                          type: string
+                  required:
+                  - id
+                  - event_id
+                  - user_id
+                  - role
+        '403':
+          description: Forbidden for non-manager/owner users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Forbidden
+                  message:
+                    type: string
+                    example: Only an organization owner or manager can manage event
+                      staff.
+                required:
+                - error
+                - message
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
     post:
       summary: Appoints a user to an event role
       tags:
@@ -692,6 +1675,10 @@ paths:
                   attendee_email:
                     type: string
                     format: email
+                  attendee_phone:
+                    type:
+                    - string
+                    - 'null'
                   status:
                     type: string
                     enum:
@@ -735,6 +1722,9 @@ paths:
                       type: string
                       format: email
                       example: john.doe@example.com
+                    attendee_phone:
+                      type: string
+                      example: "+1234567890"
                     ticket_type_id:
                       type: integer
                       description: ID of the ticket type being purchased/issued
@@ -792,6 +1782,10 @@ paths:
                   attendee_email:
                     type: string
                     format: email
+                  attendee_phone:
+                    type:
+                    - string
+                    - 'null'
                   status:
                     type: string
                     enum:
@@ -852,6 +1846,10 @@ paths:
                   attendee_email:
                     type: string
                     format: email
+                  attendee_phone:
+                    type:
+                    - string
+                    - 'null'
                   status:
                     type: string
                     enum:
@@ -897,6 +1895,9 @@ paths:
                       type: string
                       format: email
                       example: new_email@example.com
+                    attendee_phone:
+                      type: string
+                      example: "+1234567890"
     delete:
       summary: Cancels/Deletes a ticket (Soft Delete)
       tags:
@@ -957,6 +1958,10 @@ paths:
                   attendee_email:
                     type: string
                     format: email
+                  attendee_phone:
+                    type:
+                    - string
+                    - 'null'
                   status:
                     type: string
                     enum:

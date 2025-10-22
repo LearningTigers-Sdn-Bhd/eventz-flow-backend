@@ -164,6 +164,7 @@ all_events.each_with_index do |event, i|
       user: participant_user, # Assign to our participant user (user_id is required)
       attendee_name: Faker::Name.name,
       attendee_email: Faker::Internet.email,
+      attendee_phone: "+1#{rand(100..999)}-#{rand(100..999)}-#{rand(1000..9999)}",
       status: status,
       checked_in: status == 'scanned',
       scanned_by: status == 'scanned' ? scanner : nil,
