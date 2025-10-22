@@ -37,7 +37,12 @@ class TicketPolicy < ApplicationPolicy
 
   # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Managers).
   def update?
-    # Use the EventPolicy#show? permission as a proxy for "is this person staff for this event?"
+    return false if user.blank? || record.blank?
+    
+    # 1. Organization-level permissions (can update ANY ticket)
+    return true if user.is_org_owner? || user.is_manager?
+    
+    # 2. Event-level permissions (can only update tickets for their assigned event)
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
   
