@@ -1435,167 +1435,6 @@ paths:
                   message:
                     type: string
                     example: User not found
-  "/v1/register":
-    post:
-      summary: Registers a new user and retrieves JWT token
-      tags:
-      - Authentication
-      parameters: []
-      responses:
-        '201':
-          description: User registered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  access_token:
-                    type: string
-                  refresh_token:
-                    type: string
-                  user:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      full_name:
-                        type: string
-                      email:
-                        type: string
-                      role:
-                        type: string
-                        enum:
-                        - org_owner
-                        - manager
-                        - member
-        '422':
-          description: Validation errors
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: string
-                    example:
-                    - Email is invalid
-                    - Password is too short
-                    - Password confirmation doesn't match Password
-                    - Full name can't be blank
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                user:
-                  type: object
-                  properties:
-                    email:
-                      type: string
-                      example: newuser@example.com
-                    password:
-                      type: string
-                      example: password123
-                    password_confirmation:
-                      type: string
-                      example: password123
-                    full_name:
-                      type: string
-                      example: New User
-                    phone:
-                      type: string
-                      example: "+1234567890"
-                  required:
-                  - email
-                  - password
-                  - password_confirmation
-                  - full_name
-              required:
-              - user
-  "/v1/login":
-    post:
-      summary: Authenticates user and retrieves JWT token
-      tags:
-      - Authentication
-      parameters: []
-      responses:
-        '200':
-          description: Successful login
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  access_token:
-                    type: string
-                  refresh_token:
-                    type: string
-                  user:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      full_name:
-                        type: string
-                      email:
-                        type: string
-                      role:
-                        type: string
-                        enum:
-                        - org_owner
-                        - manager
-                        - member
-        '401':
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Unauthorized
-                  message:
-                    type: string
-                    example: Invalid email or password
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                user:
-                  type: object
-                  properties:
-                    email:
-                      type: string
-                      example: member@example.com
-                    password:
-                      type: string
-                      example: password123
-                  required:
-                  - email
-                  - password
-              required:
-              - user
-  "/v1/logout":
-    delete:
-      summary: Logs out the user by revoking the Refresh Token
-      tags:
-      - Authentication
-      parameters:
-      - name: X-Refresh-Token
-        in: header
-        required: true
-        description: Refresh token for user identification and logout.
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Logout successful
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id
@@ -1640,6 +1479,17 @@ paths:
                       - scanned
                       - refunded
                       - canceled
+                    ticket_type:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        price:
+                          type: string
+                          description: Price as decimal string
+                  additionalProperties: true
         '403':
           description: Forbidden for unauthorized member user
     post:
@@ -1697,6 +1547,16 @@ paths:
                     readOnly: true
                   ticket_type_id:
                     type: integer
+                  ticket_type:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      price:
+                        type: string
+                        description: Price as decimal string
                 required:
                 - public_id
                 - attendee_name
@@ -1704,6 +1564,7 @@ paths:
                 - status
                 - event_id
                 - ticket_type_id
+                additionalProperties: true
         '403':
           description: Forbidden for event staff (Team Member)
       requestBody:
@@ -1804,6 +1665,16 @@ paths:
                     readOnly: true
                   ticket_type_id:
                     type: integer
+                  ticket_type:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      price:
+                        type: string
+                        description: Price as decimal string
                 required:
                 - public_id
                 - attendee_name
@@ -1811,6 +1682,7 @@ paths:
                 - status
                 - event_id
                 - ticket_type_id
+                additionalProperties: true
         '403':
           description: Not found by member user
     patch:
@@ -1868,6 +1740,16 @@ paths:
                     readOnly: true
                   ticket_type_id:
                     type: integer
+                  ticket_type:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      price:
+                        type: string
+                        description: Price as decimal string
                 required:
                 - public_id
                 - attendee_name
@@ -1875,6 +1757,7 @@ paths:
                 - status
                 - event_id
                 - ticket_type_id
+                additionalProperties: true
         '403':
           description: Forbidden for unauthorized user
         '404':
@@ -1980,6 +1863,16 @@ paths:
                     readOnly: true
                   ticket_type_id:
                     type: integer
+                  ticket_type:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      price:
+                        type: string
+                        description: Price as decimal string
                 required:
                 - public_id
                 - attendee_name
@@ -1987,6 +1880,7 @@ paths:
                 - status
                 - event_id
                 - ticket_type_id
+                additionalProperties: true
         '422':
           description: Already checked in
         '403':
