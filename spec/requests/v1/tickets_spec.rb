@@ -15,6 +15,10 @@ TICKET_SCHEMA = {
     attendee_email: { type: :string, format: :email },
     attendee_phone: { type: [:string, :null] },
     status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    payment_status: { type: :string, enum: ['pending', 'paid', 'failed', 'refunded_payment'] },
+    payment_screenshot_url: { type: [:string, :null], description: 'URL of payment screenshot if provided' },
+    transaction_id: { type: [:string, :null], description: 'Payment transaction ID' },
+    payment_method: { type: [:string, :null], description: 'Payment method used (e.g., credit_card, bank_transfer)' },
     checked_in: { type: :boolean, readOnly: true },
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
     event_id: { type: :integer, readOnly: true },
@@ -28,7 +32,7 @@ TICKET_SCHEMA = {
       }
     }
   },
-  required: ['public_id', 'attendee_name', 'attendee_email', 'status', 'event_id', 'ticket_type_id'],
+  required: ['public_id', 'attendee_name', 'attendee_email', 'status', 'payment_status', 'event_id', 'ticket_type_id'],
   additionalProperties: true
 }.freeze
 
@@ -147,6 +151,9 @@ RSpec.describe 'V1::Tickets', type: :request do
               attendee_email: { type: :string, format: :email, example: 'john.doe@example.com' },
               attendee_phone: { type: :string, example: '+1234567890' },
               ticket_type_id: { type: :integer, description: 'ID of the ticket type being purchased/issued' },
+              payment_screenshot_url: { type: :string, example: 'https://example.com/payment.jpg' },
+              transaction_id: { type: :string, example: 'TXN123456789' },
+              payment_method: { type: :string, example: 'credit_card' },
               custom_fields_data: { type: :object }
             },
             # IMPROVED: Added ticket_type_id to required fields for logic completeness
@@ -240,7 +247,11 @@ RSpec.describe 'V1::Tickets', type: :request do
             properties: {
               attendee_name: { type: :string, example: 'Updated Name' },
               attendee_email: { type: :string, format: :email, example: 'new_email@example.com' },
-              attendee_phone: { type: :string, example: '+1234567890' }
+              attendee_phone: { type: :string, example: '+1234567890' },
+              payment_status: { type: :string, enum: ['pending', 'paid', 'failed', 'refunded_payment'] },
+              payment_screenshot_url: { type: :string, example: 'https://example.com/payment.jpg' },
+              transaction_id: { type: :string, example: 'TXN123456789' },
+              payment_method: { type: :string, example: 'credit_card' }
             }
           }
         }

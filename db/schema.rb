@@ -120,6 +120,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
     t.integer "status", default: 0, null: false
+    t.integer "payment_status", default: 0, null: false
+    t.string "payment_screenshot_url"
+    t.string "transaction_id"
+    t.string "payment_method"
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false

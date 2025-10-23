@@ -12,6 +12,7 @@ FactoryBot.define do
     # Non-nullable/Default Attributes
     checked_in { false }
     status { :purchased }
+    payment_status { :pending }
     
     # Ensures the public_id is set before validation/save, as per the model's before_create callback.
     # public_id { SecureRandom.uuid } 
@@ -28,6 +29,18 @@ FactoryBot.define do
       checked_in { true }
       check_in_at { Time.current }
       status { :scanned }
+    end
+
+    # A trait for creating a paid ticket for specific tests
+    trait :paid do
+      payment_status { :paid }
+      transaction_id { SecureRandom.hex(10) }
+      payment_method { 'credit_card' }
+    end
+
+    # A trait for creating a ticket with payment screenshot
+    trait :with_payment_screenshot do
+      payment_screenshot_url { 'https://example.com/screenshots/payment123.jpg' }
     end
   end
 end

@@ -135,7 +135,11 @@ module V1
         :attendee_name, 
         :attendee_email,
         :attendee_phone, 
-        :ticket_type_id, 
+        :ticket_type_id,
+        :payment_status,
+        :payment_screenshot_url,
+        :transaction_id,
+        :payment_method,
         custom_fields_data: {}
       ]
 
