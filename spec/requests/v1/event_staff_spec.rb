@@ -18,10 +18,12 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   # Setup
   # ============================================================
   let(:event)        { create(:event) }
-  let(:manager)      { create(:user, role: 'manager') }
-  let(:member_user)  { create(:user, role: 'member') }
+  let(:org_owner)    { create(:org_owner) }
+  let(:manager)      { create(:manager_user) }
+  let(:member_user)  { create(:member_user) }
 
   # use the real encoder to generate valid tokens
+  let(:auth_header_org_owner) { "Bearer #{JsonWebToken.encode(user_id: org_owner.id)}" }
   let(:auth_header_manager) { "Bearer #{JsonWebToken.encode(user_id: manager.id)}" }
   let(:auth_header_member)  { "Bearer #{JsonWebToken.encode(user_id: member_user.id)}" }
 
@@ -42,7 +44,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
       parameter name: :event_id, in: :path, type: :integer, required: true, description: 'Event ID'
 
       let(:event_id) { event.id }
-      let(:Authorization) { auth_header_manager }
+      let(:Authorization) { auth_header_org_owner }
 
       before do
         # Create some staff assignments for the event
@@ -50,7 +52,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         create(:event_assignment, event: event, user: manager, role: 'event_admin')
       end
 
-      response '200', 'Returns list of staff assigned to the event' do
+      response '200', 'Returns list of staff assigned to the event (Org Owner)' do
         schema type: :array,
           items: {
             type: :object,
@@ -82,14 +84,39 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         end
       end
 
-      response '403', 'Forbidden for non-manager/owner users' do
+      response '200', 'Manager can view staff if they are event staff' do
+        let(:Authorization) { auth_header_manager }
+        
+        schema type: :array,
+          items: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              event_id: { type: :integer },
+              user_id: { type: :integer },
+              role: { type: :string }
+            }
+          }
+        
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data).to be_an(Array)
+          # Manager is admin, so they can view
+          expect(data.length).to eq(2)
+        end
+      end
+
+      response '403', 'Forbidden for member users who are not event staff' do
         let(:Authorization) { auth_header_member }
+        let(:other_event) { create(:event) }
+        let(:event_id) { other_event.id }
+        
         schema EVENT_STAFF_ERROR_SCHEMA
         run_test!
       end
 
       response '404', 'Event not found' do
-        let(:Authorization) { auth_header_manager }
+        let(:Authorization) { auth_header_org_owner }
         let(:event_id) { 99999 }
         schema type: :object,
           properties: {
@@ -124,14 +151,20 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   }
 
   let(:event_id) { event.id }
-  let(:Authorization) { auth_header_manager }
+  let(:Authorization) { auth_header_org_owner }
   let(:body) { { staff_assignment: { user_id: member_user.id, role: 'event_admin' } } }
 
-  response '201', 'Staff appointed successfully' do
+  response '201', 'Staff appointed successfully (Org Owner only)' do
     run_test!
   end
 
-  response '403', 'Forbidden' do
+  response '403', 'Forbidden for manager' do
+    let(:Authorization) { auth_header_manager }
+    schema EVENT_STAFF_ERROR_SCHEMA
+    run_test!
+  end
+
+  response '403', 'Forbidden for member' do
     let(:Authorization) { auth_header_member }
     schema EVENT_STAFF_ERROR_SCHEMA
     run_test!
@@ -159,21 +192,31 @@ end
         create(:event_assignment, event: event, user: member_user, role: 'event_team_member')
       end
 
-      response '204', 'Staff removed successfully' do
-        let(:Authorization) { auth_header_manager }
+      response '204', 'Staff removed successfully (Org Owner only)' do
+        let(:Authorization) { auth_header_org_owner }
         run_test!
       end
 
-      response '403', 'Forbidden' do
+      response '403', 'Forbidden for manager' do
+        let(:Authorization) { auth_header_manager }
+        schema EVENT_STAFF_ERROR_SCHEMA
+        run_test!
+      end
+
+      response '403', 'Forbidden for member' do
         let(:Authorization) { auth_header_member }
         schema EVENT_STAFF_ERROR_SCHEMA
         run_test!
       end
 
-      response '404', 'Not Found' do
-        let(:Authorization) { auth_header_manager }
+      response '404', 'Not Found when user not assigned' do
+        let(:Authorization) { auth_header_org_owner }
         let(:user_id) { 99999 }
-        schema EVENT_STAFF_ERROR_SCHEMA
+        schema type: :object,
+          properties: {
+            error: { type: :string },
+            message: { type: :string }
+          }
         run_test!
       end
     end

@@ -159,10 +159,20 @@ RSpec.describe 'V1::Tickets', type: :request do
       let(:event_id) { manager_event.id }
       let(:ticket) { valid_ticket_params }
 
-      response '201', 'Ticket created by Manager' do
+      response '201', 'Ticket created by Manager (event admin)' do
         let(:Authorization) { "Bearer #{manager_token}" }
         
         # REFACTORED: Use reusable schema constant
+        schema TICKET_SCHEMA
+        
+        run_test! do
+          expect(Ticket.count).to eq(3)
+        end
+      end
+
+      response '201', 'Ticket created by Org Owner' do
+        let(:Authorization) { "Bearer #{org_owner_token}" }
+        
         schema TICKET_SCHEMA
         
         run_test! do
@@ -244,6 +254,25 @@ RSpec.describe 'V1::Tickets', type: :request do
         let(:Authorization) { "Bearer #{staff_token}" }
         
         # REFACTORED: Use reusable schema constant
+        schema TICKET_SCHEMA
+        
+        run_test!
+      end
+
+      response '200', 'Ticket successfully updated by Org Owner' do
+        let(:Authorization) { "Bearer #{org_owner_token}" }
+        
+        schema TICKET_SCHEMA
+        
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['attendee_name']).to eq('Updated Name')
+        end
+      end
+
+      response '200', 'Ticket successfully updated by Manager' do
+        let(:Authorization) { "Bearer #{manager_token}" }
+        
         schema TICKET_SCHEMA
         
         run_test!
