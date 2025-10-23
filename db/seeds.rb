@@ -81,8 +81,56 @@ puts "Created participant user: #{participant_user.full_name}"
 all_event_staff = managers + team_members
 
 
-# --- 2. EVENT GENERATION (Loop) ---
-puts "\n--- 2. Generating #{NUM_EVENTS} Events ---"
+# --- 2. GLOBAL TICKET TYPES (event_id = NULL) ---
+puts "\n--- 2. Generating Global Ticket Types ---"
+
+global_ticket_types = []
+
+# Free Ticket Type
+global_ticket_types << TicketType.find_or_create_by!(name: 'Community Pass', event_id: nil) do |tt|
+  tt.price = 0.00
+  tt.quantity = 10000
+  tt.max_per_order = 2
+  tt.status = :published
+  tt.hidden = false
+  tt.custom_fields_data = {
+    description: 'Free admission for community members and students',
+    requires_verification: true,
+    valid_for: 'all_community_events'
+  }
+end
+
+# Paid Ticket Types
+global_ticket_types << TicketType.find_or_create_by!(name: 'Early Bird Access', event_id: nil) do |tt|
+  tt.price = 35.00
+  tt.quantity = 2000
+  tt.max_per_order = 5
+  tt.status = :published
+  tt.hidden = false
+  tt.custom_fields_data = {
+    description: 'Limited time special pricing with exclusive early entry',
+    benefits: ['Early entry', 'Priority seating', 'Welcome gift'],
+    valid_until: (Date.today + 30.days).to_s
+  }
+end
+
+global_ticket_types << TicketType.find_or_create_by!(name: 'VIP All-Access Pass', event_id: nil) do |tt|
+  tt.price = 199.00
+  tt.quantity = 500
+  tt.max_per_order = 3
+  tt.status = :published
+  tt.hidden = false
+  tt.custom_fields_data = {
+    description: 'Premium experience with exclusive perks and amenities',
+    benefits: ['All-access entry', 'VIP lounge access', 'Complimentary refreshments', 'Meet & greet opportunities', 'Premium parking'],
+    tier: 'premium'
+  }
+end
+
+puts "Created #{global_ticket_types.count} Global Ticket Types (event_id: NULL)."
+
+# --- 3. EVENT GENERATION (Loop) ---
+puts "\n--- 3. Generating #{NUM_EVENTS} Events ---"
 
 all_events = NUM_EVENTS.times.map do |i|
   # Determine event status/payment status based on index for diversity
@@ -124,8 +172,8 @@ all_events = NUM_EVENTS.times.map do |i|
   event
 end
 
-# --- 3. TICKET TYPE & TICKET GENERATION (Loop) ---
-puts "\n--- 3. Generating Ticket Types and Tickets (Total: ~#{NUM_EVENTS * TICKETS_PER_EVENT} Tickets) ---"
+# --- 4. TICKET TYPE & TICKET GENERATION (Loop) ---
+puts "\n--- 4. Generating Ticket Types and Tickets (Total: ~#{NUM_EVENTS * TICKETS_PER_EVENT} Tickets) ---"
 
 all_events.each_with_index do |event, i|
   # Skip generating tickets for the first 3 events to simulate events without tickets
@@ -158,6 +206,10 @@ all_events.each_with_index do |event, i|
     # Get the user who is an admin or team member for the event to simulate a scanner
     scanner = event.admins.sample || event.team_members.sample
 
+    # Determine payment status (0: pending, 1: paid, 2: failed)
+    payment_status = j.even? ? 1 : (j % 3 == 0 ? 2 : 0)
+    payment_methods = ['credit_card', 'bank_transfer', 'e-wallet', 'cash']
+
     ticket_attributes = {
       event: event,
       ticket_type: ticket_types.sample,
@@ -168,7 +220,11 @@ all_events.each_with_index do |event, i|
       status: status,
       checked_in: status == 'scanned',
       scanned_by: status == 'scanned' ? scanner : nil,
-      check_in_at: status == 'scanned' ? Time.current - rand(1..10).hours : nil
+      check_in_at: status == 'scanned' ? Time.current - rand(1..10).hours : nil,
+      payment_status: payment_status,
+      payment_screenshot_url: payment_status == 1 ? "https://example.com/screenshots/payment_#{rand(10000..99999)}.jpg" : nil,
+      transaction_id: payment_status == 1 ? "TXN#{rand(100000..999999)}" : nil,
+      payment_method: payment_status == 1 ? payment_methods.sample : nil
     }
 
     # Use Ticket.create! to ensure all models and validations are run
@@ -180,6 +236,7 @@ puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"
 puts "  Total Users: #{User.count}"
 puts "  Total Events: #{Event.count}"
+puts "  Total Ticket Types: #{TicketType.count} (#{TicketType.where(event_id: nil).count} global)"
 puts "  Total Tickets: #{Ticket.count}"
 puts "  Total Event Assignments: #{EventAssignment.count}"
 puts "  Total Event Locations: #{EventLocation.count}"
