@@ -9,6 +9,7 @@ class CreateEvents < ActiveRecord::Migration[8.0]
       t.datetime :end_date
       t.string :webhook_url
       t.jsonb :labels_data, default: {}
+      t.boolean :visibility, default: true, null: false
 
       t.timestamps
     end

@@ -79,6 +79,11 @@ Rails.application.routes.draw do
 
     # 7. GLOBAL ANALYTICS
     namespace :analytics do
+      # Optimized bulk endpoints (works for all roles)
+      get 'events_overview' 
+      get 'summary'                 
+      
+      # Individual analytics endpoints (requires org_owner/manager)
       get 'total_tickets'
       get 'total_scanned_tickets'
       get 'total_unscanned_tickets'

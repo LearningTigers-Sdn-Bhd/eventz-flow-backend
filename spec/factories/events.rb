@@ -12,6 +12,9 @@ FactoryBot.define do
     
     # 3. Fix Status: Explicitly set a valid enum value
     status { :draft } # or 0, but using the symbol is cleaner
+    
+    # 4. Default visibility
+    visibility { true }
 
     after(:create) do |event|
       create(:event_location, event: event, name: Faker::Address.full_address, scan_limit: 50)

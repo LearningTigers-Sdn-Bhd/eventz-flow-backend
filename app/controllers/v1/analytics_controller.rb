@@ -1,7 +1,62 @@
 module V1
   class AnalyticsController < ApplicationController
     before_action :authenticate_request!
-    before_action :authorize_global_analytics
+    before_action :authorize_global_analytics, only: [
+      :total_tickets,
+      :total_scanned_tickets,
+      :total_unscanned_tickets,
+      :total_amount_price,
+      :weekly_registered_tickets,
+      :weekly_scanned_tickets,
+      :weekly_sales_amount
+    ]
+
+    # === OPTIMIZED BULK ENDPOINTS (Works for all roles) ===
+
+    # GET /v1/analytics/events_overview
+    # Returns all events with their analytics in a single optimized response
+    def events_overview
+      @events = policy_scope(Event)
+      
+      events_data = @events.map do |event|
+        tickets = event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+        
+        {
+          id: event.id,
+          title: event.title,
+          status: event.status,
+          total_tickets: tickets.count,
+          scanned_tickets: event.tickets.checked_in.count,
+          unscanned_tickets: event.tickets.unscanned.count,
+          total_revenue: tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i,
+          last_activity: event.updated_at
+        }
+      end
+
+      render json: { events: events_data }, status: :ok
+    end
+
+    # GET /v1/analytics/summary
+    # Returns aggregated statistics across all user's accessible events
+    def summary
+      @events = policy_scope(Event)
+      event_ids = @events.pluck(:id)
+
+      # Single query for all tickets across user's events
+      all_tickets = Ticket.where(event_id: event_ids)
+      active_tickets = all_tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+      
+      render json: {
+        total_events: @events.count,
+        active_events: @events.where(status: 'published').count,
+        total_tickets: active_tickets.count,
+        total_scanned: all_tickets.checked_in.count,
+        total_revenue: active_tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i,
+        total_locations: EventLocation.where(event_id: event_ids).count
+      }, status: :ok
+    end
+
+    # === EXISTING GLOBAL ENDPOINTS (Requires org_owner/manager) ===
 
     # GET /v1/analytics/total_tickets
     def total_tickets

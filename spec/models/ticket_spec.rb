@@ -41,6 +41,7 @@ RSpec.describe Ticket, type: :model do
     # Presence checks
     it { is_expected.to validate_presence_of(:attendee_name) }
     it { is_expected.to validate_presence_of(:status) }
+    it { is_expected.to validate_presence_of(:payment_status) }
     
     # We rely on belongs_to validations for foreign keys in modern Rails, 
     # but explicit checks are fine if preferred:
@@ -83,6 +84,7 @@ RSpec.describe Ticket, type: :model do
   # --- ENUMS ---
   describe 'Enums' do
     it { is_expected.to define_enum_for(:status).with_values(purchased: 0, scanned: 1, refunded: 2, canceled: 3) }
+    it { is_expected.to define_enum_for(:payment_status).with_values(pending: 0, paid: 1, failed: 2, refunded_payment: 3) }
   end
 
   # --- SCOPES ---

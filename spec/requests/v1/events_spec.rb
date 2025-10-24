@@ -21,9 +21,10 @@ EVENT_SCHEMA = {
     labels_data: { type: :object },
     payment_status: { type: :string, example: 'paid' },
     price: { type: :string, example: '100.0' },
-    published: { type: :boolean, example: true }
+    published: { type: :boolean, example: true },
+    visibility: { type: :boolean, example: true }
   }, 
-  required: ['id', 'title', 'status', 'start_date', 'end_date', 'payment_status', 'price', 'published']
+  required: ['id', 'title', 'status', 'start_date', 'end_date', 'payment_status', 'price', 'published', 'visibility']
 }.freeze
 
 # The minimal schema for the index array response (/v1/events GET).
@@ -72,14 +73,26 @@ RSpec.describe 'V1::Events', type: :request do
   # --- Create Events (Managed by manager_user) ---
   # Note: The policy now allows the manager to update both paid and unpaid events.
   let!(:event_unpaid) do
-    event = create(:event, title: "Unpaid Event", payment_status: :unpaid, published: false)
+    event = create(:event, title: "Unpaid Event", payment_status: :unpaid, published: false, visibility: true)
     create(:event_assignment, role: :event_admin, event: event, user: manager_user)
     event
   end
   
   let!(:event_paid) do
-    event = create(:event, title: "Paid Event", payment_status: :paid, published: false)
+    event = create(:event, title: "Paid Event", payment_status: :paid, published: false, visibility: true)
     create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    event
+  end
+
+  let!(:event_public) do
+    event = create(:event, title: "Public Event", payment_status: :paid, published: true, visibility: true)
+    create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    event
+  end
+
+  let!(:event_private) do
+    event = create(:event, title: "Private Event", payment_status: :paid, published: true, visibility: false)
+    create(:event_assignment, role: :event_admin, event: event, user: org_owner_user)
     event
   end
 
@@ -104,7 +117,9 @@ RSpec.describe 'V1::Events', type: :request do
           description: { type: :string },
           price: { type: :number, format: :float },
           start_date: { type: :string, format: :date_time },
-          end_date: { type: :string, format: :date_time }
+          end_date: { type: :string, format: :date_time },
+          visibility: { type: :boolean },
+          event_admin_id: { type: :integer, description: 'Optional: User ID to assign as event admin. Defaults to current user if not provided.' }
         },
         required: ['title', 'start_date', 'end_date']
       }
@@ -124,14 +139,39 @@ RSpec.describe 'V1::Events', type: :request do
         run_test!
       end
 
-      # 3. Forbidden (Member JWT)
+      # 3. Success (With event_admin_id)
+      response '201', 'Event created with specific event admin' do
+        let(:Authorization) { "Bearer #{org_owner_token}" }
+        let(:event) do
+          {
+            event: event_attributes.merge(
+              title: 'Event with Admin',
+              price: 100.00,
+              start_date: Time.current + 1.hour,
+              end_date: Time.current + 2.hours,
+              event_admin_id: manager_user.id
+            )
+          }
+        end
+        
+        schema EVENT_SCHEMA
+        
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          created_event = Event.find(json['id'])
+          # Verify the manager_user was assigned as event admin
+          expect(created_event.event_assignments.where(user_id: manager_user.id, role: 'event_admin').exists?).to be true
+        end
+      end
+
+      # 4. Forbidden (Member JWT)
       response '403', 'Forbidden (Not Org Owner or Manager)' do
         let(:Authorization) { "Bearer #{member_token}" }
         let(:event) { valid_create_params }
         run_test!
       end
 
-      # 4. Unauthorized (Missing Token)
+      # 5. Unauthorized (Missing Token)
       response '401', 'Unauthorized (Missing Token)' do
         let(:Authorization) { 'Bearer ' }
         let(:event) { valid_create_params }
@@ -147,29 +187,43 @@ RSpec.describe 'V1::Events', type: :request do
       
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
-      # 1. Success (Manager)
-      response '200', 'Events managed/staffed returned' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      # 1. Success (Org Owner - sees ALL events)
+      response '200', 'Org Owner sees all events' do
+        let(:Authorization) { "Bearer #{org_owner_token}" }
         
-        before { event_unpaid.reload; event_paid.reload }
+        before { event_unpaid.reload; event_paid.reload; event_public.reload; event_private.reload }
         
         schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA 
         
         run_test! do
           json = JSON.parse(response.body)
-          # Manager is admin on both events
-          expect(json.count).to eq(2) 
+          # Org Owner sees ALL events (unpaid, paid, public, private)
+          expect(json.count).to eq(4)
+        end
+      end
+
+      # 2. Success (Manager - sees only assigned events with visibility: true)
+      response '200', 'Manager sees only assigned visible events' do
+        let(:Authorization) { "Bearer #{manager_token}" }
+        
+        before { event_unpaid.reload; event_paid.reload; event_public.reload }
+        
+        schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA 
+        
+        run_test! do
+          json = JSON.parse(response.body)
+          # Manager is admin on 3 events (unpaid, paid, public), all with visibility: true
+          # Manager does NOT see event_private (visibility: false)
+          expect(json.count).to eq(3)
         end
       end
       
-      # 2. Success (Member User - Should see nothing but published events, and no events are published in this specific setup)
-      response '200', 'Empty list for member user (no published or assigned events)' do
+      # 3. Success (Member User - Should see nothing if not assigned)
+      response '200', 'Empty list for member user (no assigned events)' do
         let(:Authorization) { "Bearer #{member_token}" }
         run_test! do
           json = JSON.parse(response.body)
-          # Assuming the created events are not published unless explicitly set
-          # The policy scope shows published events OR assigned events.
-          # Since event_unpaid and event_paid are published: false, the member sees 0 events.
+          # Member user has no event assignments, so sees 0 events
           expect(json.count).to eq(0)
         end
       end
@@ -207,7 +261,41 @@ RSpec.describe 'V1::Events', type: :request do
         run_test!
       end
 
-      # 3. Not Found
+      # 3. Success (Public event - published AND visible)
+      response '200', 'Public event viewable by anyone' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) { event_public.id }
+        
+        before do
+          # Ensure the event is truly public
+          event_public.update!(published: true, visibility: true)
+        end
+        
+        schema EVENT_SCHEMA
+        
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['title']).to eq('Public Event')
+        end
+      end
+
+      # 4. Forbidden (Private event - published but NOT visible, and user is not staff)
+      response '403', 'Private event not viewable by non-staff' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) { event_private.id }
+        run_test!
+      end
+
+      # 5. Success (Private event viewable by Org Owner who is staff)
+      response '200', 'Private event viewable by org owner' do
+        let(:Authorization) { "Bearer #{org_owner_token}" }
+        let(:id) { event_private.id }
+        
+        schema EVENT_SCHEMA
+        run_test!
+      end
+
+      # 6. Not Found
       response '404', 'Event not found' do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:id) { 99999 }
@@ -229,7 +317,8 @@ RSpec.describe 'V1::Events', type: :request do
           title: { type: :string, example: 'New Title' },
           description: { type: :string },
           location: { type: :string },
-          status: { type: :string, enum: ['draft', 'published', 'canceled'] }
+          status: { type: :string, enum: ['draft', 'published', 'canceled'] },
+          visibility: { type: :boolean }
         }
       }
 

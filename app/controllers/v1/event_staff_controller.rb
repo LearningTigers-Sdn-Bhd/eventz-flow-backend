@@ -2,7 +2,8 @@ module V1
   class EventStaffController < ApplicationController
     before_action :authenticate_request!
     before_action :set_event
-    before_action :authorize_staff_management! # Org Owner or Manager can manage staff
+    before_action :authorize_staff_view!, only: [:index]
+    before_action :authorize_staff_management!, only: [:create, :destroy]
 
     # GET /v1/events/:event_id/staff
     def index
@@ -55,10 +56,29 @@ module V1
       render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
     end
 
+    # def authorize_staff_management!
+    #   # Only Org Owner OR Manager (global roles) can manage event staff
+    #   unless current_user.is_org_owner_or_manager?
+    #     render json: { error: 'Forbidden', message: 'Only an organization owner or manager can manage event staff.' }, status: :forbidden
+    #   end
+    # end
+
+    def authorize_staff_view!
+      # Allow Org Owner, Manager (global roles), OR Event Staff (event_admin/event_team_member) to VIEW
+      is_event_staff = @event.event_assignments.exists?(
+        user_id: current_user.id,
+        role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
+      )
+      
+      unless current_user.is_org_owner_or_manager? || is_event_staff
+        render json: { error: 'Forbidden', message: 'Only an organization owner, manager, or event staff can view event staff.' }, status: :forbidden
+      end
+    end
+
     def authorize_staff_management!
-      # Only Org Owner OR Manager (global roles) can manage event staff
-      unless current_user.is_org_owner_or_manager?
-        render json: { error: 'Forbidden', message: 'Only an organization owner or manager can manage event staff.' }, status: :forbidden
+      # Only Org Owner can CREATE/DELETE staff assignments
+      unless current_user.is_org_owner?
+        render json: { error: 'Forbidden', message: 'Only an organization owner can manage event staff.' }, status: :forbidden
       end
     end
 

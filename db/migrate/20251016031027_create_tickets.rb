@@ -24,6 +24,12 @@ class CreateTickets < ActiveRecord::Migration[8.0]
       t.references :scanned_by, foreign_key: { to_table: :users }, null: true
       t.integer :status, null: false, default: 0 # 0: purchased, 1: scanned, 2: refunded, 3: canceled
 
+      # Payment Fields
+      t.integer :payment_status, default: 0, null: false
+      t.string :payment_screenshot_url
+      t.string :transaction_id
+      t.string :payment_method
+
       # Custom Fields (JSONB to store data captured during registration)
       t.jsonb :custom_fields_data, default: {}
       

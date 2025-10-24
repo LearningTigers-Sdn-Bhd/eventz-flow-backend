@@ -14,6 +14,7 @@ class Ticket < ApplicationRecord
 
   # --- Enums ---
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3 }
+  enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
   # --- Validations ---
 
@@ -30,6 +31,7 @@ class Ticket < ApplicationRecord
   validates :attendee_email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :attendee_phone, format: { with: /\A[+]?[\d\s\-\(\)]+\z/, message: 'must be a valid phone number' }, allow_blank: true
   validates :status, presence: true # Although redundant with enum presence check, it's clear.
+  validates :payment_status, presence: true
 
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
