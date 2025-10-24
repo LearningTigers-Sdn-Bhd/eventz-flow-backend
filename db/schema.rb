@@ -16,6 +16,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
 
   create_table "api_keys", force: :cascade do |t|
     t.bigint "user_id", null: false
+    t.string "name"
     t.string "key_hash", null: false
     t.datetime "last_used_at"
     t.boolean "is_active", default: true, null: false
@@ -24,15 +25,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
-  end
-
-  create_table "event_admins", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_admins_on_event_id"
-    t.index ["user_id"], name: "index_event_admins_on_user_id"
   end
 
   create_table "event_assignments", force: :cascade do |t|
@@ -66,15 +58,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.index ["event_id"], name: "index_event_locations_on_event_id"
   end
 
-  create_table "event_team_members", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_team_members_on_event_id"
-    t.index ["user_id"], name: "index_event_team_members_on_user_id"
-  end
-
   create_table "events", force: :cascade do |t|
     t.string "title", null: false
     t.text "description"
@@ -84,6 +67,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.datetime "end_date"
     t.string "webhook_url"
     t.jsonb "labels_data", default: {}
+    t.boolean "visibility", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "payment_status", default: 0
@@ -137,13 +121,13 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
     t.integer "status", default: 0, null: false
-    t.jsonb "custom_fields_data", default: {}
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.integer "payment_status", default: 0, null: false
     t.string "payment_screenshot_url"
     t.string "transaction_id"
     t.string "payment_method"
+    t.jsonb "custom_fields_data", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id"], name: "index_tickets_on_event_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
@@ -166,15 +150,11 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_18_044425) do
   end
 
   add_foreign_key "api_keys", "users"
-  add_foreign_key "event_admins", "events"
-  add_foreign_key "event_admins", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
-  add_foreign_key "event_team_members", "events"
-  add_foreign_key "event_team_members", "users"
   add_foreign_key "refresh_tokens", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"

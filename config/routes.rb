@@ -93,5 +93,8 @@ Rails.application.routes.draw do
       get 'weekly_sales_amount'
     end
 
+    # 8. API KEYS MANAGEMENT
+    resources :api_keys, only: [:index, :create, :destroy]
+
   end # end of namespace :v1
 end

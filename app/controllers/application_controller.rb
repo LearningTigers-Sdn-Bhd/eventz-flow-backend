@@ -64,16 +64,23 @@ class ApplicationController < ActionController::API
 	    end
 	  end
 
-	  # Try raw API Key (no Bearer prefix)
+	  # Try raw API Key (no Bearer prefix) - use BCrypt-based authentication
 	  if header.length > 30 && !header.include?(' ')
-	    hashed_key = AuthenticationService.hash_token(header)
-	    api_key_record = ::ApiKey.find_by(key_hash: hashed_key, is_active: true)
-	    if api_key_record
-	      api_key_record.touch(:last_used_at)
-	      @current_user = api_key_record.user
-	      return
-	    end
+	    @current_user = ApiKey.authenticate_by_key(header)
+	    return if @current_user.present?
 	  end
+
+	# Old API Key authentication logic
+	
+	#   if header.length > 30 && !header.include?(' ')
+	#     hashed_key = AuthenticationService.hash_token(header)
+	#     api_key_record = ::ApiKey.find_by(key_hash: hashed_key, is_active: true)
+	#     if api_key_record
+	#       api_key_record.touch(:last_used_at)
+	#       @current_user = api_key_record.user
+	#       return
+	#     end
+	#   end
 
 	  render json: { error: 'Unauthorized', message: 'Invalid token' }, status: :unauthorized
 	end
