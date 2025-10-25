@@ -3,10 +3,10 @@ module V1
     # Ensure event is found and authorized before show, update, and destroy.
     # We pass 'except: [:index, :create]' to ensure the before_action runs on the correct set of actions.
     before_action :set_event, only: [:show, :update, :destroy]
-    
+
     # Authorize the event instance *after* it's set
     before_action :authorize_event, only: [:show, :update, :destroy]
-    
+
     # Authorize the class for index/create (Pundit best practice)
     before_action -> { authorize Event, :index? }, only: [:index]
     before_action -> { authorize Event, :create? }, only: [:create]
@@ -14,9 +14,9 @@ module V1
 
     # GET /v1/events
     def index
-      # FIX: The index action must use Policy_scope, which will combine 
+      # FIX: The index action must use Policy_scope, which will combine
       # the user's assigned_events and staffed_events based on the Policy::Scope logic.
-      @events = policy_scope(Event) 
+      @events = policy_scope(Event)
       render json: @events, status: :ok
     end
 
@@ -29,7 +29,7 @@ module V1
     # POST /v1/events
     def create
       @event = Event.new(event_params.except(:event_admin_id))
-      
+
       if @event.save
         # Step 2: Assign event admin
         # If event_admin_id is provided, assign that user; otherwise assign current_user
@@ -38,12 +38,12 @@ module V1
                     else
                       current_user
                     end
-        
+
         admin_user.assigned_event_admins.create!(event: @event)
-        
+
         render json: @event, status: :created
       else
-        render json: @event.errors, status: :unprocessable_entity
+        render json: @event.errors, status: :unprocessable_content
       end
     end
 
@@ -68,11 +68,11 @@ module V1
 
     # DRY principle: Find the event and handle 404
     def set_event
-      # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which 
+      # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which
       # the ApplicationController should rescue and convert to a 404 response.
       @event = Event.find_by!(id: params[:id])
     end
-    
+
     # DRY principle: Perform instance authorization
     def authorize_event
         authorize @event
@@ -82,12 +82,12 @@ module V1
     # Strong parameters for Event resource
     def event_params
       params.require(:event).permit(
-        :title, 
-        :description, 
-        :status, 
-        :multiple_scans, 
-        :start_date, 
-        :end_date, 
+        :title,
+        :description,
+        :status,
+        :multiple_scans,
+        :start_date,
+        :end_date,
         :webhook_url,
         :visibility,
         :event_admin_id, # This will make assigned user as the event admin
