@@ -25,4 +25,10 @@ class CustomError < StandardError
 			super('Not Found', 404, message)
 		end
 	end
+
+	class UnprocessableEntity < CustomError
+		def initialize(message = 'Unprocessable entity. The request was well-formed but was unable to be followed due to semantic errors.', errors=nil)
+			super('Unprocessable Entity', 422, message, errors)
+		end
+	end
 end
