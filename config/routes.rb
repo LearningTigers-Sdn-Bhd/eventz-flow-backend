@@ -17,7 +17,7 @@ Rails.application.routes.draw do
     # post 'auth/login', to: 'authentication#login'
     post 'login', to: 'authentication#login'
     post 'register', to: 'authentication#register'
-    post 'refresh', to: 'refresh#refresh'
+    post 'refresh_token', to: 'authentication#refresh_token'
     delete 'logout', to: 'authentication#logout'
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
@@ -80,9 +80,9 @@ Rails.application.routes.draw do
     # 7. GLOBAL ANALYTICS
     namespace :analytics do
       # Optimized bulk endpoints (works for all roles)
-      get 'events_overview' 
-      get 'summary'                 
-      
+      get 'events_overview'
+      get 'summary'
+
       # Individual analytics endpoints (requires org_owner/manager)
       get 'total_tickets'
       get 'total_scanned_tickets'
