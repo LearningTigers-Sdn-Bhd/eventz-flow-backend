@@ -52,10 +52,10 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   let(:staff_user) { create(:staff_user) }
   let(:member_user) { create(:member_user) }
 
-  let(:org_owner_token) { JsonWebToken.encode(user_id: org_owner_user.id) }
-  let(:manager_token) { JsonWebToken.encode(user_id: manager_user.id) }
-  let(:staff_token) { JsonWebToken.encode(user_id: staff_user.id) }
-  let(:member_token) { JsonWebToken.encode(user_id: member_user.id) }
+  let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
+  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
+  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup Event and Tickets ---
   let(:event) { create(:event, status: :published) }

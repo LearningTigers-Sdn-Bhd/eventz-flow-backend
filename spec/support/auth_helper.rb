@@ -1,10 +1,19 @@
-module AuthHelper
-  # Mocks the generation of a JWT token string.
-  # IMPORTANT: This should NOT include the "Bearer " prefix.
-  def generate_jwt(user)
-    JsonWebToken.encode(user_id: user.id)
+# frozen_string_literal: true
+
+module AuthHelpers
+  def jwt_token(user)
+    JwtService.generate_tokens(user)[:access_token]
   end
-  
-  # The header helper methods are now redundant, as the specs build the string directly.
-  # You can safely remove manager_auth_header and owner_auth_header.
+
+  def auth_headers(user)
+    { 'Authorization' => "Bearer #{jwt_token(user)}" }
+  end
+
+  def json_response
+    JSON.parse(response.body)
+  end
+end
+
+RSpec.configure do |config|
+  config.include AuthHelpers, type: :request
 end

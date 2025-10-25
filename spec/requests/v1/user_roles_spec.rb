@@ -1,14 +1,14 @@
 require 'swagger_helper'
 
 RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger.yaml' do
-  include AuthHelper
+  include AuthHelpers
 
   let(:org_owner)   { create(:user, role: 'org_owner') }
   let(:member_user) { create(:user, role: 'member') }
   let(:target_user) { create(:user, role: 'member') }
 
-  let(:auth_header_owner)  { "Bearer #{generate_jwt(org_owner)}" }
-  let(:auth_header_member) { "Bearer #{generate_jwt(member_user)}" }
+  let(:auth_header_owner)  { auth_headers(org_owner) }
+  let(:auth_header_member) { auth_headers(member_user) }
 
   let(:json_headers) { { 'Content-Type' => 'application/json' } }
   let(:id) { target_user.id }
@@ -38,13 +38,12 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
 
       # ----------------- 200 OK -----------------
       response '200', 'Role updated successfully' do
-        let(:Authorization) { auth_header_owner } # 👈 satisfies rswag
-        let(:auth_token) { auth_header_owner }
+        let(:Authorization) { auth_header_owner['Authorization'] } # 👈 satisfies rswag
         let(:user) { { user: { role: 'manager' } } }
 
         run_test! do
           put role_v1_user_path(id: id),
-              headers: json_headers.merge('Authorization' => auth_token),
+              headers: json_headers.merge(auth_header_owner),
               params: user.to_json
 
           puts "Response: #{response.status} #{response.body}"
@@ -55,13 +54,12 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
 
       # ----------------- 403 Forbidden -----------------
       response '403', 'Forbidden' do
-        let(:Authorization) { auth_header_member } # 👈 satisfies rswag
-        let(:auth_token) { auth_header_member }
+        let(:Authorization) { auth_header_member['Authorization'] } # 👈 satisfies rswag
         let(:user) { { user: { role: 'manager' } } }
 
         run_test! do
           put role_v1_user_path(id: id),
-              headers: json_headers.merge('Authorization' => auth_token),
+              headers: json_headers.merge(auth_header_member),
               params: user.to_json
 
           puts "Response: #{response.status} #{response.body}"
@@ -71,17 +69,16 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
 
       # ----------------- 422 Validation Error -----------------
       response '422', 'Validation Error' do
-        let(:Authorization) { auth_header_owner } # 👈 satisfies rswag
-        let(:auth_token) { auth_header_owner }
+        let(:Authorization) { auth_header_owner['Authorization'] } # 👈 satisfies rswag
         let(:user) { { user: { role: 'invalid_role_value' } } }
 
         run_test! do
           put role_v1_user_path(id: id),
-              headers: json_headers.merge('Authorization' => auth_token),
+              headers: json_headers.merge(auth_header_owner),
               params: user.to_json
 
           puts "Response: #{response.status} #{response.body}"
-          expect(response).to have_http_status(:unprocessable_entity)
+          expect(response).to have_http_status(:unprocessable_content)
           parsed = JSON.parse(response.body)
           expect(parsed['error']).to eq('Validation Error')
         end

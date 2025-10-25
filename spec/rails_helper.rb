@@ -11,14 +11,6 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 require 'rspec/rails'
 require 'shoulda/matchers'
 
-# --- Shoulda Matchers Configuration ---
-Shoulda::Matchers.configure do |config|
-  config.integrate do |with|
-    with.test_framework :rspec
-    with.library :rails
-  end
-end
-
 # --- Require support files (helpers, shared contexts, etc.) ---
 Dir[Rails.root.join('spec/support/**/*.rb')].sort.each { |f| require f }
 
@@ -31,8 +23,11 @@ end
 
 # --- RSpec Core Configuration ---
 RSpec.configure do |config|
-  # Fixture path
+  # --- Configuration ---
   config.fixture_paths = [Rails.root.join('spec/fixtures')]
+  config.use_transactional_fixtures = true
+  config.infer_spec_type_from_file_location!
+  config.filter_rails_from_backtrace!
 
   # FactoryBot methods (build, create, etc.)
   config.include FactoryBot::Syntax::Methods
@@ -40,30 +35,14 @@ RSpec.configure do |config|
   # Include custom request helpers (json helper, etc.)
   config.include RequestSpecHelper, type: :request if defined?(RequestSpecHelper)
 
-  config.include AuthHelper, type: :request
-  config.include AuthHelper, type: :controller
+  config.include AuthHelpers, type: :request
+  config.include AuthHelpers, type: :controller
 
-  # --- DatabaseCleaner setup ---
-  config.use_transactional_fixtures = true
 
   config.before(:suite) do
-    DatabaseCleaner.clean_with(:truncation)
-  end
-
-  config.before(:each) do
     DatabaseCleaner.strategy = :transaction
-  end
-
-  config.before(:each, js: true) do
-    DatabaseCleaner.strategy = :truncation
-  end
-
-  config.before(:each) do
-    DatabaseCleaner.start
-  end
-
-  config.after(:each) do
-    DatabaseCleaner.clean
+    DatabaseCleaner.allow_remote_database_url = true
+    DatabaseCleaner.clean_with(:truncation)
   end
 
   # --- Ensure cookie jar works in API-only request specs ---
@@ -73,13 +52,12 @@ RSpec.configure do |config|
       .to receive(:cookie_jar)
       .and_return(ActionDispatch::Cookies::CookieJar.build(request, {}))
   end
+end
 
-  # Automatically infer spec type (model, request, etc.) from file location
-  config.infer_spec_type_from_file_location!
-
-  # Filter Rails gems in backtraces
-  config.filter_rails_from_backtrace!
-
-  # Uncomment if you want to filter out specific gems
-  # config.filter_gems_from_backtrace("gem name")
+# --- Shoulda Matchers Configuration ---
+Shoulda::Matchers.configure do |config|
+  config.integrate do |with|
+    with.test_framework :rspec
+    with.library :rails
+  end
 end

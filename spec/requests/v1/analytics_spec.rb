@@ -8,10 +8,10 @@ RSpec.describe 'V1::Analytics', type: :request do
   let(:staff_user) { create(:staff_user) }
   let(:member_user) { create(:member_user) }
 
-  let(:org_owner_token) { JsonWebToken.encode(user_id: org_owner_user.id) }
-  let(:manager_token) { JsonWebToken.encode(user_id: manager_user.id) }
-  let(:staff_token) { JsonWebToken.encode(user_id: staff_user.id) }
-  let(:member_token) { JsonWebToken.encode(user_id: member_user.id) }
+  let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
+  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
+  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup Events and Tickets ---
   let!(:event1) { create(:event, status: :published, visibility: true) }
@@ -35,7 +35,7 @@ RSpec.describe 'V1::Analytics', type: :request do
   before do
     # Staff user has access to event1 only
     EventAssignment.find_or_create_by!(event: event1, user: staff_user, role: :event_admin)
-    
+
     # Manager user has access to all events (event1, event2, event3)
     EventAssignment.find_or_create_by!(event: event1, user: manager_user, role: :event_admin)
     EventAssignment.find_or_create_by!(event: event2, user: manager_user, role: :event_admin)
@@ -79,7 +79,7 @@ RSpec.describe 'V1::Analytics', type: :request do
           data = JSON.parse(response.body)
           expect(data['events']).to be_an(Array)
           expect(data['events'].length).to eq(3) # event1, event2, event3
-          
+
           # Check event1 data
           event1_data = data['events'].find { |e| e['id'] == event1.id }
           expect(event1_data['total_tickets']).to eq(5) # 3 purchased + 2 scanned

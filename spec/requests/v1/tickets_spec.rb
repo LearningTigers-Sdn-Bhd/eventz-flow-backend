@@ -23,7 +23,7 @@ TICKET_SCHEMA = {
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
     event_id: { type: :integer, readOnly: true },
     ticket_type_id: { type: :integer },
-    ticket_type: { 
+    ticket_type: {
       type: :object,
       properties: {
         id: { type: :integer },
@@ -44,7 +44,7 @@ TICKET_INDEX_ITEM_SCHEMA = {
     public_id: { type: :string, format: :uuid },
     attendee_name: { type: :string },
     status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
-    ticket_type: { 
+    ticket_type: {
       type: :object,
       properties: {
         id: { type: :integer },
@@ -64,10 +64,10 @@ RSpec.describe 'V1::Tickets', type: :request do
   let(:member_user) { create(:member_user) }
   let(:staff_user) { create(:staff_user) } # Assume a user with EventTeamMember role
 
-  let(:org_owner_token) { JsonWebToken.encode(user_id: org_owner_user.id) }
-  let(:manager_token) { JsonWebToken.encode(user_id: manager_user.id) }
-  let(:staff_token) { JsonWebToken.encode(user_id: staff_user.id) }
-  let(:member_token) { JsonWebToken.encode(user_id: member_user.id) }
+  let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
+  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
+  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup Event (Controlled by Manager) (UNCHANGED) ---
   let!(:manager_event) do
@@ -104,7 +104,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
   path '/v1/events/{event_id}/tickets' do
     parameter name: :event_id, in: :path, type: :integer, description: 'ID of the parent Event'
-    
+
     # --- GET - Index ---
     get 'Lists all tickets for a specific event' do
       tags 'Tickets'
@@ -120,7 +120,7 @@ RSpec.describe 'V1::Tickets', type: :request do
           json = JSON.parse(response.body)
           expect(json.count).to eq(2)
         end
-        
+
         # REFACTORED: Use reusable schema constant
         schema type: :array, items: TICKET_INDEX_ITEM_SCHEMA
       end
@@ -139,7 +139,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       security [{ BearerAuth: [] }]
 
       parameter name: :Authorization, in: :header, type: :string, required: true
-      
+
       # IMPROVED: Inline schema refined for documentation clarity
       parameter name: :ticket, in: :body, schema: {
         type: :object,
@@ -157,7 +157,7 @@ RSpec.describe 'V1::Tickets', type: :request do
               custom_fields_data: { type: :object }
             },
             # IMPROVED: Added ticket_type_id to required fields for logic completeness
-            required: ['attendee_name', 'attendee_email', 'ticket_type_id'] 
+            required: ['attendee_name', 'attendee_email', 'ticket_type_id']
           }
         },
         required: ['ticket']
@@ -168,10 +168,10 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '201', 'Ticket created by Manager (event admin)' do
         let(:Authorization) { "Bearer #{manager_token}" }
-        
+
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
-        
+
         run_test! do
           expect(Ticket.count).to eq(3)
         end
@@ -179,9 +179,9 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '201', 'Ticket created by Org Owner' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
-        
+
         schema TICKET_SCHEMA
-        
+
         run_test! do
           expect(Ticket.count).to eq(3)
         end
@@ -200,7 +200,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
   path '/v1/events/{event_id}/tickets/{id}' do
     parameter name: :event_id, in: :path, type: :integer
-    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'  
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
 
     # --- GET - Show ---
     get 'Retrieves a specific ticket' do
@@ -214,16 +214,16 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '200', 'Ticket found and viewable by staff' do
         let(:Authorization) { "Bearer #{staff_token}" }
-        
+
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
-        
+
         run_test!
       end
 
       response '403', 'Not found by member user' do
         let(:Authorization) { "Bearer #{member_token}" }
-        let(:id) { '00000000-0000-0000-0000-000000000000' } 
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
         run_test!
       end
     end
@@ -237,7 +237,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
-      
+
       # IMPROVED: Inline request body schema
       parameter name: :ticket, in: :body, schema: {
         type: :object,
@@ -258,23 +258,23 @@ RSpec.describe 'V1::Tickets', type: :request do
       }
 
       let(:event_id) { manager_event.id }
-      let(:id) { purchased_ticket.public_id } 
+      let(:id) { purchased_ticket.public_id }
       let(:ticket) { { ticket: { attendee_name: 'Updated Name', attendee_email: 'update@example.com' } } }
 
       response '200', 'Ticket successfully updated by staff' do
         let(:Authorization) { "Bearer #{staff_token}" }
-        
+
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
-        
+
         run_test!
       end
 
       response '200', 'Ticket successfully updated by Org Owner' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
-        
+
         schema TICKET_SCHEMA
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['attendee_name']).to eq('Updated Name')
@@ -283,9 +283,9 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '200', 'Ticket successfully updated by Manager' do
         let(:Authorization) { "Bearer #{manager_token}" }
-        
+
         schema TICKET_SCHEMA
-        
+
         run_test!
       end
 
@@ -293,7 +293,7 @@ RSpec.describe 'V1::Tickets', type: :request do
         let(:Authorization) { "Bearer #{member_token}" }
         run_test!
       end
-      
+
       response '404', 'Not Found' do
         let(:Authorization) { "Bearer #{staff_token}" }
         let(:id) { '00000000-0000-0000-0000-000000000000' }
@@ -310,7 +310,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       let(:event_id) { manager_event.id }
-      let(:id) { checked_in_ticket.public_id } 
+      let(:id) { checked_in_ticket.public_id }
 
       response '204', 'Ticket successfully canceled by Manager' do
         let(:Authorization) { "Bearer #{manager_token}" }
@@ -321,7 +321,7 @@ RSpec.describe 'V1::Tickets', type: :request do
         let(:Authorization) { "Bearer #{staff_token}" }
         run_test!
       end
-      
+
       response '404', 'Not Found' do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:id) { '00000000-0000-0000-0000-000000000000' }
@@ -335,7 +335,7 @@ RSpec.describe 'V1::Tickets', type: :request do
   # =========================================================================
 
   path '/v1/tickets/{public_id}/check_in' do
-    parameter name: :public_id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'  
+    parameter name: :public_id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
 
     # --- PATCH - Global Check-in ---
     patch 'Performs a global check-in using only the Ticket Public ID' do
@@ -346,13 +346,13 @@ RSpec.describe 'V1::Tickets', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       let(:public_id) { purchased_ticket.public_id }
-      
+
       response '200', 'Check-in successful via global scan by staff' do
         let(:Authorization) { "Bearer #{staff_token}" }
-        
+
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
-        
+
         run_test! do
           purchased_ticket.reload
           expect(purchased_ticket.checked_in).to be true

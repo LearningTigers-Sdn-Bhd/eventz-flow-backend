@@ -52,7 +52,7 @@ USER_AUTH_SCHEMA = {
 RSpec.describe 'V1::Users', type: :request do
   let!(:org_owner) { create(:org_owner) }
   let(:member_user) { create(:member_user) }
-  let(:member_token) { JsonWebToken.encode(user_id: member_user.id) }
+  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- /v1/users (Registration) ---
   path '/v1/users' do
@@ -60,7 +60,7 @@ RSpec.describe 'V1::Users', type: :request do
       tags 'User Management'
       consumes 'application/json'
       produces 'application/json'
-      
+
       # Request body schema is fine
       parameter name: :user, in: :body, schema: {
         type: :object,
@@ -72,22 +72,22 @@ RSpec.describe 'V1::Users', type: :request do
         },
         required: [ 'email', 'password', 'password_confirmation', 'full_name' ]
       }
-      
+
       response '201', 'User created successfully' do
         let(:user) { { user: { email: 'newuser@test.com', password: 'securepassword', password_confirmation: 'securepassword', full_name: 'New Test User' } } }
-        
+
         # REFACTORED: Use reusable schema constant
-        schema USER_AUTH_SCHEMA 
-        
+        schema USER_AUTH_SCHEMA
+
         run_test!
       end
-      
+
       response '422', 'Validation error' do
         let(:user) { { user: { email: 'invalid_email', password: '123' } } }
-        
+
         # ADDED: Error schema
-        schema ERROR_SCHEMA 
-        
+        schema ERROR_SCHEMA
+
         run_test!
       end
     end
@@ -95,7 +95,7 @@ RSpec.describe 'V1::Users', type: :request do
 
   # --- /v1/users/profile (Profile Management) ---
   path '/v1/users/profile' do
-    
+
     # --- GET /v1/users/profile ---
     get 'Retrieves the authenticated user\'s profile' do
       tags 'User Management'
@@ -103,22 +103,22 @@ RSpec.describe 'V1::Users', type: :request do
       security [{ BearerAuth: [] }]
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
-      
+
       response '200', 'Profile retrieved successfully' do
         let(:Authorization) { "Bearer #{member_token}" }
-        
+
         # REFACTORED: Use reusable schema constant
-        schema USER_SCHEMA 
-        
+        schema USER_SCHEMA
+
         run_test!
       end
-        
+
       response '401', 'Unauthorized (Missing JWT)' do
         let(:Authorization) { 'Bearer invalid' }
-        
+
         # ADDED: Error schema
-        schema ERROR_SCHEMA 
-        
+        schema ERROR_SCHEMA
+
         run_test!
       end
     end
@@ -131,7 +131,7 @@ RSpec.describe 'V1::Users', type: :request do
       security [{ BearerAuth: [] }]
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
-      
+
       # Request body schema is fine
       parameter name: :user, in: :body, schema: {
         type: :object,
@@ -144,20 +144,20 @@ RSpec.describe 'V1::Users', type: :request do
       response '200', 'Profile updated successfully' do
         let(:Authorization) { "Bearer #{member_token}" }
         let(:user) { { user: { full_name: 'Updated Name' } } }
-        
+
         # REFACTORED: Use reusable schema constant
         schema USER_SCHEMA
-        
+
         run_test!
       end
 
       response '422', 'Validation error' do
         let(:Authorization) { "Bearer #{member_token}" }
         let(:user) { { user: { full_name: '' } } }
-        
+
         # ADDED: Error schema
-        schema ERROR_SCHEMA 
-        
+        schema ERROR_SCHEMA
+
         run_test!
       end
     end
