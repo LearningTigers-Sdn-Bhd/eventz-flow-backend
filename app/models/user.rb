@@ -13,6 +13,7 @@ class User < ApplicationRecord
   # --- Callbacks ---
   after_initialize :set_default_role, if: :new_record?
   after_initialize :set_default_status, if: :new_record?
+  before_create :generate_jti
 
   # --- Validations ---
   validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -21,14 +22,14 @@ class User < ApplicationRecord
   validates :status, presence: true
 
   # --- Associations ---
-  
+
   # 1. EVENT STAFFING (Unified Event Assignment Model)
   has_many :event_assignments, dependent: :destroy
   has_many :assigned_events, through: :event_assignments, source: :event
 
   # Add the required scoped association for the controller (Failures 8, 9 from previous run)
-  has_many :assigned_event_admins, -> { where(role: EventAssignment.roles[:event_admin]) }, 
-           class_name: 'EventAssignment', 
+  has_many :assigned_event_admins, -> { where(role: EventAssignment.roles[:event_admin]) },
+           class_name: 'EventAssignment',
            dependent: :destroy
 
   # 2. PARTICIPATION
@@ -39,17 +40,17 @@ class User < ApplicationRecord
   has_many :api_keys, dependent: :destroy
 
   # --- Global Role Helper Methods (FIXED LOGIC) ---
-  
+
   # Ensures Org Owner is included as a Manager
   def is_manager?
     manager? || org_owner?
   end
-  
+
   # Check if a user is an Org Owner or Manager
   def is_org_owner_or_manager?
     is_manager?
   end
-  
+
   # Pure check for Org Owner role
   def is_org_owner?
     org_owner?
@@ -61,7 +62,7 @@ class User < ApplicationRecord
   end
 
   # --- Event-Specific Role Helper Methods ---
-  
+
   def is_event_admin?(event)
     return false unless event.present?
     # Use enum value from EventAssignment class directly for robustness
@@ -80,6 +81,13 @@ class User < ApplicationRecord
                      .exists?
   end
 
+  # --- JTI Management ---
+
+  # Regenerate JTI for token revocation
+  def refresh_jti!
+    update!(jti: SecureRandom.uuid)
+  end
+
   private
 
   # Use the Rails enum helper methods (org_owner?, manager?, etc.) instead of string comparisons ('manager')
@@ -92,5 +100,9 @@ class User < ApplicationRecord
 
   def set_default_status
     self.status ||= :active
+  end
+
+  def generate_jti
+    self.jti = SecureRandom.uuid
   end
 end
