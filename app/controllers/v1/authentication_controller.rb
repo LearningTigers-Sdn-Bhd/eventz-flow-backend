@@ -25,7 +25,10 @@ module V1
 
   # POST /v1/login
   def login
-    user = User.find_by(email: login_params[:email].downcase)
+    email = login_params[:email]
+    return error_response(message: 'Email is required', errors: [{ field: 'email', message: 'Email is required' }], status: :unprocessable_content) if email.blank?
+
+    user = User.find_by(email: email.downcase)
 
     # Check if user exists, is active, and credentials are valid
     if user&.active? && user&.authenticate(login_params[:password])
@@ -40,7 +43,26 @@ module V1
         status: :ok
       )
     else
-      raise CustomError::Unauthorized.new('Invalid email or password')
+      # Provide specific error messages based on the failure reason
+      if user.nil?
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'email', message: 'Email not found' }],
+          status: :unauthorized
+        )
+      elsif !user.active?
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'account', message: 'Account is inactive' }],
+          status: :unauthorized
+        )
+      else
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'password', message: 'Invalid password' }],
+          status: :unauthorized
+        )
+      end
     end
   end
 
@@ -53,7 +75,11 @@ module V1
         status: :ok
       )
     else
-      raise CustomError::Unauthorized.new('User not found')
+      error_response(
+        message: 'Logout failed',
+        errors: [{ field: 'user', message: 'User not found or not authenticated' }],
+        status: :unauthorized
+      )
     end
   end
 
@@ -65,7 +91,7 @@ module V1
 
     tokens = JwtService.refresh_access_token(refresh_token)
     success_response(
-      data: { access_token: tokens[:access_token] },
+      data: tokens,
       message: 'Access token refreshed successfully'
     )
   rescue CustomError::Unauthorized => e
@@ -75,7 +101,12 @@ module V1
   private
 
   def login_params
-    params.permit(:email, :password)
+    # Handle both nested and flat parameter formats
+    if params[:user].present?
+      params.require(:user).permit(:email, :password)
+    else
+      params.permit(:email, :password)
+    end
   end
 
   def register_params
@@ -84,5 +115,5 @@ module V1
     user_params[:email] = user_params[:email].downcase if user_params[:email].present?
     user_params
   end
-  end
+end
 end

@@ -6,15 +6,18 @@ class JwtService
   # and is automatically loaded from credentials.
   SECRET_KEY = ENV['JWT_SECRET_KEY'] || Rails.application.secret_key_base
   ALGORITHM = 'HS256'
+  EXPIRATION_TIME = 10.minutes
 
   class << self
     # Encodes a payload into a JWT token with automatic expiration
     #
     # @param payload [Hash] The data to encode in the token
-    # @param exp [Time] Token expiration time (defaults to 15 minutes from now)
+    # @param exp [Time] Token expiration time (defaults to EXPIRATION_TIME from now)
     # @return [String] The encoded JWT token
     # @raise [CustomError::Unauthorized] If encoding fails
-    def encode(payload, exp = 30.minutes.from_now)
+    # Note: Access tokens are set to expire in 5 minutes for enhanced security.
+    # Users should use refresh tokens to obtain new access tokens when needed.
+    def encode(payload, exp = EXPIRATION_TIME.from_now)
         payload[:exp] = exp.to_i
         payload[:iat] = Time.now.to_i
 
@@ -59,7 +62,8 @@ class JwtService
 
         access_token = encode(access_payload)
         refresh_token = encode(refresh_payload, 7.days.from_now)
-        expires_at = 30.minutes.from_now
+        # Access token expiry is set to 5 minutes for security
+        expires_at = EXPIRATION_TIME.from_now
 
         { access_token: access_token, refresh_token: refresh_token, expires_at: expires_at }
     end

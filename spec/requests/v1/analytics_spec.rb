@@ -179,6 +179,239 @@ RSpec.describe 'V1::Analytics', type: :request do
         run_test!
       end
     end
+
+    # Additional edge case tests for summary
+    context 'Edge cases for summary' do
+      let(:summary_edge_case_user) { create(:org_owner) }
+      let(:summary_edge_case_token) { JwtService.generate_tokens(summary_edge_case_user)[:access_token] }
+
+      # Clear existing events to isolate test data
+      before do
+        Ticket.destroy_all
+        TicketType.destroy_all
+        EventLocation.destroy_all
+        EventAssignment.destroy_all
+        Event.destroy_all
+      end
+
+      it 'handles empty summary when user has no events' do
+        isolated_user = create(:org_owner)
+        isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
+
+        get '/v1/analytics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{isolated_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['total_events']).to eq(0)
+        expect(data['active_events']).to eq(0)
+        expect(data['total_tickets']).to eq(0)
+        expect(data['total_scanned']).to eq(0)
+        expect(data['total_revenue']).to eq(0)
+        expect(data['total_locations']).to eq(0)
+      end
+
+      it 'excludes refunded and canceled tickets from summary calculations' do
+        event = create(:event, status: :published, visibility: true)
+        ticket_type = create(:ticket_type, event: event, price: 50.00)
+
+        # Active tickets (should be counted)
+        create_list(:ticket, 5, event: event, ticket_type: ticket_type, status: :purchased)
+        create_list(:ticket, 3, event: event, ticket_type: ticket_type, status: :scanned, checked_in: true)
+
+        # Should be excluded
+        create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded)
+        create_list(:ticket, 1, event: event, ticket_type: ticket_type, status: :canceled)
+
+        get '/v1/analytics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{summary_edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['total_tickets']).to eq(8) # 5 purchased + 3 scanned
+        expect(data['total_scanned']).to eq(3)
+        expect(data['total_revenue']).to eq(40000) # 8 * 50.00 * 100
+      end
+
+      it 'calculates revenue correctly with multiple events and ticket types' do
+        event1 = create(:event, status: :published, visibility: true)
+        event2 = create(:event, status: :published, visibility: true)
+
+        tt1 = create(:ticket_type, event: event1, price: 30.00)
+        tt2 = create(:ticket_type, event: event2, price: 75.50)
+
+        create_list(:ticket, 4, event: event1, ticket_type: tt1, status: :purchased)
+        create_list(:ticket, 6, event: event2, ticket_type: tt2, status: :purchased)
+
+        get '/v1/analytics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{summary_edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['total_events']).to eq(2)
+        expect(data['active_events']).to eq(2)
+        expect(data['total_tickets']).to eq(10)
+        # 4 * 30.00 + 6 * 75.50 = 120.00 + 453.00 = 573.00 * 100 = 57300
+        expect(data['total_revenue']).to eq(57300)
+      end
+
+      it 'handles events with only draft status' do
+        draft_event1 = create(:event, status: :draft, visibility: true)
+        draft_event2 = create(:event, status: :draft, visibility: true)
+
+        ticket_type = create(:ticket_type, event: draft_event1, price: 40.00)
+        create_list(:ticket, 3, event: draft_event1, ticket_type: ticket_type, status: :purchased)
+
+        get '/v1/analytics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{summary_edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['total_events']).to eq(2)
+        expect(data['active_events']).to eq(0) # Only counts published
+        expect(data['total_tickets']).to eq(3) # Still counts tickets from draft events
+      end
+
+      it 'calculates total_locations correctly across multiple events' do
+        event1 = create(:event, status: :published, visibility: true)
+        event2 = create(:event, status: :published, visibility: true)
+        event3 = create(:event, status: :draft, visibility: true)
+
+        create(:event_location, event: event1)
+        create(:event_location, event: event1)
+        create(:event_location, event: event2)
+        create(:event_location, event: event3)
+
+        get '/v1/analytics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{summary_edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        # Each event factory creates 1 location, plus manual ones = 1 + 2 + 1 + 1 + 1 + 1 = 7
+        # event1: 1 (auto) + 2 (manual) = 3
+        # event2: 1 (auto) + 1 (manual) = 2
+        # event3: 1 (auto) + 1 (manual) = 2
+        # Total: 7
+        expect(data['total_locations']).to eq(7)
+      end
+    end
+
+    # Additional edge case tests for events_overview
+    context 'Edge cases for events_overview' do
+      let(:edge_case_user) { create(:org_owner) }
+      let(:edge_case_token) { JwtService.generate_tokens(edge_case_user)[:access_token] }
+
+      # Clear existing events to isolate test data
+      before do
+        Ticket.destroy_all
+        TicketType.destroy_all
+        EventLocation.destroy_all
+        EventAssignment.destroy_all
+        Event.destroy_all
+      end
+
+      it 'handles events with no tickets' do
+        empty_event = create(:event, status: :published, visibility: true)
+        create(:event_location, event: empty_event)
+
+        get '/v1/analytics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        event_data = data['events'].find { |e| e['id'] == empty_event.id }
+        expect(event_data['total_tickets']).to eq(0)
+        expect(event_data['scanned_tickets']).to eq(0)
+        expect(event_data['unscanned_tickets']).to eq(0)
+        expect(event_data['total_revenue']).to eq(0)
+      end
+
+      it 'excludes refunded and canceled tickets from calculations' do
+        event_with_refunded = create(:event, status: :published, visibility: true)
+        ticket_type = create(:ticket_type, event: event_with_refunded, price: 100.00)
+
+        # Active tickets
+        create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :purchased)
+        create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :scanned, checked_in: true)
+
+        # Should be excluded
+        create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :refunded)
+        create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :canceled)
+
+        get '/v1/analytics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        event_data = data['events'].find { |e| e['id'] == event_with_refunded.id }
+        expect(event_data['total_tickets']).to eq(2)
+        expect(event_data['total_revenue']).to eq(20000) # 2 * 100.00 * 100
+      end
+
+      it 'handles tickets with different prices correctly' do
+        event = create(:event, status: :published, visibility: true)
+        ticket_type_cheap = create(:ticket_type, event: event, price: 25.50)
+        ticket_type_expensive = create(:ticket_type, event: event, price: 150.75)
+
+        create_list(:ticket, 3, event: event, ticket_type: ticket_type_cheap, status: :purchased)
+        create_list(:ticket, 2, event: event, ticket_type: ticket_type_expensive, status: :purchased)
+
+        get '/v1/analytics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        event_data = data['events'].find { |e| e['id'] == event.id }
+        expect(event_data['total_tickets']).to eq(5)
+        # 3 * 25.50 + 2 * 150.75 = 76.50 + 301.50 = 378.00 * 100 = 37800
+        expect(event_data['total_revenue']).to eq(37800)
+      end
+
+      it 'returns empty array for user with no events' do
+        isolated_user = create(:org_owner)
+        isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
+
+        get '/v1/analytics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{isolated_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['events']).to be_an(Array)
+        expect(data['events'].length).to eq(0)
+      end
+
+      it 'calculates unscanned tickets correctly' do
+        event = create(:event, status: :published, visibility: true)
+        ticket_type = create(:ticket_type, event: event, price: 50.00)
+
+        # Create 10 purchased tickets
+        create_list(:ticket, 10, event: event, ticket_type: ticket_type, status: :purchased)
+        # Create 3 scanned tickets
+        create_list(:ticket, 3, event: event, ticket_type: ticket_type, status: :scanned, checked_in: true)
+        # Create 2 scanned but unchecked (edge case)
+        create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :scanned, checked_in: false)
+
+        get '/v1/analytics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        event_data = data['events'].find { |e| e['id'] == event.id }
+        expect(event_data['total_tickets']).to eq(15) # 10 + 3 + 2
+        expect(event_data['scanned_tickets']).to eq(3) # Only checked_in ones
+        expect(event_data['unscanned_tickets']).to eq(12) # 10 + 2
+      end
+    end
   end
 
   # ===================================================================
