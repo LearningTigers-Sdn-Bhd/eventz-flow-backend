@@ -25,7 +25,10 @@ module V1
     # GET /v1/users/profile (Show Profile)
     def show
       authorize current_user, policy_class: UserPolicy
-      render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+      success_response(
+        data: current_user.slice(:id, :full_name, :email, :role, :phone),
+        message: "Profile retrieved successfully"
+      )
     end
 
     # PUT/PATCH /v1/users/profile (Update Profile)
@@ -33,9 +36,16 @@ module V1
       authorize current_user, policy_class: UserPolicy
 
       if current_user.update(update_user_params)
-        render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+        success_response(
+          data: current_user.slice(:id, :full_name, :email, :role, :phone),
+          message: "Profile updated successfully"
+        )
       else
-        render json: { errors: current_user.errors.full_messages }, status: :unprocessable_entity
+        error_response(
+          message: "Validation failed",
+          errors: format_validation_errors(current_user),
+          status: :unprocessable_content
+        )
       end
     end
 

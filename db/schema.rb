@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_24_065322) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_27_030100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -25,15 +25,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_24_065322) do
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
-  end
-
-  create_table "event_admins", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_admins_on_event_id"
-    t.index ["user_id"], name: "index_event_admins_on_user_id"
   end
 
   create_table "event_assignments", force: :cascade do |t|
@@ -67,15 +58,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_24_065322) do
     t.index ["event_id"], name: "index_event_locations_on_event_id"
   end
 
-  create_table "event_team_members", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "event_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_event_team_members_on_event_id"
-    t.index ["user_id"], name: "index_event_team_members_on_user_id"
-  end
-
   create_table "events", force: :cascade do |t|
     t.string "title", null: false
     t.text "description"
@@ -96,18 +78,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_24_065322) do
   create_table "orders", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-  end
-
-  create_table "refresh_tokens", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.string "token_hash", null: false
-    t.datetime "expires_at", null: false
-    t.datetime "revoked_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["revoked_at"], name: "index_refresh_tokens_on_revoked_at"
-    t.index ["token_hash"], name: "index_refresh_tokens_on_token_hash", unique: true
-    t.index ["user_id"], name: "index_refresh_tokens_on_user_id"
   end
 
   create_table "ticket_types", force: :cascade do |t|
@@ -175,7 +145,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_24_065322) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
-  add_foreign_key "refresh_tokens", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
