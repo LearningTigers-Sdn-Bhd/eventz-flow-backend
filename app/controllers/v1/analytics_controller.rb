@@ -1,6 +1,6 @@
 module V1
   class AnalyticsController < ApplicationController
-    before_action :authenticate_request!
+    before_action :authenticate_user!
     before_action :authorize_global_analytics, only: [
       :total_tickets,
       :total_scanned_tickets,
@@ -17,10 +17,10 @@ module V1
     # Returns all events with their analytics in a single optimized response
     def events_overview
       @events = policy_scope(Event)
-      
+
       events_data = @events.map do |event|
         tickets = event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
-        
+
         {
           id: event.id,
           title: event.title,
@@ -45,7 +45,7 @@ module V1
       # Single query for all tickets across user's events
       all_tickets = Ticket.where(event_id: event_ids)
       active_tickets = all_tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
-      
+
       render json: {
         total_events: @events.count,
         active_events: @events.where(status: 'published').count,

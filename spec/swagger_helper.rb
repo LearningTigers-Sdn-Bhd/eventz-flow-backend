@@ -31,6 +31,10 @@ RSpec.configure do |config|
               default: 'www.example.com'
             }
           }
+        },
+        {
+          url: 'http://localhost:3001',
+          description: 'Local Development'
         }
       ]
     }

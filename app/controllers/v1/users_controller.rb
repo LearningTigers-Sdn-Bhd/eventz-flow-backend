@@ -2,11 +2,11 @@
 module V1
   class UsersController < ApplicationController
     # Skip JWT check for registration
-    skip_before_action :authenticate_request!, only: [:create]
-    
+    skip_before_action :authenticate_user!, only: [:create]
+
     # FIX: Add authorization check to enforce permission rules
-    before_action :authorize_org_owner!, only: [:update_role] 
-    
+    before_action :authorize_org_owner!, only: [:update_role]
+
     before_action :set_user, only: [:update_role]
 
     # POST /v1/users (Registration)
@@ -15,17 +15,20 @@ module V1
       authorize @user, policy_class: UserPolicy
 
       if @user.save
-        token = JsonWebToken.encode(user_id: @user.id)
+        token = JwtService.encode(user_id: @user.id)
         render json: { user: @user.slice(:id, :full_name, :email, :role), token: token }, status: :created
       else
-        render json: { errors: @user.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @user.errors.full_messages }, status: :unprocessable_content
       end
     end
 
     # GET /v1/users/profile (Show Profile)
     def show
       authorize current_user, policy_class: UserPolicy
-      render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+      success_response(
+        data: current_user.slice(:id, :full_name, :email, :role, :phone),
+        message: "Profile retrieved successfully"
+      )
     end
 
     # PUT/PATCH /v1/users/profile (Update Profile)
@@ -33,9 +36,16 @@ module V1
       authorize current_user, policy_class: UserPolicy
 
       if current_user.update(update_user_params)
-        render json: current_user.slice(:id, :full_name, :email, :role), status: :ok
+        success_response(
+          data: current_user.slice(:id, :full_name, :email, :role, :phone),
+          message: "Profile updated successfully"
+        )
       else
-        render json: { errors: current_user.errors.full_messages }, status: :unprocessable_entity
+        error_response(
+          message: "Validation failed",
+          errors: format_validation_errors(current_user),
+          status: :unprocessable_content
+        )
       end
     end
 
@@ -51,11 +61,11 @@ module V1
         if @user.update(role_params)
           render json: { user: @user.as_json(only: [:id, :email, :role, :full_name]) }, status: :ok
         else
-          render json: { error: 'Validation Error', message: @user.errors.full_messages.to_sentence, errors: @user.errors.messages }, status: :unprocessable_entity
+          render json: { error: 'Validation Error', message: @user.errors.full_messages.to_sentence, errors: @user.errors.messages }, status: :unprocessable_content
         end
       rescue ArgumentError => e
         # Handles "is not a valid role"
-        render json: { error: 'Validation Error', message: e.message, errors: { role: [e.message] } }, status: :unprocessable_entity
+        render json: { error: 'Validation Error', message: e.message, errors: { role: [e.message] } }, status: :unprocessable_content
       end
     end
 
@@ -72,7 +82,7 @@ module V1
       unless current_user.org_owner?
         render json: { error: 'Forbidden', message: 'Only an organization owner can change global user roles.' }, status: :forbidden
         # CRITICAL FIX: Halt execution after rendering the error
-        return 
+        return
       end
     end
 
@@ -80,7 +90,7 @@ module V1
     def user_params
       params.require(:user).permit(:email, :password, :password_confirmation, :full_name, :phone)
     end
-    
+
     # Params for updating profile
     def update_user_params
       params.require(:user).permit(:full_name, :phone, :password, :password_confirmation)

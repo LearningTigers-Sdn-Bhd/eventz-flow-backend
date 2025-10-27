@@ -1,185 +1,182 @@
-require 'swagger_helper'
+require 'rails_helper'
 
 RSpec.describe 'V1::Authentication', type: :request do
-  # NOTE: This uses the same logic and paths as the refactored spec from the previous turn.
-  let!(:member_user) { create(:user, role: :member, email: 'member@example.com', password: 'password123', password_confirmation: 'password123', full_name: 'Regular Member') }
+  let(:valid_attributes) do
+    {
+      email: 'test@example.com',
+      password: 'password',
+      password_confirmation: 'password',
+      full_name: 'Test User'
+    }
+  end
 
-  # The old POST /v1/users test has been moved into the users_spec.rb (as shown previously)
+  describe 'POST /v1/auth/register' do
+    context 'when the request is valid' do
+      it 'creates a new user and returns token' do
+        expect do
+          post '/v1/auth/register', params: { user: valid_attributes }
+        end.to change(User, :count).by(1)
 
-  path '/v1/register' do
-    post 'Registers a new user and retrieves JWT token' do
-      tags 'Authentication'
-      consumes 'application/json'
-      produces 'application/json'
-
-      parameter name: :user_data, in: :body, schema: {
-        type: :object,
-        properties: {
-          user: {
-            type: :object,
-            properties: {
-              email: { type: :string, example: 'newuser@example.com' },
-              password: { type: :string, example: 'password123' },
-              password_confirmation: { type: :string, example: 'password123' },
-              full_name: { type: :string, example: 'New User' },
-              phone: { type: :string, example: '+1234567890' }
-            },
-            required: [ 'email', 'password', 'password_confirmation', 'full_name' ]
-          }
-        },
-        required: [ 'user' ]
-      }
-
-      response '201', 'User registered successfully' do
-        let(:user_data) {
-          {
-            user: {
-              email: 'newuser@example.com',
-              password: 'password123',
-              password_confirmation: 'password123',
-              full_name: 'New User',
-              phone: '+1234567890'
-            }
-          }
+        expect(response).to have_http_status(:created)
+        expect(json_response['success']).to be true
+        expect(json_response['data']).to have_key('access_token')
+        expect(json_response['data']).to have_key('refresh_token')
+        expect(json_response['data']).to have_key('user')
+        expect(json_response['data']['user']['email']).to eq('test@example.com')
+      end
+    end
+    context 'when the request is invalid' do
+      it 'returns validation errors for invalid email' do
+        post '/v1/auth/register', params: {
+          user: valid_attributes.merge(email: 'invalid-email')
         }
 
-        run_test!
-
-        schema type: :object,
-          properties: {
-            access_token: { type: :string },
-            refresh_token: { type: :string },
-            user: {
-              type: :object,
-              properties: {
-                id: { type: :integer },
-                full_name: { type: :string },
-                email: { type: :string },
-                role: { type: :string, enum: ['org_owner', 'manager', 'member'] }
-              }
-            }
-          }
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_response['success']).to be false
+        expect(json_response['errors']).to be_present
       end
 
-      response '422', 'Validation errors' do
-        let(:user_data) {
-          {
-            user: {
-              email: 'invalid-email',
-              password: '123',
-              password_confirmation: '456',
-              full_name: ''
-            }
-          }
+      it 'returns validation errors for missing password' do
+        post '/v1/auth/register', params: {
+          user: valid_attributes.except(:password)
         }
 
-        run_test! do
-          json = JSON.parse(response.body)
-          expect(json['errors']).to be_an(Array)
-        end
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_response['success']).to be false
+      end
+    end
 
-        schema type: :object,
-          properties: {
-            errors: {
-              type: :array,
-              items: { type: :string },
-              example: ['Email is invalid', 'Password is too short', 'Password confirmation doesn\'t match Password', 'Full name can\'t be blank']
-            }
-          }
+    context 'with duplicate email' do
+      before { create(:user, email: 'test@example.com') }
+      it 'returns an error for duplicate email' do
+        post '/v1/auth/register', params: {
+          user: valid_attributes
+        }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_response['errors']).to be_present
       end
     end
   end
 
-  path '/v1/login' do
-    post 'Authenticates user and retrieves JWT token' do
-      tags 'Authentication'
-      consumes 'application/json'
-      produces 'application/json'
+  describe 'POST /v1/auth/login' do
+    let!(:user) { create(:user, email: 'test@example.com', password: 'password', password_confirmation: 'password') }
 
-      parameter name: :credentials, in: :body, schema: {
-        type: :object,
-        properties: {
-          user: {
-            type: :object,
-            properties: {
-              email: { type: :string, example: 'member@example.com' },
-              password: { type: :string, example: 'password123' }
-            },
-            required: [ 'email', 'password' ]
-          }
-        },
-        required: [ 'user' ]
-      }
+    context 'with valid credentials' do
+      it 'returns a token and user details' do
+        post '/v1/auth/login', params: { email: 'test@example.com', password: 'password' }
 
-      response '200', 'Successful login' do
-        let(:credentials) { { user: { email: 'member@example.com', password: 'password123' } } }
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+        expect(json_response['data']).to have_key('access_token')
+        expect(json_response['data']).to have_key('refresh_token')
+        expect(json_response['data']['user']['email']).to eq('test@example.com')
+      end
+    end
 
-        run_test!
+    context 'with invalid credentials' do
+      it 'returns unauthorized error for wrong password' do
+        post '/v1/auth/login', params: { email: 'test@example.com', password: 'wrong_password' }
 
-        schema type: :object,
-          properties: {
-            access_token: { type: :string },
-            refresh_token: { type: :string },
-            user: {
-              type: :object,
-              properties: {
-                id: { type: :integer },
-                full_name: { type: :string },
-                email: { type: :string },
-                role: { type: :string, enum: ['org_owner', 'manager', 'member'] }
-              }
-            }
-          }
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
+        expect(json_response['message']).to eq('Authentication failed')
+        expect(json_response['errors']).to be_present
+        expect(json_response['errors'].first['field']).to eq('password')
+        expect(json_response['errors'].first['message']).to eq('Invalid password')
       end
 
-      response '401', 'Invalid credentials' do
-        let(:credentials) { { user: { email: 'member@example.com', password: 'wrongpassword' } } }
+      it 'returns unauthorized error for non-existent email' do
+        post '/v1/auth/login', params: { email: 'nonexistent@example.com', password: 'password' }
 
-        run_test! do
-          json = JSON.parse(response.body)
-          expect(json['error']).to eq('Unauthorized')
-        end
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
+        expect(json_response['message']).to eq('Authentication failed')
+        expect(json_response['errors']).to be_present
+        expect(json_response['errors'].first['field']).to eq('email')
+        expect(json_response['errors'].first['message']).to eq('Email not found')
+      end
 
-        schema type: :object,
-          properties: {
-            error: { type: :string, example: 'Unauthorized' },
-            message: { type: :string, example: 'Invalid email or password' }
-          }
+      it 'returns unauthorized error for inactive account' do
+        inactive_user = create(:user, email: 'inactive@example.com', password: 'password', password_confirmation: 'password', status: :inactive)
+        post '/v1/auth/login', params: { email: 'inactive@example.com', password: 'password' }
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
+        expect(json_response['message']).to eq('Authentication failed')
+        expect(json_response['errors']).to be_present
+        expect(json_response['errors'].first['field']).to eq('account')
+        expect(json_response['errors'].first['message']).to eq('Account is inactive')
       end
     end
   end
 
-  # spec/requests/v1/authentication_spec.rb (Corrected /v1/logout path)
+  describe 'DELETE /v1/auth/logout' do
+    let!(:user) { create(:user) }
+    let(:auth_headers_hash) { auth_headers(user) }
 
-  path '/v1/logout' do
-    delete 'Logs out the user by revoking the Refresh Token' do
-      tags 'Authentication'
+    it 'invalidates the token by updating the jti' do
+      old_jti = user.jti
 
-      # Document the required X-Refresh-Token header
-      parameter name: :'X-Refresh-Token', in: :header, type: :string, required: true,
-                description: 'Refresh token for user identification and logout.'
+      delete '/v1/auth/logout', headers: auth_headers_hash
 
-      response '200', 'Logout successful' do
+      expect(response).to have_http_status(:ok)
+      expect(json_response['success']).to be true
+      expect(json_response['message']).to eq('Logged out successfully')
+      expect(user.reload.jti).not_to eq(old_jti)
+    end
 
-        # FIX: Use a dynamic 'let' block to set the request header.
-        # This code runs before run_test! and logs the user in to get the refresh token.
-        let(:'X-Refresh-Token') do
-          # 1. Perform login request to generate and retrieve the refresh token
-          post '/v1/login', params: { user: { email: member_user.email, password: 'password123' } }, as: :json
-          JSON.parse(response.body)['refresh_token']
-        end
+    it 'returns unauthorized error if user without token' do
+      delete '/v1/auth/logout'
 
+      expect(response).to have_http_status(:unauthorized)
+      expect(json_response['success']).to be false
+      expect(json_response['message']).to eq('Unauthorized')
+      expect(json_response['errors']).to eq([])
+    end
+  end
 
-        # The assertion remains inside the run_test! block
-        run_test! do
-          json = JSON.parse(response.body)
-          expect(json['message']).to eq('Logged out successfully')
-        end
+  describe 'POST /v1/auth/refresh_token' do
+    let!(:user) { create(:user) }
+    let(:tokens) { JwtService.generate_tokens(user) }
 
-        schema type: :object,
-          properties: {
-            message: { type: :string, example: 'Logged out successfully' }
-          }
+    context 'with valid refresh token' do
+      it 'returns new access_token, refresh_token, and expires_at' do
+        post '/v1/auth/refresh_token', params: { refresh_token: tokens[:refresh_token] }
+
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+        expect(json_response['data']).to have_key('access_token')
+        expect(json_response['data']).to have_key('refresh_token')
+        expect(json_response['data']).to have_key('expires_at')
+      end
+    end
+
+    context 'with invalid refresh token' do
+      it 'returns error for invalid refresh token' do
+        post '/v1/auth/refresh_token', params: { refresh_token: 'invalid_token' }
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
+      end
+
+      it 'returns error with access token instead of refresh token' do
+        post '/v1/auth/refresh_token', params: { refresh_token: tokens[:access_token] }
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
+      end
+    end
+
+    context 'with revoked refresh token' do
+      it 'returns error when user jti has changed' do
+        refresh_token = tokens[:refresh_token]
+        user.update!(jti: SecureRandom.uuid)
+
+        post '/v1/auth/refresh_token', params: { refresh_token: refresh_token }
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(json_response['success']).to be false
       end
     end
   end

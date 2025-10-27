@@ -1,6 +1,6 @@
 module V1
   class EventAnalyticsController < ApplicationController
-    before_action :authenticate_request!
+    before_action :authenticate_user!
     before_action :set_event_and_authorize
 
     # GET /v1/events/:event_id/analytics/total_tickets

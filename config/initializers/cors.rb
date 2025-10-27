@@ -28,5 +28,16 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
 
   end
 
-  # ... (Add production block below)
+  # Configuration for production
+  allow do
+    origins 'https://eventzflow.com',
+            'https://www.eventzflow.com'
+
+    resource '*',
+      headers: :any,
+      methods: [:get, :post, :put, :patch, :delete, :options, :head],
+      credentials: true,
+      expose: ['Authorization', 'X-Refresh-Token'],
+      max_age: 600
+  end
 end

@@ -4,6 +4,94 @@ info:
   title: API V1
   version: v1
 paths:
+  "/v1/analytics/events_overview":
+    get:
+      summary: Get all accessible events with their analytics data
+      tags:
+      - Optimized Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Events overview retrieved successfully for staff (scoped to
+            assigned events)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        status:
+                          type: string
+                        total_tickets:
+                          type: integer
+                          description: Total active tickets (purchased + scanned)
+                        scanned_tickets:
+                          type: integer
+                          description: Total checked-in tickets
+                        unscanned_tickets:
+                          type: integer
+                          description: Total unscanned active tickets
+                        total_revenue:
+                          type: integer
+                          description: Total revenue in cents
+                        last_activity:
+                          type: string
+                          format: date-time
+        '401':
+          description: Unauthorized
+  "/v1/analytics/summary":
+    get:
+      summary: Get aggregated analytics summary across all accessible events
+      tags:
+      - Optimized Analytics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Analytics summary retrieved successfully for staff (scoped
+            to assigned events)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_events:
+                    type: integer
+                    description: Total number of accessible events
+                  active_events:
+                    type: integer
+                    description: Number of published events
+                  total_tickets:
+                    type: integer
+                    description: Total active tickets (purchased + scanned)
+                  total_scanned:
+                    type: integer
+                    description: Total checked-in tickets
+                  total_revenue:
+                    type: integer
+                    description: Total revenue in cents
+                  total_locations:
+                    type: integer
+                    description: Total event locations
+        '401':
+          description: Unauthorized
   "/v1/analytics/total_tickets":
     get:
       summary: Get total tickets count across all accessible events
@@ -189,9 +277,133 @@ paths:
                         count:
                           type: integer
                           description: Sales amount in cents for this date
-  "/v1/register":
+  "/v1/api_keys":
+    get:
+      summary: Lists all API keys for the authenticated user
+      tags:
+      - API Keys
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                      nullable: true
+                    last_used_at:
+                      type: string
+                      format: date_time
+                      nullable: true
+                    created_at:
+                      type: string
+                      format: date_time
+                  required:
+                  - id
+                  - created_at
+        '403':
+          description: Forbidden (Member cannot access)
+        '401':
+          description: Unauthorized (Invalid token)
     post:
-      summary: Registers a new user and retrieves JWT token
+      summary: Creates a new API key for the authenticated user
+      tags:
+      - API Keys
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: API key created successfully without name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  raw_key:
+                    type: string
+                    description: The raw API key - save this securely, it will not
+                      be shown again
+                  message:
+                    type: string
+                required:
+                - id
+                - raw_key
+                - message
+        '422':
+          description: Unprocessable Entity (Name too long)
+        '403':
+          description: Forbidden (Member cannot create API keys)
+        '401':
+          description: Unauthorized (Empty token)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: My Production API Key
+                  description: 'Optional: A descriptive name for the API key'
+  "/v1/api_keys/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: API Key ID
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Revokes (deactivates) an API key
+      tags:
+      - API Keys
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: API key revoked successfully
+        '404':
+          description: Not Found (Member cannot access org_owner key)
+        '403':
+          description: Forbidden (Only org_owner can revoke API keys)
+        '401':
+          description: Unauthorized (Empty token)
+  "/v1/auth/register":
+    post:
+      summary: Registers a new user and retrieves JWT tokens
       tags:
       - Authentication
       parameters: []
@@ -203,41 +415,55 @@ paths:
               schema:
                 type: object
                 properties:
-                  access_token:
+                  success:
+                    type: boolean
+                  message:
                     type: string
-                  refresh_token:
-                    type: string
-                  user:
+                  data:
                     type: object
                     properties:
-                      id:
-                        type: integer
-                      full_name:
+                      access_token:
                         type: string
-                      email:
+                      refresh_token:
                         type: string
-                      role:
+                      expires_at:
                         type: string
-                        enum:
-                        - org_owner
-                        - manager
-                        - member
+                        format: date_time
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
+                          role:
+                            type: string
+                            enum:
+                            - org_owner
+                            - manager
+                            - member
         '422':
-          description: Validation errors
+          description: Duplicate email
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
                   errors:
                     type: array
                     items:
-                      type: string
-                    example:
-                    - Email is invalid
-                    - Password is too short
-                    - Password confirmation doesn't match Password
-                    - Full name can't be blank
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
       requestBody:
         content:
           application/json:
@@ -269,9 +495,9 @@ paths:
                   - full_name
               required:
               - user
-  "/v1/login":
+  "/v1/auth/login":
     post:
-      summary: Authenticates user and retrieves JWT token
+      summary: Authenticates user and retrieves JWT tokens
       tags:
       - Authentication
       parameters: []
@@ -283,38 +509,81 @@ paths:
               schema:
                 type: object
                 properties:
-                  access_token:
+                  success:
+                    type: boolean
+                  message:
                     type: string
-                  refresh_token:
-                    type: string
-                  user:
+                  data:
                     type: object
                     properties:
-                      id:
-                        type: integer
-                      full_name:
+                      access_token:
                         type: string
-                      email:
+                      refresh_token:
                         type: string
-                      role:
+                      expires_at:
                         type: string
-                        enum:
-                        - org_owner
-                        - manager
-                        - member
+                        format: date_time
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
+                          role:
+                            type: string
+                            enum:
+                            - org_owner
+                            - manager
+                            - member
         '401':
-          description: Invalid credentials
+          description: Authentication failed
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  error:
-                    type: string
-                    example: Unauthorized
+                  success:
+                    type: boolean
+                    example: false
                   message:
                     type: string
-                    example: Invalid email or password
+                    example: "Authentication failed"
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                          enum:
+                            - email
+                            - password
+                            - account
+                        message:
+                          type: string
+                          enum:
+                            - "Email not found"
+                            - "Invalid password"
+                            - "Account is inactive"
+                    examples:
+                      email_not_found:
+                        summary: Email not found
+                        value:
+                          - field: "email"
+                            message: "Email not found"
+                      invalid_password:
+                        summary: Invalid password
+                        value:
+                          - field: "password"
+                            message: "Invalid password"
+                      inactive_account:
+                        summary: Account is inactive
+                        value:
+                          - field: "account"
+                            message: "Account is inactive"
       requestBody:
         content:
           application/json:
@@ -335,21 +604,128 @@ paths:
                   - password
               required:
               - user
-  "/v1/logout":
+  "/v1/auth/logout":
     delete:
-      summary: Logs out the user by revoking the Refresh Token
+      summary: Logs out the user by revoking the JWT token
       tags:
       - Authentication
-      parameters:
-      - name: X-Refresh-Token
-        in: header
-        required: true
-        description: Refresh token for user identification and logout.
-        schema:
-          type: string
+      security:
+      - bearerAuth: []
       responses:
         '200':
           description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Logout failed - User not found or not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Logout failed"
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                          example: "user"
+                        message:
+                          type: string
+                          example: "User not found or not authenticated"
+  "/v1/auth/refresh_token":
+    post:
+      summary: Refreshes JWT access token using refresh token
+      tags:
+      - Authentication
+      parameters: []
+      responses:
+        '200':
+          description: Access token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      access_token:
+                        type: string
+                      refresh_token:
+                        type: string
+                      expires_at:
+                        type: string
+                        format: date_time
+        '422':
+          description: Missing refresh token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+        '401':
+          description: Expired refresh token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiJ9...
+              required:
+              - refresh_token
   "/v1/events/{event_id}/analytics/total_tickets":
     get:
       summary: Get total tickets count for an event
@@ -929,7 +1305,7 @@ paths:
           type: integer
       responses:
         '200':
-          description: Returns list of staff assigned to the event
+          description: Manager can view staff if they are event staff
           content:
             application/json:
               schema:
@@ -968,7 +1344,7 @@ paths:
                   - user_id
                   - role
         '403':
-          description: Forbidden for non-manager/owner users
+          description: Forbidden for member users who are not event staff
           content:
             application/json:
               schema:
@@ -1016,9 +1392,9 @@ paths:
           type: integer
       responses:
         '201':
-          description: Staff appointed successfully
+          description: Staff appointed successfully (Org Owner only)
         '403':
-          description: Forbidden
+          description: Forbidden for member
           content:
             application/json:
               schema:
@@ -1082,11 +1458,11 @@ paths:
           type: string
       responses:
         '204':
-          description: Staff removed successfully
+          description: Staff removed successfully (Org Owner only)
         '403':
-          description: Forbidden
+          description: Forbidden for member
         '404':
-          description: Not Found
+          description: Not Found when user not assigned
   "/v1/events":
     post:
       summary: Creates a new event (ORG_OWNER or MANAGER ONLY)
@@ -1103,7 +1479,7 @@ paths:
           type: string
       responses:
         '201':
-          description: Event created by API Key
+          description: Event created with specific event admin
           content:
             application/json:
               schema:
@@ -1147,6 +1523,9 @@ paths:
                   published:
                     type: boolean
                     example: true
+                  visibility:
+                    type: boolean
+                    example: true
                 required:
                 - id
                 - title
@@ -1156,6 +1535,7 @@ paths:
                 - payment_status
                 - price
                 - published
+                - visibility
         '403':
           description: Forbidden (Not Org Owner or Manager)
         '401':
@@ -1179,6 +1559,12 @@ paths:
                 end_date:
                   type: string
                   format: date_time
+                visibility:
+                  type: boolean
+                event_admin_id:
+                  type: integer
+                  description: 'Optional: User ID to assign as event admin. Defaults
+                    to current user if not provided.'
               required:
               - title
               - start_date
@@ -1198,7 +1584,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Empty list for member user (no published or assigned events)
+          description: Empty list for member user (no assigned events)
           content:
             application/json:
               schema:
@@ -1235,7 +1621,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Event found via API Key
+          description: Private event viewable by org owner
           content:
             application/json:
               schema:
@@ -1279,6 +1665,9 @@ paths:
                   published:
                     type: boolean
                     example: true
+                  visibility:
+                    type: boolean
+                    example: true
                 required:
                 - id
                 - title
@@ -1288,6 +1677,9 @@ paths:
                 - payment_status
                 - price
                 - published
+                - visibility
+        '403':
+          description: Private event not viewable by non-staff
         '404':
           description: Event not found
     put:
@@ -1349,6 +1741,9 @@ paths:
                   published:
                     type: boolean
                     example: true
+                  visibility:
+                    type: boolean
+                    example: true
                 required:
                 - id
                 - title
@@ -1358,6 +1753,7 @@ paths:
                 - payment_status
                 - price
                 - published
+                - visibility
         '403':
           description: Forbidden (Member user)
       requestBody:
@@ -1379,6 +1775,8 @@ paths:
                   - draft
                   - published
                   - canceled
+                visibility:
+                  type: boolean
     delete:
       summary: Deletes/Archives the event
       tags:
@@ -1397,44 +1795,6 @@ paths:
           description: Deletion successful
         '403':
           description: Forbidden (Member user)
-  "/v1/refresh":
-    post:
-      summary: Refreshes JWT access token using the Refresh Token header
-      tags:
-      - Authentication
-      parameters:
-      - name: X-Refresh-Token
-        in: header
-        required: true
-        description: Refresh token for generating new access token.
-        schema:
-          type: string
-      responses:
-        '200':
-          description: New access token generated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  access_token:
-                    type: string
-                    description: The new, short-lived JWT Access Token
-                required:
-                - access_token
-        '401':
-          description: Unauthorized (Invalid or missing Refresh Token)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Unauthorized
-                  message:
-                    type: string
-                    example: User not found
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id
@@ -1506,7 +1866,7 @@ paths:
           type: string
       responses:
         '201':
-          description: Ticket created by Manager
+          description: Ticket created by Org Owner
           content:
             application/json:
               schema:
@@ -1536,6 +1896,28 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                  payment_status:
+                    type: string
+                    enum:
+                    - pending
+                    - paid
+                    - failed
+                    - refunded_payment
+                  payment_screenshot_url:
+                    type:
+                    - string
+                    - 'null'
+                    description: URL of payment screenshot if provided
+                  transaction_id:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment transaction ID
+                  payment_method:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -1562,6 +1944,7 @@ paths:
                 - attendee_name
                 - attendee_email
                 - status
+                - payment_status
                 - event_id
                 - ticket_type_id
                 additionalProperties: true
@@ -1589,6 +1972,15 @@ paths:
                     ticket_type_id:
                       type: integer
                       description: ID of the ticket type being purchased/issued
+                    payment_screenshot_url:
+                      type: string
+                      example: https://example.com/payment.jpg
+                    transaction_id:
+                      type: string
+                      example: TXN123456789
+                    payment_method:
+                      type: string
+                      example: credit_card
                     custom_fields_data:
                       type: object
                   required:
@@ -1654,6 +2046,28 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                  payment_status:
+                    type: string
+                    enum:
+                    - pending
+                    - paid
+                    - failed
+                    - refunded_payment
+                  payment_screenshot_url:
+                    type:
+                    - string
+                    - 'null'
+                    description: URL of payment screenshot if provided
+                  transaction_id:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment transaction ID
+                  payment_method:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -1680,6 +2094,7 @@ paths:
                 - attendee_name
                 - attendee_email
                 - status
+                - payment_status
                 - event_id
                 - ticket_type_id
                 additionalProperties: true
@@ -1699,7 +2114,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Ticket successfully updated by staff
+          description: Ticket successfully updated by Manager
           content:
             application/json:
               schema:
@@ -1729,6 +2144,28 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                  payment_status:
+                    type: string
+                    enum:
+                    - pending
+                    - paid
+                    - failed
+                    - refunded_payment
+                  payment_screenshot_url:
+                    type:
+                    - string
+                    - 'null'
+                    description: URL of payment screenshot if provided
+                  transaction_id:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment transaction ID
+                  payment_method:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -1755,6 +2192,7 @@ paths:
                 - attendee_name
                 - attendee_email
                 - status
+                - payment_status
                 - event_id
                 - ticket_type_id
                 additionalProperties: true
@@ -1781,6 +2219,22 @@ paths:
                     attendee_phone:
                       type: string
                       example: "+1234567890"
+                    payment_status:
+                      type: string
+                      enum:
+                      - pending
+                      - paid
+                      - failed
+                      - refunded_payment
+                    payment_screenshot_url:
+                      type: string
+                      example: https://example.com/payment.jpg
+                    transaction_id:
+                      type: string
+                      example: TXN123456789
+                    payment_method:
+                      type: string
+                      example: credit_card
     delete:
       summary: Cancels/Deletes a ticket (Soft Delete)
       tags:
@@ -1852,6 +2306,28 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                  payment_status:
+                    type: string
+                    enum:
+                    - pending
+                    - paid
+                    - failed
+                    - refunded_payment
+                  payment_screenshot_url:
+                    type:
+                    - string
+                    - 'null'
+                    description: URL of payment screenshot if provided
+                  transaction_id:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment transaction ID
+                  payment_method:
+                    type:
+                    - string
+                    - 'null'
+                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -1878,6 +2354,7 @@ paths:
                 - attendee_name
                 - attendee_email
                 - status
+                - payment_status
                 - event_id
                 - ticket_type_id
                 additionalProperties: true

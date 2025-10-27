@@ -8,7 +8,7 @@ require 'swagger_helper'
 # The full EventLocation schema used for POST/GET/:id/PUT success responses.
 EVENT_LOCATION_SCHEMA = {
   type: :object,
-  properties: { 
+  properties: {
     id: { type: :integer, example: 1 },
     event_id: { type: :integer, example: 1 },
     name: { type: :string, example: 'Main Hall' },
@@ -26,7 +26,7 @@ EVENT_LOCATION_SCHEMA = {
         }
       }
     }
-  }, 
+  },
   required: ['id', 'event_id', 'name', 'scan_limit']
 }.freeze
 
@@ -37,14 +37,14 @@ RSpec.describe 'V1::EventLocations', type: :request do
   let(:member_user) { create(:member_user) }
 
   # --- Setup Tokens ---
-  let(:org_owner_token) { JsonWebToken.encode(user_id: org_owner_user.id) }
-  let(:manager_token) { JsonWebToken.encode(user_id: manager_user.id) }
-  let(:member_token) { JsonWebToken.encode(user_id: member_user.id) }
+  let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
+  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup API Keys ---
   let!(:manager_api_key) { ApiKey.create_key_for_user(manager_user) }
   let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user) }
-  
+
   # --- Setup Event ---
   let!(:event) do
     event = create(:event, title: "Test Event", payment_status: :paid, published: false)
@@ -82,11 +82,11 @@ RSpec.describe 'V1::EventLocations', type: :request do
   end
 
   let(:update_params) do
-    { 
-      event_location: { 
+    {
+      event_location: {
         name: 'Updated Location Name',
         scan_limit: 150
-      } 
+      }
     }
   end
 
@@ -111,16 +111,16 @@ RSpec.describe 'V1::EventLocations', type: :request do
       tags 'Event Locations'
       produces 'application/json'
       security [{ BearerAuth: [] }]
-      
+
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
       # 1. Success (Manager JWT)
       response '200', 'Event locations returned' do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
-        
-        schema type: :array, items: EVENT_LOCATION_SCHEMA 
-        
+
+        schema type: :array, items: EVENT_LOCATION_SCHEMA
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json.count).to be >= 2
@@ -128,12 +128,12 @@ RSpec.describe 'V1::EventLocations', type: :request do
           expect(location_names).to include('Main Hall', 'VIP Lounge')
         end
       end
-      
+
       # 2. Success (API Key)
       response '200', 'Event locations returned via API Key' do
         let(:Authorization) { manager_api_key }
         let(:event_id) { event.id }
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json.count).to be >= 2
@@ -177,8 +177,8 @@ RSpec.describe 'V1::EventLocations', type: :request do
         properties: {
           name: { type: :string, example: 'Main Stage' },
           scan_limit: { type: :integer, example: 200 },
-          member_ids: { 
-            type: :array, 
+          member_ids: {
+            type: :array,
             items: { type: :integer },
             example: [1, 2, 3],
             description: 'Optional: Array of user IDs to assign as location members'
@@ -192,9 +192,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:event_location) { valid_create_params }
-        
+
         schema EVENT_LOCATION_SCHEMA
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('New Location')
@@ -207,7 +207,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:event_location) { valid_create_params_with_members }
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('New Location with Members')
@@ -229,7 +229,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:event_location) { invalid_params }
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['errors']).to be_present
@@ -249,7 +249,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:event_location) { { event_location: { name: 'Main Hall', scan_limit: 100 } } }
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['errors']).to be_present
@@ -271,7 +271,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
       tags 'Event Locations'
       produces 'application/json'
       security [{ BearerAuth: [] }]
-      
+
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
       # 1. Success (JWT)
@@ -279,16 +279,16 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
-        
+
         schema EVENT_LOCATION_SCHEMA
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('Main Hall')
           expect(json['scan_limit']).to eq(100)
         end
       end
-      
+
       # 2. Success (API Key)
       response '200', 'Event location found via API Key' do
         let(:Authorization) { manager_api_key }
@@ -320,15 +320,15 @@ RSpec.describe 'V1::EventLocations', type: :request do
       consumes 'application/json'
       produces 'application/json'
       security [{ BearerAuth: [] }]
-      
+
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
       parameter name: :event_location, in: :body, schema: {
         type: :object,
-        properties: { 
+        properties: {
           name: { type: :string, example: 'Updated Hall Name' },
           scan_limit: { type: :integer, example: 250 },
-          member_ids: { 
-            type: :array, 
+          member_ids: {
+            type: :array,
             items: { type: :integer },
             example: [1, 2, 3],
             description: 'Optional: Array of user IDs to assign as location members'
@@ -342,9 +342,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
         let(:event_location) { update_params }
-        
+
         schema EVENT_LOCATION_SCHEMA
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('Updated Location Name')
@@ -367,7 +367,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
         let(:event_location) { invalid_params }
-        
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json['errors']).to be_present
@@ -397,7 +397,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
     delete 'Deletes an event location' do
       tags 'Event Locations'
       security [{ BearerAuth: [] }]
-      
+
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
       # 1. Success (Manager JWT)
@@ -405,7 +405,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
-        
+
         run_test! do
           expect(EventLocation.exists?(event_location_1.id)).to be_falsey
         end

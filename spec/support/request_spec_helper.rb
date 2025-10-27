@@ -5,4 +5,9 @@ module RequestSpecHelper
   rescue JSON::ParserError
     {}
   end
+
+  # Alias for consistency with AuthHelpers
+  def json_response
+    json
+  end
 end

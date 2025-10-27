@@ -30,8 +30,8 @@ class V1::TeamMembersController < ApplicationController
     if @team_member.save
       render json: format_user(@team_member), status: :created
     else
-      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages }, 
-             status: :unprocessable_entity
+      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages },
+             status: :unprocessable_content
     end
   end
 
@@ -40,22 +40,22 @@ class V1::TeamMembersController < ApplicationController
     if @team_member.update(team_member_update_params)
       render json: format_user(@team_member), status: :ok
     else
-      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages }, 
-             status: :unprocessable_entity
+      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages },
+             status: :unprocessable_content
     end
   end
 
   # PATCH /v1/team_members/:id/toggle_status
   def toggle_status
     unless params[:status].in?(['active', 'inactive'])
-      return render json: { error: 'Invalid status value' }, status: :unprocessable_entity
+      return render json: { error: 'Invalid status value' }, status: :unprocessable_content
     end
 
     if @team_member.update(status: params[:status])
       render json: format_user(@team_member), status: :ok
     else
-      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages }, 
-             status: :unprocessable_entity
+      render json: { error: 'Validation failed', errors: @team_member.errors.full_messages },
+             status: :unprocessable_content
     end
   end
 
@@ -63,7 +63,7 @@ class V1::TeamMembersController < ApplicationController
   def destroy
     # Prevent deleting yourself
     if @team_member.id == current_user.id
-      return render json: { error: 'You cannot delete your own account' }, status: :unprocessable_entity
+      return render json: { error: 'You cannot delete your own account' }, status: :unprocessable_content
     end
 
     @team_member.destroy
@@ -80,37 +80,37 @@ class V1::TeamMembersController < ApplicationController
 
   # def authorize_org_owner!
   #   unless current_user.is_org_owner?
-  #     render json: { error: 'Forbidden', message: 'Only organization owners can perform this action' }, 
+  #     render json: { error: 'Forbidden', message: 'Only organization owners can perform this action' },
   #            status: :forbidden
   #   end
   # end
 
   def team_member_create_params
     params.require(:team_member).permit(
-      :full_name, 
-      :email, 
-      :phone, 
-      :password, 
-      :password_confirmation, 
+      :full_name,
+      :email,
+      :phone,
+      :password,
+      :password_confirmation,
       :role
     )
   end
 
   def team_member_update_params
     permitted = params.require(:team_member).permit(
-      :full_name, 
-      :email, 
-      :phone, 
+      :full_name,
+      :email,
+      :phone,
       :role
     )
-    
+
     # Only include password fields if password is provided
     if params[:team_member][:password].present?
       permitted.merge!(
         params.require(:team_member).permit(:password, :password_confirmation)
       )
     end
-    
+
     permitted
   end
 

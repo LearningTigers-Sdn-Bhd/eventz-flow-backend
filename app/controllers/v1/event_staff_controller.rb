@@ -1,6 +1,6 @@
 module V1
   class EventStaffController < ApplicationController
-    before_action :authenticate_request!
+    before_action :authenticate_user!
     before_action :set_event
     before_action :authorize_staff_view!, only: [:index]
     before_action :authorize_staff_management!, only: [:create, :destroy]
@@ -8,7 +8,7 @@ module V1
     # GET /v1/events/:event_id/staff
     def index
       staff_assignments = @event.event_assignments.includes(:user)
-      
+
       render json: staff_assignments.as_json(
         only: [:id, :event_id, :user_id, :role],
         include: {
@@ -22,7 +22,7 @@ module V1
     # POST /v1/events/:event_id/staff
     def create
       assigned_user = User.find(staff_assignment_params[:user_id])
-      
+
       # Find or initialize to handle updates (e.g., changing team member to admin)
       @assignment = @event.event_assignments.find_or_initialize_by(user: assigned_user)
       @assignment.role = staff_assignment_params[:role]
@@ -30,14 +30,14 @@ module V1
       if @assignment.save
         render json: @assignment.as_json(only: [:id, :event_id, :user_id, :role]), status: :created
       else
-        render json: { error: 'Validation Error', errors: @assignment.errors.full_messages }, status: :unprocessable_entity
+        render json: { error: 'Validation Error', errors: @assignment.errors.full_messages }, status: :unprocessable_content
       end
     end
 
     # DELETE /v1/events/:event_id/staff/:user_id
     def destroy
       assigned_user = User.find(params[:user_id])
-      
+
       @assignment = @event.event_assignments.find_by(user: assigned_user)
 
       if @assignment
@@ -69,7 +69,7 @@ module V1
         user_id: current_user.id,
         role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
       )
-      
+
       unless current_user.is_org_owner_or_manager? || is_event_staff
         render json: { error: 'Forbidden', message: 'Only an organization owner, manager, or event staff can view event staff.' }, status: :forbidden
       end

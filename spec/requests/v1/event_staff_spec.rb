@@ -23,9 +23,9 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   let(:member_user)  { create(:member_user) }
 
   # use the real encoder to generate valid tokens
-  let(:auth_header_org_owner) { "Bearer #{JsonWebToken.encode(user_id: org_owner.id)}" }
-  let(:auth_header_manager) { "Bearer #{JsonWebToken.encode(user_id: manager.id)}" }
-  let(:auth_header_member)  { "Bearer #{JsonWebToken.encode(user_id: member_user.id)}" }
+  let(:auth_header_org_owner) { "Bearer #{JwtService.generate_tokens(org_owner)[:access_token]}" }
+  let(:auth_header_manager) { "Bearer #{JwtService.generate_tokens(manager)[:access_token]}" }
+  let(:auth_header_member)  { "Bearer #{JwtService.generate_tokens(member_user)[:access_token]}" }
 
   let(:common_headers) { |auth| { 'Authorization' => auth, 'Content-Type' => 'application/json' } }
 
@@ -86,7 +86,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
 
       response '200', 'Manager can view staff if they are event staff' do
         let(:Authorization) { auth_header_manager }
-        
+
         schema type: :array,
           items: {
             type: :object,
@@ -97,7 +97,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
               role: { type: :string }
             }
           }
-        
+
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data).to be_an(Array)
@@ -110,7 +110,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         let(:Authorization) { auth_header_member }
         let(:other_event) { create(:event) }
         let(:event_id) { other_event.id }
-        
+
         schema EVENT_STAFF_ERROR_SCHEMA
         run_test!
       end

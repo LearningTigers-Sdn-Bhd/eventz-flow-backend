@@ -5,11 +5,11 @@ module V1
   # 2. Event-specific ticket types - accessible via /v1/events/:event_id/ticket_types
   class TicketTypesController < ApplicationController
     # Ensure all actions are authenticated before proceeding
-    before_action :authenticate_request!
-    
+    before_action :authenticate_user!
+
     # Load and authorize the parent event if event_id is present
     before_action :set_event_and_authorize, if: :event_scoped?
-    
+
     # Load the specific ticket type for actions that require it
     before_action :set_ticket_type, only: [:show, :update, :destroy]
 
@@ -46,11 +46,11 @@ module V1
         @ticket_type = TicketType.new(ticket_type_params)
         @ticket_type.event_id = nil # Ensure it's global
       end
-      
+
       if @ticket_type.save
         render json: @ticket_type, status: :created
       else
-        render json: @ticket_type.errors, status: :unprocessable_entity
+        render json: @ticket_type.errors, status: :unprocessable_content
       end
     end
 
@@ -69,7 +69,7 @@ module V1
       if @ticket_type.update(ticket_type_params)
         render json: @ticket_type, status: :ok
       else
-        render json: @ticket_type.errors, status: :unprocessable_entity
+        render json: @ticket_type.errors, status: :unprocessable_content
       end
     end
 
@@ -84,10 +84,10 @@ module V1
           return
         end
       end
-      
+
       # Check if there are any tickets sold for this ticket type
       if @ticket_type.tickets.exists?
-        render json: { error: 'Cannot delete ticket type with existing tickets' }, status: :unprocessable_entity
+        render json: { error: 'Cannot delete ticket type with existing tickets' }, status: :unprocessable_content
       else
         @ticket_type.destroy
         head :no_content
@@ -104,7 +104,7 @@ module V1
     def set_event
       @event = Event.find(params[:event_id])
     end
-    
+
     def set_event_and_authorize
       set_event
       authorize @event, :show? # User must at least be able to view the event
