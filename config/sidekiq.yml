@@ -1,0 +1,30 @@
+# Sidekiq Queue Configuration
+# Controls how many jobs run simultaneously and which queues to process
+
+# Default concurrency (number of threads processing jobs)
+:concurrency: 5
+
+# Maximum number of retries for failed jobs
+:max_retries: 3
+
+# Job timeout in seconds
+:timeout: 25
+
+# Queues to process (in order of priority)
+# Higher priority queues are checked more frequently
+:queues:
+  - default
+  - mailers
+  - webhooks
+
+# Environment-specific settings
+development:
+  :concurrency: 2
+  :timeout: 30
+
+test:
+  :concurrency: 1
+
+production:
+  :concurrency: 10
+  :timeout: 25

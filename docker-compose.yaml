@@ -39,6 +39,27 @@ services:
     networks:
       - coolify
 
+  sidekiq:
+    build: .
+    image: eventz-flow-backend:latest
+    command: bundle exec sidekiq
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *rails-env
+    volumes:
+      - app-storage:/rails/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bundle exec sidekiqctl status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - coolify
 
   postgres-db:
     image: pgvector/pgvector:pg18-trixie
@@ -57,6 +78,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -70,6 +94,7 @@ services:
 volumes:
   pg-data:
   app-storage:
+  redis-data:
 
 networks:
   coolify:
