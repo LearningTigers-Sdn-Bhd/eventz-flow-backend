@@ -10,6 +10,9 @@ class Event < ApplicationRecord
   has_many :ticket_types, dependent: :destroy
   has_many :tickets, dependent: :destroy
 
+  # --- Callbacks ---
+  after_commit :send_webhook_notification, on: [:create, :update]
+
   # --- Validations ---
   validates :title, presence: true, length: { maximum: 100 }
   validates :status, presence: true
@@ -55,12 +58,66 @@ class Event < ApplicationRecord
     # Ensure ONLY the roles that can update are listed
     ['event_admin'].include?(assignment.role)
   end
+
+  def send_webhook_notification
+    return unless webhook_url.present?
+    
+    event_type = determine_event_type
+    return if event_type.nil?  # Skip if no significant change
+    
+    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+  end
   
   private
 
   def end_date_must_be_after_start_date
     if start_date.present? && end_date.present? && end_date < start_date
       errors.add(:end_date, 'must be after the start date')
+    end
+  end
+
+  def determine_event_type
+    return 'event.created' if previous_changes[:id].present?
+    return 'event.published' if previous_changes[:status] == [0, 1] || previous_changes[:published] == [false, true]
+    return 'event.canceled' if previous_changes[:status]&.last == 2
+    return 'event.updated' if significant_changes?
+    
+    nil  # No webhook for minor changes
+  end
+  
+  def significant_changes?
+    significant_fields = %w[title start_date end_date description status webhook_url visibility]
+    (previous_changes.keys & significant_fields).any?
+  end
+  
+  def build_webhook_payload(event_type)
+    {
+      # === WEBHOOK METADATA ===
+      event_type: event_type,
+      webhook_id: SecureRandom.uuid,
+      timestamp: Time.now.utc.iso8601,
+      api_version: "v1",
+      
+      # === EVENT DATA (Basic info only) ===
+      event: {
+        id: self.id,
+        title: self.title,
+        status: self.status,
+        start_date: self.start_date&.iso8601,
+        end_date: self.end_date&.iso8601
+      },
+      
+      # === CHANGES (what actually changed) ===
+      changes: format_changes
+    }.compact
+  end
+  
+  def format_changes
+    self.previous_changes.except('updated_at').transform_values do |change|
+      {
+        from: change[0],
+        to: change[1]
+      }
     end
   end
 end

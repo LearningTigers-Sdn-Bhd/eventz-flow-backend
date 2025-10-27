@@ -39,6 +39,8 @@ class Ticket < ApplicationRecord
   scope :unscanned, -> { active.where(checked_in: false) }
   scope :within_date_range, ->(range) { where(created_at: range) }
 
+  after_commit :send_webhook_notification, on: [:create, :update]
+
   # --- Class Methods ---
   def self.total_revenue_cents
     joins(:ticket_type).sum("(ticket_types.price * 100.0)")
@@ -65,11 +67,96 @@ class Ticket < ApplicationRecord
     end
   end
 
+  def send_webhook_notification
+    webhook_url = event.webhook_url
+    return unless webhook_url.present?
+
+    event_type = determine_event_type
+    return if event_type.nil?  # Skip if no significant change
+
+    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+  end
+
   # --- Private Methods ---
   private
 
   def set_public_id
     # Generates a UUID only if it hasn't been set by the database or another source.
     self.public_id ||= SecureRandom.uuid
+  end
+
+  def determine_event_type
+    return 'ticket.created' if previous_changes[:id].present?
+    
+    # Specific update events
+    return 'ticket.scanned' if previous_changes[:checked_in] == [false, true]
+    return 'ticket.refunded' if previous_changes[:status]&.last == 2  # refunded enum value
+    return 'ticket.canceled' if previous_changes[:status]&.last == 3  # canceled enum value
+    return 'ticket.payment_confirmed' if previous_changes[:payment_status] == [0, 1]  # pending to paid
+    
+    'ticket.updated'
+  end
+
+  def build_webhook_payload(event_type)
+    # For creation, send full data. For updates, send minimal data + changes
+    is_creation = event_type == 'ticket.created'
+    
+    payload = {
+      event_type: event_type,
+      webhook_id: SecureRandom.uuid,
+      timestamp: Time.now.utc.iso8601,
+      api_version: "v1",
+      
+      ticket: {
+        id: self.id,
+        public_id: self.public_id,
+        status: self.status,
+        payment_status: self.payment_status,
+        attendee_name: self.attendee_name,
+        attendee_email: self.attendee_email,
+        attendee_phone: self.attendee_phone
+      },
+      
+      event: {
+        id: self.event.id,
+        title: self.event.title
+      }
+    }
+    
+    # Add full context on creation
+    if is_creation
+      payload[:ticket].merge!(
+        checked_in: self.checked_in,
+        payment_method: self.payment_method,
+        transaction_id: self.transaction_id,
+        custom_fields: self.custom_fields_data,
+        created_at: self.created_at.iso8601
+      )
+      
+      payload[:ticket_type] = {
+        id: self.ticket_type.id,
+        name: self.ticket_type.name,
+        price: self.ticket_type.price.to_f
+      }
+      
+      payload[:event].merge!(
+        start_date: self.event.start_date&.iso8601,
+        end_date: self.event.end_date&.iso8601
+      )
+    else
+      # Add changes for updates
+      payload[:changes] = format_changes
+    end
+    
+    payload.compact
+  end
+
+  def format_changes
+    self.previous_changes.except('updated_at').transform_values do |change|
+      {
+        from: change[0],
+        to: change[1]
+      }
+    end
   end
 end
