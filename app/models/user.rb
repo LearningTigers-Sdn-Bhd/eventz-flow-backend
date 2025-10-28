@@ -37,6 +37,7 @@ class User < ApplicationRecord
 
   # 3. SECURITY
   has_many :api_keys, dependent: :destroy
+  has_many :email_verifications, dependent: :destroy
 
   # --- Global Role Helper Methods (FIXED LOGIC) ---
 
@@ -78,6 +79,12 @@ class User < ApplicationRecord
     event_assignments.where(event_id: event.id)
                      .where(role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]])
                      .exists?
+  end
+
+  # --- Email Verification ---
+
+  def email_verified?
+    email_verified_at.present?
   end
 
   # --- JTI Management ---

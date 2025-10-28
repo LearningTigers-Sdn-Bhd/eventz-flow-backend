@@ -618,4 +618,31 @@ RSpec.describe 'V1::Analytics', type: :request do
       end
     end
   end
+
+  # =========================================================================
+  # Email Verification Requirement Tests
+  # =========================================================================
+
+  describe 'Email Verification Enforcement for Analytics' do
+    let(:unverified_user) { create(:user, :unverified) }
+    let(:unverified_token) { JwtService.generate_tokens(unverified_user)[:access_token] }
+
+    context 'when unverified user tries to access analytics' do
+      it 'returns 403 Forbidden for events_overview' do
+        get '/v1/analytics/events_overview', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Email verification required')
+      end
+
+      it 'returns 403 Forbidden for summary' do
+        get '/v1/analytics/summary', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Email verification required')
+      end
+    end
+  end
 end

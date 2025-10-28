@@ -39,6 +39,7 @@ superadmin = User.find_or_create_by!(email: 's@s.com') do |u|
   u.password = '12345678'
   u.role = :org_owner
   u.full_name = 'The Super System Owner'
+  u.email_verified_at = Time.current
 end
 puts "Created Superadmin: #{superadmin.full_name}"
 
@@ -48,6 +49,7 @@ managers = NUM_MANAGERS.times.map do |i|
     u.password = '12345678'
     u.role = :manager
     u.full_name = Faker::Name.name + " (Manager #{i+1})"
+    u.email_verified_at = Time.current
   end
 end
 puts "Created #{managers.count} Managers."
@@ -58,6 +60,7 @@ team_members = NUM_TEAM_MEMBERS.times.map do |i|
     u.password = '12345678'
     u.role = :member
     u.full_name = Faker::Name.name + " (Staff #{i+1})"
+    u.email_verified_at = Time.current
   end
 end
 puts "Created #{team_members.count} Team Members."
@@ -67,6 +70,7 @@ unauthorized_member = User.find_or_create_by!(email: 'unauthorized@example.com')
   u.password = '12345678'
   u.role = :member
   u.full_name = 'Unauthorized Member'
+  u.email_verified_at = Time.current
 end
 
 # E. Participant (For ticket ownership)
@@ -74,6 +78,7 @@ participant_user = User.find_or_create_by!(email: 'participant@example.com') do 
   u.password = '12345678'
   u.role = :member
   u.full_name = 'Sarah Ticket Holder'
+  u.email_verified_at = Time.current
 end
 puts "Created participant user: #{participant_user.full_name}"
 

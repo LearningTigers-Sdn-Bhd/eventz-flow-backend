@@ -1,6 +1,5 @@
 module V1
   class AnalyticsController < ApplicationController
-    before_action :authenticate_user!
     before_action :authorize_global_analytics, only: [
       :total_tickets,
       :total_scanned_tickets,

@@ -7,9 +7,15 @@ FactoryBot.define do
 		password_confirmation { "secure_password123" }
 		full_name { Faker::Name.name }
 		phone { Faker::PhoneNumber.phone_number }
+		email_verified_at { Time.current }
 
 		# Default role is the base user role
 		role { :member }
+
+		# Trait for unverified users
+		trait :unverified do
+			email_verified_at { nil }
+		end
 
 		# --- Role-Specific Factories (for convenience) ---
 
@@ -39,8 +45,8 @@ FactoryBot.define do
 
 
 		# DEPRECATED/Removed Factories:
-		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user' 
-		# factories are no longer used, as their logic is covered by :org_owner, :manager_user, 
+		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user'
+		# factories are no longer used, as their logic is covered by :org_owner, :manager_user,
 		# and the default :user/:member_user factory.
 	end
 end

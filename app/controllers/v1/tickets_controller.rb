@@ -1,8 +1,5 @@
 module V1
   class TicketsController < ApplicationController
-    # Ensure all actions are authenticated before proceeding
-    before_action :authenticate_user!
-
     # Load and Authorize the parent event before every action
     before_action :set_event_and_authorize, except: [:global_check_in]
 

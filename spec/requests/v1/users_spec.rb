@@ -26,26 +26,41 @@ ERROR_SCHEMA = {
 USER_SCHEMA = {
   type: :object,
   properties: {
-    id: { type: :integer },
-    email: { type: :string, format: :email },
-    full_name: { type: :string, nullable: true },
-    phone: { type: :string, nullable: true }
+    success: { type: :boolean },
+    message: { type: :string },
+    data: {
+      type: :object,
+      properties: {
+        id: { type: :integer },
+        email: { type: :string, format: :email },
+        full_name: { type: :string, nullable: true },
+        phone: { type: :string, nullable: true },
+        role: { type: :string },
+        email_verified: { type: :boolean }
+      },
+      required: ['id', 'email']
+    }
   },
-  required: ['id', 'email']
+  required: ['success', 'message', 'data']
 }.freeze
 
 # Schema for POST /v1/users (Registration) response which includes a token
 USER_AUTH_SCHEMA = {
   type: :object,
   properties: {
-    access_token: { type: :string, description: 'JWT token for immediate authentication.' },
-    user: USER_SCHEMA.merge(
-      properties: USER_SCHEMA[:properties].merge(
-        role: { type: :string, description: 'The assigned user role (e.g., member).' }
-      ),
-      required: USER_SCHEMA[:required] + ['role']
-    )
-  }
+    user: {
+      type: :object,
+      properties: {
+        id: { type: :integer },
+        full_name: { type: :string },
+        email: { type: :string },
+        role: { type: :string }
+      },
+      required: ['id', 'full_name', 'email', 'role']
+    },
+    token: { type: :string, description: 'JWT token for immediate authentication.' }
+  },
+  required: ['user', 'token']
 }.freeze
 
 
@@ -159,6 +174,35 @@ RSpec.describe 'V1::Users', type: :request do
         schema ERROR_SCHEMA
 
         run_test!
+      end
+    end
+  end
+
+  # =========================================================================
+  # Email Verification Requirement Tests
+  # =========================================================================
+
+  describe 'Email Verification Enforcement for Users' do
+    let(:unverified_user) { create(:user, :unverified) }
+    let(:unverified_token) { JwtService.generate_tokens(unverified_user)[:access_token] }
+
+    context 'when unverified user tries to access profile' do
+      it 'returns 403 Forbidden for show' do
+        get '/v1/users/profile', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Email verification required')
+      end
+
+      it 'returns 403 Forbidden for update' do
+        put '/v1/users/profile',
+            headers: { 'Authorization' => "Bearer #{unverified_token}" },
+            params: { user: { full_name: 'Updated Name' } }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Email verification required')
       end
     end
   end

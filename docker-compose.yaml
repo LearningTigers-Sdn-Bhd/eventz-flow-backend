@@ -9,6 +9,16 @@ x-rails-env: &rails-env
   RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
   SECRET_KEY_BASE: ${SECRET_KEY_BASE}
   DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db:5432/eventz_flow_api_production}
+  # Mail configuration
+  MAIL_HOST: ${MAIL_HOST:-localhost}
+  SMTP_ADDRESS: ${SMTP_ADDRESS:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_DOMAIN: ${SMTP_DOMAIN:-localhost}
+  SMTP_USERNAME: ${SMTP_USERNAME}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  SMTP_AUTH: ${SMTP_AUTH:-plain}
+  SMTP_ENABLE_STARTTLS: ${SMTP_ENABLE_STARTTLS:-true}
+  SMTP_SSL_VERIFY: ${SMTP_SSL_VERIFY:-peer}
 
 x-db-env: &db-env
   POSTGRES_DB: eventz_flow_api_production
@@ -75,7 +85,6 @@ services:
     networks:
       - coolify
 
-
   redis:
     image: redis:7-alpine
     volumes:
@@ -89,7 +98,6 @@ services:
       start_period: 10s
     networks:
       - coolify
-
 
 volumes:
   pg-data:

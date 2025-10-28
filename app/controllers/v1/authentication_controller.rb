@@ -2,20 +2,25 @@
 module V1
   class AuthenticationController < ApplicationController
     skip_before_action :authenticate_user!, only: %i[login register refresh_token]
+    skip_before_action :require_verified_email!, only: %i[logout send_verification_code verify_email refresh_token]
 
     def register
       @user = User.new(register_params)
       authorize @user, :create?
 
       if @user.save
+        # Generate and send verification code
+        code = EmailVerification.create_for_user(@user)
+        UserMailer.verification_code(@user, code).deliver_now
+
         tokens = JwtService.generate_tokens(@user)
 
         success_response(
           data: {
-            user: @user.slice(:id, :full_name, :email, :role),
+            user: @user.slice(:id, :full_name, :email, :role).merge(email_verified: @user.email_verified?),
             **tokens
           },
-          message: 'User registered successfully',
+          message: 'User registered successfully. Please verify your email.',
           status: :created
         )
       else
@@ -36,7 +41,7 @@ module V1
 
       success_response(
         data: {
-          user: user.slice(:id, :full_name, :email, :role),
+          user: user.slice(:id, :full_name, :email, :role).merge(email_verified: user.email_verified?),
           **tokens
         },
         message: 'Login successful',
@@ -80,6 +85,41 @@ module V1
         errors: [{ field: 'user', message: 'User not found or not authenticated' }],
         status: :unauthorized
       )
+    end
+  end
+
+  # POST /v1/auth/send-verification-code
+  def send_verification_code
+    # Generate and send new verification code for current user
+    code = EmailVerification.create_for_user(current_user)
+    UserMailer.verification_code(current_user, code).deliver_now
+
+    success_response(
+      message: 'Verification code sent successfully',
+      status: :ok
+    )
+  end
+
+  # POST /v1/auth/verify-email
+  def verify_email
+    code = params[:code]
+    if code.blank?
+      return error_response(message: 'Verification code is required', errors: [{ field: 'code', message: 'Verification code is required' }], status: :unprocessable_content)
+    end
+
+    if EmailVerification.verify_code(current_user, code)
+      # Reload user to get updated email_verified_at
+      current_user.reload
+
+      success_response(
+        data: {
+          user: current_user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: current_user.email_verified?)
+        },
+        message: 'Email verified successfully',
+        status: :ok
+      )
+    else
+      error_response(message: 'Invalid verification code', errors: [{ field: 'code', message: 'Invalid or expired code' }], status: :unauthorized)
     end
   end
 

@@ -377,4 +377,35 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
     end
   end
+
+  # =========================================================================
+  # Email Verification Requirement Tests
+  # =========================================================================
+
+  describe 'Email Verification Enforcement for Tickets' do
+    let(:unverified_user) { create(:user, :unverified) }
+    let(:unverified_token) { JwtService.generate_tokens(unverified_user)[:access_token] }
+
+    context 'when unverified user tries to access tickets' do
+      it 'returns 403 Forbidden for index' do
+        get "/v1/events/#{manager_event.id}/tickets", headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        # Email verification check happens before authorization
+        expect(json['message']).to eq('Email verification required')
+      end
+
+      it 'returns 403 Forbidden for show' do
+        get "/v1/events/#{manager_event.id}/tickets/#{purchased_ticket.public_id}",
+            headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        # Email verification check happens before authorization
+        expect(json['message']).to eq('Email verification required')
+      end
+    end
+  end
 end
