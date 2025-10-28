@@ -13,11 +13,13 @@ Rails.application.routes.draw do
   # API Namespace V1
   # ====================================================================
   namespace :v1 do
-    # Authentication endpoints (Login)
+    # Authentication endpoints
     post 'auth/login', to: 'authentication#login'
     post 'auth/register', to: 'authentication#register'
     post 'auth/refresh_token', to: 'authentication#refresh_token'
     delete 'auth/logout', to: 'authentication#logout'
+    post 'auth/send-verification-code', to: 'authentication#send_verification_code'
+    post 'auth/verify-email', to: 'authentication#verify_email'
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
