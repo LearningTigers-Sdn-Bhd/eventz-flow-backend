@@ -6,13 +6,18 @@ module Authenticable
 
     included do
       before_action :authenticate_user!
+      before_action :require_verified_email!
     end
 
     private
 
+    # Track if user was authenticated via API key
+    attr_reader :authenticated_via_api_key
+
     # Authenticate user from JWT token or API Key
     def authenticate_user!
       header = request.headers['Authorization']
+      @authenticated_via_api_key = false
       return render_unauthorized unless header
 
       # Try JWT first (standard Bearer)
@@ -36,10 +41,27 @@ module Authenticable
       # Try raw API Key (no Bearer prefix) - use BCrypt-based authentication
       if header.length > 30 && !header.include?(' ')
         @current_user = ApiKey.authenticate_by_key(header)
-        return if @current_user.present?
+        if @current_user.present?
+          @authenticated_via_api_key = true
+          return
+        end
       end
 
       render_unauthorized
+    end
+
+    # Require email verification unless authenticated via API key
+    def require_verified_email!
+      return if authenticated_via_api_key
+      return unless @current_user.present?
+
+      unless @current_user.email_verified?
+        render json: {
+          success: false,
+          message: 'Email verification required',
+          errors: [{ field: 'email_verification', message: 'Please verify your email before accessing this resource' }]
+        }, status: :forbidden
+      end
     end
 
     # Get current authenticated user

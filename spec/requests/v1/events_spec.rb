@@ -364,4 +364,47 @@ RSpec.describe 'V1::Events', type: :request do
       end
     end
   end
+
+  # =========================================================================
+  # Email Verification Requirement Tests
+  # =========================================================================
+
+  describe 'Email Verification Enforcement' do
+    let(:unverified_user) { create(:user, :unverified) }
+    let(:unverified_token) { JwtService.generate_tokens(unverified_user)[:access_token] }
+
+    context 'when unverified user tries to access events' do
+      it 'returns 403 Forbidden for index' do
+        get '/v1/events', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['message']).to eq('Email verification required')
+      end
+
+      it 'returns 403 Forbidden for show' do
+        event = create(:event)
+        get "/v1/events/#{event.id}", headers: { 'Authorization' => "Bearer #{unverified_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Email verification required')
+      end
+    end
+
+    context 'when API key is used' do
+      let!(:manager_user) { create(:manager_user) }
+      let!(:api_key) { ApiKey.create_key_for_user(manager_user) }
+
+      it 'bypasses email verification for API key authentication' do
+        event = create(:event)
+        create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+
+        get "/v1/events/#{event.id}", headers: { 'Authorization' => api_key }
+
+        expect(response).to have_http_status(:ok)
+      end
+    end
+  end
 end
