@@ -50,7 +50,9 @@ module V1
 
       if @event_location.update(event_location_params)
         # Update members if provided
-        assign_members if params[:event_location][:member_ids].present?
+        # assign_members if params[:event_location][:member_ids].present?
+
+        assign_members if params[:event_location].key?(:member_ids)
 
         render json: @event_location.as_json(include: {
           members: { only: [:id, :full_name, :email] }
