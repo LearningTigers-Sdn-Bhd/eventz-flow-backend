@@ -1,14 +1,15 @@
-Email Verification
+Email verification
 
-Hello <%= @user.full_name %>,
+Hello <%= (@user.respond_to?(:full_name) && @user.full_name.present?) ? @user.full_name : 'there' %>,
 
-Thank you for registering with EventzFlow! To complete your registration, please verify your email address by entering the following 6-digit code:
+Use this code to verify your email:
 
 <%= @code %>
 
-This code will expire in <%= @expires_in %> minutes.
+This code expires in <%= @expires_in %> minutes.
 
-If you didn't create an account with EventzFlow, please ignore this email.
+If you didn’t request this, you can safely ignore this email.
 
----
-EventzFlow Team
+— EventzFlow Team
+
+https://eventzflow.com
