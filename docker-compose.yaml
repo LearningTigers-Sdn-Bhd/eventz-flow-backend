@@ -49,10 +49,6 @@ services:
       start_period: 40s
     networks:
       - coolify
-    labels:
-      - traefik.http.middlewares.eventzflow-redirect-www-to-non-www.redirectregex.regex=^(http|https)://www\.(.+)
-      - traefik.http.middlewares.eventzflow-redirect-www-to-non-www.redirectregex.replacement=${1}://${2}
-      - traefik.http.middlewares.eventzflow-redirect-www-to-non-www.redirectregex.permanent=true
 
   sidekiq:
     build: .
