@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_27_065436) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_29_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -90,6 +90,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_27_065436) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "password_resets", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "token_digest", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_password_resets_on_expires_at"
+    t.index ["user_id"], name: "index_password_resets_on_user_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false
@@ -157,6 +168,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_27_065436) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
+  add_foreign_key "password_resets", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
