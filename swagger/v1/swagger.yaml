@@ -4,6 +4,71 @@ info:
   title: API V1
   version: v1
 paths:
+  "/v1/auth/password/request_reset_password":
+    post:
+      summary: Request a password reset email
+      tags:
+      - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Instructions sent (generic)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+  "/v1/auth/password/verify_reset_password_request":
+    get:
+      summary: Verify reset password token validity
+      tags:
+      - Authentication
+      parameters:
+      - name: token
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Token is valid
+        '422':
+          description: Invalid or expired token
+  "/v1/auth/password/reset_password":
+    post:
+      summary: Reset password using token
+      tags:
+      - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+      responses:
+        '200':
+          description: Password has been reset
+        '422':
+          description: Validation error
   "/v1/analytics/events_overview":
     get:
       summary: Get all accessible events with their analytics data
