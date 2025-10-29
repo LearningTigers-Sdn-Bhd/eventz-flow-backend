@@ -1,18 +1,27 @@
 # app/mailers/user_mailer.rb
 class UserMailer < ApplicationMailer
+
+  default from: "EventzFlow App Notifications <notifications@updates.eventzflow.com>"
+
   def verification_code(user, code)
     @user = user
     @code = code
     @expires_in = 15 # minutes
-
-    headers['Reply-To'] = 'support@saleschatalyst.com'
-    headers['List-Unsubscribe'] = "<mailto:unsubscribe@saleschatalyst.com>, <https://eventzflow.com/unsubscribe?u=#{@user.id}>"
-    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+    @random_id = SecureRandom.hex(10)
 
     mail(
-      from: 'EventzFlow Support <support@saleschatalyst.com>',
-      to: @user.email,
-      subject: 'Verify your email address'
+      to: [@user.email],
+      reply_to: 'support@saleschatalyst.com',
+      subject: 'Verify your email address',
+      tags: {
+        "name": "category", "value": "confirm_email"
+      },
+      headers: {
+        "X-Entity-Ref-ID": "UID#{@user.id}-#{@random_id}"
+      },
+      options: {
+        idempotency_key: "verify_email/#{@user.id}-#{@random_id}"
+      }
     )
   end
 end

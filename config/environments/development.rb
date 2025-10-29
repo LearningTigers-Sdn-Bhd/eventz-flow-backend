@@ -39,8 +39,10 @@ Rails.application.configure do
   config.action_mailer.default_url_options = { host: ENV.fetch("MAIL_HOST", "localhost"), port: ENV.fetch("MAIL_PORT", 3000).to_i }
 
   # Use file delivery for development (or configure SMTP if needed)
-  config.action_mailer.delivery_method = :file
-  config.action_mailer.file_settings = { location: Rails.root.join('tmp', 'mail') }
+  # config.action_mailer.delivery_method = :file
+  config.action_mailer.delivery_method = :resend
+
+  # config.action_mailer.file_settings = { location: Rails.root.join('tmp', 'mail') }
 
   # Uncomment to use SMTP in development
   # config.action_mailer.delivery_method = :smtp
