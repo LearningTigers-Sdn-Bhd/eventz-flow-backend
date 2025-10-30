@@ -28,7 +28,7 @@ class Ticket < ApplicationRecord
   validates :public_id, presence: true, on: :update
 
   validates :attendee_name, presence: true
-  validates :attendee_email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :attendee_email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :attendee_phone, format: { with: /\A[+]?[\d\s\-\(\)]+\z/, message: 'must be a valid phone number' }, allow_blank: true
   validates :status, presence: true # Although redundant with enum presence check, it's clear.
   validates :payment_status, presence: true
