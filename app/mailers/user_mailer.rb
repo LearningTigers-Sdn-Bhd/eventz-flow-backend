@@ -28,8 +28,8 @@ class UserMailer < ApplicationMailer
   def password_reset(user, code)
     @user = user
 
-    redirect_base_url = ENV.fetch("REDIRECT_BASE_URL", "http://localhost:3000")
-    @reset_password_url = "#{redirect_base_url}/reset-password/#{code}"
+    redirect_base_url = ENV.fetch("REDIRECT_BASE_URL", "http://localhost:3001")
+    @reset_password_url = "#{redirect_base_url}/forget-password/#{code}"
 
     @expires_in = 15 # minutes
     @random_id = SecureRandom.hex(10)
@@ -37,7 +37,7 @@ class UserMailer < ApplicationMailer
     mail(
       to: [@user.email],
       reply_to: 'support@saleschatalyst.com',
-      subject: 'Reset your password',
+      subject: 'Request for the password reset.',
       tags: {
         "name": "category", "value": "reset_password"
       },
