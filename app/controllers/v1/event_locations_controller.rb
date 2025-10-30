@@ -89,7 +89,8 @@ module V1
     def event_location_params
       params.require(:event_location).permit(
         :name,
-        :scan_limit
+        :scan_limit,
+        :is_unlimited
       )
     end
 

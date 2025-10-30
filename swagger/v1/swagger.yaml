@@ -1053,6 +1053,9 @@ paths:
                     scan_limit:
                       type: integer
                       example: 100
+                    is_unlimited:
+                      type: boolean
+                      default: false
                     created_at:
                       type: string
                       format: date_time
@@ -1074,7 +1077,6 @@ paths:
                   - id
                   - event_id
                   - name
-                  - scan_limit
         '403':
           description: Forbidden (Not authorized to view event)
         '401':
@@ -1114,6 +1116,9 @@ paths:
                   scan_limit:
                     type: integer
                     example: 100
+                  is_unlimited:
+                    type: boolean
+                    default: false
                   created_at:
                     type: string
                     format: date_time
@@ -1135,7 +1140,6 @@ paths:
                 - id
                 - event_id
                 - name
-                - scan_limit
         '422':
           description: Unprocessable Entity (Duplicate location name)
         '403':
@@ -1152,6 +1156,9 @@ paths:
                 scan_limit:
                   type: integer
                   example: 200
+                is_unlimited:
+                  type: boolean
+                  default: false
                 member_ids:
                   type: array
                   items:
@@ -1164,7 +1171,6 @@ paths:
                     members'
               required:
               - name
-              - scan_limit
   "/v1/events/{event_id}/event_locations/{id}":
     parameters:
     - name: event_id
@@ -1212,6 +1218,9 @@ paths:
                   scan_limit:
                     type: integer
                     example: 100
+                  is_unlimited:
+                    type: boolean
+                    default: false
                   created_at:
                     type: string
                     format: date_time
@@ -1233,7 +1242,6 @@ paths:
                 - id
                 - event_id
                 - name
-                - scan_limit
         '404':
           description: Event location not found
         '403':
@@ -1311,6 +1319,9 @@ paths:
                 scan_limit:
                   type: integer
                   example: 250
+                is_unlimited:
+                  type: boolean
+                  default: false
                 member_ids:
                   type: array
                   items:
