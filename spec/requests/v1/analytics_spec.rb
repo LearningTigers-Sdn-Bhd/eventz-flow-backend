@@ -46,7 +46,7 @@ RSpec.describe 'V1::Analytics', type: :request do
   # OPTIMIZED BULK ENDPOINTS (Works for all roles)
   # ===================================================================
 
-  path '/v1/analytics/events_overview' do
+  path '/v1/metrics/events_overview' do
     get 'Get all accessible events with their analytics data' do
       tags 'Optimized Analytics'
       produces 'application/json'
@@ -117,7 +117,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/summary' do
+  path '/v1/metrics/summary' do
     get 'Get aggregated analytics summary across all accessible events' do
       tags 'Optimized Analytics'
       produces 'application/json'
@@ -198,7 +198,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         isolated_user = create(:org_owner)
         isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
 
-        get '/v1/analytics/summary', params: {}, headers: {
+        get '/v1/metrics/summary', params: {}, headers: {
           'Authorization' => "Bearer #{isolated_token}"
         }
 
@@ -224,7 +224,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded)
         create_list(:ticket, 1, event: event, ticket_type: ticket_type, status: :canceled)
 
-        get '/v1/analytics/summary', params: {}, headers: {
+        get '/v1/metrics/summary', params: {}, headers: {
           'Authorization' => "Bearer #{summary_edge_case_token}"
         }
 
@@ -245,7 +245,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         create_list(:ticket, 4, event: event1, ticket_type: tt1, status: :purchased)
         create_list(:ticket, 6, event: event2, ticket_type: tt2, status: :purchased)
 
-        get '/v1/analytics/summary', params: {}, headers: {
+        get '/v1/metrics/summary', params: {}, headers: {
           'Authorization' => "Bearer #{summary_edge_case_token}"
         }
 
@@ -265,7 +265,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         ticket_type = create(:ticket_type, event: draft_event1, price: 40.00)
         create_list(:ticket, 3, event: draft_event1, ticket_type: ticket_type, status: :purchased)
 
-        get '/v1/analytics/summary', params: {}, headers: {
+        get '/v1/metrics/summary', params: {}, headers: {
           'Authorization' => "Bearer #{summary_edge_case_token}"
         }
 
@@ -286,7 +286,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         create(:event_location, event: event2)
         create(:event_location, event: event3)
 
-        get '/v1/analytics/summary', params: {}, headers: {
+        get '/v1/metrics/summary', params: {}, headers: {
           'Authorization' => "Bearer #{summary_edge_case_token}"
         }
 
@@ -319,7 +319,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         empty_event = create(:event, status: :published, visibility: true)
         create(:event_location, event: empty_event)
 
-        get '/v1/analytics/events_overview', params: {}, headers: {
+        get '/v1/metrics/events_overview', params: {}, headers: {
           'Authorization' => "Bearer #{edge_case_token}"
         }
 
@@ -344,7 +344,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :refunded)
         create(:ticket, event: event_with_refunded, ticket_type: ticket_type, status: :canceled)
 
-        get '/v1/analytics/events_overview', params: {}, headers: {
+        get '/v1/metrics/events_overview', params: {}, headers: {
           'Authorization' => "Bearer #{edge_case_token}"
         }
 
@@ -363,7 +363,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         create_list(:ticket, 3, event: event, ticket_type: ticket_type_cheap, status: :purchased)
         create_list(:ticket, 2, event: event, ticket_type: ticket_type_expensive, status: :purchased)
 
-        get '/v1/analytics/events_overview', params: {}, headers: {
+        get '/v1/metrics/events_overview', params: {}, headers: {
           'Authorization' => "Bearer #{edge_case_token}"
         }
 
@@ -379,7 +379,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         isolated_user = create(:org_owner)
         isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
 
-        get '/v1/analytics/events_overview', params: {}, headers: {
+        get '/v1/metrics/events_overview', params: {}, headers: {
           'Authorization' => "Bearer #{isolated_token}"
         }
 
@@ -400,7 +400,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         # Create 2 scanned but unchecked (edge case)
         create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :scanned, checked_in: false)
 
-        get '/v1/analytics/events_overview', params: {}, headers: {
+        get '/v1/metrics/events_overview', params: {}, headers: {
           'Authorization' => "Bearer #{edge_case_token}"
         }
 
@@ -418,7 +418,7 @@ RSpec.describe 'V1::Analytics', type: :request do
   # EXISTING GLOBAL ENDPOINTS (Requires org_owner/manager)
   # ===================================================================
 
-  path '/v1/analytics/total_tickets' do
+  path '/v1/metrics/total_tickets' do
     get 'Get total tickets count across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -452,7 +452,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/total_scanned_tickets' do
+  path '/v1/metrics/total_scanned_tickets' do
     get 'Get total scanned tickets count across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -474,7 +474,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/total_unscanned_tickets' do
+  path '/v1/metrics/total_unscanned_tickets' do
     get 'Get total unscanned tickets count across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -496,7 +496,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/total_amount_price' do
+  path '/v1/metrics/total_amount_price' do
     get 'Get total sales amount across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -521,7 +521,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/weekly_registered_tickets' do
+  path '/v1/metrics/weekly_registered' do
     get 'Get weekly registered tickets data across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -555,7 +555,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/weekly_scanned_tickets' do
+  path '/v1/metrics/weekly_scanned' do
     get 'Get weekly scanned tickets data across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -587,7 +587,7 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 
-  path '/v1/analytics/weekly_sales_amount' do
+  path '/v1/metrics/weekly_sales_amount' do
     get 'Get weekly sales amount data across all accessible events' do
       tags 'Global Analytics'
       produces 'application/json'
@@ -629,7 +629,7 @@ RSpec.describe 'V1::Analytics', type: :request do
 
     context 'when unverified user tries to access analytics' do
       it 'returns 403 Forbidden for events_overview' do
-        get '/v1/analytics/events_overview', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+        get '/v1/metrics/events_overview', headers: { 'Authorization' => "Bearer #{unverified_token}" }
 
         expect(response).to have_http_status(:forbidden)
         json = JSON.parse(response.body)
@@ -637,7 +637,7 @@ RSpec.describe 'V1::Analytics', type: :request do
       end
 
       it 'returns 403 Forbidden for summary' do
-        get '/v1/analytics/summary', headers: { 'Authorization' => "Bearer #{unverified_token}" }
+        get '/v1/metrics/summary', headers: { 'Authorization' => "Bearer #{unverified_token}" }
 
         expect(response).to have_http_status(:forbidden)
         json = JSON.parse(response.body)

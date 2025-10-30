@@ -1,6 +1,7 @@
 module V1
   class EventAnalyticsController < ApplicationController
     before_action :authenticate_user!
+    before_action :set_deprecation_headers_for_legacy_paths
     before_action :set_event_and_authorize
 
     # GET /v1/events/:event_id/analytics/total_tickets
@@ -49,6 +50,14 @@ module V1
     end
 
     private
+
+    def set_deprecation_headers_for_legacy_paths
+      if request.path.include?("/v1/events/") && request.path.include?("/analytics/")
+        response.set_header('Deprecation', 'true')
+        response.set_header('Sunset', (Time.now.utc + 90.days).httpdate)
+        response.set_header('Link', '<https://api-docs>; rel="deprecation"')
+      end
+    end
 
     def set_event_and_authorize
       @event = Event.find(params[:event_id])

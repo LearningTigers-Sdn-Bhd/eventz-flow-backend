@@ -69,9 +69,7 @@ paths:
           description: Password has been reset
         '422':
           description: Validation error
-  "/v1/analytics/events_overview":
-    get:
-      summary: Get all accessible events with their analytics data
+  # Analytics paths removed; use metrics equivalents below
       tags:
       - Optimized Analytics
       parameters:
@@ -117,9 +115,7 @@ paths:
                           format: date-time
         '401':
           description: Unauthorized
-  "/v1/analytics/summary":
-    get:
-      summary: Get aggregated analytics summary across all accessible events
+
       tags:
       - Optimized Analytics
       parameters:
@@ -157,9 +153,7 @@ paths:
                     description: Total event locations
         '401':
           description: Unauthorized
-  "/v1/analytics/total_tickets":
-    get:
-      summary: Get total tickets count across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -183,9 +177,7 @@ paths:
           description: Forbidden - insufficient permissions
         '401':
           description: Unauthorized
-  "/v1/analytics/total_scanned_tickets":
-    get:
-      summary: Get total scanned tickets count across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -205,9 +197,7 @@ paths:
                   totalScannedTickets:
                     type: integer
                     description: Total number of scanned tickets across all events
-  "/v1/analytics/total_unscanned_tickets":
-    get:
-      summary: Get total unscanned tickets count across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -227,9 +217,7 @@ paths:
                   totalUnscannedTickets:
                     type: integer
                     description: Total number of unscanned tickets across all events
-  "/v1/analytics/total_amount_price":
-    get:
-      summary: Get total sales amount across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -249,9 +237,7 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Total sales amount in cents across all events
-  "/v1/analytics/weekly_registered_tickets":
-    get:
-      summary: Get weekly registered tickets data across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -280,9 +266,7 @@ paths:
                         count:
                           type: integer
                           description: Number of tickets registered on this date
-  "/v1/analytics/weekly_scanned_tickets":
-    get:
-      summary: Get weekly scanned tickets data across all accessible events
+
       tags:
       - Global Analytics
       parameters:
@@ -311,9 +295,432 @@ paths:
                         count:
                           type: integer
                           description: Number of tickets scanned on this date
-  "/v1/analytics/weekly_sales_amount":
+
+  "/v1/metrics/events_overview":
+    get:
+      summary: Get all accessible events with their metrics data
+      tags:
+      - Optimized Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Events overview retrieved successfully for staff (scoped to assigned events)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        status:
+                          type: string
+                        total_tickets:
+                          type: integer
+                        scanned_tickets:
+                          type: integer
+                        unscanned_tickets:
+                          type: integer
+                        total_revenue:
+                          type: integer
+                        last_activity:
+                          type: string
+                          format: date-time
+        '401':
+          description: Unauthorized
+  "/v1/metrics/total_tickets":
+    get:
+      summary: Get total tickets count across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTickets:
+                    type: integer
+  "/v1/metrics/total_scanned_tickets":
+    get:
+      summary: Get total scanned tickets count across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalScannedTickets:
+                    type: integer
+  "/v1/metrics/total_unscanned_tickets":
+    get:
+      summary: Get total unscanned tickets count across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total unscanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUnscannedTickets:
+                    type: integer
+  "/v1/metrics/total_amount_price":
+    get:
+      summary: Get total sales amount across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalAmountPrice:
+                    type: integer
+  "/v1/metrics/weekly_registered":
+    get:
+      summary: Get weekly registered tickets data across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly registered tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyRegisteredTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/metrics/weekly_scanned":
+    get:
+      summary: Get weekly scanned tickets data across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyScannedTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/events/{event_id}/metrics/total_tickets":
+    get:
+      summary: Get total tickets count for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTickets:
+                    type: integer
+  "/v1/events/{event_id}/metrics/total_scanned_tickets":
+    get:
+      summary: Get total scanned tickets count for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalScannedTickets:
+                    type: integer
+  "/v1/events/{event_id}/metrics/total_unscanned_tickets":
+    get:
+      summary: Get total unscanned tickets count for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total unscanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUnscannedTickets:
+                    type: integer
+  "/v1/events/{event_id}/metrics/total_amount_price":
+    get:
+      summary: Get total sales amount for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalAmountPrice:
+                    type: integer
+  "/v1/events/{event_id}/metrics/weekly_registered":
+    get:
+      summary: Get weekly registered tickets data for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly registered tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyRegisteredTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/metrics/weekly_sales_amount":
     get:
       summary: Get weekly sales amount data across all accessible events
+      tags:
+      - Global Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly sales amount retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklySalesAmount:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/events/{event_id}/metrics/weekly_scanned":
+    get:
+      summary: Get weekly scanned tickets data for an event
+      tags:
+      - Event Metrics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Weekly scanned tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weeklyScannedTickets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+  "/v1/metrics/summary":
+    get:
+      summary: Get aggregated metrics summary across all accessible events
+      tags:
+      - Optimized Metrics
+      parameters:
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Metrics summary retrieved successfully for staff (scoped to assigned events)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_events:
+                    type: integer
+                  active_events:
+                    type: integer
+                  total_tickets:
+                    type: integer
+                  total_scanned:
+                    type: integer
+                  total_revenue:
+                    type: integer
+                  total_locations:
+                    type: integer
+        '401':
+          description: Unauthorized
       tags:
       - Global Analytics
       parameters:

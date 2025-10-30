@@ -72,7 +72,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     EventAssignment.find_or_create_by!(event: event, user: staff_user, role: :event_team_member)
   end
 
-  path '/v1/events/{event_id}/analytics/total_tickets' do
+  path '/v1/events/{event_id}/metrics/total_tickets' do
     get 'Get total tickets count for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -110,7 +110,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/total_scanned_tickets' do
+  path '/v1/events/{event_id}/metrics/total_scanned_tickets' do
     get 'Get total scanned tickets count for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -134,7 +134,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/total_unscanned_tickets' do
+  path '/v1/events/{event_id}/metrics/total_unscanned_tickets' do
     get 'Get total unscanned tickets count for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -158,7 +158,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/total_amount_price' do
+  path '/v1/events/{event_id}/metrics/total_amount_price' do
     get 'Get total sales amount for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -182,7 +182,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/weekly_registered_tickets' do
+  path '/v1/events/{event_id}/metrics/weekly_registered' do
     get 'Get weekly registered tickets data for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -218,7 +218,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/weekly_scanned_tickets' do
+  path '/v1/events/{event_id}/metrics/weekly_scanned' do
     get 'Get weekly scanned tickets data for an event' do
       tags 'Event Analytics'
       produces 'application/json'
@@ -252,7 +252,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
-  path '/v1/events/{event_id}/analytics/weekly_sales_amount' do
+  path '/v1/events/{event_id}/metrics/weekly_sales_amount' do
     get 'Get weekly sales amount data for an event' do
       tags 'Event Analytics'
       produces 'application/json'
