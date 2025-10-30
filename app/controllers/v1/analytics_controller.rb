@@ -1,5 +1,6 @@
 module V1
   class AnalyticsController < ApplicationController
+    before_action :set_deprecation_headers_for_legacy_paths
     before_action :authorize_global_analytics, only: [
       :total_tickets,
       :total_scanned_tickets,
@@ -103,6 +104,16 @@ module V1
     end
 
     private
+
+    def set_deprecation_headers_for_legacy_paths
+      # Add Deprecation/Sunset headers for legacy /analytics paths
+      if request.path.include?("/v1/analytics/")
+        response.set_header('Deprecation', 'true')
+        # Sunset in 90 days
+        response.set_header('Sunset', (Time.now.utc + 90.days).httpdate)
+        response.set_header('Link', '<https://api-docs>; rel="deprecation"')
+      end
+    end
 
     def authorize_global_analytics
       authorize :analytics, :index?

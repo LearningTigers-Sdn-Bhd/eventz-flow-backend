@@ -60,14 +60,7 @@ Rails.application.routes.draw do
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
 
-      # Event Analytics Endpoints
-      get 'analytics/total_tickets', to: 'event_analytics#total_tickets'
-      get 'analytics/total_scanned_tickets', to: 'event_analytics#total_scanned_tickets'
-      get 'analytics/total_unscanned_tickets', to: 'event_analytics#total_unscanned_tickets'
-      get 'analytics/total_amount_price', to: 'event_analytics#total_amount_price'
-      get 'analytics/weekly_registered_tickets', to: 'event_analytics#weekly_registered_tickets'
-      get 'analytics/weekly_scanned_tickets', to: 'event_analytics#weekly_scanned_tickets'
-      get 'analytics/weekly_sales_amount', to: 'event_analytics#weekly_sales_amount'
+      # Event Metrics moved outside to avoid impacting event resources
     end
 
     # 5. GLOBAL TICKET ACTIONS
@@ -83,20 +76,51 @@ Rails.application.routes.draw do
       end
     end
 
-    # 7. GLOBAL ANALYTICS
-    namespace :analytics do
+    # 7. GLOBAL METRICS (replaces analytics)
+    scope :metrics do
       # Optimized bulk endpoints (works for all roles)
-      get 'events_overview'
-      get 'summary'
+      get 'events_overview', to: 'analytics#events_overview'
+      get 'summary',         to: 'analytics#summary'
 
-      # Individual analytics endpoints (requires org_owner/manager)
-      get 'total_tickets'
-      get 'total_scanned_tickets'
-      get 'total_unscanned_tickets'
-      get 'total_amount_price'
-      get 'weekly_registered_tickets'
-      get 'weekly_scanned_tickets'
-      get 'weekly_sales_amount'
+      # Individual metrics endpoints (requires org_owner/manager)
+      get 'total_tickets',            to: 'analytics#total_tickets'
+      get 'total_scanned_tickets',    to: 'analytics#total_scanned_tickets'
+      get 'total_unscanned_tickets',  to: 'analytics#total_unscanned_tickets'
+      get 'total_amount_price',       to: 'analytics#total_amount_price'
+      get 'weekly_registered',        to: 'analytics#weekly_registered_tickets'
+      get 'weekly_scanned',           to: 'analytics#weekly_scanned_tickets'
+      get 'weekly_sales_amount',      to: 'analytics#weekly_sales_amount'
+    end
+
+    # 7c. EVENT METRICS (standalone routes to avoid altering events resource)
+    scope :events do
+      scope ':event_id' do
+        scope :metrics do
+          get 'total_tickets',            to: 'event_analytics#total_tickets'
+          get 'total_scanned_tickets',    to: 'event_analytics#total_scanned_tickets'
+          get 'total_unscanned_tickets',  to: 'event_analytics#total_unscanned_tickets'
+          get 'total_amount_price',       to: 'event_analytics#total_amount_price'
+          get 'weekly_registered',        to: 'event_analytics#weekly_registered_tickets'
+          get 'weekly_scanned',           to: 'event_analytics#weekly_scanned_tickets'
+          get 'weekly_sales_amount',      to: 'event_analytics#weekly_sales_amount'
+        end
+      end
+    end
+
+    # 7b. GLOBAL METRICS (aliases for analytics) - path-only scope to avoid module nesting
+    scope :metrics do
+      # Optimized bulk endpoints
+      get 'events_overview', to: 'analytics#events_overview'
+      get 'summary',         to: 'analytics#summary'
+
+      # Individual metrics endpoints
+      get 'total_tickets',            to: 'analytics#total_tickets'
+      get 'total_scanned_tickets',    to: 'analytics#total_scanned_tickets'
+      get 'total_unscanned_tickets',  to: 'analytics#total_unscanned_tickets'
+      get 'total_amount_price',       to: 'analytics#total_amount_price'
+      get 'weekly_registered',        to: 'analytics#weekly_registered_tickets'
+      get 'weekly_scanned',           to: 'analytics#weekly_scanned_tickets'
+      get 'weekly_sales_amount',      to: 'analytics#weekly_sales_amount'
     end
 
     # 8. API KEYS MANAGEMENT
