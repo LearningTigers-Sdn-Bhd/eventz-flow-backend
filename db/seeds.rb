@@ -157,7 +157,8 @@ all_events = NUM_EVENTS.times.map do |i|
   event_location = EventLocation.create!(
     event: event,
     name: Faker::Address.full_address, # Use 'name' for the location string
-    scan_limit: 100
+    scan_limit: 100,
+    is_unlimited: i % 7 == 0
   )
 
   # Assign a random manager as the EventAdmin using EventAssignment

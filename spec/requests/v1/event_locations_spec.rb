@@ -13,6 +13,7 @@ EVENT_LOCATION_SCHEMA = {
     event_id: { type: :integer, example: 1 },
     name: { type: :string, example: 'Main Hall' },
     scan_limit: { type: :integer, example: 100 },
+    is_unlimited: { type: :boolean, default: false },
     created_at: { type: :string, format: :date_time },
     updated_at: { type: :string, format: :date_time },
     members: {
@@ -27,7 +28,7 @@ EVENT_LOCATION_SCHEMA = {
       }
     }
   },
-  required: ['id', 'event_id', 'name', 'scan_limit']
+  required: ['id', 'event_id', 'name']
 }.freeze
 
 RSpec.describe 'V1::EventLocations', type: :request do
@@ -177,6 +178,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         properties: {
           name: { type: :string, example: 'Main Stage' },
           scan_limit: { type: :integer, example: 200 },
+          is_unlimited: { type: :boolean, default: false },
           member_ids: {
             type: :array,
             items: { type: :integer },
@@ -184,7 +186,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
             description: 'Optional: Array of user IDs to assign as location members'
           }
         },
-        required: ['name', 'scan_limit']
+        required: ['name']
       }
 
       # 1. Success (Manager JWT)
@@ -327,6 +329,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
         properties: {
           name: { type: :string, example: 'Updated Hall Name' },
           scan_limit: { type: :integer, example: 250 },
+          is_unlimited: { type: :boolean, default: false },
           member_ids: {
             type: :array,
             items: { type: :integer },
