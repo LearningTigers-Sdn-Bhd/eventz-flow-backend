@@ -11,6 +11,7 @@ x-rails-env: &rails-env
   DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db:5432/eventz_flow_api_production}
   # Mail configuration
   RESEND_API_KEY: ${RESEND_API_KEY}
+  REDIRECT_BASE_URL: ${REDIRECT_BASE_URL}
 
 x-db-env: &db-env
   POSTGRES_DB: eventz_flow_api_production

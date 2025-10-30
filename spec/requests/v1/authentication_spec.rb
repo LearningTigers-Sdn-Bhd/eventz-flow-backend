@@ -111,6 +111,75 @@ RSpec.describe 'V1::Authentication', type: :request do
     end
   end
 
+  describe 'Password reset flow' do
+    let!(:user) { create(:user, email: 'resetme@example.com', password: 'oldpassword', password_confirmation: 'oldpassword') }
+
+    describe 'POST /v1/auth/password/request_reset_password' do
+      it 'returns success even if email does not exist' do
+        post '/v1/auth/password/request_reset_password', params: { email: 'unknown@example.com' }
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+        expect(json_response['message']).to eq('If that email exists, instructions have been sent.')
+      end
+
+      it 'creates a password reset and sends email for existing user' do
+        expect do
+          post '/v1/auth/password/request_reset_password', params: { email: user.email }
+        end.to change(PasswordReset, :count).by(1)
+
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+      end
+    end
+
+    describe 'GET /v1/auth/password/verify_reset_password_request' do
+      it 'validates a usable token' do
+        raw = PasswordReset.issue_for!(user)
+        get '/v1/auth/password/verify_reset_password_request', params: { token: raw }
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+        expect(json_response['message']).to eq('Token is valid')
+      end
+
+      it 'returns error for invalid token' do
+        get '/v1/auth/password/verify_reset_password_request', params: { token: 'bad' }
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json_response['success']).to be false
+      end
+    end
+
+    describe 'POST /v1/auth/password/reset_password' do
+      it 'resets password with valid token' do
+        raw = PasswordReset.issue_for!(user)
+        post '/v1/auth/password/reset_password', params: {
+          token: raw,
+          password: 'newpassword',
+          password_confirmation: 'newpassword'
+        }
+        expect(response).to have_http_status(:ok)
+        expect(json_response['success']).to be true
+        expect(json_response['message']).to eq('Password has been reset')
+      end
+
+      it 'fails when token invalid' do
+        post '/v1/auth/password/reset_password', params: { token: 'bad', password: 'x', password_confirmation: 'x' }
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json_response['success']).to be false
+      end
+
+      it "fails when confirmation doesn't match" do
+        raw = PasswordReset.issue_for!(user)
+        post '/v1/auth/password/reset_password', params: {
+          token: raw,
+          password: 'newpassword',
+          password_confirmation: 'mismatch'
+        }
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_response['success']).to be false
+      end
+    end
+  end
+
   describe 'DELETE /v1/auth/logout' do
     let!(:user) { create(:user) }
     let(:auth_headers_hash) { auth_headers(user) }

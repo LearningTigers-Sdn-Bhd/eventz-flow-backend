@@ -21,6 +21,11 @@ Rails.application.routes.draw do
     post 'auth/send-verification-code', to: 'authentication#send_verification_code'
     post 'auth/verify-email', to: 'authentication#verify_email'
 
+    # Password reset (follow auth route style, flat controller)
+    post 'auth/password/request_reset_password', to: 'password_resets#request_reset_password'
+    get 'auth/password/verify_reset_password_request', to: 'password_resets#verify_reset_password_request'
+    post 'auth/password/reset_password', to: 'password_resets#reset_password'
+
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
 
