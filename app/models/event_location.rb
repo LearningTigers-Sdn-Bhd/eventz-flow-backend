@@ -15,19 +15,19 @@ class EventLocation < ApplicationRecord
 
   # --- Validations ---
   validates :name, presence: true
-  validates :scan_limit, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :scan_limit, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, unless: :is_unlimited?
   # Enforce uniqueness for the combination of event_id and name, as per the database index
   validates :name, uniqueness: { scope: :event_id, message: "already exists for this event" }
-  
+
   # --- Scopes ---
-  scope :active, -> { where('scan_limit > 0') }
+  scope :active, -> { where('is_unlimited = ? OR scan_limit > 0', true) }
 
   def send_webhook_notification
     return unless event.present? && event.webhook_url.present?
-    
+
     event_type = determine_event_type
     return if event_type.nil?
-    
+
     WebhookSenderJob.perform_later(event.webhook_url, build_webhook_payload(event_type))
   end
 
@@ -36,36 +36,37 @@ class EventLocation < ApplicationRecord
   def determine_event_type
     return 'location.created' if previous_changes[:id].present?
     return 'location.updated' if significant_changes?
-    
+
     nil
   end
 
   def significant_changes?
-    significant_fields = %w[name scan_limit]
+    significant_fields = %w[name scan_limit is_unlimited]
     (previous_changes.keys & significant_fields).any?
   end
 
   def build_webhook_payload(event_type)
     is_creation = event_type == 'location.created'
-    
+
     payload = {
       event_type: event_type,
       webhook_id: SecureRandom.uuid,
       timestamp: Time.now.utc.iso8601,
       api_version: "v1",
-      
+
       location: {
         id: self.id,
         name: self.name,
-        scan_limit: self.scan_limit
+        scan_limit: self.scan_limit,
+        is_unlimited: self.is_unlimited
       },
-      
+
       event: {
         id: event.id,
         title: event.title
       }
     }
-    
+
     # Add full context on creation
     if is_creation
       payload[:location][:created_at] = self.created_at.iso8601
@@ -73,7 +74,7 @@ class EventLocation < ApplicationRecord
       # Add changes for updates
       payload[:changes] = format_changes
     end
-    
+
     payload.compact
   end
 
