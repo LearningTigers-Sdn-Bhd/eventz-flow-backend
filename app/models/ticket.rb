@@ -114,7 +114,8 @@ class Ticket < ApplicationRecord
         payment_status: self.payment_status,
         attendee_name: self.attendee_name,
         attendee_email: self.attendee_email,
-        attendee_phone: self.attendee_phone
+        attendee_phone: self.attendee_phone,
+        custom_fields: self.custom_fields_data
       },
       
       event: {
@@ -129,7 +130,6 @@ class Ticket < ApplicationRecord
         checked_in: self.checked_in,
         payment_method: self.payment_method,
         transaction_id: self.transaction_id,
-        custom_fields: self.custom_fields_data,
         created_at: self.created_at.iso8601
       )
       
@@ -141,7 +141,8 @@ class Ticket < ApplicationRecord
       
       payload[:event].merge!(
         start_date: self.event.start_date&.iso8601,
-        end_date: self.event.end_date&.iso8601
+        end_date: self.event.end_date&.iso8601,
+        custom_labels: self.event.labels_data
       )
     else
       # Add changes for updates
