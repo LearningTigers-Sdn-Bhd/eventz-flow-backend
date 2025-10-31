@@ -1,10 +1,13 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in]
+    before_action :set_event_and_authorize, except: [:global_check_in, :self_check_in, :find_by_contact]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
+    
+    # Skip authentication for public endpoints
+    skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
 
     # GET /v1/events/:event_id/tickets
     def index
@@ -97,6 +100,77 @@ module V1
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
+    end
+
+    # POST /v1/tickets/find_by_contact
+    # Public endpoint to find ticket by email or phone (without checking in)
+    # No authentication required
+    def find_by_contact
+      attendee_email = params[:attendee_email]
+      attendee_phone = params[:attendee_phone]
+
+      # Validate that at least one contact method is provided
+      if attendee_email.blank? && attendee_phone.blank?
+        render json: { error: 'Either email or phone number is required' }, status: :bad_request and return
+      end
+
+      # Find the ticket by email or phone (only paid tickets)
+      @ticket = Ticket.where(payment_status: 'paid')
+                     .where('attendee_email = ? OR attendee_phone = ?', attendee_email, attendee_phone)
+                     .order(created_at: :desc)
+                     .first
+
+      if @ticket.nil?
+        render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+      end
+
+      # Return ticket details without checking in
+      render json: @ticket.as_json(
+        include: { 
+          ticket_type: { only: [:id, :name, :price] },
+          event: { only: [:id, :title] }
+        }
+      ), status: :ok
+    rescue StandardError => e
+      render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
+    end
+
+    # POST /v1/tickets/self_check_in
+    # Public endpoint for attendees to check themselves in using ticket public_id
+    # No authentication required, no scanned_by_id set
+    def self_check_in
+      public_id = params[:public_id]
+
+      # Validate public_id is provided
+      if public_id.blank?
+        render json: { error: 'Ticket ID is required' }, status: :bad_request and return
+      end
+
+      # Find the ticket by public_id
+      @ticket = Ticket.find_by(public_id: public_id)
+
+      if @ticket.nil?
+        render json: { error: 'Ticket not found' }, status: :not_found and return
+      end
+
+      # Check if already checked in
+      if @ticket.checked_in?
+        render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
+      end
+
+      # Perform self check-in (WITHOUT scanned_by_id)
+      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+        render json: @ticket.as_json(
+          include: { 
+            ticket_type: { only: [:id, :name, :price] },
+            event: { only: [:id, :title] }
+          }
+        ), status: :ok
+      else
+        render json: @ticket.errors, status: :unprocessable_content
+      end
+    rescue StandardError => e
+      render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
 
     private

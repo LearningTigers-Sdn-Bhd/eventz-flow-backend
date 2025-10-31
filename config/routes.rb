@@ -67,6 +67,10 @@ Rails.application.routes.draw do
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
+      # POST /v1/tickets/find_by_contact (Public - no auth required) - Find ticket without checking in
+      post 'find_by_contact', to: 'tickets#find_by_contact', on: :collection
+      # POST /v1/tickets/self_check_in (Public - no auth required) - Confirm check-in
+      post 'self_check_in', to: 'tickets#self_check_in', on: :collection
     end
 
     # 6. TEAM MEMBERS MANAGEMENT
