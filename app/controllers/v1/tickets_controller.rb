@@ -1,10 +1,13 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in, :import, :export]
+    before_action :set_event_and_authorize, except: [:global_check_in, :import, :export, :self_check_in, :find_by_contact]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
+
+    # Skip authentication for public endpoints
+    skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
 
     # GET /v1/events/:event_id/tickets
     def index
@@ -171,6 +174,133 @@ module V1
           status: :unprocessable_content
         )
       end
+    end
+
+    # POST /v1/tickets/find_by_contact
+    # Public endpoint - find ticket by email, phone, or name (no authentication required)
+    def find_by_contact
+      attendee_email = params[:attendee_email]
+      attendee_phone = params[:attendee_phone]
+      attendee_name = params[:attendee_name]
+
+      if attendee_email.blank? && attendee_phone.blank? && attendee_name.blank?
+        render json: { error: 'Either email, phone number, or name is required' }, status: :bad_request and return
+      end
+
+      query = Ticket.where(payment_status: 'paid')
+      conditions = []
+      values = []
+
+      if attendee_email.present?
+        conditions << 'attendee_email = ?'
+        values << attendee_email
+      end
+
+      if attendee_phone.present?
+        conditions << 'attendee_phone = ?'
+        values << attendee_phone
+      end
+
+      if attendee_name.present?
+        normalized_search = attendee_name.strip.downcase
+        search_no_spaces = normalized_search.gsub(/\s+/, '')
+
+        # Flexible name matching: exact, partial, with/without spaces, first/last name
+        name_conditions = [
+          'LOWER(attendee_name) = ?',
+          'LOWER(attendee_name) LIKE ?',
+          'REPLACE(LOWER(attendee_name), \' \' , \'\') = ?',
+          'REPLACE(LOWER(attendee_name), \' \' , \'\') LIKE ?',
+          'LOWER(attendee_name) LIKE ?',
+          'LOWER(attendee_name) LIKE ?'
+        ]
+
+        conditions << "(#{name_conditions.join(' OR ')})"
+        values.concat([
+          normalized_search,
+          "%#{normalized_search}%",
+          search_no_spaces,
+          "%#{search_no_spaces}%",
+          "#{normalized_search}%",
+          "% #{normalized_search}%"
+        ])
+      end
+
+      # Name searches return all matches (max 10), email/phone return single ticket
+      if attendee_name.present? && attendee_email.blank? && attendee_phone.blank?
+        @tickets = query.where(conditions.join(' OR '), *values)
+                       .order(created_at: :desc)
+                       .limit(10)
+
+        if @tickets.empty?
+          render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+        end
+
+        render json: {
+          multiple_matches: @tickets.count > 1,
+          tickets: @tickets.as_json(
+            include: {
+              ticket_type: { only: [:id, :name, :price] },
+              event: { only: [:id, :title] }
+            }
+          )
+        }, status: :ok
+      else
+        @ticket = query.where(conditions.join(' OR '), *values)
+                       .order(created_at: :desc)
+                       .first
+
+        if @ticket.nil?
+          render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+        end
+
+        render json: @ticket.as_json(
+          include: {
+            ticket_type: { only: [:id, :name, :price] },
+            event: { only: [:id, :title] }
+          }
+        ), status: :ok
+      end
+    rescue StandardError => e
+      render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
+    end
+
+    # POST /v1/tickets/self_check_in
+    # Public endpoint for attendees to check themselves in using ticket public_id
+    # No authentication required, no scanned_by_id set
+    def self_check_in
+      public_id = params[:public_id]
+
+      # Validate public_id is provided
+      if public_id.blank?
+        render json: { error: 'Ticket ID is required' }, status: :bad_request and return
+      end
+
+      # Find the ticket by public_id
+      @ticket = Ticket.find_by(public_id: public_id)
+
+      if @ticket.nil?
+        render json: { error: 'Ticket not found' }, status: :not_found and return
+      end
+
+      # Check if already checked in
+      if @ticket.checked_in?
+        render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
+      end
+
+      # Perform self check-in (WITHOUT scanned_by_id)
+      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+        render json: @ticket.as_json(
+          include: {
+            ticket_type: { only: [:id, :name, :price] },
+            event: { only: [:id, :title] }
+          }
+        ), status: :ok
+      else
+        render json: @ticket.errors, status: :unprocessable_content
+      end
+    rescue StandardError => e
+      render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
 
     private

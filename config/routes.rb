@@ -68,6 +68,10 @@ Rails.application.routes.draw do
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
 
+      # Public endpoints (no auth required)
+      post 'find_by_contact', to: 'tickets#find_by_contact', on: :collection
+      post 'self_check_in', to: 'tickets#self_check_in', on: :collection
+
       # Excel/CSV Import
       collection do
         post :import   # POST /v1/tickets/import
