@@ -71,12 +71,10 @@ Rails.application.routes.draw do
       # Public endpoints (no auth required)
       post 'find_by_contact', to: 'tickets#find_by_contact', on: :collection
       post 'self_check_in', to: 'tickets#self_check_in', on: :collection
-
-      # Excel/CSV Import
-      collection do
-        post :import   # POST /v1/tickets/import
-      end
     end
+
+    # 5a. IMPORTS
+    post 'imports/tickets', to: 'imports#tickets'   # POST /v1/imports/tickets
 
     # 5b. TICKET EXPORTS (separate resource for export management)
     resources :ticket_exports, only: [:index, :show, :create], path: 'tickets/exports' do

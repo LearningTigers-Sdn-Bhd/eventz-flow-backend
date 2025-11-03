@@ -1,7 +1,7 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in, :import, :export, :self_check_in, :find_by_contact]
+    before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
@@ -100,38 +100,6 @@ module V1
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
-    end
-
-    # POST /v1/tickets/import
-    def import
-      # Authorization: User must be authenticated
-      unless current_user
-        return render json: { error: 'Unauthorized' }, status: :unauthorized
-      end
-
-      # Validate file upload
-      unless params[:file].present?
-        return render json: { error: 'No file provided' }, status: :unprocessable_content
-      end
-
-      begin
-        dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
-        results = TicketExcelService.import(params[:file], dry_run: dry_run)
-
-        success_response(
-          data: results,
-          message: "Import completed: #{results[:created]} created, #{results[:updated]} updated, #{results[:skipped]} skipped",
-          status: :ok
-        )
-      rescue StandardError => e
-        Rails.logger.error "Ticket import error: #{e.message}"
-        Rails.logger.error e.backtrace.join("\n")
-        error_response(
-          message: 'Import failed',
-          errors: [e.message],
-          status: :unprocessable_content
-        )
-      end
     end
 
     # GET /v1/tickets/export?event_id=1

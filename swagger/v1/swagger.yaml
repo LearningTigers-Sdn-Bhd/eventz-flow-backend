@@ -2122,89 +2122,6 @@ paths:
             event)
         '404':
           description: Not Found
-  "/v1/tickets/import":
-    post:
-      summary: Import tickets from Excel file
-      tags:
-      - Tickets
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        schema:
-          type: string
-      - name: dry_run
-        in: query
-        required: false
-        description: If true, validate and report without writing changes
-        schema:
-          type: boolean
-      responses:
-        '200':
-          description: Allows same phone/email when names differ (business rule)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      created:
-                        type: integer
-                        description: Number of tickets created
-                      updated:
-                        type: integer
-                        description: Number of tickets updated (more complete rows)
-                      skipped:
-                        type: integer
-                        description: Number of tickets skipped (duplicates)
-                      duplicates_in_file:
-                        type: integer
-                        description: Number of duplicate rows collapsed within the
-                          file
-                      errors:
-                        type: array
-                        items:
-                          type: string
-                        description: Error messages if any
-        '401':
-          description: Unauthorized - Missing or invalid token
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-        '422':
-          description: Unprocessable Entity - No file provided or import failed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: file
-        required: true
-        description: Excel file (.xlsx) with ticket data
   "/v1/tickets/exports":
     post:
       summary: Create new ticket export for an event
@@ -2403,6 +2320,89 @@ paths:
                 properties:
                   error:
                     type: string
+  "/v1/imports/tickets":
+    post:
+      summary: Import tickets from Excel file
+      tags:
+      - Imports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: dry_run
+        in: query
+        required: false
+        description: If true, validate and report without writing changes
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Allows same phone/email when names differ (business rule)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                        description: Number of tickets created
+                      updated:
+                        type: integer
+                        description: Number of tickets updated (more complete rows)
+                      skipped:
+                        type: integer
+                        description: Number of tickets skipped (duplicates)
+                      duplicates_in_file:
+                        type: integer
+                        description: Number of duplicate rows collapsed within the
+                          file
+                      errors:
+                        type: array
+                        items:
+                          type: string
+                        description: Error messages if any
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - No file provided or import failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: Excel file (.xlsx) with ticket data
   "/v1/users/{id}/role":
     put:
       summary: Updates a global user's role
