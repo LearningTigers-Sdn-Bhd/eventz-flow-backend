@@ -103,34 +103,90 @@ module V1
     end
 
     # POST /v1/tickets/find_by_contact
-    # Public endpoint to find ticket by email or phone (without checking in)
-    # No authentication required
+    # Public endpoint - find ticket by email, phone, or name (no authentication required)
     def find_by_contact
       attendee_email = params[:attendee_email]
       attendee_phone = params[:attendee_phone]
+      attendee_name = params[:attendee_name]
 
-      # Validate that at least one contact method is provided
-      if attendee_email.blank? && attendee_phone.blank?
-        render json: { error: 'Either email or phone number is required' }, status: :bad_request and return
+      if attendee_email.blank? && attendee_phone.blank? && attendee_name.blank?
+        render json: { error: 'Either email, phone number, or name is required' }, status: :bad_request and return
       end
 
-      # Find the ticket by email or phone (only paid tickets)
-      @ticket = Ticket.where(payment_status: 'paid')
-                     .where('attendee_email = ? OR attendee_phone = ?', attendee_email, attendee_phone)
-                     .order(created_at: :desc)
-                     .first
-
-      if @ticket.nil?
-        render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+      query = Ticket.where(payment_status: 'paid')
+      conditions = []
+      values = []
+      
+      if attendee_email.present?
+        conditions << 'attendee_email = ?'
+        values << attendee_email
       end
+      
+      if attendee_phone.present?
+        conditions << 'attendee_phone = ?'
+        values << attendee_phone
+      end
+      
+      if attendee_name.present?
+        normalized_search = attendee_name.strip.downcase
+        search_no_spaces = normalized_search.gsub(/\s+/, '')
+        
+        # Flexible name matching: exact, partial, with/without spaces, first/last name
+        name_conditions = [
+          'LOWER(attendee_name) = ?',
+          'LOWER(attendee_name) LIKE ?',
+          'REPLACE(LOWER(attendee_name), \' \', \'\') = ?',
+          'REPLACE(LOWER(attendee_name), \' \', \'\') LIKE ?',
+          'LOWER(attendee_name) LIKE ?',
+          'LOWER(attendee_name) LIKE ?'
+        ]
+        
+        conditions << "(#{name_conditions.join(' OR ')})"
+        values.concat([
+          normalized_search,
+          "%#{normalized_search}%",
+          search_no_spaces,
+          "%#{search_no_spaces}%",
+          "#{normalized_search}%",
+          "% #{normalized_search}%"
+        ])
+      end
+      
+      # Name searches return all matches (max 10), email/phone return single ticket
+      if attendee_name.present? && attendee_email.blank? && attendee_phone.blank?
+        @tickets = query.where(conditions.join(' OR '), *values)
+                       .order(created_at: :desc)
+                       .limit(10)
+        
+        if @tickets.empty?
+          render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+        end
+        
+        render json: {
+          multiple_matches: @tickets.count > 1,
+          tickets: @tickets.as_json(
+            include: { 
+              ticket_type: { only: [:id, :name, :price] },
+              event: { only: [:id, :title] }
+            }
+          )
+        }, status: :ok
+      else
+        @ticket = query.where(conditions.join(' OR '), *values)
+                       .order(created_at: :desc)
+                       .first
 
-      # Return ticket details without checking in
-      render json: @ticket.as_json(
-        include: { 
-          ticket_type: { only: [:id, :name, :price] },
-          event: { only: [:id, :title] }
-        }
-      ), status: :ok
+        if @ticket.nil?
+          render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
+        end
+
+        render json: @ticket.as_json(
+          include: { 
+            ticket_type: { only: [:id, :name, :price] },
+            event: { only: [:id, :title] }
+          }
+        ), status: :ok
+      end
     rescue StandardError => e
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
