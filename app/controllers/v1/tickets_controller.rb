@@ -1,7 +1,7 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in]
+    before_action :set_event_and_authorize, except: [:global_check_in, :import, :export]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
@@ -97,6 +97,80 @@ module V1
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
+    end
+
+    # POST /v1/tickets/import
+    def import
+      # Authorization: User must be authenticated
+      unless current_user
+        return render json: { error: 'Unauthorized' }, status: :unauthorized
+      end
+
+      # Validate file upload
+      unless params[:file].present?
+        return render json: { error: 'No file provided' }, status: :unprocessable_content
+      end
+
+      begin
+        dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
+        results = TicketExcelService.import(params[:file], dry_run: dry_run)
+
+        success_response(
+          data: results,
+          message: "Import completed: #{results[:created]} created, #{results[:updated]} updated, #{results[:skipped]} skipped",
+          status: :ok
+        )
+      rescue StandardError => e
+        Rails.logger.error "Ticket import error: #{e.message}"
+        Rails.logger.error e.backtrace.join("\n")
+        error_response(
+          message: 'Import failed',
+          errors: [e.message],
+          status: :unprocessable_content
+        )
+      end
+    end
+
+    # GET /v1/tickets/export?event_id=1
+    def export
+      # Authorization: User must be authenticated
+      unless current_user
+        return render json: { error: 'Unauthorized' }, status: :unauthorized
+      end
+
+      # Validate event_id parameter
+      unless params[:event_id].present?
+        return render json: { error: 'event_id parameter is required' }, status: :unprocessable_content
+      end
+
+      begin
+        event = Event.find(params[:event_id])
+
+        # Authorization: User must have access to this event
+        authorize event, :show?
+
+        result = TicketExcelService.export(params[:event_id])
+
+        # Send the file to the client
+        send_file(
+          result[:file_path],
+          filename: File.basename(result[:file_path]),
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          disposition: 'attachment'
+        )
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Event not found' }, status: :not_found
+      rescue Pundit::NotAuthorizedError
+        render json: { error: 'Not authorized to export tickets for this event' }, status: :forbidden
+      rescue StandardError => e
+        Rails.logger.error "Ticket export error: #{e.message}"
+        Rails.logger.error e.backtrace.join("\n")
+        error_response(
+          message: 'Export failed',
+          errors: [e.message],
+          status: :unprocessable_content
+        )
+      end
     end
 
     private

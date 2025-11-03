@@ -67,6 +67,18 @@ Rails.application.routes.draw do
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
+
+      # Excel/CSV Import
+      collection do
+        post :import   # POST /v1/tickets/import
+      end
+    end
+
+    # 5b. TICKET EXPORTS (separate resource for export management)
+    resources :ticket_exports, only: [:index, :show, :create], path: 'tickets/exports' do
+      # GET /v1/tickets/exports?event_id=1 - List all exports for an event
+      # GET /v1/tickets/exports/:id - Download a specific export file
+      # POST /v1/tickets/exports - Create new export (generates file)
     end
 
     # 6. TEAM MEMBERS MANAGEMENT

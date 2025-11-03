@@ -408,4 +408,376 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
     end
   end
+
+  # =========================================================================
+  # IMPORT/EXPORT ENDPOINTS
+  # =========================================================================
+
+  path '/v1/tickets/import' do
+    post 'Import tickets from Excel file' do
+      tags 'Tickets'
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :dry_run, in: :query, type: :boolean, required: false,
+                description: 'If true, validate and report without writing changes'
+      parameter name: :file, in: :formData, type: :file, required: true,
+                description: 'Excel file (.xlsx) with ticket data'
+
+      response '200', 'Tickets imported successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 data: {
+                   type: :object,
+                   properties: {
+                     created: { type: :integer, description: 'Number of tickets created' },
+                     updated: { type: :integer, description: 'Number of tickets updated (more complete rows)' },
+                     skipped: { type: :integer, description: 'Number of tickets skipped (duplicates)' },
+                     duplicates_in_file: { type: :integer, description: 'Number of duplicate rows collapsed within the file' },
+                     errors: { type: :array, items: { type: :string }, description: 'Error messages if any' }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:dry_run) { true }
+        let(:file) do
+          # Create a test Excel file
+          require 'caxlsx'
+          package = Axlsx::Package.new
+          workbook = package.workbook
+          workbook.add_worksheet(name: "Tickets") do |sheet|
+            sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In', 'Role']
+            sheet.add_row ['Test Import User', 'import.test@example.com', '+1234567890', 'Import Test Event', 'GA', '', '', 'pending', 'false', 'Delegate']
+          end
+
+          temp_file = Tempfile.new(['test_import', '.xlsx'])
+          package.serialize(temp_file.path)
+          temp_file.rewind
+
+          Rack::Test::UploadedFile.new(temp_file.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        end
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['success']).to be true
+          expect(json['data']['created']).to be >= 0
+          # Dry-run should not persist
+          count_before = Ticket.where(attendee_email: 'import.test@example.com').count
+          expect(count_before).to eq(0)
+        end
+      end
+
+      response '200', 'Allows same phone/email when names differ (business rule)' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 data: {
+                   type: :object,
+                   properties: {
+                     created: { type: :integer },
+                     updated: { type: :integer },
+                     skipped: { type: :integer },
+                     duplicates_in_file: { type: :integer },
+                     errors: { type: :array, items: { type: :string } }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:dry_run) { true }
+        let(:file) do
+          require 'caxlsx'
+          package = Axlsx::Package.new
+          workbook = package.workbook
+          workbook.add_worksheet(name: "Tickets") do |sheet|
+            sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+            # Two rows: same phone/email, different names, same event+type
+            sheet.add_row ['Alice Example', 'shared@company.com', '0168100005', manager_event.title, 'GA', '', '', 'pending', 'false']
+            sheet.add_row ['Bob Example',   'shared@company.com', '0168100005', manager_event.title, 'GA', '', '', 'pending', 'false']
+          end
+
+          temp_file = Tempfile.new(['test_import_dupes', '.xlsx'])
+          package.serialize(temp_file.path)
+          temp_file.rewind
+
+          Rack::Test::UploadedFile.new(temp_file.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        end
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['success']).to be true
+          # Both should be considered distinct (names differ), so created >= 2 on live; in dry_run, we still see would-create 2
+          expect(json['data']['created']).to be >= 2
+        end
+      end
+
+      response '401', 'Unauthorized - Missing or invalid token' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { nil }
+        let(:file) { Rack::Test::UploadedFile.new(__FILE__, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') }
+
+        run_test!
+      end
+
+      response '422', 'Unprocessable Entity - No file provided or import failed' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 errors: { type: :array, items: { type: :string } }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:file) { nil }
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['error']).to eq('No file provided')
+        end
+      end
+    end
+  end
+
+  # =========================================================================
+  # TICKET EXPORTS ENDPOINTS
+  # =========================================================================
+
+  path '/v1/tickets/exports' do
+    # POST - Create Export
+    post 'Create new ticket export for an event' do
+      tags 'Ticket Exports'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :event_id, in: :query, type: :integer, required: true,
+                description: 'Event ID to export tickets for'
+
+      response '201', 'Export created successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 data: {
+                   type: :object,
+                   properties: {
+                     id: { type: :integer },
+                     type: { type: :string },
+                     created_at: { type: :string },
+                     event_id: { type: :integer }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:event_id) { manager_event.id }
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['success']).to be true
+          expect(json['data']['event_id']).to eq(manager_event.id)
+        end
+      end
+
+      response '401', 'Unauthorized - Missing or invalid token' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { manager_event.id }
+
+        run_test!
+      end
+
+      response '403', 'Forbidden - Not authorized to export tickets for this event' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:event_id) { manager_event.id }
+
+        run_test!
+      end
+
+      response '404', 'Event not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:event_id) { 999999 }
+
+        run_test!
+      end
+
+      response '422', 'Unprocessable Entity - Missing event_id parameter' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:event_id) { nil }
+
+        run_test!
+      end
+    end
+
+    # GET - List Exports
+    get 'List all exports for an event' do
+      tags 'Ticket Exports'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :event_id, in: :query, type: :integer, required: true,
+                description: 'Event ID to list exports for'
+
+      response '200', 'Returns list of exports' do
+        schema type: :array,
+               items: {
+                 type: :object,
+                 properties: {
+                   id: { type: :integer },
+                   type: { type: :string },
+                   created_at: { type: :string },
+                   updated_at: { type: :string },
+                   event: {
+                     type: :object,
+                     properties: {
+                       id: { type: :integer },
+                       title: { type: :string }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:event_id) { manager_event.id }
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json).to be_an(Array)
+        end
+      end
+
+      response '401', 'Unauthorized - Missing or invalid token' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { manager_event.id }
+
+        run_test!
+      end
+
+      response '403', 'Forbidden - Not authorized to view exports for this event' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:event_id) { manager_event.id }
+
+        run_test!
+      end
+
+      response '422', 'Unprocessable Entity - Missing event_id parameter' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:event_id) { nil }
+
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/tickets/exports/{id}' do
+    parameter name: :id, in: :path, type: :integer, description: 'Export log ID'
+
+    # GET - Download Export File
+    get 'Download a specific export file' do
+      tags 'Ticket Exports'
+      produces 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      response '200', 'Excel file downloaded successfully' do
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:id) do
+          # Create an export first
+          result = TicketExcelService.export(manager_event.id)
+          result[:export_log].id
+        end
+
+        run_test! do |response|
+          expect(response.content_type).to include('spreadsheet')
+          expect(response.headers['Content-Disposition']).to include('attachment')
+        end
+      end
+
+      response '401', 'Unauthorized - Missing or invalid token' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { nil }
+        let(:id) { 1 }
+
+        run_test!
+      end
+
+      response '403', 'Forbidden - Not authorized to download this export' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) do
+          result = TicketExcelService.export(manager_event.id)
+          result[:export_log].id
+        end
+
+        run_test!
+      end
+
+      response '404', 'Export not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:id) { 999999 }
+
+        run_test!
+      end
+    end
+  end
 end

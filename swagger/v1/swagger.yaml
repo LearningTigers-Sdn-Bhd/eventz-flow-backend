@@ -4,72 +4,9 @@ info:
   title: API V1
   version: v1
 paths:
-  "/v1/auth/password/request_reset_password":
-    post:
-      summary: Request a password reset email
-      tags:
-      - Authentication
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email:
-                  type: string
-      responses:
-        '200':
-          description: Instructions sent (generic)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-  "/v1/auth/password/verify_reset_password_request":
+  "/v1/metrics/events_overview":
     get:
-      summary: Verify reset password token validity
-      tags:
-      - Authentication
-      parameters:
-      - name: token
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Token is valid
-        '422':
-          description: Invalid or expired token
-  "/v1/auth/password/reset_password":
-    post:
-      summary: Reset password using token
-      tags:
-      - Authentication
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                token:
-                  type: string
-                password:
-                  type: string
-                password_confirmation:
-                  type: string
-      responses:
-        '200':
-          description: Password has been reset
-        '422':
-          description: Validation error
-  # Analytics paths removed; use metrics equivalents below
+      summary: Get all accessible events with their analytics data
       tags:
       - Optimized Analytics
       parameters:
@@ -115,7 +52,9 @@ paths:
                           format: date-time
         '401':
           description: Unauthorized
-
+  "/v1/metrics/summary":
+    get:
+      summary: Get aggregated analytics summary across all accessible events
       tags:
       - Optimized Analytics
       parameters:
@@ -153,7 +92,9 @@ paths:
                     description: Total event locations
         '401':
           description: Unauthorized
-
+  "/v1/metrics/total_tickets":
+    get:
+      summary: Get total tickets count across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -177,7 +118,9 @@ paths:
           description: Forbidden - insufficient permissions
         '401':
           description: Unauthorized
-
+  "/v1/metrics/total_scanned_tickets":
+    get:
+      summary: Get total scanned tickets count across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -197,7 +140,9 @@ paths:
                   totalScannedTickets:
                     type: integer
                     description: Total number of scanned tickets across all events
-
+  "/v1/metrics/total_unscanned_tickets":
+    get:
+      summary: Get total unscanned tickets count across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -217,7 +162,9 @@ paths:
                   totalUnscannedTickets:
                     type: integer
                     description: Total number of unscanned tickets across all events
-
+  "/v1/metrics/total_amount_price":
+    get:
+      summary: Get total sales amount across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -237,7 +184,9 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Total sales amount in cents across all events
-
+  "/v1/metrics/weekly_registered":
+    get:
+      summary: Get weekly registered tickets data across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -266,7 +215,9 @@ paths:
                         count:
                           type: integer
                           description: Number of tickets registered on this date
-
+  "/v1/metrics/weekly_scanned":
+    get:
+      summary: Get weekly scanned tickets data across all accessible events
       tags:
       - Global Analytics
       parameters:
@@ -295,432 +246,9 @@ paths:
                         count:
                           type: integer
                           description: Number of tickets scanned on this date
-
-  "/v1/metrics/events_overview":
-    get:
-      summary: Get all accessible events with their metrics data
-      tags:
-      - Optimized Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Events overview retrieved successfully for staff (scoped to assigned events)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  events:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        title:
-                          type: string
-                        status:
-                          type: string
-                        total_tickets:
-                          type: integer
-                        scanned_tickets:
-                          type: integer
-                        unscanned_tickets:
-                          type: integer
-                        total_revenue:
-                          type: integer
-                        last_activity:
-                          type: string
-                          format: date-time
-        '401':
-          description: Unauthorized
-  "/v1/metrics/total_tickets":
-    get:
-      summary: Get total tickets count across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalTickets:
-                    type: integer
-  "/v1/metrics/total_scanned_tickets":
-    get:
-      summary: Get total scanned tickets count across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalScannedTickets:
-                    type: integer
-  "/v1/metrics/total_unscanned_tickets":
-    get:
-      summary: Get total unscanned tickets count across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total unscanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalUnscannedTickets:
-                    type: integer
-  "/v1/metrics/total_amount_price":
-    get:
-      summary: Get total sales amount across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total sales amount retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalAmountPrice:
-                    type: integer
-  "/v1/metrics/weekly_registered":
-    get:
-      summary: Get weekly registered tickets data across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly registered tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyRegisteredTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/metrics/weekly_scanned":
-    get:
-      summary: Get weekly scanned tickets data across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyScannedTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/events/{event_id}/metrics/total_tickets":
-    get:
-      summary: Get total tickets count for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalTickets:
-                    type: integer
-  "/v1/events/{event_id}/metrics/total_scanned_tickets":
-    get:
-      summary: Get total scanned tickets count for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalScannedTickets:
-                    type: integer
-  "/v1/events/{event_id}/metrics/total_unscanned_tickets":
-    get:
-      summary: Get total unscanned tickets count for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total unscanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalUnscannedTickets:
-                    type: integer
-  "/v1/events/{event_id}/metrics/total_amount_price":
-    get:
-      summary: Get total sales amount for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Total sales amount retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  totalAmountPrice:
-                    type: integer
-  "/v1/events/{event_id}/metrics/weekly_registered":
-    get:
-      summary: Get weekly registered tickets data for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly registered tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyRegisteredTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
   "/v1/metrics/weekly_sales_amount":
     get:
       summary: Get weekly sales amount data across all accessible events
-      tags:
-      - Global Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly sales amount retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklySalesAmount:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/events/{event_id}/metrics/weekly_scanned":
-    get:
-      summary: Get weekly scanned tickets data for an event
-      tags:
-      - Event Metrics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyScannedTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/metrics/summary":
-    get:
-      summary: Get aggregated metrics summary across all accessible events
-      tags:
-      - Optimized Metrics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Metrics summary retrieved successfully for staff (scoped to assigned events)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  total_events:
-                    type: integer
-                  active_events:
-                    type: integer
-                  total_tickets:
-                    type: integer
-                  total_scanned:
-                    type: integer
-                  total_revenue:
-                    type: integer
-                  total_locations:
-                    type: integer
-        '401':
-          description: Unauthorized
       tags:
       - Global Analytics
       parameters:
@@ -790,8 +318,36 @@ paths:
                   - created_at
         '403':
           description: Forbidden (Member cannot access)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                - error
         '401':
           description: Unauthorized (Invalid token)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Success flag
+                  message:
+                    type: string
+                    description: Error message
+                  errors:
+                    type: array
+                    description: Error details
+                required:
+                - success
+                - message
+                - errors
     post:
       summary: Creates a new API key for the authenticated user
       tags:
@@ -817,6 +373,7 @@ paths:
                     type: integer
                   name:
                     type: string
+                    nullable: true
                   raw_key:
                     type: string
                     description: The raw API key - save this securely, it will not
@@ -829,10 +386,50 @@ paths:
                 - message
         '422':
           description: Unprocessable Entity (Name too long)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    description: Validation errors
+                    items:
+                      type: string
+                required:
+                - errors
         '403':
           description: Forbidden (Member cannot create API keys)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                - error
         '401':
           description: Unauthorized (Empty token)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Success flag
+                  message:
+                    type: string
+                    description: Error message
+                  errors:
+                    type: array
+                    description: Error details
+                required:
+                - success
+                - message
+                - errors
       requestBody:
         content:
           application/json:
@@ -873,332 +470,7 @@ paths:
           description: Forbidden (Only org_owner can revoke API keys)
         '401':
           description: Unauthorized (Empty token)
-  "/v1/auth/register":
-    post:
-      summary: Registers a new user and retrieves JWT tokens
-      tags:
-      - Authentication
-      parameters: []
-      responses:
-        '201':
-          description: User registered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      access_token:
-                        type: string
-                      refresh_token:
-                        type: string
-                      expires_at:
-                        type: string
-                        format: date_time
-                      user:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
-                          full_name:
-                            type: string
-                          email:
-                            type: string
-                          role:
-                            type: string
-                            enum:
-                            - org_owner
-                            - manager
-                            - member
-        '422':
-          description: Duplicate email
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field:
-                          type: string
-                        message:
-                          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                user:
-                  type: object
-                  properties:
-                    email:
-                      type: string
-                      example: newuser@example.com
-                    password:
-                      type: string
-                      example: password123
-                    password_confirmation:
-                      type: string
-                      example: password123
-                    full_name:
-                      type: string
-                      example: New User
-                    phone:
-                      type: string
-                      example: "+1234567890"
-                  required:
-                  - email
-                  - password
-                  - password_confirmation
-                  - full_name
-              required:
-              - user
-  "/v1/auth/login":
-    post:
-      summary: Authenticates user and retrieves JWT tokens
-      tags:
-      - Authentication
-      parameters: []
-      responses:
-        '200':
-          description: Successful login
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      access_token:
-                        type: string
-                      refresh_token:
-                        type: string
-                      expires_at:
-                        type: string
-                        format: date_time
-                      user:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
-                          full_name:
-                            type: string
-                          email:
-                            type: string
-                          role:
-                            type: string
-                            enum:
-                            - org_owner
-                            - manager
-                            - member
-        '401':
-          description: Authentication failed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
-                    example: "Authentication failed"
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field:
-                          type: string
-                          enum:
-                            - email
-                            - password
-                            - account
-                        message:
-                          type: string
-                          enum:
-                            - "Email not found"
-                            - "Invalid password"
-                            - "Account is inactive"
-                    examples:
-                      email_not_found:
-                        summary: Email not found
-                        value:
-                          - field: "email"
-                            message: "Email not found"
-                      invalid_password:
-                        summary: Invalid password
-                        value:
-                          - field: "password"
-                            message: "Invalid password"
-                      inactive_account:
-                        summary: Account is inactive
-                        value:
-                          - field: "account"
-                            message: "Account is inactive"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                user:
-                  type: object
-                  properties:
-                    email:
-                      type: string
-                      example: member@example.com
-                    password:
-                      type: string
-                      example: password123
-                  required:
-                  - email
-                  - password
-              required:
-              - user
-  "/v1/auth/logout":
-    delete:
-      summary: Logs out the user by revoking the JWT token
-      tags:
-      - Authentication
-      security:
-      - bearerAuth: []
-      responses:
-        '200':
-          description: Logout successful
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-        '401':
-          description: Logout failed - User not found or not authenticated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
-                    example: "Logout failed"
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field:
-                          type: string
-                          example: "user"
-                        message:
-                          type: string
-                          example: "User not found or not authenticated"
-  "/v1/auth/refresh_token":
-    post:
-      summary: Refreshes JWT access token using refresh token
-      tags:
-      - Authentication
-      parameters: []
-      responses:
-        '200':
-          description: Access token refreshed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      access_token:
-                        type: string
-                      refresh_token:
-                        type: string
-                      expires_at:
-                        type: string
-                        format: date_time
-        '422':
-          description: Missing refresh token
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field:
-                          type: string
-                        message:
-                          type: string
-        '401':
-          description: Expired refresh token
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        field:
-                          type: string
-                        message:
-                          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                refresh_token:
-                  type: string
-                  example: eyJhbGciOiJIUzI1NiJ9...
-              required:
-              - refresh_token
-  "/v1/events/{event_id}/analytics/total_tickets":
+  "/v1/events/{event_id}/metrics/total_tickets":
     get:
       summary: Get total tickets count for an event
       tags:
@@ -1229,7 +501,7 @@ paths:
           description: Forbidden - insufficient permissions
         '404':
           description: Event not found
-  "/v1/events/{event_id}/analytics/total_scanned_tickets":
+  "/v1/events/{event_id}/metrics/total_scanned_tickets":
     get:
       summary: Get total scanned tickets count for an event
       tags:
@@ -1256,7 +528,7 @@ paths:
                 properties:
                   totalScannedTickets:
                     type: integer
-  "/v1/events/{event_id}/analytics/total_unscanned_tickets":
+  "/v1/events/{event_id}/metrics/total_unscanned_tickets":
     get:
       summary: Get total unscanned tickets count for an event
       tags:
@@ -1283,7 +555,7 @@ paths:
                 properties:
                   totalUnscannedTickets:
                     type: integer
-  "/v1/events/{event_id}/analytics/total_amount_price":
+  "/v1/events/{event_id}/metrics/total_amount_price":
     get:
       summary: Get total sales amount for an event
       tags:
@@ -1311,7 +583,7 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Amount in cents
-  "/v1/events/{event_id}/analytics/weekly_registered_tickets":
+  "/v1/events/{event_id}/metrics/weekly_registered":
     get:
       summary: Get weekly registered tickets data for an event
       tags:
@@ -1346,7 +618,7 @@ paths:
                           format: date
                         count:
                           type: integer
-  "/v1/events/{event_id}/analytics/weekly_scanned_tickets":
+  "/v1/events/{event_id}/metrics/weekly_scanned":
     get:
       summary: Get weekly scanned tickets data for an event
       tags:
@@ -1381,7 +653,7 @@ paths:
                           format: date
                         count:
                           type: integer
-  "/v1/events/{event_id}/analytics/weekly_sales_amount":
+  "/v1/events/{event_id}/metrics/weekly_sales_amount":
     get:
       summary: Get weekly sales amount data for an event
       tags:
@@ -1686,6 +958,9 @@ paths:
                   scan_limit:
                     type: integer
                     example: 100
+                  is_unlimited:
+                    type: boolean
+                    default: false
                   created_at:
                     type: string
                     format: date_time
@@ -1707,7 +982,6 @@ paths:
                 - id
                 - event_id
                 - name
-                - scan_limit
         '422':
           description: Unprocessable Entity (Invalid params)
         '403':
@@ -2848,6 +2122,287 @@ paths:
             event)
         '404':
           description: Not Found
+  "/v1/tickets/import":
+    post:
+      summary: Import tickets from Excel file
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: dry_run
+        in: query
+        required: false
+        description: If true, validate and report without writing changes
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Allows same phone/email when names differ (business rule)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                        description: Number of tickets created
+                      updated:
+                        type: integer
+                        description: Number of tickets updated (more complete rows)
+                      skipped:
+                        type: integer
+                        description: Number of tickets skipped (duplicates)
+                      duplicates_in_file:
+                        type: integer
+                        description: Number of duplicate rows collapsed within the
+                          file
+                      errors:
+                        type: array
+                        items:
+                          type: string
+                        description: Error messages if any
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - No file provided or import failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: Excel file (.xlsx) with ticket data
+  "/v1/tickets/exports":
+    post:
+      summary: Create new ticket export for an event
+      tags:
+      - Ticket Exports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: event_id
+        in: query
+        required: true
+        description: Event ID to export tickets for
+        schema:
+          type: integer
+      responses:
+        '201':
+          description: Export created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      type:
+                        type: string
+                      created_at:
+                        type: string
+                      event_id:
+                        type: integer
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '403':
+          description: Forbidden - Not authorized to export tickets for this event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - Missing event_id parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    get:
+      summary: List all exports for an event
+      tags:
+      - Ticket Exports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: event_id
+        in: query
+        required: true
+        description: Event ID to list exports for
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Returns list of exports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    type:
+                      type: string
+                    created_at:
+                      type: string
+                    updated_at:
+                      type: string
+                    event:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '403':
+          description: Forbidden - Not authorized to view exports for this event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - Missing event_id parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  "/v1/tickets/exports/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Export log ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Download a specific export file
+      tags:
+      - Ticket Exports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Excel file downloaded successfully
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '403':
+          description: Forbidden - Not authorized to download this export
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Export not found
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
   "/v1/users/{id}/role":
     put:
       summary: Updates a global user's role
@@ -2909,30 +2464,28 @@ paths:
               schema:
                 type: object
                 properties:
-                  access_token:
-                    type: string
-                    description: JWT token for immediate authentication.
                   user:
                     type: object
                     properties:
                       id:
                         type: integer
-                      email:
-                        type: string
-                        format: email
                       full_name:
                         type: string
-                        nullable: true
-                      phone:
+                      email:
                         type: string
-                        nullable: true
                       role:
                         type: string
-                        description: The assigned user role (e.g., member).
                     required:
                     - id
+                    - full_name
                     - email
                     - role
+                  token:
+                    type: string
+                    description: JWT token for immediate authentication.
+                required:
+                - user
+                - token
         '422':
           description: Validation error
           content:
@@ -2995,20 +2548,35 @@ paths:
               schema:
                 type: object
                 properties:
-                  id:
-                    type: integer
-                  email:
+                  success:
+                    type: boolean
+                  message:
                     type: string
-                    format: email
-                  full_name:
-                    type: string
-                    nullable: true
-                  phone:
-                    type: string
-                    nullable: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                        format: email
+                      full_name:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                      role:
+                        type: string
+                      email_verified:
+                        type: boolean
+                    required:
+                    - id
+                    - email
                 required:
-                - id
-                - email
+                - success
+                - message
+                - data
         '401':
           description: Unauthorized (Missing JWT)
           content:
@@ -3047,20 +2615,35 @@ paths:
               schema:
                 type: object
                 properties:
-                  id:
-                    type: integer
-                  email:
+                  success:
+                    type: boolean
+                  message:
                     type: string
-                    format: email
-                  full_name:
-                    type: string
-                    nullable: true
-                  phone:
-                    type: string
-                    nullable: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                        format: email
+                      full_name:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                      role:
+                        type: string
+                      email_verified:
+                        type: boolean
+                    required:
+                    - id
+                    - email
                 required:
-                - id
-                - email
+                - success
+                - message
+                - data
         '422':
           description: Validation error
           content:
@@ -3095,3 +2678,5 @@ servers:
   variables:
     defaultHost:
       default: www.example.com
+- url: http://localhost:3001
+  description: Local Development
