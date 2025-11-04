@@ -2,6 +2,7 @@ class Ticket < ApplicationRecord
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
+  before_validation :normalize_attendee_fields
 
   # --- Associations ---
   # In modern Rails, belongs_to implies presence validation by default.
@@ -85,28 +86,62 @@ class Ticket < ApplicationRecord
     self.public_id ||= SecureRandom.uuid
   end
 
+  def normalize_attendee_fields
+    # Title-case attendee_name for display while keeping a normalized key for dedupe/indexes
+    self.attendee_name = titleize_name(attendee_name) if attendee_name.present?
+
+    if has_attribute?(:attendee_name_norm)
+      self.attendee_name_norm = normalize_name_key(attendee_name) if will_save_change_to_attendee_name? || attendee_name_norm.blank?
+    end
+    if has_attribute?(:attendee_email_norm)
+      self.attendee_email_norm = normalize_email_key(attendee_email) if will_save_change_to_attendee_email? || attendee_email_norm.blank?
+    end
+    if has_attribute?(:attendee_phone_norm)
+      self.attendee_phone_norm = normalize_phone_key(attendee_phone) if will_save_change_to_attendee_phone? || attendee_phone_norm.blank?
+    end
+  end
+
+  def titleize_name(value)
+    value.to_s.strip.split(/\s+/).map { |w| w.downcase.capitalize }.join(' ')
+  end
+
+  def normalize_name_key(value)
+    key = value.to_s.strip.gsub(/\s+/, ' ').downcase
+    key.presence
+  end
+
+  def normalize_email_key(value)
+    key = value.to_s.strip.downcase
+    key.presence
+  end
+
+  def normalize_phone_key(value)
+    digits = value.to_s.gsub(/\D+/, '')
+    digits.presence
+  end
+
   def determine_event_type
     return 'ticket.created' if previous_changes[:id].present?
-    
+
     # Specific update events
     return 'ticket.scanned' if previous_changes[:checked_in] == [false, true]
     return 'ticket.refunded' if previous_changes[:status]&.last == 2  # refunded enum value
     return 'ticket.canceled' if previous_changes[:status]&.last == 3  # canceled enum value
     return 'ticket.payment_confirmed' if previous_changes[:payment_status] == [0, 1]  # pending to paid
-    
+
     'ticket.updated'
   end
 
   def build_webhook_payload(event_type)
     # For creation, send full data. For updates, send minimal data + changes
     is_creation = event_type == 'ticket.created'
-    
+
     payload = {
       event_type: event_type,
       webhook_id: SecureRandom.uuid,
       timestamp: Time.now.utc.iso8601,
       api_version: "v1",
-      
+
       ticket: {
         id: self.id,
         public_id: self.public_id,
@@ -117,13 +152,13 @@ class Ticket < ApplicationRecord
         attendee_phone: self.attendee_phone,
         custom_fields: self.custom_fields_data
       },
-      
+
       event: {
         id: self.event.id,
         title: self.event.title
       }
     }
-    
+
     # Add full context on creation
     if is_creation
       payload[:ticket].merge!(
@@ -132,13 +167,13 @@ class Ticket < ApplicationRecord
         transaction_id: self.transaction_id,
         created_at: self.created_at.iso8601
       )
-      
+
       payload[:ticket_type] = {
         id: self.ticket_type.id,
         name: self.ticket_type.name,
         price: self.ticket_type.price.to_f
       }
-      
+
       payload[:event].merge!(
         start_date: self.event.start_date&.iso8601,
         end_date: self.event.end_date&.iso8601,
@@ -148,7 +183,7 @@ class Ticket < ApplicationRecord
       # Add changes for updates
       payload[:changes] = format_changes
     end
-    
+
     payload.compact
   end
 

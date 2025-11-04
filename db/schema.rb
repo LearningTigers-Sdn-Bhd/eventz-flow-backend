@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_30_090000) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -86,6 +86,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_30_090000) do
     t.boolean "published", default: false, null: false
   end
 
+  create_table "export_logs", force: :cascade do |t|
+    t.string "type"
+    t.string "sheet_path"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "event_id", null: false
+    t.index ["event_id"], name: "index_export_logs_on_event_id"
+    t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
+  end
+
   create_table "orders", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -138,7 +148,13 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_30_090000) do
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "attendee_email_norm"
+    t.string "attendee_phone_norm"
+    t.string "attendee_name_norm"
+    t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
+    t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
+    t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
@@ -169,6 +185,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_30_090000) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
+  add_foreign_key "export_logs", "events"
   add_foreign_key "password_resets", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"

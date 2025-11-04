@@ -1,11 +1,11 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in, :self_check_in, :find_by_contact]
+    before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
-    
+
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
 
@@ -102,6 +102,48 @@ module V1
       render json: { error: 'Ticket not found' }, status: :not_found
     end
 
+    # GET /v1/tickets/export?event_id=1
+    def export
+      # Authorization: User must be authenticated
+      unless current_user
+        return render json: { error: 'Unauthorized' }, status: :unauthorized
+      end
+
+      # Validate event_id parameter
+      unless params[:event_id].present?
+        return render json: { error: 'event_id parameter is required' }, status: :unprocessable_content
+      end
+
+      begin
+        event = Event.find(params[:event_id])
+
+        # Authorization: User must have access to this event
+        authorize event, :show?
+
+        result = TicketExcelService.export(params[:event_id])
+
+        # Send the file to the client
+        send_file(
+          result[:file_path],
+          filename: File.basename(result[:file_path]),
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          disposition: 'attachment'
+        )
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Event not found' }, status: :not_found
+      rescue Pundit::NotAuthorizedError
+        render json: { error: 'Not authorized to export tickets for this event' }, status: :forbidden
+      rescue StandardError => e
+        Rails.logger.error "Ticket export error: #{e.message}"
+        Rails.logger.error e.backtrace.join("\n")
+        error_response(
+          message: 'Export failed',
+          errors: [e.message],
+          status: :unprocessable_content
+        )
+      end
+    end
+
     # POST /v1/tickets/find_by_contact
     # Public endpoint - find ticket by email, phone, or name (no authentication required)
     def find_by_contact
@@ -116,31 +158,31 @@ module V1
       query = Ticket.where(payment_status: 'paid')
       conditions = []
       values = []
-      
+
       if attendee_email.present?
         conditions << 'attendee_email = ?'
         values << attendee_email
       end
-      
+
       if attendee_phone.present?
         conditions << 'attendee_phone = ?'
         values << attendee_phone
       end
-      
+
       if attendee_name.present?
         normalized_search = attendee_name.strip.downcase
         search_no_spaces = normalized_search.gsub(/\s+/, '')
-        
+
         # Flexible name matching: exact, partial, with/without spaces, first/last name
         name_conditions = [
           'LOWER(attendee_name) = ?',
           'LOWER(attendee_name) LIKE ?',
-          'REPLACE(LOWER(attendee_name), \' \', \'\') = ?',
-          'REPLACE(LOWER(attendee_name), \' \', \'\') LIKE ?',
+          'REPLACE(LOWER(attendee_name), \' \' , \'\') = ?',
+          'REPLACE(LOWER(attendee_name), \' \' , \'\') LIKE ?',
           'LOWER(attendee_name) LIKE ?',
           'LOWER(attendee_name) LIKE ?'
         ]
-        
+
         conditions << "(#{name_conditions.join(' OR ')})"
         values.concat([
           normalized_search,
@@ -151,21 +193,21 @@ module V1
           "% #{normalized_search}%"
         ])
       end
-      
+
       # Name searches return all matches (max 10), email/phone return single ticket
       if attendee_name.present? && attendee_email.blank? && attendee_phone.blank?
         @tickets = query.where(conditions.join(' OR '), *values)
                        .order(created_at: :desc)
                        .limit(10)
-        
+
         if @tickets.empty?
           render json: { error: 'No ticket found with the provided contact information' }, status: :not_found and return
         end
-        
+
         render json: {
           multiple_matches: @tickets.count > 1,
           tickets: @tickets.as_json(
-            include: { 
+            include: {
               ticket_type: { only: [:id, :name, :price] },
               event: { only: [:id, :title] }
             }
@@ -181,7 +223,7 @@ module V1
         end
 
         render json: @ticket.as_json(
-          include: { 
+          include: {
             ticket_type: { only: [:id, :name, :price] },
             event: { only: [:id, :title] }
           }
@@ -217,7 +259,7 @@ module V1
       # Perform self check-in (WITHOUT scanned_by_id)
       if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
         render json: @ticket.as_json(
-          include: { 
+          include: {
             ticket_type: { only: [:id, :name, :price] },
             event: { only: [:id, :title] }
           }

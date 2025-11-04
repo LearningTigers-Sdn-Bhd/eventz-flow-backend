@@ -67,10 +67,20 @@ Rails.application.routes.draw do
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
-      # POST /v1/tickets/find_by_contact (Public - no auth required) - Find ticket without checking in
+
+      # Public endpoints (no auth required)
       post 'find_by_contact', to: 'tickets#find_by_contact', on: :collection
-      # POST /v1/tickets/self_check_in (Public - no auth required) - Confirm check-in
       post 'self_check_in', to: 'tickets#self_check_in', on: :collection
+    end
+
+    # 5a. IMPORTS
+    post 'imports/tickets', to: 'imports#tickets'   # POST /v1/imports/tickets
+
+    # 5b. TICKET EXPORTS (separate resource for export management)
+    resources :ticket_exports, only: [:index, :show, :create], path: 'tickets/exports' do
+      # GET /v1/tickets/exports?event_id=1 - List all exports for an event
+      # GET /v1/tickets/exports/:id - Download a specific export file
+      # POST /v1/tickets/exports - Create new export (generates file)
     end
 
     # 6. TEAM MEMBERS MANAGEMENT
