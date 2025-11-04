@@ -143,7 +143,7 @@ Content-Type: multipart/form-data
 
 3. **Duplicate Handling:**
    - In-file: collapse only when names match within the same Event + Ticket Type (case-insensitive, spaces collapsed). If names differ, keep both rows even if email/phone are identical.
-   - Against DB: if name matches within the same Event + Ticket Type, update only if the new row is more complete (merge custom fields, only upgrade payment status, never uncheck). If email/phone matches but name differs, create a new ticket.
+   - Against DB: if name matches within the same Event + Ticket Type, update only if the new row is more complete (merge custom fields, never uncheck). Additionally, if the imported `Payment Status` is `paid`, the existing ticket is upgraded to `paid` regardless of completeness. Never downgrade payment status. If email/phone matches but name differs, create a new ticket.
 
 4. **Dynamic Fields:**
    - Additional columns beyond standard fields become custom fields
@@ -249,7 +249,7 @@ Download a specific exported Excel file.
 | **Ticket Type** | String | No | Ticket type name; defaults to "General Admission" if blank | "VIP" |
 | **Public ID** | String | No | UUID (auto-generated if empty) | "abc-123-def" |
 | **QR Code** | Formula | No | Generated QR code image | (Excel formula) |
-| **Payment Status** | Enum | No | Ticket payment state (`pending`, `paid`, `failed`, `refunded`) | "paid" |
+| **Payment Status** | Enum | No | Ticket payment state (`pending`, `paid`, `failed`, `refunded`). Importing `paid` will always upgrade an existing ticket to paid (no downgrades). | "paid" |
 | **Checked In** | Boolean | No | Check-in status | "true" or "false" |
 
 ### Dynamic Custom Fields

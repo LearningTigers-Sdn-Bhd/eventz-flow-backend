@@ -238,4 +238,68 @@ RSpec.describe 'V1::Imports', type: :request do
       end
     end
   end
+
+  # Additional behavior tests for payment status upgrades
+  describe 'Payment status upgrade behavior' do
+    let(:auth_header) { "Bearer #{manager_token}" }
+
+    def build_excel(rows)
+      require 'caxlsx'
+      package = Axlsx::Package.new
+      workbook = package.workbook
+      workbook.add_worksheet(name: "Tickets") do |sheet|
+        sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        rows.each { |r| sheet.add_row r }
+      end
+      tmp = Tempfile.new(['import_paid', '.xlsx'])
+      package.serialize(tmp.path)
+      tmp.rewind
+      Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    end
+
+    it 'upgrades to paid even when row is not more complete' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Paid Upgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+
+      file = build_excel([
+        ['Paid Upgrade User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.payment_status).to eq('paid')
+    end
+
+    it 'does not downgrade from paid' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'No Downgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :paid, checked_in: false)
+
+      file = build_excel([
+        ['No Downgrade User', '', '', manager_event.title, 'GA', '', '', 'pending', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.payment_status).to eq('paid')
+    end
+
+    it 'does not persist upgrade when dry_run=true' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Dry Run User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+
+      file = build_excel([
+        ['Dry Run User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: true }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.payment_status).to eq('pending')
+    end
+  end
 end

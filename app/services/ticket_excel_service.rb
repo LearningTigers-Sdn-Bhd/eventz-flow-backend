@@ -306,6 +306,32 @@ class TicketExcelService
         existing = Ticket.find_by(event_id: event.id, ticket_type_id: ticket_type.id, attendee_name_norm: normalize_name_key(attendee_name))
 
         if existing
+          # Unconditional upgrade-to-paid rule: if incoming status is paid and existing is not,
+          # upgrade payment_status to paid regardless of completeness. Never downgrade and respect dry_run.
+          if parsed_payment_status == :paid && existing.payment_status != 'paid'
+            unless dry_run
+              existing.update(payment_status: :paid)
+            end
+            results[:updated][:count] += 1
+            if full
+              record_data = {
+                model: 'Ticket',
+                id: existing.id.to_s,
+                attendee_name: existing.attendee_name,
+                attendee_email: existing.attendee_email,
+                attendee_phone: existing.attendee_phone,
+                event_title: event.title,
+                ticket_type: ticket_type.name,
+                payment_status: 'paid',
+                checked_in: existing.checked_in,
+                **(existing.custom_fields_data || {})
+              }
+              results[:updated][:data] << record_data
+            end
+            # Proceed to next candidate; we've applied the paid upgrade.
+            next
+          end
+
           # Update only if more complete
           existing_score = row_completeness_score(
             attendee_name: existing.attendee_name,
