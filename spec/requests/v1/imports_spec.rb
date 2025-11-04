@@ -35,6 +35,8 @@ RSpec.describe 'V1::Imports', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
       parameter name: :dry_run, in: :query, type: :boolean, required: false,
                 description: 'If true, validate and report without writing changes'
+      parameter name: :full, in: :query, type: :boolean, required: false,
+                description: 'If true, use full import mode with additional validation and processing'
       parameter name: :file, in: :formData, type: :file, required: true,
                 description: 'Excel file (.xlsx) with ticket data'
 
@@ -46,12 +48,46 @@ RSpec.describe 'V1::Imports', type: :request do
                  data: {
                    type: :object,
                    properties: {
-                     created: { type: :integer, description: 'Number of tickets created' },
-                     updated: { type: :integer, description: 'Number of tickets updated (more complete rows)' },
-                     skipped: { type: :integer, description: 'Number of tickets skipped (duplicates)' },
-                     duplicates_in_file: { type: :integer, description: 'Number of duplicate rows collapsed within the file' },
-                     errors: { type: :array, items: { type: :string }, description: 'Error messages if any' }
-                   }
+                     total: { type: :integer, description: 'Total number of tickets processed' },
+                     created: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer, description: 'Number of tickets created' },
+                         data: { type: :array, items: { type: :object }, description: 'Array of created ticket data' }
+                       }
+                     },
+                     updated: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer, description: 'Number of tickets updated (more complete rows)' },
+                         data: { type: :array, items: { type: :object }, description: 'Array of updated ticket data' }
+                       },
+                       description: 'Present only when tickets were updated'
+                     },
+                     skipped: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer, description: 'Number of tickets skipped (duplicates)' },
+                         data: { type: :array, items: { type: :object }, description: 'Array of skipped ticket data' }
+                       }
+                     },
+                     duplicates_in_file: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer, description: 'Number of duplicate rows collapsed within the file' },
+                         data: { type: :array, items: { type: :object }, description: 'Array of duplicate ticket data' }
+                       },
+                       description: 'Present only when duplicates were found in the file'
+                     },
+                     errors: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer, description: 'Number of errors encountered' },
+                         data: { type: :array, items: { type: :string }, description: 'Array of error messages' }
+                       }
+                     }
+                   },
+                   required: [:total, :created, :skipped, :errors]
                  }
                }
 
@@ -77,7 +113,15 @@ RSpec.describe 'V1::Imports', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['success']).to be true
-          expect(json['data']['created']).to be >= 0
+          expect(json['data']['total']).to be >= 0
+          expect(json['data']['created']).to be_a(Hash)
+          expect(json['data']['created']['count']).to be >= 0
+          expect(json['data']['created']['data']).to be_an(Array)
+          expect(json['data']['skipped']).to be_a(Hash)
+          expect(json['data']['skipped']['count']).to be >= 0
+          expect(json['data']['errors']).to be_a(Hash)
+          expect(json['data']['errors']['count']).to be >= 0
+          expect(json['data']['errors']['data']).to be_an(Array)
           # Dry-run should not persist
           count_before = Ticket.where(attendee_email: 'import.test@example.com').count
           expect(count_before).to eq(0)
@@ -92,12 +136,44 @@ RSpec.describe 'V1::Imports', type: :request do
                  data: {
                    type: :object,
                    properties: {
-                     created: { type: :integer },
-                     updated: { type: :integer },
-                     skipped: { type: :integer },
-                     duplicates_in_file: { type: :integer },
-                     errors: { type: :array, items: { type: :string } }
-                   }
+                     total: { type: :integer },
+                     created: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer },
+                         data: { type: :array, items: { type: :object } }
+                       }
+                     },
+                     updated: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer },
+                         data: { type: :array, items: { type: :object } }
+                       }
+                     },
+                     skipped: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer },
+                         data: { type: :array, items: { type: :object } }
+                       }
+                     },
+                     duplicates_in_file: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer },
+                         data: { type: :array, items: { type: :object } }
+                       }
+                     },
+                     errors: {
+                       type: :object,
+                       properties: {
+                         count: { type: :integer },
+                         data: { type: :array, items: { type: :string } }
+                       }
+                     }
+                   },
+                   required: [:total, :created, :skipped, :errors]
                  }
                }
 
@@ -124,8 +200,11 @@ RSpec.describe 'V1::Imports', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['success']).to be true
+          expect(json['data']['total']).to be >= 0
+          expect(json['data']['created']).to be_a(Hash)
           # Both should be considered distinct (names differ), so created >= 2 on live; in dry_run, we still see would-create 2
-          expect(json['data']['created']).to be >= 2
+          expect(json['data']['created']['count']).to be >= 2
+          expect(json['data']['created']['data']).to be_an(Array)
         end
       end
 

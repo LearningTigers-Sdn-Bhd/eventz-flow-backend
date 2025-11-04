@@ -95,14 +95,15 @@ class TicketExcelService
   # Import tickets from Excel file
   # @param file [ActionDispatch::Http::UploadedFile] The uploaded Excel file
   # @param dry_run [Boolean] If true, do not persist changes; return a report only
-  # @return [Hash] { created: Integer, skipped: Integer, updated: Integer, duplicates_in_file: Integer, errors: Array }
-  def self.import(file, dry_run: false)
+  # @param full [Boolean] If true, include full record data (all extracted fields + model + id) in response
+  # @return [Hash] { created: {count: Integer, data: Array}, updated: {count: Integer, data: Array}, skipped: {count: Integer, data: Array}, duplicates_in_file: {count: Integer, data: Array}, errors: {count: Integer, data: Array} }
+  def self.import(file, dry_run: false, full: false)
     results = {
-      created: 0,
-      skipped: 0,
-      updated: 0,
-      duplicates_in_file: 0,
-      errors: []
+      created: { count: 0, data: [] },
+      skipped: { count: 0, data: [] },
+      updated: { count: 0, data: [] },
+      duplicates_in_file: { count: 0, data: [] },
+      errors: { count: 0, data: [] }
     }
 
     begin
@@ -183,13 +184,41 @@ class TicketExcelService
             payment_status: payment_status_str,
             checked_in: checked_in_value
           }) && custom_fields_data.blank?
-            results[:skipped] += 1
+            results[:skipped][:count] += 1
+            if full
+              results[:skipped][:data] << {
+                model: 'Ticket',
+                id: nil,
+                attendee_name: attendee_name,
+                attendee_email: attendee_email,
+                attendee_phone: attendee_phone,
+                event_title: event_title,
+                ticket_type: effective_ticket_type_name,
+                payment_status: payment_status_str,
+                checked_in: checked_in_value,
+                **custom_fields_data
+              }
+            end
             next
           end
 
           # Minimal required: name and event
           if attendee_name.blank? || event_title.blank?
-            results[:skipped] += 1
+            results[:skipped][:count] += 1
+            if full
+              results[:skipped][:data] << {
+                model: 'Ticket',
+                id: nil,
+                attendee_name: attendee_name,
+                attendee_email: attendee_email,
+                attendee_phone: attendee_phone,
+                event_title: event_title,
+                ticket_type: effective_ticket_type_name,
+                payment_status: payment_status_str,
+                checked_in: checked_in_value,
+                **custom_fields_data
+              }
+            end
             next
           end
 
@@ -214,10 +243,26 @@ class TicketExcelService
           if prev.nil? || row_completeness_score(attrs) > row_completeness_score(prev[:attrs])
             candidates[key] = { attrs: attrs, row_num: row_num }
           else
-            results[:duplicates_in_file] += 1
+            results[:duplicates_in_file][:count] += 1
+            if full
+              results[:duplicates_in_file][:data] << {
+                model: 'Ticket',
+                id: nil,
+                attendee_name: attendee_name,
+                attendee_email: attendee_email,
+                attendee_phone: attendee_phone,
+                event_title: event_title,
+                ticket_type: effective_ticket_type_name,
+                payment_status: payment_status_str,
+                checked_in: checked_in_value,
+                **custom_fields_data
+              }
+            end
           end
         rescue StandardError => e
-          results[:errors] << "Row #{row_num}: #{e.message}"
+          error_message = "Row #{row_num}: #{e.message}"
+          results[:errors][:count] += 1
+          results[:errors][:data] << error_message
         end
       end
 
@@ -291,15 +336,46 @@ class TicketExcelService
                 custom_fields_data: existing.custom_fields_data.to_h.merge(custom_fields_data)
               )
             end
-            results[:updated] += 1
+            results[:updated][:count] += 1
+            if full
+              record_data = {
+                model: 'Ticket',
+                id: existing.id.to_s,
+                attendee_name: existing.attendee_name,
+                attendee_email: existing.attendee_email,
+                attendee_phone: existing.attendee_phone,
+                event_title: event.title,
+                ticket_type: ticket_type.name,
+                payment_status: existing.payment_status.to_s,
+                checked_in: existing.checked_in,
+                **(existing.custom_fields_data || {})
+              }
+              results[:updated][:data] << record_data
+            end
           end
-          results[:skipped] += 1
+          results[:skipped][:count] += 1
+          if full && !(new_score > existing_score)
+            record_data = {
+              model: 'Ticket',
+              id: existing.id.to_s,
+              attendee_name: existing.attendee_name,
+              attendee_email: existing.attendee_email,
+              attendee_phone: existing.attendee_phone,
+              event_title: event.title,
+              ticket_type: ticket_type.name,
+              payment_status: existing.payment_status.to_s,
+              checked_in: existing.checked_in,
+              **(existing.custom_fields_data || {})
+            }
+            results[:skipped][:data] << record_data
+          end
           next
         end
 
         # If no name match, even if email/phone match, create a new ticket (per rules)
+        ticket = nil
         unless dry_run
-          Ticket.create!(
+          ticket = Ticket.create!(
             event: event,
             ticket_type: ticket_type,
             attendee_name: attendee_name,
@@ -311,11 +387,28 @@ class TicketExcelService
             custom_fields_data: custom_fields_data
           )
         end
-        results[:created] += 1
+        results[:created][:count] += 1
+        if full
+          record_data = {
+            model: 'Ticket',
+            id: ticket ? ticket.id.to_s : nil,
+            attendee_name: attendee_name,
+            attendee_email: attendee_email,
+            attendee_phone: attendee_phone,
+            event_title: event_title,
+            ticket_type: ticket_type_name,
+            payment_status: parsed_payment_status.to_s,
+            checked_in: checked_in,
+            **custom_fields_data
+          }
+          results[:created][:data] << record_data
+        end
       end
 
     rescue StandardError => e
-      results[:errors] << "File processing error: #{e.message}"
+      error_message = "File processing error: #{e.message}"
+      results[:errors][:count] += 1
+      results[:errors][:data] << error_message
     end
 
     results

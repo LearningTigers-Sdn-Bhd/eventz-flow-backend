@@ -37,7 +37,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 
 ## Import Endpoint
 
-### POST `/v1/tickets/import`
+### POST `/v1/imports/tickets`
 
 Import tickets from an Excel file.
 
@@ -50,6 +50,7 @@ Import tickets from an Excel file.
 |-----------|------|----------|-------------|
 | `file` | File | Yes | Excel file (.xlsx) containing ticket data |
 | `dry_run` | Boolean (query) | No | If true, validate and report without writing changes |
+| `full` | Boolean (query) | No | If true, use full import mode with additional validation and processing |
 
 **Headers:**
 ```
@@ -63,13 +64,57 @@ Content-Type: multipart/form-data
 ```json
 {
   "success": true,
-  "message": "Import completed: 5 created, 1 updated, 2 skipped",
+  "message": "Import completed: 5 total processed (5 created, 1 updated, 2 skipped)",
   "data": {
-    "created": 5,
-    "updated": 1,
-    "skipped": 2,
-    "duplicates_in_file": 1,
-    "errors": []
+    "total": 8,
+    "created": {
+      "count": 5,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "123",
+          "attendee_name": "John Doe",
+          "attendee_email": "john@example.com"
+        }
+      ]
+    },
+    "updated": {
+      "count": 1,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "124",
+          "attendee_name": "Jane Smith",
+          "attendee_email": "jane@example.com"
+        }
+      ]
+    },
+    "skipped": {
+      "count": 2,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "125",
+          "attendee_name": "Bob Johnson",
+          "attendee_email": "bob@example.com"
+        }
+      ]
+    },
+    "duplicates_in_file": {
+      "count": 1,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "126",
+          "attendee_name": "Duplicate User",
+          "attendee_email": "duplicate@example.com"
+        }
+      ]
+    },
+    "errors": {
+      "count": 0,
+      "data": []
+    }
   }
 }
 ```
@@ -326,7 +371,14 @@ Where `E2` references the **Public ID** column.
 
 **cURL:**
 ```bash
-curl -X POST "https://api.eventzflow.com/v1/tickets/import" \
+curl -X POST "https://api.eventzflow.com/v1/imports/tickets" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@tickets.xlsx"
+```
+
+**With query parameters:**
+```bash
+curl -X POST "https://api.eventzflow.com/v1/imports/tickets?dry_run=true&full=true" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "file=@tickets.xlsx"
 ```
@@ -335,11 +387,35 @@ curl -X POST "https://api.eventzflow.com/v1/tickets/import" \
 ```json
 {
   "success": true,
-  "message": "Import completed: 10 created, 2 skipped",
+  "message": "Import completed: 10 total processed (10 created, 2 skipped)",
   "data": {
-    "created": 10,
-    "skipped": 2,
-    "errors": []
+    "total": 12,
+    "created": {
+      "count": 10,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "123",
+          "attendee_name": "John Doe",
+          "attendee_email": "john@example.com"
+        }
+      ]
+    },
+    "skipped": {
+      "count": 2,
+      "data": [
+        {
+          "model": "ticket",
+          "id": "124",
+          "attendee_name": "Jane Smith",
+          "attendee_email": "jane@example.com"
+        }
+      ]
+    },
+    "errors": {
+      "count": 0,
+      "data": []
+    }
   }
 }
 ```
@@ -457,7 +533,7 @@ end
 The import/export logic is handled by:
 ```ruby
 TicketExcelService.export(event_id)
-TicketExcelService.import(file, dry_run: false)
+TicketExcelService.import(file, dry_run: false, full: false)
 ```
 
 ---

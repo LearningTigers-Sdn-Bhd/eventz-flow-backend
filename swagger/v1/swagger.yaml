@@ -2339,9 +2339,15 @@ paths:
         description: If true, validate and report without writing changes
         schema:
           type: boolean
+      - name: full
+        in: query
+        required: false
+        description: If true, use full import mode with additional validation and processing
+        schema:
+          type: boolean
       responses:
         '200':
-          description: Allows same phone/email when names differ (business rule)
+          description: Tickets imported successfully
           content:
             application/json:
               schema:
@@ -2354,24 +2360,71 @@ paths:
                   data:
                     type: object
                     properties:
+                      total:
+                        type: integer
+                        description: Total number of tickets processed
                       created:
-                        type: integer
-                        description: Number of tickets created
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets created
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of created ticket data
                       updated:
-                        type: integer
-                        description: Number of tickets updated (more complete rows)
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets updated (more complete rows)
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of updated ticket data
+                        description: Present only when tickets were updated
                       skipped:
-                        type: integer
-                        description: Number of tickets skipped (duplicates)
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets skipped (duplicates)
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of skipped ticket data
                       duplicates_in_file:
-                        type: integer
-                        description: Number of duplicate rows collapsed within the
-                          file
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of duplicate rows collapsed within the file
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of duplicate ticket data
+                        description: Present only when duplicates were found in the file
                       errors:
-                        type: array
-                        items:
-                          type: string
-                        description: Error messages if any
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of errors encountered
+                          data:
+                            type: array
+                            items:
+                              type: string
+                            description: Array of error messages
+                    required:
+                    - total
+                    - created
+                    - skipped
+                    - errors
         '401':
           description: Unauthorized - Missing or invalid token
           content:
