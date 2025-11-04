@@ -236,6 +236,7 @@ module V1
     # POST /v1/tickets/self_check_in
     # Public endpoint for attendees to check themselves in using ticket public_id
     # No authentication required, no scanned_by_id set
+    # Optionally accepts attendee_phone and attendee_email to update missing contact info
     def self_check_in
       public_id = params[:public_id]
 
@@ -256,8 +257,25 @@ module V1
         render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
       end
 
+      # Prepare update parameters for check-in
+      update_params = {
+        checked_in: true,
+        check_in_at: Time.current,
+        status: :scanned
+      }
+
+      # Update phone number if provided and currently missing
+      if params[:attendee_phone].present? && @ticket.attendee_phone.blank?
+        update_params[:attendee_phone] = params[:attendee_phone]
+      end
+
+      # Update email if provided and currently missing
+      if params[:attendee_email].present? && @ticket.attendee_email.blank?
+        update_params[:attendee_email] = params[:attendee_email]
+      end
+
       # Perform self check-in (WITHOUT scanned_by_id)
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned)
+      if @ticket.update(update_params)
         render json: @ticket.as_json(
           include: {
             ticket_type: { only: [:id, :name, :price] },
