@@ -239,6 +239,97 @@ RSpec.describe 'V1::Imports', type: :request do
     end
   end
 
+  # Additional behavior tests for custom labels merging
+  describe 'Custom labels merging behavior' do
+    let(:auth_header) { "Bearer #{manager_token}" }
+
+    def build_excel_with_custom_columns(rows, custom_columns: [])
+      require 'caxlsx'
+      package = Axlsx::Package.new
+      workbook = package.workbook
+      workbook.add_worksheet(name: "Tickets") do |sheet|
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row.concat(custom_columns)
+        sheet.add_row header_row
+        rows.each { |r| sheet.add_row r }
+      end
+      tmp = Tempfile.new(['import_labels', '.xlsx'])
+      package.serialize(tmp.path)
+      tmp.rewind
+      Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    end
+
+    it 'merges new labels with existing labels_data' do
+      # Set up event with existing labels
+      existing_labels = { 'role' => 'Role', 'company' => 'Company' }
+      manager_event.update!(labels_data: existing_labels)
+
+      # Import with new custom column
+      file = build_excel_with_custom_columns(
+        [['Test User', 'test@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
+        custom_columns: ['Department']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+
+      # Verify existing labels are preserved
+      expect(manager_event.labels_data['role']).to eq('Role')
+      expect(manager_event.labels_data['company']).to eq('Company')
+
+      # Verify new label is added
+      expect(manager_event.labels_data['department']).to eq('Department')
+    end
+
+    it 'preserves all existing labels when importing new ones' do
+      # Set up event with multiple existing labels
+      existing_labels = { 'role' => 'Role', 'company' => 'Company', 'dietary' => 'Dietary Restrictions' }
+      manager_event.update!(labels_data: existing_labels)
+
+      # Import with one new custom column
+      file = build_excel_with_custom_columns(
+        [['Test User 2', 'test2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false']],
+        custom_columns: ['T-Shirt Size']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+
+      # Verify all existing labels are preserved
+      expect(manager_event.labels_data['role']).to eq('Role')
+      expect(manager_event.labels_data['company']).to eq('Company')
+      expect(manager_event.labels_data['dietary']).to eq('Dietary Restrictions')
+
+      # Verify new label is added
+      expect(manager_event.labels_data['t-shirt size']).to eq('T-Shirt Size')
+      expect(manager_event.labels_data.keys.length).to eq(4)
+    end
+
+    it 'creates labels_data for new events when importing custom columns' do
+      # Event without existing labels
+      new_event = create(:event, title: 'New Event', labels_data: nil)
+      EventAssignment.find_or_create_by!(event: new_event, user: manager_user, role: :event_admin)
+
+      file = build_excel_with_custom_columns(
+        [['New Event User', 'new@example.com', '', new_event.title, 'GA', '', '', 'pending', 'false', 'VIP']],
+        custom_columns: ['VIP Level']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      new_event.reload
+
+      # Verify labels_data is created
+      expect(new_event.labels_data).to be_present
+      expect(new_event.labels_data['vip level']).to eq('VIP Level')
+    end
+  end
+
   # Additional behavior tests for payment status upgrades
   describe 'Payment status upgrade behavior' do
     let(:auth_header) { "Bearer #{manager_token}" }

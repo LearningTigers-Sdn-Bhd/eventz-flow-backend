@@ -294,7 +294,12 @@ class TicketExcelService
           e.visibility = true
           e.labels_data = labels_schema if labels_schema.present?
         end
-        event.update(labels_data: labels_schema) if event.labels_data.blank? && labels_schema.present?
+        # Merge new labels with existing labels_data
+        if labels_schema.present?
+          existing_labels = event.labels_data || {}
+          merged_labels = existing_labels.merge(labels_schema)
+          event.update(labels_data: merged_labels) if merged_labels != existing_labels
+        end
 
         ticket_type = event.ticket_types.find_or_create_by!(name: ticket_type_name) do |tt|
           tt.price = 0

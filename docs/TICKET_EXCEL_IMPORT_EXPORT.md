@@ -147,7 +147,7 @@ Content-Type: multipart/form-data
 
 4. **Dynamic Fields:**
    - Additional columns beyond standard fields become custom fields
-   - Updates event's `labels_data` schema automatically
+   - Updates event's `labels_data` schema automatically by merging new labels with existing ones (preserves existing labels while adding new ones)
 
 ---
 
