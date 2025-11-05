@@ -159,10 +159,20 @@ class Ticket < ApplicationRecord
       }
     }
 
+    # Add scanned_by information if ticket was scanned by a user
+    if self.scanned_by_id.present? && self.scanned_by
+      payload[:scanned_by] = {
+        id: self.scanned_by.id,
+        full_name: self.scanned_by.full_name,
+        email: self.scanned_by.email
+      }
+    end
+
     # Add full context on creation
     if is_creation
       payload[:ticket].merge!(
         checked_in: self.checked_in,
+        check_in_at: self.check_in_at&.iso8601,
         payment_method: self.payment_method,
         transaction_id: self.transaction_id,
         created_at: self.created_at.iso8601
@@ -182,6 +192,12 @@ class Ticket < ApplicationRecord
     else
       # Add changes for updates
       payload[:changes] = format_changes
+      
+      # Include check_in_at for scanned events
+      if event_type == 'ticket.scanned'
+        payload[:ticket][:checked_in] = self.checked_in
+        payload[:ticket][:check_in_at] = self.check_in_at&.iso8601
+      end
     end
 
     payload.compact
