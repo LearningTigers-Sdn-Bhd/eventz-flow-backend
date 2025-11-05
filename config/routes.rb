@@ -68,6 +68,7 @@ Rails.application.routes.draw do
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
       patch ':public_id/check_in', to: 'tickets#global_check_in', on: :collection
+      patch ':id/unscan', to: 'tickets#unscan', on: :collection
 
       # Public endpoints (no auth required)
       post 'find_by_contact', to: 'tickets#find_by_contact', on: :collection

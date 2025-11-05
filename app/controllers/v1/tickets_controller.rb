@@ -1,7 +1,7 @@
 module V1
   class TicketsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact]
+    before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it (only show, check_in now)
     before_action :set_ticket, only: [:show, :update, :destroy]
@@ -300,6 +300,42 @@ module V1
     rescue StandardError => e
       # Clear the thread-local variable on exception
       Thread.current[:check_in_url] = nil
+      render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
+    end
+
+    # PATCH /v1/tickets/:id/unscan
+    # Org owner only - unscan a ticket (reset check-in status)
+    def unscan
+      # Find the ticket by ID (internal ID or public_id)
+      @ticket = Ticket.find_by(id: params[:id]) || Ticket.find_by!(public_id: params[:id])
+      
+      # Authorization: Only org_owner can unscan tickets
+      authorize @ticket, :unscan?
+      
+      # Check if ticket is actually scanned
+      unless @ticket.checked_in?
+        render json: { error: 'Ticket is not checked in' }, status: :unprocessable_content and return
+      end
+      
+      # Reset ticket to not scanned state
+      if @ticket.update(
+        checked_in: false,
+        check_in_at: nil,
+        scanned_by_id: nil,
+        status: :purchased
+      )
+        render json: { 
+          message: 'Ticket successfully unscanned',
+          ticket: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } })
+        }, status: :ok
+      else
+        render json: @ticket.errors, status: :unprocessable_content
+      end
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Ticket not found' }, status: :not_found
+    rescue Pundit::NotAuthorizedError
+      render json: { error: 'Only organization owners can unscan tickets' }, status: :forbidden
+    rescue StandardError => e
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
 

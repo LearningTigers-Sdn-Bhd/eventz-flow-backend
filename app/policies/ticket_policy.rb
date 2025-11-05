@@ -35,6 +35,12 @@ class TicketPolicy < ApplicationPolicy
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
 
+  # Unscan is restricted to org_owner only
+  def unscan?
+    return false if user.blank? || record.blank?
+    user.is_org_owner?
+  end
+
   # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Managers).
   def update?
     return false if user.blank? || record.blank?
