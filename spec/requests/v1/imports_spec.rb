@@ -276,7 +276,7 @@ RSpec.describe 'V1::Imports', type: :request do
 
     it 'merges new labels with existing labels_data' do
       # Set up event with existing labels
-      existing_labels = { 'role' => 'Role', 'company' => 'Company' }
+      existing_labels = { 'Label 1' => 'Role', 'Label 2' => 'Company' }
       manager_event.update!(labels_data: existing_labels)
 
       # Import with new custom column
@@ -291,16 +291,16 @@ RSpec.describe 'V1::Imports', type: :request do
       manager_event.reload
 
       # Verify existing labels are preserved
-      expect(manager_event.labels_data['role']).to eq('Role')
-      expect(manager_event.labels_data['company']).to eq('Company')
+      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      expect(manager_event.labels_data['Label 2']).to eq('Company')
 
       # Verify new label is added
-      expect(manager_event.labels_data['department']).to eq('Department')
+      expect(manager_event.labels_data['Label 3']).to eq('Department')
     end
 
     it 'preserves all existing labels when importing new ones' do
       # Set up event with multiple existing labels
-      existing_labels = { 'role' => 'Role', 'company' => 'Company', 'dietary' => 'Dietary Restrictions' }
+      existing_labels = { 'Label 1' => 'Role', 'Label 2' => 'Company', 'Label 3' => 'Dietary Restrictions' }
       manager_event.update!(labels_data: existing_labels)
 
       # Import with one new custom column
@@ -315,12 +315,12 @@ RSpec.describe 'V1::Imports', type: :request do
       manager_event.reload
 
       # Verify all existing labels are preserved
-      expect(manager_event.labels_data['role']).to eq('Role')
-      expect(manager_event.labels_data['company']).to eq('Company')
-      expect(manager_event.labels_data['dietary']).to eq('Dietary Restrictions')
+      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      expect(manager_event.labels_data['Label 2']).to eq('Company')
+      expect(manager_event.labels_data['Label 3']).to eq('Dietary Restrictions')
 
       # Verify new label is added
-      expect(manager_event.labels_data['t-shirt size']).to eq('T-Shirt Size')
+      expect(manager_event.labels_data['Label 4']).to eq('T-Shirt Size')
       expect(manager_event.labels_data.keys.length).to eq(4)
     end
 
@@ -341,15 +341,15 @@ RSpec.describe 'V1::Imports', type: :request do
 
       # Verify labels_data is created
       expect(new_event.labels_data).to be_present
-      expect(new_event.labels_data['vip level']).to eq('VIP Level')
+      expect(new_event.labels_data['Label 1']).to eq('VIP Level')
     end
 
     it 'updates existing label display name when importing with changed column header' do
       # Set up event with existing label
-      existing_labels = { 'role' => 'Role' }
+      existing_labels = { 'Label 1' => 'Role' }
       manager_event.update!(labels_data: existing_labels)
 
-      # Import with same key but different display name (e.g., "Position" instead of "Role")
+      # Import with new column header (e.g., "Position" instead of "Role")
       file = build_excel_with_custom_columns(
         [['Update Test User', 'update@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
         custom_columns: ['Position']
@@ -360,19 +360,17 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(response).to have_http_status(:ok)
       manager_event.reload
 
-      # Verify the label was updated (note: "Position" becomes key "position", which is different from "role")
-      # This creates a new label, not updates the existing one
-      expect(manager_event.labels_data['role']).to eq('Role')
-      expect(manager_event.labels_data['position']).to eq('Position')
+      # Verify the existing label is preserved and new label is added
+      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      expect(manager_event.labels_data['Label 2']).to eq('Position')
     end
 
-    it 'updates existing label display name when importing with same normalized key' do
+    it 'updates existing label display name when importing with same column header' do
       # Set up event with existing label "Old Role Name"
-      existing_labels = { 'role' => 'Old Role Name' }
+      existing_labels = { 'Label 1' => 'Old Role Name' }
       manager_event.update!(labels_data: existing_labels)
 
-      # Import with same normalized key "role" but different display name "Role"
-      # Note: "Role" normalizes to "role" (same key), so it should update the value
+      # Import with same column header "Role" (replaces existing Label 1 value)
       file = build_excel_with_custom_columns(
         [['Update Test User 2', 'update2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false']],
         custom_columns: ['Role']
@@ -383,8 +381,8 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(response).to have_http_status(:ok)
       manager_event.reload
 
-      # Verify the label display name was updated (same key "role", different value)
-      expect(manager_event.labels_data['role']).to eq('Role')
+      # Verify the label display name was updated (same key "Label 1", different value)
+      expect(manager_event.labels_data['Label 1']).to eq('Role')
     end
 
   end
@@ -521,7 +519,7 @@ RSpec.describe 'V1::Imports', type: :request do
 
     it 'includes changed_fields when custom_fields_data changes' do
       ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      manager_event.update!(labels_data: { 'role' => 'Role' })
+      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
       ticket = manager_event.tickets.create!(
         ticket_type: ga,
         attendee_name: 'Custom Labels User',
@@ -530,7 +528,7 @@ RSpec.describe 'V1::Imports', type: :request do
         status: :purchased,
         payment_status: :pending,
         checked_in: false,
-        custom_fields_data: { 'role' => 'Old Role' }
+        custom_fields_data: { 'Label 1' => 'Old Role' }
       )
 
       file = build_excel_with_custom_columns(
@@ -554,7 +552,7 @@ RSpec.describe 'V1::Imports', type: :request do
 
     it 'includes changed_fields for both payment_status and custom_fields_data when both change' do
       ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      manager_event.update!(labels_data: { 'role' => 'Role' })
+      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
       ticket = manager_event.tickets.create!(
         ticket_type: ga,
         attendee_name: 'Both Changed User',
@@ -563,7 +561,7 @@ RSpec.describe 'V1::Imports', type: :request do
         status: :purchased,
         payment_status: :pending,
         checked_in: false,
-        custom_fields_data: { 'role' => 'Old Role' }
+        custom_fields_data: { 'Label 1' => 'Old Role' }
       )
 
       file = build_excel_with_custom_columns(

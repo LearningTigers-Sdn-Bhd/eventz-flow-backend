@@ -19,7 +19,8 @@ class TicketExcelService
     file_path = exports_dir.join(filename)
 
     # Get label keys from event.labels_data (these will become columns)
-    label_keys = event.labels_data&.keys || []
+    # Prefer sequential "Label N" keys when present
+    label_keys = self.preferred_label_keys(event.labels_data)
 
     # Create Excel workbook
     package = Axlsx::Package.new
@@ -139,12 +140,11 @@ class TicketExcelService
         end
       end
 
-      # Build event labels_data schema from header (map display names to keys)
-      # We'll use lowercase, underscored version as key
+      # Build event labels_data schema from header (map display names to sequential "Label N" keys)
       labels_schema = {}
-      label_columns.each do |col_idx, display_name|
-        # Convert display name to key (e.g., "Role" -> "role", "Coupon/Referral" -> "coupon/referral")
-        key = display_name.downcase.strip
+      label_columns.each_with_index do |(col_idx, display_name), index|
+        # Use sequential "Label 1", "Label 2", etc. as keys
+        key = "Label #{index + 1}"
         labels_schema[key] = display_name
       end
 
@@ -169,9 +169,10 @@ class TicketExcelService
           # Read custom field values from label columns
           # Always include all label keys, even if empty, to match event's labels_data structure
           custom_fields_data = {}
-          label_columns.each do |col_idx, display_name|
+          label_columns.each_with_index do |(col_idx, display_name), index|
             value = sheet.cell(row_num, col_idx)&.to_s&.strip
-            key = display_name.downcase.strip
+            # Use sequential "Label 1", "Label 2", etc. as keys to match labels_data structure
+            key = "Label #{index + 1}"
             # Include key even if value is empty to maintain structure with event.labels_data
             custom_fields_data[key] = value.presence || ''
           end
@@ -284,22 +285,26 @@ class TicketExcelService
         end
         # Reload to ensure we have the latest labels_data (especially if event was just created)
         event.reload
-        # Merge new labels with existing labels_data using array parity comparison
+        # Normalize/replace labels_data schema
         if labels_schema.present?
           existing_labels = event.labels_data || {}
-          merged_labels = existing_labels.merge(labels_schema)
-
-          # Convert both to sorted arrays for proper comparison (parity check)
-          existing_array = (existing_labels || {}).to_a.sort_by { |k, _| k.to_s }
-          merged_array = merged_labels.to_a.sort_by { |k, _| k.to_s }
-
-          # Check if there are actual changes by comparing arrays
-          has_changes = existing_array != merged_array
-
-          if has_changes
-            # Force update using update! to ensure it persists
-            event.update!(labels_data: merged_labels)
-            event.reload  # Reload after update to ensure subsequent tickets see the updated labels_data
+          # If existing has any legacy (non "Label N") keys, replace completely with imported labels_schema
+          non_label_keys_exist = existing_labels.keys.any? { |k| !(k.to_s =~ /^Label \d+$/) }
+          if non_label_keys_exist
+            if event.labels_data != labels_schema
+              event.update!(labels_data: labels_schema)
+              event.reload
+            end
+          else
+            # Existing already uses "Label N" keys; merge cautiously and update only if changed
+            merged_labels = existing_labels.merge(labels_schema)
+            existing_array = (existing_labels || {}).to_a.sort_by { |k, _| k.to_s }
+            merged_array = merged_labels.to_a.sort_by { |k, _| k.to_s }
+            has_changes = existing_array != merged_array
+            if has_changes
+              event.update!(labels_data: merged_labels)
+              event.reload
+            end
           end
         end
         events_processed[event_title] = event
@@ -351,9 +356,12 @@ class TicketExcelService
             changed_fields << 'payment_status'
 
             unless dry_run
-              # Ensure all label keys from event.labels_data are present in custom_fields_data
-              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
+              base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
               merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              # Remove legacy keys not part of preferred label keys
+              merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+              merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
               # Check if custom_fields_data changed
               if merged_custom_fields != original_custom_fields
@@ -366,8 +374,10 @@ class TicketExcelService
               )
             else
               # In dry_run mode, check if custom_fields_data would change
-              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
               merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+              merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
               if merged_custom_fields != original_custom_fields
                 changed_fields << 'custom_fields_data'
               end
@@ -423,11 +433,13 @@ class TicketExcelService
               end
             end
             unless dry_run
-              # Ensure all label keys from event.labels_data are present in custom_fields_data
+              # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
               # Start with event labels (as base) to ensure new labels are included
-              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
               # Merge existing ticket data, then import data (preserving existing values)
               merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+              merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
               # Check if custom_fields_data changed
               if merged_custom_fields != original_custom_fields
@@ -443,8 +455,10 @@ class TicketExcelService
               )
             else
               # In dry_run mode, check if custom_fields_data would change
-              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
               merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+              merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
               if merged_custom_fields != original_custom_fields
                 changed_fields << 'custom_fields_data'
               end
@@ -492,10 +506,12 @@ class TicketExcelService
           end
 
           unless dry_run
-            # Ensure all label keys from event.labels_data are present in custom_fields_data
-            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+            # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
+            base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
             # Merge existing ticket data, then import data (import data takes precedence for values)
             merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+            merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+            merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
             # Check if custom_fields_data changed
             if merged_custom_fields != original_custom_fields
@@ -513,8 +529,10 @@ class TicketExcelService
             end
           else
             # In dry_run mode, check if custom_fields_data would change
-            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+            base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
             merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+            merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+            merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
             if merged_custom_fields != original_custom_fields
               changed_fields_for_skip << 'custom_fields_data'
             end
@@ -570,11 +588,13 @@ class TicketExcelService
         # If no name match, even if email/phone match, create a new ticket (per rules)
         ticket = nil
         unless dry_run
-          # Ensure all label keys from event.labels_data are present in custom_fields_data
+          # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
           # Start with event labels (as base) to ensure new labels are included
-          base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+          base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
           # Merge import data (import data takes precedence)
           merged_custom_fields = base_custom_fields.merge(custom_fields_data)
+          merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+          merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
           ticket = Ticket.create!(
             event: event,
@@ -661,5 +681,28 @@ class TicketExcelService
     core_keys = [:attendee_name, :attendee_email, :attendee_phone, :ticket_type, :payment_status, :checked_in]
     score = core_keys.count { |k| v = attrs[k]; !(v.nil? || v.to_s.strip.empty?) }
     score + (attrs[:custom_fields_data].is_a?(Hash) ? attrs[:custom_fields_data].values.count { |v| v.present? } : 0)
+  end
+
+  # Prefer sequential label keys ("Label N") when present; otherwise, return all keys as-is
+  def self.preferred_label_keys(labels_data)
+    keys = (labels_data || {}).keys
+    label_keys = keys.select { |k| k.to_s.match?(/^Label \d+$/) }
+    if label_keys.any?
+      label_keys.sort_by { |k| k.to_s.match(/^Label (\d+)$/)[1].to_i }
+    else
+      keys
+    end
+  end
+
+  # Remove any legacy custom field keys that are not part of preferred label keys
+  def self.sanitize_custom_fields(custom_fields, labels_data)
+    allowed_keys = self.preferred_label_keys(labels_data)
+    return {} if allowed_keys.empty?
+    custom_fields.slice(*allowed_keys)
+  end
+
+  # Remove keys whose values are nil/blank strings after trimming
+  def self.strip_empty_custom_fields(custom_fields)
+    custom_fields.reject { |_k, v| v.nil? || v.to_s.strip.empty? }
   end
 end
