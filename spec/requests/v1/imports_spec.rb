@@ -371,6 +371,7 @@ RSpec.describe 'V1::Imports', type: :request do
       # Verify the label display name was updated (same key "role", different value)
       expect(manager_event.labels_data['role']).to eq('Role')
     end
+
   end
 
   # Additional behavior tests for payment status upgrades

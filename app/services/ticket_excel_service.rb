@@ -167,11 +167,13 @@ class TicketExcelService
           effective_ticket_type_name = (ticket_type_raw.to_s.strip.presence || 'General Admission')
 
           # Read custom field values from label columns
+          # Always include all label keys, even if empty, to match event's labels_data structure
           custom_fields_data = {}
           label_columns.each do |col_idx, display_name|
             value = sheet.cell(row_num, col_idx)&.to_s&.strip
             key = display_name.downcase.strip
-            custom_fields_data[key] = value if value.present?
+            # Include key even if value is empty to maintain structure with event.labels_data
+            custom_fields_data[key] = value.presence || ''
           end
 
           # Skip empty rows
@@ -266,26 +268,12 @@ class TicketExcelService
         end
       end
 
-      # Second pass: apply to DB with update-if-more-complete policy
+      # Update labels_data once per unique event before processing tickets
+      # This ensures all tickets see the updated labels_data structure
+      events_processed = {}
       candidates.each_value do |entry|
-        attrs = entry[:attrs]
-        attendee_name = attrs[:attendee_name]
-        attendee_email = attrs[:attendee_email]
-        attendee_phone = attrs[:attendee_phone]
-        event_title = attrs[:event_title]
-        ticket_type_name = attrs[:ticket_type]
-        checked_in = attrs[:checked_in]
-        payment_status_str = attrs[:payment_status]
-        custom_fields_data = attrs[:custom_fields_data]
-
-        normalized_payment_status = payment_status_str&.downcase&.gsub(/\s+|-/, '_')
-        parsed_payment_status = case normalized_payment_status
-                                when 'paid' then :paid
-                                when 'failed' then :failed
-                                when 'refunded_payment', 'refunded', 'refund', 'refundedpayment' then :refunded_payment
-                                when 'pending', nil, '' then :pending
-                                else :pending
-                                end
+        event_title = entry[:attrs][:event_title]
+        next if events_processed[event_title]
 
         event = Event.find_or_create_by!(title: event_title) do |e|
           e.status = :draft
@@ -314,6 +302,32 @@ class TicketExcelService
             event.reload  # Reload after update to ensure subsequent tickets see the updated labels_data
           end
         end
+        events_processed[event_title] = event
+      end
+
+      # Second pass: apply to DB with update-if-more-complete policy
+      candidates.each_value do |entry|
+        attrs = entry[:attrs]
+        attendee_name = attrs[:attendee_name]
+        attendee_email = attrs[:attendee_email]
+        attendee_phone = attrs[:attendee_phone]
+        event_title = attrs[:event_title]
+        ticket_type_name = attrs[:ticket_type]
+        checked_in = attrs[:checked_in]
+        payment_status_str = attrs[:payment_status]
+        custom_fields_data = attrs[:custom_fields_data]
+
+        normalized_payment_status = payment_status_str&.downcase&.gsub(/\s+|-/, '_')
+        parsed_payment_status = case normalized_payment_status
+                                when 'paid' then :paid
+                                when 'failed' then :failed
+                                when 'refunded_payment', 'refunded', 'refund', 'refundedpayment' then :refunded_payment
+                                when 'pending', nil, '' then :pending
+                                else :pending
+                                end
+
+        # Use the pre-processed event from events_processed
+        event = events_processed[event_title]
 
         ticket_type = event.ticket_types.find_or_create_by!(name: ticket_type_name) do |tt|
           tt.price = 0
@@ -325,11 +339,38 @@ class TicketExcelService
         existing = Ticket.find_by(event_id: event.id, ticket_type_id: ticket_type.id, attendee_name_norm: normalize_name_key(attendee_name))
 
         if existing
+          # Track changes before update
+          changed_fields = []
+          original_payment_status = existing.payment_status
+          original_custom_fields = (existing.custom_fields_data || {}).deep_dup
+
           # Unconditional upgrade-to-paid rule: if incoming status is paid and existing is not,
           # upgrade payment_status to paid regardless of completeness. Never downgrade and respect dry_run.
           if parsed_payment_status == :paid && existing.payment_status != 'paid'
+            # Payment status will change from existing to paid
+            changed_fields << 'payment_status'
+
             unless dry_run
-              existing.update(payment_status: :paid)
+              # Ensure all label keys from event.labels_data are present in custom_fields_data
+              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+
+              # Check if custom_fields_data changed
+              if merged_custom_fields != original_custom_fields
+                changed_fields << 'custom_fields_data'
+              end
+
+              existing.update(
+                payment_status: :paid,
+                custom_fields_data: merged_custom_fields
+              )
+            else
+              # In dry_run mode, check if custom_fields_data would change
+              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              if merged_custom_fields != original_custom_fields
+                changed_fields << 'custom_fields_data'
+              end
             end
             results[:updated][:count] += 1
             if full
@@ -343,7 +384,8 @@ class TicketExcelService
                 ticket_type: ticket_type.name,
                 payment_status: 'paid',
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {})
+                **(existing.custom_fields_data || {}),
+                changed_fields: changed_fields
               }
               results[:updated][:data] << record_data
             end
@@ -363,6 +405,9 @@ class TicketExcelService
           )
           new_score = row_completeness_score(attrs)
           if new_score > existing_score
+            # Track changes for this update path
+            changed_fields = []
+
             # Only upgrade payment status, never downgrade; never uncheck
             upgraded_payment_status = existing.payment_status
             if parsed_payment_status == :paid || (parsed_payment_status == :refunded_payment && existing.payment_status != 'paid') || parsed_payment_status == :failed
@@ -370,16 +415,35 @@ class TicketExcelService
               statuses = { 'pending' => 0, 'failed' => 1, 'refunded_payment' => 2, 'paid' => 3 }
               if statuses[parsed_payment_status.to_s] > statuses[existing.payment_status.to_s]
                 upgraded_payment_status = parsed_payment_status
+                changed_fields << 'payment_status' if original_payment_status != upgraded_payment_status
               end
             end
             unless dry_run
+              # Ensure all label keys from event.labels_data are present in custom_fields_data
+              # Start with event labels (as base) to ensure new labels are included
+              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              # Merge existing ticket data, then import data (preserving existing values)
+              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+
+              # Check if custom_fields_data changed
+              if merged_custom_fields != original_custom_fields
+                changed_fields << 'custom_fields_data'
+              end
+
               existing.update(
                 attendee_name: attendee_name,
                 attendee_phone: attendee_phone.presence || existing.attendee_phone,
                 payment_status: upgraded_payment_status,
                 checked_in: existing.checked_in || checked_in,
-                custom_fields_data: existing.custom_fields_data.to_h.merge(custom_fields_data)
+                custom_fields_data: merged_custom_fields
               )
+            else
+              # In dry_run mode, check if custom_fields_data would change
+              base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              if merged_custom_fields != original_custom_fields
+                changed_fields << 'custom_fields_data'
+              end
             end
             results[:updated][:count] += 1
             if full
@@ -393,11 +457,27 @@ class TicketExcelService
                 ticket_type: ticket_type.name,
                 payment_status: existing.payment_status.to_s,
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {})
+                **(existing.custom_fields_data || {}),
+                changed_fields: changed_fields
               }
               results[:updated][:data] << record_data
             end
           end
+
+          # Always update custom_fields_data even if row isn't more complete
+          # This ensures custom field values are updated when they change
+          unless dry_run
+            # Ensure all label keys from event.labels_data are present in custom_fields_data
+            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+            # Merge existing ticket data, then import data (import data takes precedence for values)
+            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+
+            # Only update if custom_fields_data actually changed
+            if merged_custom_fields != (existing.custom_fields_data || {})
+              existing.update(custom_fields_data: merged_custom_fields)
+            end
+          end
+
           results[:skipped][:count] += 1
           if full && !(new_score > existing_score)
             record_data = {
@@ -420,6 +500,12 @@ class TicketExcelService
         # If no name match, even if email/phone match, create a new ticket (per rules)
         ticket = nil
         unless dry_run
+          # Ensure all label keys from event.labels_data are present in custom_fields_data
+          # Start with event labels (as base) to ensure new labels are included
+          base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+          # Merge import data (import data takes precedence)
+          merged_custom_fields = base_custom_fields.merge(custom_fields_data)
+
           ticket = Ticket.create!(
             event: event,
             ticket_type: ticket_type,
@@ -429,7 +515,7 @@ class TicketExcelService
             checked_in: checked_in,
             status: :purchased,
             payment_status: parsed_payment_status,
-            custom_fields_data: custom_fields_data
+            custom_fields_data: merged_custom_fields
           )
         end
         results[:created][:count] += 1

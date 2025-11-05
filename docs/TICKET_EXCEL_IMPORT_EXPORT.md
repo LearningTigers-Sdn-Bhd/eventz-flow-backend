@@ -144,10 +144,13 @@ Content-Type: multipart/form-data
 3. **Duplicate Handling:**
    - In-file: collapse only when names match within the same Event + Ticket Type (case-insensitive, spaces collapsed). If names differ, keep both rows even if email/phone are identical.
    - Against DB: if name matches within the same Event + Ticket Type, update only if the new row is more complete (merge custom fields, never uncheck). Additionally, if the imported `Payment Status` is `paid`, the existing ticket is upgraded to `paid` regardless of completeness. Never downgrade payment status. If email/phone matches but name differs, create a new ticket.
+   - **Custom Fields Update**: Custom field values are always updated from the import, even if the row isn't more complete. All tickets are synchronized with `event.labels_data` to ensure all custom field keys are present.
 
 4. **Dynamic Fields:**
    - Additional columns beyond standard fields become custom fields
-   - Updates event's `labels_data` schema automatically by merging new labels with existing ones (preserves existing labels while adding new ones)
+   - Updates event's `labels_data` schema automatically when column arrangement changes (merges new labels with existing ones, preserves existing labels while adding new ones)
+   - All tickets are updated to include all keys from `event.labels_data` in their `custom_fields_data`, even if the imported row isn't more complete
+   - Custom field values are always updated from the import, ensuring tickets reflect the latest imported data
 
 ---
 
