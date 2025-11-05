@@ -296,14 +296,21 @@ class TicketExcelService
         end
         # Reload to ensure we have the latest labels_data (especially if event was just created)
         event.reload
-        # Merge new labels with existing labels_data
+        # Merge new labels with existing labels_data using array parity comparison
         if labels_schema.present?
           existing_labels = event.labels_data || {}
           merged_labels = existing_labels.merge(labels_schema)
-          # Update if there are any changes (new keys or different values)
-          has_changes = labels_schema.any? { |k, v| existing_labels[k] != v }
+
+          # Convert both to sorted arrays for proper comparison (parity check)
+          existing_array = (existing_labels || {}).to_a.sort_by { |k, _| k.to_s }
+          merged_array = merged_labels.to_a.sort_by { |k, _| k.to_s }
+
+          # Check if there are actual changes by comparing arrays
+          has_changes = existing_array != merged_array
+
           if has_changes
-            event.update(labels_data: merged_labels)
+            # Force update using update! to ensure it persists
+            event.update!(labels_data: merged_labels)
             event.reload  # Reload after update to ensure subsequent tickets see the updated labels_data
           end
         end
