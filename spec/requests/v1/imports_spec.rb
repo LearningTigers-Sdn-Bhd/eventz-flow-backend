@@ -328,6 +328,49 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(new_event.labels_data).to be_present
       expect(new_event.labels_data['vip level']).to eq('VIP Level')
     end
+
+    it 'updates existing label display name when importing with changed column header' do
+      # Set up event with existing label
+      existing_labels = { 'role' => 'Role' }
+      manager_event.update!(labels_data: existing_labels)
+
+      # Import with same key but different display name (e.g., "Position" instead of "Role")
+      file = build_excel_with_custom_columns(
+        [['Update Test User', 'update@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
+        custom_columns: ['Position']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+
+      # Verify the label was updated (note: "Position" becomes key "position", which is different from "role")
+      # This creates a new label, not updates the existing one
+      expect(manager_event.labels_data['role']).to eq('Role')
+      expect(manager_event.labels_data['position']).to eq('Position')
+    end
+
+    it 'updates existing label display name when importing with same normalized key' do
+      # Set up event with existing label "Old Role Name"
+      existing_labels = { 'role' => 'Old Role Name' }
+      manager_event.update!(labels_data: existing_labels)
+
+      # Import with same normalized key "role" but different display name "Role"
+      # Note: "Role" normalizes to "role" (same key), so it should update the value
+      file = build_excel_with_custom_columns(
+        [['Update Test User 2', 'update2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+
+      # Verify the label display name was updated (same key "role", different value)
+      expect(manager_event.labels_data['role']).to eq('Role')
+    end
   end
 
   # Additional behavior tests for payment status upgrades

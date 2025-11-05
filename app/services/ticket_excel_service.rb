@@ -294,11 +294,18 @@ class TicketExcelService
           e.visibility = true
           e.labels_data = labels_schema if labels_schema.present?
         end
+        # Reload to ensure we have the latest labels_data (especially if event was just created)
+        event.reload
         # Merge new labels with existing labels_data
         if labels_schema.present?
           existing_labels = event.labels_data || {}
           merged_labels = existing_labels.merge(labels_schema)
-          event.update(labels_data: merged_labels) if merged_labels != existing_labels
+          # Update if there are any changes (new keys or different values)
+          has_changes = labels_schema.any? { |k, v| existing_labels[k] != v }
+          if has_changes
+            event.update(labels_data: merged_labels)
+            event.reload  # Reload after update to ensure subsequent tickets see the updated labels_data
+          end
         end
 
         ticket_type = event.ticket_types.find_or_create_by!(name: ticket_type_name) do |tt|
