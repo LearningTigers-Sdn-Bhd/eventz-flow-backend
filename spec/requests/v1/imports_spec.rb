@@ -285,7 +285,7 @@ RSpec.describe 'V1::Imports', type: :request do
         custom_columns: ['Department']
       )
 
-      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
       manager_event.reload
@@ -309,7 +309,7 @@ RSpec.describe 'V1::Imports', type: :request do
         custom_columns: ['T-Shirt Size']
       )
 
-      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
       manager_event.reload
@@ -334,7 +334,7 @@ RSpec.describe 'V1::Imports', type: :request do
         custom_columns: ['VIP Level']
       )
 
-      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
       new_event.reload
@@ -355,7 +355,7 @@ RSpec.describe 'V1::Imports', type: :request do
         custom_columns: ['Position']
       )
 
-      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
       manager_event.reload
@@ -376,7 +376,7 @@ RSpec.describe 'V1::Imports', type: :request do
         custom_columns: ['Role']
       )
 
-      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
       manager_event.reload
@@ -582,6 +582,76 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(updated_item['changed_fields']).to be_an(Array)
       expect(updated_item['changed_fields']).to include('payment_status')
       expect(updated_item['changed_fields']).to include('custom_fields_data')
+    end
+  end
+
+  # Tests for no_label flag behavior and synchronization
+  describe 'no_label flag behavior' do
+    let(:auth_header) { "Bearer #{manager_token}" }
+
+    def build_excel_with_custom_columns(rows, custom_columns: [])
+      require 'caxlsx'
+      package = Axlsx::Package.new
+      workbook = package.workbook
+      workbook.add_worksheet(name: "Tickets") do |sheet|
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row.concat(custom_columns)
+        sheet.add_row header_row
+        rows.each { |r| sheet.add_row r }
+      end
+      tmp = Tempfile.new(['import_labels_style', '.xlsx'])
+      package.serialize(tmp.path)
+      tmp.rewind
+      Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    end
+
+    it 'uses header machine keys when no_label=false and syncs existing tickets to header keys' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      # Pre-existing ticket with Label N keys should be migrated to header keys
+      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
+      t = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'Label 1' => 'Speaker' })
+
+      file = build_excel_with_custom_columns(
+        [['Key Sync User 2', 'sync2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'VIP']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+      t.reload
+
+      # Event labels_data should use machine key => display name mapping
+      expect(manager_event.labels_data).to include('role' => 'Role')
+      # Existing ticket keys should be synchronized to machine keys
+      expect(t.custom_fields_data).to include('role' => 'Speaker')
+      expect(t.custom_fields_data.keys).not_to include('Label 1')
+    end
+
+    it 'uses Label N keys when no_label=true and syncs existing tickets to Label N' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      # Pre-existing ticket with header keys should be migrated to Label N keys
+      manager_event.update!(labels_data: { 'role' => 'Role' })
+      t = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User 3', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'role' => 'Panelist' })
+
+      file = build_excel_with_custom_columns(
+        [['Key Sync User 4', 'sync4@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Delegate']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      manager_event.reload
+      t.reload
+
+      # Event labels_data should use sequential Label N => display name
+      # At least Label 1 should be 'Role'
+      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      # Existing ticket keys should be synchronized to Label N keys
+      expect(t.custom_fields_data).to include('Label 1' => 'Panelist')
+      expect(t.custom_fields_data.keys).not_to include('role')
     end
   end
 end

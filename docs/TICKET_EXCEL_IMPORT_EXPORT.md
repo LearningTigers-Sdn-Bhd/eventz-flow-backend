@@ -51,6 +51,7 @@ Import tickets from an Excel file.
 | `file` | File | Yes | Excel file (.xlsx) containing ticket data |
 | `dry_run` | Boolean (query) | No | If true, validate and report without writing changes |
 | `full` | Boolean (query) | No | If true, use full import mode with additional validation and processing |
+| `no_label` | Boolean (query) | No | If true, use sequential `Label N` keys; if false (default), use header names as keys |
 
 **Headers:**
 ```
@@ -148,7 +149,14 @@ Content-Type: multipart/form-data
 
 4. **Dynamic Fields:**
    - Additional columns beyond standard fields become custom fields
-   - Updates event's `labels_data` schema automatically when column arrangement changes (merges new labels with existing ones, preserves existing labels while adding new ones)
+   - Behavior depends on `no_label` flag (applies to the whole import request):
+     - When `no_label=false` (default):
+       - Event `labels_data` uses header machine keys mapping to display names, e.g. `{ "role": "Role" }`
+       - Ticket `custom_fields_data` uses the same machine keys, e.g. `{ "role": "Speaker" }`
+     - When `no_label=true`:
+       - Event `labels_data` uses sequential keys, e.g. `{ "Label 1": "Role" }`
+       - Ticket `custom_fields_data` uses the same `Label N` keys, e.g. `{ "Label 1": "Speaker" }`
+   - The event's `labels_data` is updated to match the selected mode for the import; if the existing schema uses a different mode, it is replaced to ensure consistency.
    - All tickets are updated to include all keys from `event.labels_data` in their `custom_fields_data`, even if the imported row isn't more complete
    - Custom field values are always updated from the import, ensuring tickets reflect the latest imported data
 
@@ -284,7 +292,7 @@ Where `E2` references the **Public ID** column.
 
 ### Labels Data Format
 
-**In Event (`labels_data` JSONB):**
+**In Event (`labels_data` JSONB) with `no_label=true`:**
 ```json
 {
   "Label 1": "Role",
@@ -293,7 +301,24 @@ Where `E2` references the **Public ID** column.
 }
 ```
 
-**In Ticket (`custom_fields_data` JSONB):**
+**In Ticket (`custom_fields_data` JSONB) with `no_label=true`:**
+**In Event (`labels_data` JSONB) with `no_label=false`:**
+```json
+{
+  "role": "Role",
+  "company": "Company",
+  "dietary_restrictions": "Dietary Restrictions"
+}
+```
+
+**In Ticket (`custom_fields_data` JSONB) with `no_label=false`:**
+```json
+{
+  "role": "VIP",
+  "company": "Acme Corporation",
+  "dietary_restrictions": "Vegetarian"
+}
+```
 ```json
 {
   "Label 1": "VIP",
@@ -381,7 +406,7 @@ curl -X POST "https://api.eventzflow.com/v1/imports/tickets" \
 
 **With query parameters:**
 ```bash
-curl -X POST "https://api.eventzflow.com/v1/imports/tickets?dry_run=true&full=true" \
+curl -X POST "https://api.eventzflow.com/v1/imports/tickets?dry_run=true&full=true&no_label=true" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "file=@tickets.xlsx"
 ```
@@ -536,7 +561,7 @@ end
 The import/export logic is handled by:
 ```ruby
 TicketExcelService.export(event_id)
-TicketExcelService.import(file, dry_run: false, full: false)
+TicketExcelService.import(file, dry_run: false, full: false, no_label: false)
 ```
 
 ---

@@ -2357,6 +2357,13 @@ paths:
         description: If true, use full import mode with additional validation and processing
         schema:
           type: boolean
+      - name: no_label
+        in: query
+        required: false
+        description: When true, use sequential Label N keys; when false, use header names as keys
+        schema:
+          type: boolean
+          default: false
       responses:
         '200':
           description: Tickets imported successfully

@@ -15,7 +15,8 @@ module V1
       begin
         dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
         full = ActiveModel::Type::Boolean.new.cast(params[:full])
-        results = TicketExcelService.import(params[:file], dry_run: dry_run, full: full)
+        no_label = ActiveModel::Type::Boolean.new.cast(params[:no_label])
+        results = TicketExcelService.import(params[:file], dry_run: dry_run, full: full, no_label: no_label)
 
         # Calculate total
         total = results[:created][:count] + (results[:updated][:count] || 0) + results[:skipped][:count]
