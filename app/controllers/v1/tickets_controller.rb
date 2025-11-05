@@ -160,13 +160,15 @@ module V1
       values = []
 
       if attendee_email.present?
-        conditions << 'attendee_email = ?'
-        values << attendee_email
+        conditions << 'LOWER(attendee_email) = ?'
+        values << attendee_email.strip.downcase
       end
 
       if attendee_phone.present?
-        conditions << 'attendee_phone = ?'
-        values << attendee_phone
+        # Normalize the search phone number (remove all non-digits)
+        normalized_phone = attendee_phone.gsub(/\D+/, '')
+        conditions << 'attendee_phone_norm = ?'
+        values << normalized_phone
       end
 
       if attendee_name.present?
