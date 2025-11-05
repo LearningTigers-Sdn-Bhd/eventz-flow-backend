@@ -287,18 +287,18 @@ Where `E2` references the **Public ID** column.
 **In Event (`labels_data` JSONB):**
 ```json
 {
-  "role": "Role",
-  "company": "Company",
-  "dietary": "Dietary Restrictions"
+  "Label 1": "Role",
+  "Label 2": "Company",
+  "Label 3": "Dietary Restrictions"
 }
 ```
 
 **In Ticket (`custom_fields_data` JSONB):**
 ```json
 {
-  "role": "VIP",
-  "company": "Acme Corporation",
-  "dietary": "Vegetarian"
+  "Label 1": "VIP",
+  "Label 2": "Acme Corporation",
+  "Label 3": "Vegetarian"
 }
 ```
 
