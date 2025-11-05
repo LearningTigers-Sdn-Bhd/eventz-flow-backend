@@ -153,11 +153,22 @@ class Ticket < ApplicationRecord
         custom_fields: self.custom_fields_data
       },
 
+      ticket_type: {
+        id: self.ticket_type.id,
+        name: self.ticket_type.name,
+        price: self.ticket_type.price.to_f
+      },
+
       event: {
         id: self.event.id,
         title: self.event.title
       }
     }
+
+    # Include check_in_url if provided (from Thread local storage set in controller)
+    if Thread.current[:check_in_url].present?
+      payload[:check_in_url] = Thread.current[:check_in_url]
+    end
 
     # Add scanned_by information if ticket was scanned by a user
     if self.scanned_by_id.present? && self.scanned_by
@@ -177,12 +188,6 @@ class Ticket < ApplicationRecord
         transaction_id: self.transaction_id,
         created_at: self.created_at.iso8601
       )
-
-      payload[:ticket_type] = {
-        id: self.ticket_type.id,
-        name: self.ticket_type.name,
-        price: self.ticket_type.price.to_f
-      }
 
       payload[:event].merge!(
         start_date: self.event.start_date&.iso8601,

@@ -236,7 +236,7 @@ module V1
     # POST /v1/tickets/self_check_in
     # Public endpoint for attendees to check themselves in using ticket public_id
     # No authentication required, no scanned_by_id set
-    # Optionally accepts attendee_phone and attendee_email to update missing contact info
+    # Optionally accepts attendee_phone, attendee_email, and check_in_url to update missing contact info
     def self_check_in
       public_id = params[:public_id]
 
@@ -274,8 +274,16 @@ module V1
         update_params[:attendee_email] = params[:attendee_email]
       end
 
+      # Store check_in_url temporarily in Thread for webhook access
+      if params[:check_in_url].present?
+        Thread.current[:check_in_url] = params[:check_in_url]
+      end
+
       # Perform self check-in (WITHOUT scanned_by_id)
       if @ticket.update(update_params)
+        # Clear the thread-local variable after update
+        Thread.current[:check_in_url] = nil
+        
         render json: @ticket.as_json(
           include: {
             ticket_type: { only: [:id, :name, :price] },
@@ -283,9 +291,13 @@ module V1
           }
         ), status: :ok
       else
+        # Clear the thread-local variable on error
+        Thread.current[:check_in_url] = nil
         render json: @ticket.errors, status: :unprocessable_content
       end
     rescue StandardError => e
+      # Clear the thread-local variable on exception
+      Thread.current[:check_in_url] = nil
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
 
