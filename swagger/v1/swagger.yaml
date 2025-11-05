@@ -4,6 +4,65 @@ info:
   title: API V1
   version: v1
 paths:
+  "/v1/auth/password":
+    patch:
+      summary: Update password for authenticated user
+      tags:
+      - Auth
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_password:
+                  type: string
+                  example: OldPass123!
+                new_password:
+                  type: string
+                  example: NewPass123!
+                confirm_new_password:
+                  type: string
+                  example: NewPass123!
+              required:
+              - current_password
+              - new_password
+              - confirm_new_password
+      responses:
+        '200':
+          description: Password updated successfully; returns fresh tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      access_token:
+                        type: string
+                      refresh_token:
+                        type: string
+                      expires_at:
+                        type: string
+        '401':
+          description: Unauthorized - current password incorrect or missing token
+        '422':
+          description: Unprocessable Entity - validation error (e.g., passwords do not match)
   "/v1/metrics/events_overview":
     get:
       summary: Get all accessible events with their analytics data

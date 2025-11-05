@@ -20,6 +20,7 @@ Rails.application.routes.draw do
     delete 'auth/logout', to: 'authentication#logout'
     post 'auth/send-verification-code', to: 'authentication#send_verification_code'
     post 'auth/verify-email', to: 'authentication#verify_email'
+    patch 'auth/password', to: 'authentication#password_update'
 
     # Password reset (follow auth route style, flat controller)
     post 'auth/password/request_reset_password', to: 'password_resets#request_reset_password'

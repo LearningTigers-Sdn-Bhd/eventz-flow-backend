@@ -138,6 +138,51 @@ module V1
     return error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }], status: :unauthorized)
   end
 
+  # PATCH /v1/auth/password
+  def password_update
+    current_password = params[:current_password]
+    new_password = params[:new_password]
+    confirm_new_password = params[:confirm_new_password]
+
+    # Validate required fields
+    missing_fields = []
+    missing_fields << { field: 'current_password', message: 'Current password is required' } if current_password.blank?
+    missing_fields << { field: 'new_password', message: 'New password is required' } if new_password.blank?
+    missing_fields << { field: 'confirm_new_password', message: 'Confirm new password is required' } if confirm_new_password.blank?
+    if missing_fields.any?
+      return error_response(message: 'Validation Error', errors: missing_fields, status: :unprocessable_content)
+    end
+
+    # Verify current password
+    unless current_user.authenticate(current_password)
+      return error_response(message: 'Authentication failed', errors: [{ field: 'current_password', message: 'Current password is incorrect' }], status: :unauthorized)
+    end
+
+    # Ensure new password and confirmation match
+    unless new_password == confirm_new_password
+      return error_response(message: 'Validation Error', errors: [{ field: 'confirm_new_password', message: 'Passwords do not match' }], status: :unprocessable_content)
+    end
+
+    # Attempt to update the password (leverages has_secure_password validations)
+    if current_user.update(password: new_password, password_confirmation: confirm_new_password)
+      # Rotate JTI to invalidate existing tokens/sessions and issue fresh tokens
+      current_user.update!(jti: SecureRandom.uuid)
+      tokens = JwtService.generate_tokens(current_user)
+
+      return success_response(
+        data: tokens,
+        message: 'Password updated successfully',
+        status: :ok
+      )
+    else
+      return error_response(
+        message: 'Validation Error',
+        errors: format_validation_errors(current_user),
+        status: :unprocessable_content
+      )
+    end
+  end
+
   private
 
   def login_params
