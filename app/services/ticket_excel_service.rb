@@ -373,10 +373,15 @@ class TicketExcelService
               end
             end
             results[:updated][:count] += 1
+            # Always include updated items with changed_fields, even when full: false
+            record_data = {
+              model: 'Ticket',
+              id: existing.id.to_s,
+              changed_fields: changed_fields
+            }
+            # Include full data if full: true
             if full
-              record_data = {
-                model: 'Ticket',
-                id: existing.id.to_s,
+              record_data.merge!({
                 attendee_name: existing.attendee_name,
                 attendee_email: existing.attendee_email,
                 attendee_phone: existing.attendee_phone,
@@ -384,11 +389,10 @@ class TicketExcelService
                 ticket_type: ticket_type.name,
                 payment_status: 'paid',
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {}),
-                changed_fields: changed_fields
-              }
-              results[:updated][:data] << record_data
+                **(existing.custom_fields_data || {})
+              })
             end
+            results[:updated][:data] << record_data
             # Proceed to next candidate; we've applied the paid upgrade.
             next
           end
@@ -446,7 +450,105 @@ class TicketExcelService
               end
             end
             results[:updated][:count] += 1
+            # Always include updated items with changed_fields, even when full: false
+            record_data = {
+              model: 'Ticket',
+              id: existing.id.to_s,
+              changed_fields: changed_fields
+            }
+            # Include full data if full: true
             if full
+              record_data.merge!({
+                attendee_name: existing.attendee_name,
+                attendee_email: existing.attendee_email,
+                attendee_phone: existing.attendee_phone,
+                event_title: event.title,
+                ticket_type: ticket_type.name,
+                payment_status: existing.payment_status.to_s,
+                checked_in: existing.checked_in,
+                **(existing.custom_fields_data || {})
+              })
+            end
+            results[:updated][:data] << record_data
+          end
+
+          # Always update custom_fields_data even if row isn't more complete
+          # This ensures custom field values are updated when they change
+          # Track if any changes occurred to determine if we should mark as updated
+          changed_fields_for_skip = []
+
+          # Check if payment_status would change (even if row isn't more complete)
+          # Only upgrade payment status, never downgrade
+          upgraded_payment_status_for_skip = existing.payment_status
+          if parsed_payment_status == :paid || (parsed_payment_status == :refunded_payment && existing.payment_status != 'paid') || parsed_payment_status == :failed
+            # prioritize paid > refunded_payment > failed > pending
+            statuses = { 'pending' => 0, 'failed' => 1, 'refunded_payment' => 2, 'paid' => 3 }
+            if statuses[parsed_payment_status.to_s] > statuses[existing.payment_status.to_s]
+              upgraded_payment_status_for_skip = parsed_payment_status
+              if original_payment_status != upgraded_payment_status_for_skip
+                changed_fields_for_skip << 'payment_status'
+              end
+            end
+          end
+
+          unless dry_run
+            # Ensure all label keys from event.labels_data are present in custom_fields_data
+            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+            # Merge existing ticket data, then import data (import data takes precedence for values)
+            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+
+            # Check if custom_fields_data changed
+            if merged_custom_fields != original_custom_fields
+              changed_fields_for_skip << 'custom_fields_data'
+            end
+
+            # Only update if custom_fields_data actually changed
+            if merged_custom_fields != (existing.custom_fields_data || {})
+              existing.update(custom_fields_data: merged_custom_fields)
+            end
+
+            # Update payment_status if it changed
+            if upgraded_payment_status_for_skip != existing.payment_status
+              existing.update(payment_status: upgraded_payment_status_for_skip)
+            end
+          else
+            # In dry_run mode, check if custom_fields_data would change
+            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
+            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+            if merged_custom_fields != original_custom_fields
+              changed_fields_for_skip << 'custom_fields_data'
+            end
+          end
+
+          # If payment_status or custom_fields_data changed, mark as updated instead of skipped
+          if changed_fields_for_skip.any?
+            results[:updated][:count] += 1
+            # Always include updated items with changed_fields, even when full: false
+            # Reload to get updated values after update
+            existing.reload if !dry_run
+            record_data = {
+              model: 'Ticket',
+              id: existing.id.to_s,
+              changed_fields: changed_fields_for_skip
+            }
+            # Include full data if full: true
+            if full
+              record_data.merge!({
+                attendee_name: existing.attendee_name,
+                attendee_email: existing.attendee_email,
+                attendee_phone: existing.attendee_phone,
+                event_title: event.title,
+                ticket_type: ticket_type.name,
+                payment_status: existing.payment_status.to_s,
+                checked_in: existing.checked_in,
+                **(existing.custom_fields_data || {})
+              })
+            end
+            results[:updated][:data] << record_data
+          else
+            # No changes, mark as skipped
+            results[:skipped][:count] += 1
+            if full && !(new_score > existing_score)
               record_data = {
                 model: 'Ticket',
                 id: existing.id.to_s,
@@ -457,42 +559,10 @@ class TicketExcelService
                 ticket_type: ticket_type.name,
                 payment_status: existing.payment_status.to_s,
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {}),
-                changed_fields: changed_fields
+                **(existing.custom_fields_data || {})
               }
-              results[:updated][:data] << record_data
+              results[:skipped][:data] << record_data
             end
-          end
-
-          # Always update custom_fields_data even if row isn't more complete
-          # This ensures custom field values are updated when they change
-          unless dry_run
-            # Ensure all label keys from event.labels_data are present in custom_fields_data
-            base_custom_fields = (event.labels_data || {}).keys.index_with { |_k| '' }
-            # Merge existing ticket data, then import data (import data takes precedence for values)
-            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
-
-            # Only update if custom_fields_data actually changed
-            if merged_custom_fields != (existing.custom_fields_data || {})
-              existing.update(custom_fields_data: merged_custom_fields)
-            end
-          end
-
-          results[:skipped][:count] += 1
-          if full && !(new_score > existing_score)
-            record_data = {
-              model: 'Ticket',
-              id: existing.id.to_s,
-              attendee_name: existing.attendee_name,
-              attendee_email: existing.attendee_email,
-              attendee_phone: existing.attendee_phone,
-              event_title: event.title,
-              ticket_type: ticket_type.name,
-              payment_status: existing.payment_status.to_s,
-              checked_in: existing.checked_in,
-              **(existing.custom_fields_data || {})
-            }
-            results[:skipped][:data] << record_data
           end
           next
         end

@@ -59,8 +59,23 @@ RSpec.describe 'V1::Imports', type: :request do
                      updated: {
                        type: :object,
                        properties: {
-                         count: { type: :integer, description: 'Number of tickets updated (more complete rows)' },
-                         data: { type: :array, items: { type: :object }, description: 'Array of updated ticket data' }
+                         count: { type: :integer, description: 'Number of tickets updated (more complete rows or data changes)' },
+                         data: {
+                           type: :array,
+                           items: {
+                             type: :object,
+                             properties: {
+                               model: { type: :string },
+                               id: { type: :string },
+                               changed_fields: {
+                                 type: :array,
+                                 items: { type: :string },
+                                 description: 'Array of field names that changed (e.g., ["payment_status", "custom_fields_data"])'
+                               }
+                             }
+                           },
+                           description: 'Array of updated ticket data with changed_fields tracking'
+                         }
                        },
                        description: 'Present only when tickets were updated'
                      },
@@ -392,6 +407,22 @@ RSpec.describe 'V1::Imports', type: :request do
       Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     end
 
+    def build_excel_with_custom_columns(rows, custom_columns: [])
+      require 'caxlsx'
+      package = Axlsx::Package.new
+      workbook = package.workbook
+      workbook.add_worksheet(name: "Tickets") do |sheet|
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row.concat(custom_columns)
+        sheet.add_row header_row
+        rows.each { |r| sheet.add_row r }
+      end
+      tmp = Tempfile.new(['import_labels', '.xlsx'])
+      package.serialize(tmp.path)
+      tmp.rewind
+      Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    end
+
     it 'upgrades to paid even when row is not more complete' do
       ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
       ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Paid Upgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
@@ -435,6 +466,124 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(response).to have_http_status(:ok)
       ticket.reload
       expect(ticket.payment_status).to eq('pending')
+    end
+
+    it 'includes changed_fields when payment_status changes' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Changed Fields User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+
+      file = build_excel([
+        ['Changed Fields User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be true
+      expect(json['data']['updated']).to be_present
+      expect(json['data']['updated']['count']).to eq(1)
+      expect(json['data']['updated']['data'].length).to eq(1)
+
+      updated_item = json['data']['updated']['data'].first
+      expect(updated_item['model']).to eq('Ticket')
+      expect(updated_item['id']).to eq(ticket.id.to_s)
+      expect(updated_item['changed_fields']).to be_an(Array)
+      expect(updated_item['changed_fields']).to include('payment_status')
+    end
+
+    it 'includes changed_fields even when full: false' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Full False User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+
+      file = build_excel([
+        ['Full False User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, full: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be true
+      expect(json['data']['updated']).to be_present
+      expect(json['data']['updated']['count']).to eq(1)
+
+      updated_item = json['data']['updated']['data'].first
+      expect(updated_item['model']).to eq('Ticket')
+      expect(updated_item['id']).to eq(ticket.id.to_s)
+      expect(updated_item['changed_fields']).to be_an(Array)
+      expect(updated_item['changed_fields']).to include('payment_status')
+      # When full: false, only basic fields should be included
+      expect(updated_item['attendee_name']).to be_nil
+    end
+
+    it 'includes changed_fields when custom_fields_data changes' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      manager_event.update!(labels_data: { 'role' => 'Role' })
+      ticket = manager_event.tickets.create!(
+        ticket_type: ga,
+        attendee_name: 'Custom Labels User',
+        attendee_email: '',
+        attendee_phone: '',
+        status: :purchased,
+        payment_status: :pending,
+        checked_in: false,
+        custom_fields_data: { 'role' => 'Old Role' }
+      )
+
+      file = build_excel_with_custom_columns(
+        [['Custom Labels User', '', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'New Role']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be true
+      expect(json['data']['updated']).to be_present
+      expect(json['data']['updated']['count']).to eq(1)
+
+      updated_item = json['data']['updated']['data'].first
+      expect(updated_item['changed_fields']).to be_an(Array)
+      expect(updated_item['changed_fields']).to include('custom_fields_data')
+    end
+
+    it 'includes changed_fields for both payment_status and custom_fields_data when both change' do
+      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      manager_event.update!(labels_data: { 'role' => 'Role' })
+      ticket = manager_event.tickets.create!(
+        ticket_type: ga,
+        attendee_name: 'Both Changed User',
+        attendee_email: '',
+        attendee_phone: '',
+        status: :purchased,
+        payment_status: :pending,
+        checked_in: false,
+        custom_fields_data: { 'role' => 'Old Role' }
+      )
+
+      file = build_excel_with_custom_columns(
+        [['Both Changed User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false', 'New Role']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be true
+      expect(json['data']['updated']).to be_present
+      expect(json['data']['updated']['count']).to eq(1)
+
+      updated_item = json['data']['updated']['data'].first
+      expect(updated_item['changed_fields']).to be_an(Array)
+      expect(updated_item['changed_fields']).to include('payment_status')
+      expect(updated_item['changed_fields']).to include('custom_fields_data')
     end
   end
 end
