@@ -2394,6 +2394,10 @@ paths:
   "/v1/imports/tickets":
     post:
       summary: Import tickets from Excel file
+      description: |
+        Imports tickets from an uploaded Excel (.xlsx) file.
+        - Empty custom label cells are preserved as empty strings in `custom_fields_data` using the current event label schema.
+        - When `no_label` is true, sequential keys like `"Label 1"` are used; when false, machine keys derived from headers (e.g., `role`) are used.
       tags:
       - Imports
       security:

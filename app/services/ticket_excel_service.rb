@@ -723,7 +723,8 @@ class TicketExcelService
 
   # Remove keys whose values are nil/blank strings after trimming
   def self.strip_empty_custom_fields(custom_fields)
-    custom_fields.reject { |_k, v| v.nil? || v.to_s.strip.empty? }
+    # Preserve empty-string values for defined label keys; normalize nil to ""
+    custom_fields.transform_values { |v| v.nil? ? '' : v.to_s }
   end
 
   # Convert a display name like "Dietary Restrictions" to a machine key "dietary_restrictions"

@@ -37,6 +37,8 @@ RSpec.describe 'V1::Imports', type: :request do
                 description: 'If true, validate and report without writing changes'
       parameter name: :full, in: :query, type: :boolean, required: false,
                 description: 'If true, use full import mode with additional validation and processing'
+      parameter name: :no_label, in: :query, type: :boolean, required: false,
+                description: 'When true, use sequential Label N keys; when false, use header names as keys'
       parameter name: :file, in: :formData, type: :file, required: true,
                 description: 'Excel file (.xlsx) with ticket data'
 
@@ -140,6 +142,82 @@ RSpec.describe 'V1::Imports', type: :request do
           # Dry-run should not persist
           count_before = Ticket.where(attendee_email: 'import.test@example.com').count
           expect(count_before).to eq(0)
+        end
+      end
+
+      response '200', 'Preserves empty label values in custom_fields_data (header/machine key style)' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 data: { type: :object }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:dry_run) { true }
+        let(:no_label) { false }
+        let(:file) do
+          require 'caxlsx'
+          package = Axlsx::Package.new
+          workbook = package.workbook
+          workbook.add_worksheet(name: 'Tickets') do |sheet|
+            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
+            # Empty Role cell
+            sheet.add_row ['Empty Role User','emptyrole@example.com','+1000000000', manager_event.title, 'GA', '', '', 'pending', 'false', '']
+          end
+          tmp = Tempfile.new(['import_empty_role', '.xlsx'])
+          package.serialize(tmp.path)
+          tmp.rewind
+          Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        end
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['success']).to be true
+          created = json.dig('data', 'created', 'data') || []
+          expect(created).to be_an(Array)
+          first = created.find { |r| r['attendee_email'] == 'emptyrole@example.com' }
+          expect(first).to be_present
+          # In header style, key should be machine key 'role' with empty string value
+          expect(first).to include('role' => '')
+        end
+      end
+
+      response '200', 'Preserves empty label values in custom_fields_data (Label N style)' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string },
+                 data: { type: :object }
+               }
+
+        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:dry_run) { true }
+        let(:no_label) { true }
+        let(:file) do
+          require 'caxlsx'
+          package = Axlsx::Package.new
+          workbook = package.workbook
+          workbook.add_worksheet(name: 'Tickets') do |sheet|
+            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
+            # Empty Role cell
+            sheet.add_row ['Empty LabelN User','emptylabeln@example.com','+1000000001', manager_event.title, 'GA', '', '', 'pending', 'false', '']
+          end
+          tmp = Tempfile.new(['import_empty_labeln', '.xlsx'])
+          package.serialize(tmp.path)
+          tmp.rewind
+          Rack::Test::UploadedFile.new(tmp.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        end
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['success']).to be true
+          created = json.dig('data', 'created', 'data') || []
+          expect(created).to be_an(Array)
+          first = created.find { |r| r['attendee_email'] == 'emptylabeln@example.com' }
+          expect(first).to be_present
+          # In Label N style, key should be 'Label 1' with empty string value (first custom column)
+          expect(first).to include('Label 1' => '')
         end
       end
 
