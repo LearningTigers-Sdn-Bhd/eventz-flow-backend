@@ -1,0 +1,133 @@
+class Visitor < ApplicationRecord
+  # --- Callbacks ---
+  # Ensure public_id is set before any presence validations run on create.
+  before_validation :set_public_id, on: :create
+  before_validation :normalize_attendee_fields
+
+  # --- Associations ---
+  belongs_to :event
+  has_many :visitor_vendor_stamps, dependent: :destroy
+
+  # --- Validations ---
+  validates :event_id, presence: true
+  # The original `validates :public_id, presence: true` caused issues because
+  # the value wasn't set when FactoryBot tried to save.
+  # We check presence only on :update, relying on the `before_validation` callback for creation.
+  validates :public_id, presence: true, on: :update
+
+  validates :full_name, presence: true
+  validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+  validates :phone, format: { with: /\A[+]?[\d\s\-\(\)]+\z/, message: 'must be a valid phone number' }, allow_blank: true
+
+  after_commit :send_webhook_notification, on: [:create, :update]
+
+  # --- Private Methods ---
+  private
+
+  def set_public_id
+    # Generates a UUID only if it hasn't been set by the database or another source.
+    self.public_id ||= SecureRandom.uuid
+  end
+
+  def normalize_attendee_fields
+    # Title-case full_name for display
+    self.full_name = titleize_name(full_name) if full_name.present?
+
+    if has_attribute?(:full_name_norm)
+      self.full_name_norm = normalize_name_key(full_name) if will_save_change_to_full_name? || full_name_norm.blank?
+    end
+    if has_attribute?(:email_norm)
+      self.email_norm = normalize_email_key(email) if will_save_change_to_email? || email_norm.blank?
+    end
+    if has_attribute?(:phone_norm)
+      self.phone_norm = normalize_phone_key(phone) if will_save_change_to_phone? || phone_norm.blank?
+    end
+  end
+
+  def titleize_name(value)
+    value.to_s.strip.split(/\s+/).map { |w| w.downcase.capitalize }.join(' ')
+  end
+
+  def normalize_name_key(value)
+    key = value.to_s.strip.gsub(/\s+/, ' ').downcase
+    key.presence
+  end
+
+  def normalize_email_key(value)
+    key = value.to_s.strip.downcase
+    key.presence
+  end
+
+  def normalize_phone_key(value)
+    digits = value.to_s.gsub(/\D+/, '')
+    digits.presence
+  end
+
+  def send_webhook_notification
+    webhook_url = event.webhook_url
+    return unless webhook_url.present?
+
+    event_type = determine_event_type
+    return if event_type.nil?  # Skip if no significant change
+
+    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+  end
+
+  def determine_event_type
+    return 'visitor.created' if previous_changes[:id].present?
+    'visitor.updated'
+  end
+
+  def build_webhook_payload(event_type)
+    # For creation, send full data. For updates, send minimal data + changes
+    is_creation = event_type == 'visitor.created'
+
+    payload = {
+      event_type: event_type,
+      webhook_id: SecureRandom.uuid,
+      timestamp: Time.now.utc.iso8601,
+      api_version: "v1",
+
+      visitor: {
+        id: self.id,
+        public_id: self.public_id,
+        full_name: self.full_name,
+        email: self.email,
+        phone: self.phone,
+        gender: self.gender,
+        age: self.age
+      },
+
+      event: {
+        id: self.event.id,
+        title: self.event.title
+      }
+    }
+
+    # Add full context on creation
+    if is_creation
+      payload[:visitor].merge!(
+        created_at: self.created_at.iso8601
+      )
+
+      payload[:event].merge!(
+        start_date: self.event.start_date&.iso8601,
+        end_date: self.event.end_date&.iso8601
+      )
+    else
+      # Add changes for updates
+      payload[:changes] = format_changes
+    end
+
+    payload.compact
+  end
+
+  def format_changes
+    self.previous_changes.except('updated_at').transform_values do |change|
+      {
+        from: change[0],
+        to: change[1]
+      }
+    end
+  end
+end
