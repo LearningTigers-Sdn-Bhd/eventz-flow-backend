@@ -37,6 +37,10 @@ FactoryBot.define do
 			role { :member }
 		end
 
+		factory :vendor_user, parent: :user do
+			role { :vendor }
+		end
+
 		factory :staff_user, parent: :user do
 			# This creates a generic user who will be assigned the EventTeamMember role in the tests.
 		end

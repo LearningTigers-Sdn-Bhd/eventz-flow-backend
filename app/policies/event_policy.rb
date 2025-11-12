@@ -18,16 +18,17 @@ class EventPolicy < ApplicationPolicy
   # Can view if: event is published AND visible OR user is staff/management
   def show?
     return false if record.blank?
-    
+
     # 1. Is the event public (both published and visible)?
     return true if record.published && record.visibility
-    
+
     # 2. Is the user staff/management? (can view even if not visible)
     user.present? && (
       user.is_org_owner? ||
       user.is_manager? ||
       user.is_event_admin?(record) ||
-      user.is_event_team_member?(record)
+      user.is_event_team_member?(record) ||
+      user.is_event_vendor?(record)
     )
   end
 
@@ -91,7 +92,7 @@ class EventPolicy < ApplicationPolicy
       # Manager/Member: See only events they are assigned to (as event_admin or event_team_member)
       # AND the event visibility must be TRUE
       assigned_event_ids = user.event_assignments.pluck(:event_id)
-      
+
       scope.where(id: assigned_event_ids, visibility: true)
            .distinct
     end
