@@ -61,8 +61,20 @@ Rails.application.routes.draw do
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
 
+      resources :vendors, controller: 'event_vendors', only: [:index, :create, :destroy] do
+        member do
+          get :profile, to: 'event_vendor_profiles#show'
+          patch :profile, to: 'event_vendor_profiles#update'
+          get :stamp_count, to: 'stamp_analytics#count'
+        end
+      end
+
+      resources :visitors, only: [:index, :show, :create, :update, :destroy]
+
       # Event Metrics moved outside to avoid impacting event resources
     end
+
+    post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
 
     # 5. GLOBAL TICKET ACTIONS
     # PATCH /v1/tickets/:public_id/check_in
@@ -91,6 +103,18 @@ Rails.application.routes.draw do
         patch :toggle_status
       end
     end
+
+    resources :groups do
+      resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
+      resource :affiliates, controller: 'group_affiliates', only: [:create, :destroy], path: 'affiliates'
+      resources :vendors, only: [], controller: 'vendor_profiles' do
+        member do
+          patch :profile, to: 'vendor_profiles#update'
+        end
+      end
+    end
+
+    resources :vendors, only: [:create]
 
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do

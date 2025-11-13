@@ -5,7 +5,7 @@ class User < ApplicationRecord
   # --- Global Roles ---
   # Rails best practice is to use the provided methods (org_owner?, manager?, etc.)
   # The enum values should remain integers for database consistency.
-  enum :role, { org_owner: 0, manager: 1, member: 2 }, scopes: false
+  enum :role, { org_owner: 0, manager: 1, member: 2, vendor: 3 }, scopes: false
 
   # --- Status ---
   enum :status, { active: 1, inactive: 0 }
@@ -26,6 +26,14 @@ class User < ApplicationRecord
   # 1. EVENT STAFFING (Unified Event Assignment Model)
   has_many :event_assignments, dependent: :destroy
   has_many :assigned_events, through: :event_assignments, source: :event
+
+  # Event vendor assignments (for exhibitors/merchants)
+  has_many :event_vendor_assignments, class_name: 'EventVendor', foreign_key: 'vendor_id', dependent: :destroy
+  has_many :vendor_events, through: :event_vendor_assignments, source: :event
+
+  # 2. GROUP MEMBERSHIPS
+  has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
+  has_many :groups, through: :group_memberships
 
   # Add the required scoped association for the controller (Failures 8, 9 from previous run)
   has_many :assigned_event_admins, -> { where(role: EventAssignment.roles[:event_admin]) },
@@ -79,6 +87,20 @@ class User < ApplicationRecord
     event_assignments.where(event_id: event.id)
                      .where(role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]])
                      .exists?
+  end
+
+  def is_event_vendor?(event)
+    return false unless event.present?
+
+    event_vendor_assignments.exists?(event_id: event.id)
+  end
+
+  # --- Group Role Helper Methods ---
+
+  def is_group_manager?(group)
+    return false unless group.present?
+
+    group.group_members.where(user_id: id, has_manager_access: true).exists?
   end
 
   # --- Email Verification ---

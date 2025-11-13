@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_12_082843) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -69,6 +69,21 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
     t.index ["event_id"], name: "index_event_locations_on_event_id"
   end
 
+  create_table "event_vendors", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "vendor_id", null: false
+    t.string "redirect_url", null: false
+    t.string "poster_url"
+    t.string "type", null: false
+    t.bigint "exhibitor_owner_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "vendor_id"], name: "index_event_vendors_on_event_and_vendor", unique: true
+    t.index ["exhibitor_owner_id"], name: "index_event_vendors_on_exhibitor_owner_id"
+    t.index ["type"], name: "index_event_vendors_on_type"
+    t.index ["vendor_id"], name: "index_event_vendors_on_vendor_id"
+  end
+
   create_table "events", force: :cascade do |t|
     t.string "title", null: false
     t.text "description"
@@ -84,6 +99,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
     t.integer "payment_status", default: 0
     t.decimal "price", precision: 8, scale: 2, default: "0.0"
     t.boolean "published", default: false, null: false
+    t.boolean "use_ticket", default: true, null: false
+  end
+
+  create_table "exhibitor_owners", force: :cascade do |t|
+    t.string "name", null: false
+    t.text "description"
+    t.string "contact_email"
+    t.string "contact_phone"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_exhibitor_owners_on_name"
   end
 
   create_table "export_logs", force: :cascade do |t|
@@ -94,6 +120,34 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
     t.bigint "event_id", null: false
     t.index ["event_id"], name: "index_export_logs_on_event_id"
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
+  end
+
+  create_table "group_affiliates", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.bigint "vendor_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["group_id"], name: "index_group_affiliates_on_group_id", unique: true
+    t.index ["vendor_id"], name: "index_group_affiliates_on_vendor_id"
+  end
+
+  create_table "group_members", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.bigint "user_id", null: false
+    t.boolean "has_manager_access", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["group_id", "user_id"], name: "index_group_members_on_group_id_and_user_id", unique: true
+    t.index ["group_id"], name: "index_group_members_on_group_id"
+    t.index ["user_id"], name: "index_group_members_on_user_id"
+  end
+
+  create_table "groups", force: :cascade do |t|
+    t.string "name", null: false
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_groups_on_name"
   end
 
   create_table "orders", force: :cascade do |t|
@@ -178,6 +232,43 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
     t.index ["status"], name: "index_users_on_status"
   end
 
+  create_table "vendor_profiles", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.bigint "vendor_id", null: false
+    t.bigint "manager_id"
+    t.string "image_path"
+    t.string "vendor_name", default: "Vendor Name", null: false
+    t.text "vendor_description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["group_id", "vendor_id"], name: "index_vendor_profiles_on_group_id_and_vendor_id", unique: true
+    t.index ["group_id"], name: "index_vendor_profiles_on_group_id"
+  end
+
+  create_table "visitor_vendor_stamps", force: :cascade do |t|
+    t.bigint "visitor_id", null: false
+    t.bigint "event_vendor_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_vendor_id"], name: "index_visitor_vendor_stamps_on_event_vendor_id"
+    t.index ["visitor_id", "event_vendor_id"], name: "index_visitor_vendor_stamps_on_visitor_and_event_vendor", unique: true
+    t.index ["visitor_id"], name: "index_visitor_vendor_stamps_on_visitor_id"
+  end
+
+  create_table "visitors", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
+    t.string "full_name"
+    t.string "gender"
+    t.integer "age"
+    t.string "phone"
+    t.string "email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_visitors_on_event_id"
+    t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
+  end
+
   add_foreign_key "api_keys", "users"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
@@ -185,11 +276,24 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_03_061500) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
+  add_foreign_key "event_vendors", "events"
+  add_foreign_key "event_vendors", "exhibitor_owners"
+  add_foreign_key "event_vendors", "users", column: "vendor_id"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "group_affiliates", "groups"
+  add_foreign_key "group_affiliates", "users", column: "vendor_id"
+  add_foreign_key "group_members", "groups"
+  add_foreign_key "group_members", "users"
   add_foreign_key "password_resets", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "vendor_profiles", "groups"
+  add_foreign_key "vendor_profiles", "users", column: "manager_id"
+  add_foreign_key "vendor_profiles", "users", column: "vendor_id"
+  add_foreign_key "visitor_vendor_stamps", "event_vendors"
+  add_foreign_key "visitor_vendor_stamps", "visitors"
+  add_foreign_key "visitors", "events"
 end

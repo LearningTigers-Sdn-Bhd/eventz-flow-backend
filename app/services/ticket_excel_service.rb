@@ -606,16 +606,14 @@ class TicketExcelService
         end
 
         # If no name match, even if email/phone match, create a new ticket (per rules)
+        # Ensure response payload (and persisted data) always include the full label schema
+        base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
+        merged_custom_fields = base_custom_fields.merge(custom_fields_data)
+        merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
+        merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
+
         ticket = nil
         unless dry_run
-          # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
-          # Start with event labels (as base) to ensure new labels are included
-          base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-          # Merge import data (import data takes precedence)
-          merged_custom_fields = base_custom_fields.merge(custom_fields_data)
-          merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
-          merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
-
           ticket = Ticket.create!(
             event: event,
             ticket_type: ticket_type,
@@ -629,21 +627,19 @@ class TicketExcelService
           )
         end
         results[:created][:count] += 1
-        if full
-          record_data = {
-            model: 'Ticket',
-            id: ticket ? ticket.id.to_s : nil,
-            attendee_name: attendee_name,
-            attendee_email: attendee_email,
-            attendee_phone: attendee_phone,
-            event_title: event_title,
-            ticket_type: ticket_type_name,
-            payment_status: parsed_payment_status.to_s,
-            checked_in: checked_in,
-            **custom_fields_data
-          }
-          results[:created][:data] << record_data
-        end
+        record_data = {
+          model: 'Ticket',
+          id: ticket ? ticket.id.to_s : nil,
+          attendee_name: attendee_name,
+          attendee_email: attendee_email,
+          attendee_phone: attendee_phone,
+          event_title: event_title,
+          ticket_type: ticket_type_name,
+          payment_status: parsed_payment_status.to_s,
+          checked_in: checked_in
+        }.merge(merged_custom_fields)
+
+        results[:created][:data] << record_data
       end
 
     rescue StandardError => e
