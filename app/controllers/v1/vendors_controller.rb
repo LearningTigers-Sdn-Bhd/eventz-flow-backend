@@ -3,6 +3,24 @@ module V1
     before_action :authenticate_user!
     before_action :authorize_manager!
 
+    # GET /v1/vendors
+    def index
+      vendors = User.where(role: :vendor)
+
+      render json: vendors.map { |vendor|
+        {
+          id: vendor.id,
+          email: vendor.email,
+          full_name: vendor.full_name,
+          phone: vendor.phone,
+          role: vendor.role,
+          status: vendor.status,
+          created_at: vendor.created_at,
+          updated_at: vendor.updated_at
+        }
+      }, status: :ok
+    end
+
     # POST /v1/vendors
     def create
       vendor_params_required = params.require(:vendor).permit(:full_name, :email, :phone, :password, :password_confirmation)
