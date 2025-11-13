@@ -114,7 +114,11 @@ Rails.application.routes.draw do
       end
     end
 
-    resources :vendors, only: [:index, :create]
+    resources :vendors, only: [:index, :show, :create, :update] do
+      member do
+        patch :toggle_status
+      end
+    end
 
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do
