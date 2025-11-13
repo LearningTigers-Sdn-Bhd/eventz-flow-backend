@@ -90,6 +90,7 @@ module V1
         :end_date,
         :webhook_url,
         :visibility,
+        :use_ticket,
         :event_admin_id, # This will make assigned user as the event admin
         labels_data: {} # Allows JSONB hash updates
       )
