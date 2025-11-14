@@ -4,6 +4,34 @@ module V1
     skip_before_action :authenticate_user!
     skip_before_action :require_verified_email!
 
+    # GET /v1/events/:event_id/visitor-stamps
+    def index
+      event = Event.find_by(id: params[:event_id])
+      unless event
+        return render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
+      end
+
+      # Get all stamps for this event through visitors
+
+      stamps = VisitorVendorStamp
+        .joins(:visitor, event_vendor: :vendor)
+        .where(visitors: { event_id: event.id })
+        .select(
+          'visitor_vendor_stamps.id',
+          'visitor_vendor_stamps.visitor_id',
+          'visitor_vendor_stamps.event_vendor_id',
+          'visitor_vendor_stamps.created_at',
+          'visitors.full_name as visitor_name',
+          'visitors.email as visitor_email',
+          'visitors.phone as visitor_phone',
+          'visitors.public_id as visitor_public_id',
+          'users.full_name as vendor_name'
+        )
+        .order('visitor_vendor_stamps.created_at DESC')
+
+      render json: stamps.map { |stamp| format_stamp_with_details(stamp) }, status: :ok
+    end
+
     # POST /v1/visitors/:public_id/stamps
     def create
       # Find visitor by public_id
@@ -68,6 +96,20 @@ module V1
           vendor_id: stamp.event_vendor.vendor_id,
           event_id: stamp.event_vendor.event_id
         }
+      }
+    end
+
+    def format_stamp_with_details(stamp)
+      {
+        id: stamp.id,
+        visitor_id: stamp.visitor_id,
+        visitor_name: stamp.visitor_name,
+        visitor_email: stamp.visitor_email,
+        visitor_phone: stamp.visitor_phone,
+        visitor_public_id: stamp.visitor_public_id,
+        event_vendor_id: stamp.event_vendor_id,
+        vendor_name: stamp.vendor_name,
+        created_at: stamp.created_at
       }
     end
   end
