@@ -13,7 +13,7 @@ class GroupPolicy < ApplicationPolicy
 
     # Vendors see groups they're assigned to
     if user.vendor?
-      return record.group_affiliate.present? && record.group_affiliate.vendor_id == user.id
+      return record.group_affiliates.exists?(vendor_id: user.id)
     end
 
     # Managers and members see groups they belong to
@@ -51,7 +51,7 @@ class GroupPolicy < ApplicationPolicy
 
       # Vendors see groups they're assigned to via group_affiliates
       if user.vendor?
-        return scope.joins(:group_affiliate).where(group_affiliates: { vendor_id: user.id })
+        return scope.joins(:group_affiliates).where(group_affiliates: { vendor_id: user.id }).distinct
       end
 
       # Managers and members see groups they belong to via group_members

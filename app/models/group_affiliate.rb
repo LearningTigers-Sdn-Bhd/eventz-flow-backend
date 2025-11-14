@@ -4,7 +4,7 @@ class GroupAffiliate < ApplicationRecord
   belongs_to :vendor, class_name: 'User'
 
   # --- Validations ---
-  validates :group_id, uniqueness: true
+  validates :vendor_id, uniqueness: { scope: :group_id, message: 'is already affiliated with this group' }
   validate :vendor_must_have_vendor_role
 
   # --- Callbacks ---

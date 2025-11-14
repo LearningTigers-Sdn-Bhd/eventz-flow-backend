@@ -74,6 +74,8 @@ Rails.application.routes.draw do
       # Event Metrics moved outside to avoid impacting event resources
     end
 
+    # Visitors stamps
+    get 'events/:event_id/visitor-stamps', to: 'visitor_stamps#index'
     post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
 
     # 5. GLOBAL TICKET ACTIONS
@@ -106,7 +108,7 @@ Rails.application.routes.draw do
 
     resources :groups do
       resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
-      resource :affiliates, controller: 'group_affiliates', only: [:create, :destroy], path: 'affiliates'
+      resources :affiliates, controller: 'group_affiliates', only: [:index, :create, :destroy], path: 'affiliates'
       resources :vendors, only: [], controller: 'vendor_profiles' do
         member do
           patch :profile, to: 'vendor_profiles#update'

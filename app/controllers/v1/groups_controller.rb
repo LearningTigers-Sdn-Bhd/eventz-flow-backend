@@ -7,7 +7,7 @@ module V1
 
     # GET /v1/groups
     def index
-      @groups = policy_scope(Group).includes(:group_members, :group_affiliate, :vendor)
+      @groups = policy_scope(Group).includes(:group_members, :group_affiliates, :vendors)
 
       render json: @groups.map { |group| format_group(group) }, status: :ok
     end
@@ -108,11 +108,12 @@ module V1
         end
       end
 
-      if group.group_affiliate.present?
-        data[:vendor] = {
-          id: group.vendor.id,
-          email: group.vendor.email,
-          full_name: group.vendor.full_name
+      # Return multiple vendors instead of single vendor
+      data[:vendors] = group.vendors.map do |vendor|
+        {
+          id: vendor.id,
+          email: vendor.email,
+          full_name: vendor.full_name
         }
       end
 
