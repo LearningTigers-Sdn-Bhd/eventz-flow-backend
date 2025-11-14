@@ -89,6 +89,12 @@ class EventPolicy < ApplicationPolicy
       # Org Owner: See ALL events regardless of status and visibility
       return scope.all if user.is_org_owner?
 
+      # For vendors: See only events they are assigned to (as event_vendor)
+      if user.vendor?
+        vendor_event_ids = user.event_vendor_assignments.pluck(:event_id)
+        return scope.where(id: vendor_event_ids, visibility: true).distinct
+      end
+
       # Manager/Member: See only events they are assigned to (as event_admin or event_team_member)
       # AND the event visibility must be TRUE
       assigned_event_ids = user.event_assignments.pluck(:event_id)
