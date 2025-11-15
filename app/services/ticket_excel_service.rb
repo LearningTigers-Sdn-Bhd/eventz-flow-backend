@@ -371,7 +371,7 @@ class TicketExcelService
 
           # Unconditional upgrade-to-paid rule: if incoming status is paid and existing is not,
           # upgrade payment_status to paid regardless of completeness. Never downgrade and respect dry_run.
-          if parsed_payment_status == :paid && existing.payment_status != 'paid'
+          if parsed_payment_status == :paid && !existing.paid?
             # Payment status will change from existing to paid
             changed_fields << 'payment_status'
 

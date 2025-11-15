@@ -44,7 +44,7 @@ module V1
     end
 
     def update
-      # Authorization check: Can the user (Manager/Staff) update this visitor?
+      # Authorization check: Can the user (Organizer/Staff) update this visitor?
       authorize @visitor, :update?
 
       if @visitor.update(visitor_params)
@@ -55,7 +55,7 @@ module V1
     end
 
     def destroy
-      # Authorization check: Can the user (Manager/Admin) delete this visitor?
+      # Authorization check: Can the user (Organizer/Admin) delete this visitor?
       authorize @visitor, :destroy?
 
       if @visitor.destroy

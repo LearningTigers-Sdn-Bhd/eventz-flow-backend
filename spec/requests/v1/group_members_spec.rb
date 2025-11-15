@@ -23,9 +23,9 @@ GROUP_MEMBER_SCHEMA = {
 
 RSpec.describe 'V1::GroupMembers', type: :request do
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:manager_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
-  let(:another_manager) { create(:manager_user) }
+  let(:another_manager) { create(:organizer_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }

@@ -9,7 +9,7 @@ RSpec.describe GroupAffiliate, type: :model do
   describe 'validations' do
     let(:group) { create(:group) }
     let(:vendor) { create(:vendor_user) }
-    let(:manager) { create(:manager_user) }
+    let(:manager) { create(:organizer_user) }
     subject { build(:group_affiliate, group: group, vendor: vendor) }
 
     it { should validate_uniqueness_of(:group_id) }
@@ -51,7 +51,7 @@ RSpec.describe GroupAffiliate, type: :model do
     end
 
     it 'sets manager_id from existing vendor profiles if available' do
-      manager = create(:manager_user)
+      manager = create(:organizer_user)
       other_group = create(:group)
       existing_profile = create(:vendor_profile, group: other_group, vendor: vendor, manager_id: manager.id)
 

@@ -17,7 +17,7 @@ class TicketPolicy < ApplicationPolicy
     true
   end
 
-  # Only managers/owners can create tickets. Delegates to EventPolicy#update?, 
+  # Only organizers/owners can create tickets. Delegates to EventPolicy#update?,
   # which includes necessary status checks (paid?/waived?).
   def create?
     # If the event_policy cannot be initialized (e.g., no event is associated yet), fail safe.
@@ -41,20 +41,20 @@ class TicketPolicy < ApplicationPolicy
     user.is_org_owner?
   end
 
-  # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Managers).
+  # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Organizers).
   def update?
     return false if user.blank? || record.blank?
     
     # 1. Organization-level permissions (can update ANY ticket)
-    return true if user.is_org_owner? || user.is_manager?
+    return true if user.is_org_owner? || user.is_organizer?
     
     # 2. Event-level permissions (can only update tickets for their assigned event)
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
   
-  # Deletion/Refunds are usually restricted to Managers/Owners.
+  # Deletion/Refunds are usually restricted to Organizers/Owners.
   def destroy?
-    # Delegate to the event's update permission, which is restricted to managers/owners.
+    # Delegate to the event's update permission, which is restricted to organizers/owners.
     user.is_event_admin?(record.event)
   end
 

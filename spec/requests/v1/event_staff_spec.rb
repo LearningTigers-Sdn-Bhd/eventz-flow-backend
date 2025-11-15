@@ -9,7 +9,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
     type: :object,
     properties: {
       error: { type: :string, example: 'Forbidden' },
-      message: { type: :string, example: 'Only an organization owner or manager can manage event staff.' }
+      message: { type: :string, example: 'Only an organization owner or organizer can manage event staff.' }
     },
     required: %w[error message]
   }.freeze
@@ -19,12 +19,12 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   # ============================================================
   let(:event)        { create(:event) }
   let(:org_owner)    { create(:org_owner) }
-  let(:manager)      { create(:manager_user) }
+  let(:organizer)      { create(:organizer_user) }
   let(:member_user)  { create(:member_user) }
 
   # use the real encoder to generate valid tokens
   let(:auth_header_org_owner) { "Bearer #{JwtService.generate_tokens(org_owner)[:access_token]}" }
-  let(:auth_header_manager) { "Bearer #{JwtService.generate_tokens(manager)[:access_token]}" }
+  let(:auth_header_organizer) { "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" }
   let(:auth_header_member)  { "Bearer #{JwtService.generate_tokens(member_user)[:access_token]}" }
 
   let(:common_headers) { |auth| { 'Authorization' => auth, 'Content-Type' => 'application/json' } }
@@ -49,7 +49,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
       before do
         # Create some staff assignments for the event
         create(:event_assignment, event: event, user: member_user, role: 'event_team_member')
-        create(:event_assignment, event: event, user: manager, role: 'event_admin')
+        create(:event_assignment, event: event, user: organizer, role: 'event_admin')
       end
 
       response '200', 'Returns list of staff assigned to the event (Org Owner)' do
@@ -84,8 +84,8 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         end
       end
 
-      response '200', 'Manager can view staff if they are event staff' do
-        let(:Authorization) { auth_header_manager }
+      response '200', 'Organizer can view staff if they are event staff' do
+        let(:Authorization) { auth_header_organizer }
 
         schema type: :array,
           items: {
@@ -101,7 +101,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data).to be_an(Array)
-          # Manager is admin, so they can view
+          # Organizer is admin, so they can view
           expect(data.length).to eq(2)
         end
       end
@@ -158,8 +158,8 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
     run_test!
   end
 
-  response '403', 'Forbidden for manager' do
-    let(:Authorization) { auth_header_manager }
+  response '403', 'Forbidden for organizer' do
+    let(:Authorization) { auth_header_organizer }
     schema EVENT_STAFF_ERROR_SCHEMA
     run_test!
   end
@@ -197,8 +197,8 @@ end
         run_test!
       end
 
-      response '403', 'Forbidden for manager' do
-        let(:Authorization) { auth_header_manager }
+      response '403', 'Forbidden for organizer' do
+        let(:Authorization) { auth_header_organizer }
         schema EVENT_STAFF_ERROR_SCHEMA
         run_test!
       end

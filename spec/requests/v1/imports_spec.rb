@@ -4,19 +4,19 @@ require 'swagger_helper'
 RSpec.describe 'V1::Imports', type: :request do
   # --- Setup Users & Tokens ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
   let(:staff_user) { create(:staff_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
-  # --- Setup Event (Controlled by Manager) ---
-  let!(:manager_event) do
+  # --- Setup Event (Controlled by Organizer) ---
+  let!(:organizer_event) do
     event = create(:event, title: 'Import Test Event', payment_status: :paid)
-    EventAssignment.find_or_create_by!(event: event, user: manager_user, role: :event_admin)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     create(:event_assignment, role: :event_team_member, event: event, user: staff_user)
     event
   end
@@ -108,7 +108,7 @@ RSpec.describe 'V1::Imports', type: :request do
                  }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:dry_run) { true }
         let(:file) do
           # Create a test Excel file
@@ -153,7 +153,7 @@ RSpec.describe 'V1::Imports', type: :request do
                  data: { type: :object }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:dry_run) { true }
         let(:no_label) { false }
         let(:file) do
@@ -163,7 +163,7 @@ RSpec.describe 'V1::Imports', type: :request do
           workbook.add_worksheet(name: 'Tickets') do |sheet|
             sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
             # Empty Role cell
-            sheet.add_row ['Empty Role User','emptyrole@example.com','+1000000000', manager_event.title, 'GA', '', '', 'pending', 'false', '']
+            sheet.add_row ['Empty Role User','emptyrole@example.com','+1000000000', organizer_event.title, 'GA', '', '', 'pending', 'false', '']
           end
           tmp = Tempfile.new(['import_empty_role', '.xlsx'])
           package.serialize(tmp.path)
@@ -191,7 +191,7 @@ RSpec.describe 'V1::Imports', type: :request do
                  data: { type: :object }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:dry_run) { true }
         let(:no_label) { true }
         let(:file) do
@@ -201,7 +201,7 @@ RSpec.describe 'V1::Imports', type: :request do
           workbook.add_worksheet(name: 'Tickets') do |sheet|
             sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
             # Empty Role cell
-            sheet.add_row ['Empty LabelN User','emptylabeln@example.com','+1000000001', manager_event.title, 'GA', '', '', 'pending', 'false', '']
+            sheet.add_row ['Empty LabelN User','emptylabeln@example.com','+1000000001', organizer_event.title, 'GA', '', '', 'pending', 'false', '']
           end
           tmp = Tempfile.new(['import_empty_labeln', '.xlsx'])
           package.serialize(tmp.path)
@@ -270,7 +270,7 @@ RSpec.describe 'V1::Imports', type: :request do
                  }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:dry_run) { true }
         let(:file) do
           require 'caxlsx'
@@ -279,8 +279,8 @@ RSpec.describe 'V1::Imports', type: :request do
           workbook.add_worksheet(name: "Tickets") do |sheet|
             sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
             # Two rows: same phone/email, different names, same event+type
-            sheet.add_row ['Alice Example', 'shared@company.com', '0168100005', manager_event.title, 'GA', '', '', 'pending', 'false']
-            sheet.add_row ['Bob Example',   'shared@company.com', '0168100005', manager_event.title, 'GA', '', '', 'pending', 'false']
+            sheet.add_row ['Alice Example', 'shared@company.com', '0168100005', organizer_event.title, 'GA', '', '', 'pending', 'false']
+            sheet.add_row ['Bob Example',   'shared@company.com', '0168100005', organizer_event.title, 'GA', '', '', 'pending', 'false']
           end
 
           temp_file = Tempfile.new(['test_import_dupes', '.xlsx'])
@@ -321,7 +321,7 @@ RSpec.describe 'V1::Imports', type: :request do
                  errors: { type: :array, items: { type: :string } }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:file) { nil }
 
         run_test! do |response|
@@ -334,7 +334,7 @@ RSpec.describe 'V1::Imports', type: :request do
 
   # Additional behavior tests for custom labels merging
   describe 'Custom labels merging behavior' do
-    let(:auth_header) { "Bearer #{manager_token}" }
+    let(:auth_header) { "Bearer #{organizer_token}" }
 
     def build_excel_with_custom_columns(rows, custom_columns: [])
       require 'caxlsx'
@@ -355,57 +355,57 @@ RSpec.describe 'V1::Imports', type: :request do
     it 'merges new labels with existing labels_data' do
       # Set up event with existing labels
       existing_labels = { 'Label 1' => 'Role', 'Label 2' => 'Company' }
-      manager_event.update!(labels_data: existing_labels)
+      organizer_event.update!(labels_data: existing_labels)
 
       # Import with new custom column
       file = build_excel_with_custom_columns(
-        [['Test User', 'test@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
+        [['Test User', 'test@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
         custom_columns: ['Department']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
 
       # Verify existing labels are preserved
-      expect(manager_event.labels_data['Label 1']).to eq('Role')
-      expect(manager_event.labels_data['Label 2']).to eq('Company')
+      expect(organizer_event.labels_data['Label 1']).to eq('Role')
+      expect(organizer_event.labels_data['Label 2']).to eq('Company')
 
       # Verify new label is added
-      expect(manager_event.labels_data['Label 3']).to eq('Department')
+      expect(organizer_event.labels_data['Label 3']).to eq('Department')
     end
 
     it 'preserves all existing labels when importing new ones' do
       # Set up event with multiple existing labels
       existing_labels = { 'Label 1' => 'Role', 'Label 2' => 'Company', 'Label 3' => 'Dietary Restrictions' }
-      manager_event.update!(labels_data: existing_labels)
+      organizer_event.update!(labels_data: existing_labels)
 
       # Import with one new custom column
       file = build_excel_with_custom_columns(
-        [['Test User 2', 'test2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false']],
+        [['Test User 2', 'test2@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false']],
         custom_columns: ['T-Shirt Size']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
 
       # Verify all existing labels are preserved
-      expect(manager_event.labels_data['Label 1']).to eq('Role')
-      expect(manager_event.labels_data['Label 2']).to eq('Company')
-      expect(manager_event.labels_data['Label 3']).to eq('Dietary Restrictions')
+      expect(organizer_event.labels_data['Label 1']).to eq('Role')
+      expect(organizer_event.labels_data['Label 2']).to eq('Company')
+      expect(organizer_event.labels_data['Label 3']).to eq('Dietary Restrictions')
 
       # Verify new label is added
-      expect(manager_event.labels_data['Label 4']).to eq('T-Shirt Size')
-      expect(manager_event.labels_data.keys.length).to eq(4)
+      expect(organizer_event.labels_data['Label 4']).to eq('T-Shirt Size')
+      expect(organizer_event.labels_data.keys.length).to eq(4)
     end
 
     it 'creates labels_data for new events when importing custom columns' do
       # Event without existing labels
       new_event = create(:event, title: 'New Event', labels_data: nil)
-      EventAssignment.find_or_create_by!(event: new_event, user: manager_user, role: :event_admin)
+      EventAssignment.find_or_create_by!(event: new_event, user: organizer_user, role: :event_admin)
 
       file = build_excel_with_custom_columns(
         [['New Event User', 'new@example.com', '', new_event.title, 'GA', '', '', 'pending', 'false', 'VIP']],
@@ -425,49 +425,49 @@ RSpec.describe 'V1::Imports', type: :request do
     it 'updates existing label display name when importing with changed column header' do
       # Set up event with existing label
       existing_labels = { 'Label 1' => 'Role' }
-      manager_event.update!(labels_data: existing_labels)
+      organizer_event.update!(labels_data: existing_labels)
 
       # Import with new column header (e.g., "Position" instead of "Role")
       file = build_excel_with_custom_columns(
-        [['Update Test User', 'update@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
+        [['Update Test User', 'update@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'Manager']],
         custom_columns: ['Position']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
 
       # Verify the existing label is preserved and new label is added
-      expect(manager_event.labels_data['Label 1']).to eq('Role')
-      expect(manager_event.labels_data['Label 2']).to eq('Position')
+      expect(organizer_event.labels_data['Label 1']).to eq('Role')
+      expect(organizer_event.labels_data['Label 2']).to eq('Position')
     end
 
     it 'updates existing label display name when importing with same column header' do
       # Set up event with existing label "Old Role Name"
       existing_labels = { 'Label 1' => 'Old Role Name' }
-      manager_event.update!(labels_data: existing_labels)
+      organizer_event.update!(labels_data: existing_labels)
 
       # Import with same column header "Role" (replaces existing Label 1 value)
       file = build_excel_with_custom_columns(
-        [['Update Test User 2', 'update2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false']],
+        [['Update Test User 2', 'update2@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false']],
         custom_columns: ['Role']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
 
       # Verify the label display name was updated (same key "Label 1", different value)
-      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      expect(organizer_event.labels_data['Label 1']).to eq('Role')
     end
 
   end
 
   # Additional behavior tests for payment status upgrades
   describe 'Payment status upgrade behavior' do
-    let(:auth_header) { "Bearer #{manager_token}" }
+    let(:auth_header) { "Bearer #{organizer_token}" }
 
     def build_excel(rows)
       require 'caxlsx'
@@ -500,11 +500,11 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'upgrades to paid even when row is not more complete' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Paid Upgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Paid Upgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
 
       file = build_excel([
-        ['Paid Upgrade User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+        ['Paid Upgrade User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false']
       ])
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
@@ -515,11 +515,11 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'does not downgrade from paid' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'No Downgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :paid, checked_in: false)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'No Downgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :paid, checked_in: false)
 
       file = build_excel([
-        ['No Downgrade User', '', '', manager_event.title, 'GA', '', '', 'pending', 'false']
+        ['No Downgrade User', '', '', organizer_event.title, 'GA', '', '', 'pending', 'false']
       ])
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
@@ -530,11 +530,11 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'does not persist upgrade when dry_run=true' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Dry Run User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Dry Run User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
 
       file = build_excel([
-        ['Dry Run User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+        ['Dry Run User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false']
       ])
 
       post '/v1/imports/tickets', params: { file: file, dry_run: true }, headers: { 'Authorization' => auth_header }
@@ -545,11 +545,11 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'includes changed_fields when payment_status changes' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Changed Fields User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Changed Fields User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
 
       file = build_excel([
-        ['Changed Fields User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+        ['Changed Fields User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false']
       ])
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
@@ -570,11 +570,11 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'includes changed_fields even when full: false' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      ticket = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Full False User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Full False User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :pending, checked_in: false)
 
       file = build_excel([
-        ['Full False User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false']
+        ['Full False User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false']
       ])
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, full: false }, headers: { 'Authorization' => auth_header }
@@ -596,9 +596,9 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'includes changed_fields when custom_fields_data changes' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
-      ticket = manager_event.tickets.create!(
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      organizer_event.update!(labels_data: { 'Label 1' => 'Role' })
+      ticket = organizer_event.tickets.create!(
         ticket_type: ga,
         attendee_name: 'Custom Labels User',
         attendee_email: '',
@@ -610,7 +610,7 @@ RSpec.describe 'V1::Imports', type: :request do
       )
 
       file = build_excel_with_custom_columns(
-        [['Custom Labels User', '', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'New Role']],
+        [['Custom Labels User', '', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'New Role']],
         custom_columns: ['Role']
       )
 
@@ -629,9 +629,9 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'includes changed_fields for both payment_status and custom_fields_data when both change' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
-      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
-      ticket = manager_event.tickets.create!(
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      organizer_event.update!(labels_data: { 'Label 1' => 'Role' })
+      ticket = organizer_event.tickets.create!(
         ticket_type: ga,
         attendee_name: 'Both Changed User',
         attendee_email: '',
@@ -643,7 +643,7 @@ RSpec.describe 'V1::Imports', type: :request do
       )
 
       file = build_excel_with_custom_columns(
-        [['Both Changed User', '', '', manager_event.title, 'GA', '', '', 'paid', 'false', 'New Role']],
+        [['Both Changed User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false', 'New Role']],
         custom_columns: ['Role']
       )
 
@@ -665,7 +665,7 @@ RSpec.describe 'V1::Imports', type: :request do
 
   # Tests for no_label flag behavior and synchronization
   describe 'no_label flag behavior' do
-    let(:auth_header) { "Bearer #{manager_token}" }
+    let(:auth_header) { "Bearer #{organizer_token}" }
 
     def build_excel_with_custom_columns(rows, custom_columns: [])
       require 'caxlsx'
@@ -684,49 +684,49 @@ RSpec.describe 'V1::Imports', type: :request do
     end
 
     it 'uses header machine keys when no_label=false and syncs existing tickets to header keys' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
       # Pre-existing ticket with Label N keys should be migrated to header keys
-      manager_event.update!(labels_data: { 'Label 1' => 'Role' })
-      t = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'Label 1' => 'Speaker' })
+      organizer_event.update!(labels_data: { 'Label 1' => 'Role' })
+      t = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'Label 1' => 'Speaker' })
 
       file = build_excel_with_custom_columns(
-        [['Key Sync User 2', 'sync2@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'VIP']],
+        [['Key Sync User 2', 'sync2@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'VIP']],
         custom_columns: ['Role']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: false }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
       t.reload
 
       # Event labels_data should use machine key => display name mapping
-      expect(manager_event.labels_data).to include('role' => 'Role')
+      expect(organizer_event.labels_data).to include('role' => 'Role')
       # Existing ticket keys should be synchronized to machine keys
       expect(t.custom_fields_data).to include('role' => 'Speaker')
       expect(t.custom_fields_data.keys).not_to include('Label 1')
     end
 
     it 'uses Label N keys when no_label=true and syncs existing tickets to Label N' do
-      ga = manager_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
       # Pre-existing ticket with header keys should be migrated to Label N keys
-      manager_event.update!(labels_data: { 'role' => 'Role' })
-      t = manager_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User 3', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'role' => 'Panelist' })
+      organizer_event.update!(labels_data: { 'role' => 'Role' })
+      t = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'Key Sync User 3', status: :purchased, payment_status: :pending, checked_in: false, custom_fields_data: { 'role' => 'Panelist' })
 
       file = build_excel_with_custom_columns(
-        [['Key Sync User 4', 'sync4@example.com', '', manager_event.title, 'GA', '', '', 'pending', 'false', 'Delegate']],
+        [['Key Sync User 4', 'sync4@example.com', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'Delegate']],
         custom_columns: ['Role']
       )
 
       post '/v1/imports/tickets', params: { file: file, dry_run: false, no_label: true }, headers: { 'Authorization' => auth_header }
 
       expect(response).to have_http_status(:ok)
-      manager_event.reload
+      organizer_event.reload
       t.reload
 
       # Event labels_data should use sequential Label N => display name
       # At least Label 1 should be 'Role'
-      expect(manager_event.labels_data['Label 1']).to eq('Role')
+      expect(organizer_event.labels_data['Label 1']).to eq('Role')
       # Existing ticket keys should be synchronized to Label N keys
       expect(t.custom_fields_data).to include('Label 1' => 'Panelist')
       expect(t.custom_fields_data.keys).not_to include('role')

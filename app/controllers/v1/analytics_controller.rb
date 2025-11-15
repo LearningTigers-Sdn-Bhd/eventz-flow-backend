@@ -56,7 +56,7 @@ module V1
       }, status: :ok
     end
 
-    # === EXISTING GLOBAL ENDPOINTS (Requires org_owner/manager) ===
+    # === EXISTING GLOBAL ENDPOINTS (Requires org_owner/organizer) ===
 
     # GET /v1/analytics/total_tickets
     def total_tickets

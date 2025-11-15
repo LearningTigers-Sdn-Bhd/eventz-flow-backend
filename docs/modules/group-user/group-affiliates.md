@@ -112,7 +112,7 @@ This allows the vendor to:
 
 **Group Affiliates** and **Group Members** are separate concepts:
 
-- **Group Members:** Users with roles `manager` or `member` who can manage or participate in group operations
+- **Group Members:** Users with roles `organizer` or `member` who can manage or participate in group operations
 - **Group Affiliates:** Users with `vendor` role who are assigned to groups for organizational purposes
 
 Vendors cannot be added as group members. They are only associated with groups through `group_affiliates`.
@@ -133,5 +133,5 @@ Event-level profile settings are updated through `PATCH /v1/events/:event_id/ven
 
 - **Group:** The group that the vendor is assigned to
 - **User:** User with `vendor` role
-- **GroupMember:** Separate from affiliates, used for manager/member assignments
+- **GroupMember:** Separate from affiliates, used for organizer/member assignments
 - **VendorProfile:** Automatically created when vendor is assigned to group

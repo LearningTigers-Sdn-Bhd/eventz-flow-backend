@@ -60,32 +60,32 @@ TICKET_INDEX_ITEM_SCHEMA = {
 RSpec.describe 'V1::Tickets', type: :request do
   # --- Setup Users & Tokens (UNCHANGED) ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
   let(:staff_user) { create(:staff_user) } # Assume a user with EventTeamMember role
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
-  # --- Setup Event (Controlled by Manager) (UNCHANGED) ---
-  let!(:manager_event) do
-    event = create(:event, title: 'Manager Event', payment_status: :paid)
-    EventAssignment.find_or_create_by!(event: event, user: manager_user, role: :event_admin)
+  # --- Setup Event (Controlled by Organizer) (UNCHANGED) ---
+  let!(:organizer_event) do
+    event = create(:event, title: 'Organizer Event', payment_status: :paid)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     create(:event_assignment, role: :event_team_member, event: event, user: staff_user)
     event
   end
 
   # --- Setup Ticket Type (required for Tickets) (UNCHANGED) ---
-  let!(:general_ticket_type) { create(:ticket_type, event: manager_event, name: 'GA') }
+  let!(:general_ticket_type) { create(:ticket_type, event: organizer_event, name: 'GA') }
 
   # --- Setup Tickets (UNCHANGED) ---
   let!(:purchased_ticket) do
-    create(:ticket, event: manager_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
   let!(:checked_in_ticket) do
-    create(:ticket, event: manager_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
   end
   let(:valid_ticket_params) do
     {
@@ -112,7 +112,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
 
-      let(:event_id) { manager_event.id }
+      let(:event_id) { organizer_event.id }
 
       response '200', 'Returns list of tickets for authorized staff' do
         let(:Authorization) { "Bearer #{staff_token}" } # Staff can view tickets for their event
@@ -163,11 +163,11 @@ RSpec.describe 'V1::Tickets', type: :request do
         required: ['ticket']
       }
 
-      let(:event_id) { manager_event.id }
+      let(:event_id) { organizer_event.id }
       let(:ticket) { valid_ticket_params }
 
-      response '201', 'Ticket created by Manager (event admin)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '201', 'Ticket created by Organizer (event admin)' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
@@ -209,7 +209,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
 
-      let(:event_id) { manager_event.id }
+      let(:event_id) { organizer_event.id }
       let(:id) { purchased_ticket.public_id }
 
       response '200', 'Ticket found and viewable by staff' do
@@ -257,7 +257,7 @@ RSpec.describe 'V1::Tickets', type: :request do
         }
       }
 
-      let(:event_id) { manager_event.id }
+      let(:event_id) { organizer_event.id }
       let(:id) { purchased_ticket.public_id }
       let(:ticket) { { ticket: { attendee_name: 'Updated Name', attendee_email: 'update@example.com' } } }
 
@@ -281,8 +281,8 @@ RSpec.describe 'V1::Tickets', type: :request do
         end
       end
 
-      response '200', 'Ticket successfully updated by Manager' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '200', 'Ticket successfully updated by Organizer' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         schema TICKET_SCHEMA
 
@@ -309,11 +309,11 @@ RSpec.describe 'V1::Tickets', type: :request do
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
 
-      let(:event_id) { manager_event.id }
+      let(:event_id) { organizer_event.id }
       let(:id) { checked_in_ticket.public_id }
 
-      response '204', 'Ticket successfully canceled by Manager' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '204', 'Ticket successfully canceled by Organizer' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
         run_test!
       end
 
@@ -323,7 +323,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
 
       response '404', 'Not Found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { '00000000-0000-0000-0000-000000000000' }
         run_test!
       end
@@ -388,7 +388,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
     context 'when unverified user tries to access tickets' do
       it 'returns 403 Forbidden for index' do
-        get "/v1/events/#{manager_event.id}/tickets", headers: { 'Authorization' => "Bearer #{unverified_token}" }
+        get "/v1/events/#{organizer_event.id}/tickets", headers: { 'Authorization' => "Bearer #{unverified_token}" }
 
         expect(response).to have_http_status(:forbidden)
         json = JSON.parse(response.body)
@@ -398,7 +398,7 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
 
       it 'returns 403 Forbidden for show' do
-        get "/v1/events/#{manager_event.id}/tickets/#{purchased_ticket.public_id}",
+        get "/v1/events/#{organizer_event.id}/tickets/#{purchased_ticket.public_id}",
             headers: { 'Authorization' => "Bearer #{unverified_token}" }
 
         expect(response).to have_http_status(:forbidden)
@@ -441,13 +441,13 @@ RSpec.describe 'V1::Tickets', type: :request do
                  }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
 
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['success']).to be true
-          expect(json['data']['event_id']).to eq(manager_event.id)
+          expect(json['data']['event_id']).to eq(organizer_event.id)
         end
       end
 
@@ -458,7 +458,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                }
 
         let(:Authorization) { nil }
-        let(:event_id) { manager_event.id }
+        let(:event_id) { organizer_event.id }
 
         run_test!
       end
@@ -470,7 +470,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                }
 
         let(:Authorization) { "Bearer #{member_token}" }
-        let(:event_id) { manager_event.id }
+        let(:event_id) { organizer_event.id }
 
         run_test!
       end
@@ -481,7 +481,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                  error: { type: :string }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { 999999 }
 
         run_test!
@@ -493,7 +493,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                  error: { type: :string }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { nil }
 
         run_test!
@@ -529,8 +529,8 @@ RSpec.describe 'V1::Tickets', type: :request do
                  }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
 
         run_test! do |response|
           json = JSON.parse(response.body)
@@ -545,7 +545,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                }
 
         let(:Authorization) { nil }
-        let(:event_id) { manager_event.id }
+        let(:event_id) { organizer_event.id }
 
         run_test!
       end
@@ -557,7 +557,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                }
 
         let(:Authorization) { "Bearer #{member_token}" }
-        let(:event_id) { manager_event.id }
+        let(:event_id) { organizer_event.id }
 
         run_test!
       end
@@ -568,7 +568,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                  error: { type: :string }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { nil }
 
         run_test!
@@ -588,10 +588,10 @@ RSpec.describe 'V1::Tickets', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       response '200', 'Excel file downloaded successfully' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) do
           # Create an export first
-          result = TicketExcelService.export(manager_event.id)
+          result = TicketExcelService.export(organizer_event.id)
           result[:export_log].id
         end
 
@@ -621,7 +621,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
         let(:Authorization) { "Bearer #{member_token}" }
         let(:id) do
-          result = TicketExcelService.export(manager_event.id)
+          result = TicketExcelService.export(organizer_event.id)
           result[:export_log].id
         end
 
@@ -634,7 +634,7 @@ RSpec.describe 'V1::Tickets', type: :request do
                  error: { type: :string }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { 999999 }
 
         run_test!

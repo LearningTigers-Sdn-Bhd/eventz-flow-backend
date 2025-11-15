@@ -1,6 +1,6 @@
 # app/policies/event_policy.rb
 class EventPolicy < ApplicationPolicy
-  # NOTE: User model methods (is_event_admin?, is_event_team_member?, is_org_owner?, is_manager?) are assumed to exist.
+  # NOTE: User model methods (is_event_admin?, is_event_team_member?, is_org_owner?, is_organizer?) are assumed to exist.
 
   # ============================================================
   # Basic CRUD Permissions
@@ -10,9 +10,9 @@ class EventPolicy < ApplicationPolicy
     user.present?
   end
 
-  # Only Org Owner or Manager can create events
+  # Only Org Owner or Organizer can create events
   def create?
-    user&.is_org_owner? || user&.is_manager?
+    user&.is_org_owner? || user&.is_organizer?
   end
 
   # Can view if: event is published AND visible OR user is staff/management
@@ -25,7 +25,7 @@ class EventPolicy < ApplicationPolicy
     # 2. Is the user staff/management? (can view even if not visible)
     user.present? && (
       user.is_org_owner? ||
-      user.is_manager? ||
+      user.is_organizer? ||
       user.is_event_admin?(record) ||
       user.is_event_team_member?(record) ||
       user.is_event_vendor?(record)
@@ -33,13 +33,13 @@ class EventPolicy < ApplicationPolicy
   end
 
   # Can update if:
-  # - Org owner or Manager (Org-level permission)
+  # - Org owner or Organizer (Org-level permission)
   # - User is Event Admin or Team Member (Event-level staff permission)
   def update?
     return false if user.blank?
 
     # 1. Organization-level Management
-    return true if user.is_org_owner? || user.is_manager?
+    return true if user.is_org_owner? || user.is_organizer?
 
     # 2. Event-level Staff
     # Allows both Admin and Team Member to update their assigned event.
@@ -57,13 +57,13 @@ class EventPolicy < ApplicationPolicy
   # Analytics permissions
   # ============================================================
 
-  # Analytics access: Only event staff/managers, not general public
+  # Analytics access: Only event staff/organizers, not general public
   def analytics?
     return false if user.blank? || record.blank?
 
-    # Only allow org owners, managers, and event staff
+    # Only allow org owners, organizers, and event staff
     user.is_org_owner? ||
-    user.is_manager? ||
+    user.is_organizer? ||
     user.is_event_admin?(record) ||
     user.is_event_team_member?(record)
   end
@@ -72,10 +72,10 @@ class EventPolicy < ApplicationPolicy
   # Ticket creation
   # ============================================================
 
-  # Managers or Event Admins can create tickets for their events
+  # Organizers or Event Admins can create tickets for their events
   def create_ticket?
     return false if user.blank? || record.blank?
-    user.is_org_owner? || user.is_manager? || user.is_event_admin?(record)
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record)
   end
 
   # ============================================================
@@ -95,7 +95,7 @@ class EventPolicy < ApplicationPolicy
         return scope.where(id: vendor_event_ids, visibility: true).distinct
       end
 
-      # Manager/Member: See only events they are assigned to (as event_admin or event_team_member)
+      # Organizer/Member: See only events they are assigned to (as event_admin or event_team_member)
       # AND the event visibility must be TRUE
       assigned_event_ids = user.event_assignments.pluck(:event_id)
 

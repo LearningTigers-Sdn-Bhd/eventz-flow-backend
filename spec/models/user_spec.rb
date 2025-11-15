@@ -17,7 +17,7 @@ RSpec.describe User, type: :model do
 		# Test 3: Role Definition
 		it 'is valid with a defined role' do
 			# Test all defined roles from the enum
-			%i[org_owner manager member].each do |role|
+			%i[org_owner organizer member vendor].each do |role|
 				user = build(:user, role: role)
 				expect(user).to be_valid
 			end
@@ -57,24 +57,24 @@ RSpec.describe User, type: :model do
 		# Test 6: Role Helper Methods
 		# NOTE: Using the correct factory names as defined in spec/factories/users.rb
 		let(:org_owner_user) { create(:org_owner) }
-		let(:manager_user) { create(:manager_user) }
+		let(:organizer_user) { create(:organizer_user) }
 		let(:member_user) { create(:member_user) }
 
 		it 'correctly identifies a Organization owner' do
 			expect(org_owner_user.org_owner?).to be true
-			expect(manager_user.org_owner?).to be false
+			expect(organizer_user.org_owner?).to be false
 		end
 
 
-		it 'correctly identifies an Manager (including Organization owner)' do
-			expect(org_owner_user.is_manager?).to be true
-			expect(manager_user.is_manager?).to be true
-			expect(member_user.is_manager?).to be false
+		it 'correctly identifies an Organizer (including Organization owner)' do
+			expect(org_owner_user.is_organizer?).to be true
+			expect(organizer_user.is_organizer?).to be true
+			expect(member_user.is_organizer?).to be false
 		end
 
 		it 'correctly identifies a Member' do
 			expect(member_user.is_member?).to be true
-			expect(manager_user.is_member?).to be false
+			expect(organizer_user.is_member?).to be false
 		end
 	end
 end

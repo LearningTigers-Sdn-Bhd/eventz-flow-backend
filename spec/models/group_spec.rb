@@ -14,7 +14,7 @@ RSpec.describe Group, type: :model do
 
   describe 'scopes' do
     let(:org_owner) { create(:org_owner) }
-    let(:manager) { create(:manager_user) }
+    let(:manager) { create(:organizer_user) }
     let(:member) { create(:member_user) }
     let(:vendor) { create(:vendor_user) }
     let(:group1) { create(:group) }

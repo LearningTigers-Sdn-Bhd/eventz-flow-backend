@@ -4,8 +4,8 @@ class V1::TeamMembersController < ApplicationController
 
   # GET /v1/team_members
   def index
-    # Only org_owner and managers can view team members
-    # unless current_user.is_manager_or_higher?
+    # Only org_owner and organizers can view team members
+    # unless current_user.is_organizer_or_higher?
     #   return render json: { error: 'Forbidden' }, status: :forbidden
     # end
 
@@ -15,8 +15,8 @@ class V1::TeamMembersController < ApplicationController
 
   # GET /v1/team_members/:id
   def show
-    # Users can view their own profile, or org_owner/manager can view anyone
-    # unless current_user.id == @team_member.id || current_user.is_manager_or_higher?
+    # Users can view their own profile, or org_owner/organizer can view anyone
+    # unless current_user.id == @team_member.id || current_user.is_organizer_or_higher?
     #   return render json: { error: 'Forbidden' }, status: :forbidden
     # end
 

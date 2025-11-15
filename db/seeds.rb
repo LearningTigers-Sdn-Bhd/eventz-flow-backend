@@ -4,7 +4,7 @@ require 'faker'
 puts "-------------------- Starting High-Volume Database Seeding --------------------"
 
 # --- Configuration & Cleanup ---
-NUM_MANAGERS = 3
+NUM_ORGANIZERS = 3
 NUM_TEAM_MEMBERS = 3
 NUM_EVENTS = 20
 TICKETS_PER_EVENT = 10
@@ -43,16 +43,16 @@ superadmin = User.find_or_create_by!(email: 's@s.com') do |u|
 end
 puts "Created Superadmin: #{superadmin.full_name}"
 
-# B. Managers (Will be used to create most events)
-managers = NUM_MANAGERS.times.map do |i|
-  User.find_or_create_by!(email: "manager_#{i+1}@example.com") do |u|
+# B. Organizers (Will be used to create most events)
+organizers = NUM_ORGANIZERS.times.map do |i|
+  User.find_or_create_by!(email: "organizer_#{i+1}@example.com") do |u|
     u.password = '12345678'
-    u.role = :manager
-    u.full_name = Faker::Name.name + " (Manager #{i+1})"
+    u.role = :organizer
+    u.full_name = Faker::Name.name + " (Organizer #{i+1})"
     u.email_verified_at = Time.current
   end
 end
-puts "Created #{managers.count} Managers."
+puts "Created #{organizers.count} Organizers."
 
 # C. Team Members (Staff who are not Admins)
 team_members = NUM_TEAM_MEMBERS.times.map do |i|
@@ -83,7 +83,7 @@ end
 puts "Created participant user: #{participant_user.full_name}"
 
 # Combined users for easy random assignment
-all_event_staff = managers + team_members
+all_event_staff = organizers + team_members
 
 
 # --- 2. GLOBAL TICKET TYPES (event_id = NULL) ---
@@ -161,8 +161,8 @@ all_events = NUM_EVENTS.times.map do |i|
     is_unlimited: i % 7 == 0
   )
 
-  # Assign a random manager as the EventAdmin using EventAssignment
-  admin_user = managers.sample
+  # Assign a random organizer as the EventAdmin using EventAssignment
+  admin_user = organizers.sample
   EventAssignment.create!(event: event, user: admin_user, role: :event_admin)
 
   # Assign a random team member as staff for ~50% of the events
@@ -249,6 +249,6 @@ puts "  Total Event Locations: #{EventLocation.count}"
 puts "  Total Event Location Members: #{EventLocationMember.count}"
 puts "\nLogin Credentials:"
 puts "  Superadmin (Org Owner): s@s.com / 12345678"
-puts "  Manager 1: manager_1@example.com / 12345678"
+puts "  Organizer 1: organizer_1@example.com / 12345678"
 puts "  Team Member (Staff 1): staff_1@example.com / 12345678"
 puts "  Participant: participant@example.com / 12345678"

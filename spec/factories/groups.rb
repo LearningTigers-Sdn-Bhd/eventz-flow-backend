@@ -5,7 +5,7 @@ FactoryBot.define do
 
     trait :with_manager do
       after(:create) do |group|
-        manager = create(:manager_user)
+        manager = create(:organizer_user)
         create(:group_member, group: group, user: manager, has_manager_access: true)
       end
     end

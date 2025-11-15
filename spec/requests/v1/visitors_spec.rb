@@ -4,24 +4,24 @@ require 'swagger_helper'
 RSpec.describe 'V1::Visitors', type: :request do
   # --- Setup Users & Tokens ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:staff_user) { create(:staff_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
 
   # --- Setup Event ---
-  let!(:manager_event) do
-    event = create(:event, title: 'Manager Event', payment_status: :paid, use_ticket: false)
-    EventAssignment.find_or_create_by!(event: event, user: manager_user, role: :event_admin)
+  let!(:organizer_event) do
+    event = create(:event, title: 'Organizer Event', payment_status: :paid, use_ticket: false)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     create(:event_assignment, role: :event_team_member, event: event, user: staff_user)
     event
   end
 
   # --- Setup Visitors ---
   let!(:existing_visitor) do
-    create(:visitor, event: manager_event, full_name: 'Existing Visitor', email: 'existing@example.com', phone: '+1234567890')
+    create(:visitor, event: organizer_event, full_name: 'Existing Visitor', email: 'existing@example.com', phone: '+1234567890')
   end
 
   let(:valid_visitor_params) do
@@ -47,8 +47,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       response '200', 'Visitors retrieved successfully' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -58,7 +58,7 @@ RSpec.describe 'V1::Visitors', type: :request do
 
       response '401', 'Unauthorized' do
         let(:Authorization) { nil }
-        let(:event_id) { manager_event.id }
+        let(:event_id) { organizer_event.id }
 
         run_test!
       end
@@ -89,8 +89,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       }
 
       response '201', 'Visitor created' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:visitor) { valid_visitor_params[:visitor] }
 
         run_test! do |response|
@@ -101,8 +101,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       end
 
       response '422', 'Validation error' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:visitor) { { visitor: { full_name: '' } } }
 
         run_test!
@@ -122,8 +122,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       response '200', 'Visitor retrieved' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:id) { existing_visitor.public_id }
 
         run_test! do |response|
@@ -133,8 +133,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       end
 
       response '404', 'Visitor not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:id) { 'non-existent-id' }
 
         run_test!
@@ -163,8 +163,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       }
 
       response '200', 'Visitor updated' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:id) { existing_visitor.public_id }
         let(:visitor) { { visitor: { full_name: 'Updated Name' } } }
 
@@ -182,8 +182,8 @@ RSpec.describe 'V1::Visitors', type: :request do
       parameter name: :Authorization, in: :header, type: :string, required: true
 
       response '204', 'Visitor deleted' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:event_id) { manager_event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
         let(:id) { existing_visitor.public_id }
 
         run_test!

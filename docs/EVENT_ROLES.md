@@ -41,8 +41,8 @@ Global roles are assigned to users and apply system-wide. These roles are stored
 - Access all analytics
 - Create/manage API keys
 
-### manager (Value: 1)
-**Organization manager with system-wide event management.**
+### organizer (Value: 1)
+**Organization organizer with system-wide event management.**
 
 **Permissions:**
 - View all users
@@ -88,7 +88,7 @@ Event-specific roles are assigned per event and stored in the `event_assignments
 - Manage event locations for assigned events
 - View event analytics for assigned events
 - Import/export tickets for assigned events
-- Cannot create events (must be `org_owner` or `manager`)
+- Cannot create events (must be `org_owner` or `organizer`)
 - Cannot unscan tickets
 - Cannot manage global ticket types
 - Cannot view/manage other users' global roles
@@ -135,7 +135,7 @@ Event-specific roles are assigned per event and stored in the `event_assignments
 
 ## Permission Matrix
 
-| Action | org_owner | manager | member | event_admin | event_team_member | event_vendor |
+| Action | org_owner | organizer | member | event_admin | event_team_member | event_vendor |
 |--------|-----------|---------|--------|-------------|-------------------|--------------|
 | **User Management** |
 | View all users | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -223,7 +223,7 @@ View all staff assignments for an event.
 
 **Authorization:**
 - `org_owner`
-- `manager`
+- `organizer`
 - `event_admin` (for their assigned events)
 - `event_team_member` (for their assigned events)
 
@@ -240,7 +240,7 @@ View all staff assignments for an event.
       "email": "admin@example.com",
       "full_name": "John Doe",
       "phone": "+1234567890",
-      "role": "manager",
+      "role": "organizer",
       "status": "active"
     }
   },
@@ -279,7 +279,7 @@ Events are automatically filtered based on user roles and assignments.
 
 Returns events based on user's role and assignments:
 - `org_owner`: All events
-- `manager`/`member`/event roles: Only assigned events (where `visibility = true`)
+- `organizer`/`member`/event roles: Only assigned events (where `visibility = true`)
 
 **Authorization:**
 - All authenticated users
@@ -308,7 +308,7 @@ View a specific event's details.
 
 **Authorization:**
 - Public events (published AND visible): All users
-- Private events: `org_owner`, `manager`, or users with event assignments (`event_admin`, `event_team_member`, `event_vendor`)
+- Private events: `org_owner`, `organizer`, or users with event assignments (`event_admin`, `event_team_member`, `event_vendor`)
 
 **Response (200 OK):**
 ```json
@@ -347,7 +347,7 @@ When creating an event, you can optionally assign an event admin:
 }
 ```
 
-If `event_admin_id` is not provided, the current user (who must be `org_owner` or `manager`) is automatically assigned as `event_admin`.
+If `event_admin_id` is not provided, the current user (who must be `org_owner` or `organizer`) is automatically assigned as `event_admin`.
 
 ### Updating Global User Roles
 
@@ -359,14 +359,14 @@ Only `org_owner` can update global user roles.
 ```json
 {
   "user": {
-    "role": "manager"
+    "role": "organizer"
   }
 }
 ```
 
 **Available Global Roles:**
 - `org_owner`
-- `manager`
+- `organizer`
 - `member`
 
 **Authorization:**
@@ -378,7 +378,7 @@ Only `org_owner` can update global user roles.
   "user": {
     "id": "123",
     "email": "user@example.com",
-    "role": "manager",
+    "role": "organizer",
     "full_name": "John Doe"
   }
 }
