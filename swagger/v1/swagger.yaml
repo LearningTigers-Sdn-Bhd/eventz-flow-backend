@@ -1402,6 +1402,20 @@ paths:
         description: Bearer JWT or Raw API Key
         schema:
           type: string
+      - name: archived
+        in: query
+        required: false
+        description: Set to "true" to show only archived events
+        schema:
+          type: string
+          example: "true"
+      - name: full
+        in: query
+        required: false
+        description: Set to "true" to show all events including archived ones
+        schema:
+          type: string
+          example: "true"
       responses:
         '200':
           description: Empty list for member user (no assigned events)
@@ -1623,6 +1637,64 @@ paths:
           description: Deletion successful
         '403':
           description: Forbidden (Member user)
+  "/v1/events/{id}/force_delete":
+    parameters:
+    - name: id
+      in: path
+      description: ID of the Event
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Force deletes the event (hard delete)
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Force deletion successful
+        '403':
+          description: Forbidden (Member user)
+  "/v1/events/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      description: ID of the Event
+      required: true
+      schema:
+        type: integer
+    patch:
+      summary: Restores an archived event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Event successfully restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '403':
+          description: Forbidden (Member user)
+        '404':
+          description: Event not found
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id
@@ -1643,6 +1715,20 @@ paths:
         required: true
         schema:
           type: string
+      - name: archived
+        in: query
+        required: false
+        description: Set to "true" to show only archived tickets
+        schema:
+          type: string
+          example: "true"
+      - name: full
+        in: query
+        required: false
+        description: Set to "true" to show all tickets including archived ones
+        schema:
+          type: string
+          example: "true"
       responses:
         '200':
           description: Returns list of tickets for authorized staff
@@ -2064,7 +2150,73 @@ paths:
                       type: string
                       example: credit_card
     delete:
-      summary: Cancels/Deletes a ticket (Soft Delete)
+      summary: Archives a ticket (Soft Delete)
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Ticket successfully archived by Organizer
+        '403':
+          description: Forbidden for event staff
+        '404':
+          description: Not Found
+  "/v1/events/{event_id}/tickets/{id}/force_delete":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the parent Event
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket ID (public_id UUID or internal ID)
+      required: true
+      schema:
+        type: string
+    delete:
+      summary: Force deletes a ticket (hard delete)
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Ticket successfully force deleted by Organizer
+        '403':
+          description: Forbidden for event staff
+        '404':
+          description: Not Found
+  "/v1/events/{event_id}/tickets/{id}/cancel_ticket":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the parent Event
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket ID (public_id UUID or internal ID)
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Cancels a ticket (sets status to canceled)
       tags:
       - Tickets
       security:
@@ -2078,6 +2230,43 @@ paths:
       responses:
         '204':
           description: Ticket successfully canceled by Organizer
+        '403':
+          description: Forbidden for event staff
+        '404':
+          description: Not Found
+  "/v1/events/{event_id}/tickets/{id}/restore":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the parent Event
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket ID (public_id UUID or internal ID)
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Restores an archived ticket
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Ticket successfully restored by Organizer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
         '403':
           description: Forbidden for event staff
         '404':

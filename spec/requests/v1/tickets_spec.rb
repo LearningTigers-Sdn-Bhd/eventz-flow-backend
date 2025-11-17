@@ -111,6 +111,8 @@ RSpec.describe 'V1::Tickets', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
       parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :archived, in: :query, type: :string, required: false, description: 'Set to "true" to show only archived tickets'
+      parameter name: :full, in: :query, type: :string, required: false, description: 'Set to "true" to show all tickets including archived ones'
 
       let(:event_id) { organizer_event.id }
 
@@ -128,6 +130,49 @@ RSpec.describe 'V1::Tickets', type: :request do
       response '403', 'Forbidden for unauthorized member user' do
         let(:Authorization) { "Bearer #{member_token}" }
         run_test!
+      end
+
+      # Show only archived tickets
+      response '200', 'Lists only archived tickets' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:archived) { 'true' }
+
+        before do
+          purchased_ticket.archive
+        end
+
+        schema type: :array, items: TICKET_INDEX_ITEM_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          # Should only see archived tickets
+          expect(json.count).to be >= 1
+          json.each do |ticket|
+            expect(ticket['deleted_at']).not_to be_nil
+          end
+        end
+      end
+
+      # Show all tickets including archived
+      response '200', 'Lists all tickets including archived' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:full) { 'true' }
+
+        before do
+          purchased_ticket.archive
+        end
+
+        schema type: :array, items: TICKET_INDEX_ITEM_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          # Should see both active and archived tickets
+          expect(json.count).to be >= 2
+          has_archived = json.any? { |ticket| ticket['deleted_at'].present? }
+          has_active = json.any? { |ticket| ticket['deleted_at'].nil? }
+          expect(has_archived).to be true
+          expect(has_active).to be true
+        end
       end
     end
 
@@ -314,6 +359,111 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '204', 'Ticket successfully canceled by Organizer' do
         let(:Authorization) { "Bearer #{organizer_token}" }
+        run_test!
+      end
+
+      response '403', 'Forbidden for event staff' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
+        run_test!
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------
+  # --- DELETE - Force Delete (Hard Delete) ---
+  # ---------------------------------------------------------------------
+  path '/v1/events/{event_id}/tickets/{id}/force_delete' do
+    parameter name: :event_id, in: :path, type: :integer
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
+
+    delete 'Force deletes a ticket (Hard Delete)' do
+      tags 'Tickets'
+      security [{ BearerAuth: [] }]
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      let(:event_id) { organizer_event.id }
+      let(:id) { checked_in_ticket.public_id }
+
+      response '204', 'Ticket successfully force deleted by Organizer' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        run_test!
+      end
+
+      response '403', 'Forbidden for event staff' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
+        run_test!
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------
+  # --- PATCH - Cancel Ticket ---
+  # ---------------------------------------------------------------------
+  path '/v1/events/{event_id}/tickets/{id}/cancel_ticket' do
+    parameter name: :event_id, in: :path, type: :integer
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
+
+    patch 'Cancels a ticket (sets status to canceled)' do
+      tags 'Tickets'
+      security [{ BearerAuth: [] }]
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      let(:event_id) { organizer_event.id }
+      let(:id) { purchased_ticket.public_id }
+
+      response '204', 'Ticket successfully canceled by Organizer' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        run_test!
+      end
+
+      response '403', 'Forbidden for event staff' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
+        run_test!
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------
+  # --- PATCH - Restore Ticket ---
+  # ---------------------------------------------------------------------
+  path '/v1/events/{event_id}/tickets/{id}/restore' do
+    parameter name: :event_id, in: :path, type: :integer
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
+
+    patch 'Restores an archived ticket' do
+      tags 'Tickets'
+      security [{ BearerAuth: [] }]
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      let(:event_id) { organizer_event.id }
+      let(:id) { purchased_ticket.public_id }
+
+      response '200', 'Ticket successfully restored by Organizer' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          purchased_ticket.archive
+        end
+
+        schema TICKET_SCHEMA
         run_test!
       end
 
