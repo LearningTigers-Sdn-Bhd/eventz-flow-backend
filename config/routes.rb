@@ -1,4 +1,4 @@
-# config/routes.rb
+﻿# config/routes.rb
 
 Rails.application.routes.draw do
   # Rswag Documentation Endpoints
@@ -111,6 +111,9 @@ Rails.application.routes.draw do
 
     # 6. TEAM MEMBERS MANAGEMENT
     resources :team_members, only: [:index, :show, :create, :update, :destroy] do
+      collection do
+        get 'organizer/:organizer_id', to: 'team_members#organizer_members'
+      end
       member do
         patch :toggle_status
       end

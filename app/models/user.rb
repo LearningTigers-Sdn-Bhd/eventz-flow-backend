@@ -21,6 +21,13 @@ class User < ApplicationRecord
   validates :full_name, presence: true
   validates :status, presence: true
 
+  # --- Scopes ---
+  scope :members, -> { where(role: :member) }
+  scope :org_owners, -> { where(role: :org_owner) }
+  scope :organizers, -> { where(role: :organizer) }
+  scope :org_staff, -> { where(role: [:org_owner, :organizer]) }
+  scope :created_by_user, ->(user) { where(created_by_id: user.id) }
+
   # --- Associations ---
 
   # 0. USER CREATION TRACKING
