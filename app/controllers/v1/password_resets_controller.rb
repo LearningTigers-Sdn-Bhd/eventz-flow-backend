@@ -23,7 +23,7 @@ module V1
       record = ::PasswordReset.find_valid_by_token(raw_token)
 
       unless record&.usable?
-        return error_response(message: 'Invalid or expired token', errors: [{ field: 'token', message: 'Invalid or expired token' }], status: :unprocessable_entity)
+        return error_response(message: 'Invalid or expired token', errors: [{ field: 'token', message: 'Invalid or expired token' }], status: :unprocessable_content)
       end
 
       success_response(message: 'Token is valid')
@@ -40,7 +40,7 @@ module V1
 
       record = ::PasswordReset.find_valid_by_token(raw_token)
       unless record&.usable?
-        return error_response(message: 'Invalid or expired token', errors: [{ field: 'token', message: 'Invalid or expired token' }], status: :unprocessable_entity)
+        return error_response(message: 'Invalid or expired token', errors: [{ field: 'token', message: 'Invalid or expired token' }], status: :unprocessable_content)
       end
 
       user = record.user

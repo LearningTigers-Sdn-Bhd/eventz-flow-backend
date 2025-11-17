@@ -68,9 +68,15 @@ RSpec.describe 'V1::GroupAffiliates', type: :request do
       end
     end
 
-    # =========================================================================
-    # DELETE /v1/groups/:group_id/affiliates
-    # =========================================================================
+  end
+
+  # =========================================================================
+  # DELETE /v1/groups/:group_id/affiliates/:id
+  # =========================================================================
+
+  path '/v1/groups/{group_id}/affiliates/{id}' do
+    parameter name: :group_id, in: :path, type: :integer, description: 'Group ID'
+    parameter name: :id, in: :path, type: :integer, description: 'Affiliate ID'
 
     delete 'Removes vendor from a group (ORG_OWNER ONLY)' do
       tags 'Group Affiliates'
@@ -82,6 +88,7 @@ RSpec.describe 'V1::GroupAffiliates', type: :request do
         let(:Authorization) { "Bearer #{org_owner_token}" }
         let(:group_id) { group.id }
         let!(:affiliate) { create(:group_affiliate, group: group, vendor: vendor_user) }
+        let(:id) { affiliate.id }
         run_test!
       end
 
@@ -89,12 +96,14 @@ RSpec.describe 'V1::GroupAffiliates', type: :request do
         let(:Authorization) { "Bearer #{manager_token}" }
         let(:group_id) { group.id }
         let!(:affiliate) { create(:group_affiliate, group: group, vendor: vendor_user) }
+        let(:id) { affiliate.id }
         run_test!
       end
 
       response '404', 'No affiliate found' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
         let(:group_id) { group.id }
+        let(:id) { 99999 }
         run_test!
       end
     end

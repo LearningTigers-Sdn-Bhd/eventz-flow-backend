@@ -29,7 +29,8 @@ module V1
         password_confirmation: vendor_params_required[:password_confirmation],
         role: :vendor,
         status: :active,
-        email_verified_at: Time.current
+        email_verified_at: Time.current,
+        created_by_id: current_user.id
       )
 
       if vendor_user.save

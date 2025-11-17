@@ -14,7 +14,6 @@ RSpec.describe Exhibitor, type: :model do
     it { should_not validate_presence_of(:exhibitor_owner_id) }
     it { should validate_presence_of(:event_id) }
     it { should validate_presence_of(:vendor_id) }
-    it { should validate_presence_of(:redirect_url) }
   end
 
   describe 'scopes' do

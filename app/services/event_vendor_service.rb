@@ -45,7 +45,7 @@ class EventVendorService
         return Result.new(success: false, errors: ['Only organizers can create new vendor users'])
       end
 
-      result = create_vendor_user(params, event, vendor_type)
+      result = create_vendor_user(params, event, vendor_type, current_user)
       return result
     end
   end
@@ -137,8 +137,9 @@ class EventVendorService
   # @param params [Hash] Vendor parameters
   # @param event [Event] The event
   # @param vendor_type [String] 'Exhibitor' or 'Merchant'
+  # @param creator [User] The user creating the vendor (optional for backward compatibility)
   # @return [Result] Result object with EventVendor record or errors
-  def self.create_vendor_user(params, event, vendor_type)
+  def self.create_vendor_user(params, event, vendor_type, creator = nil)
     email = params[:email].to_s.strip
     full_name = params[:full_name]
     password = params[:password]
@@ -155,7 +156,7 @@ class EventVendorService
 
     # Create user if doesn't exist
     unless user
-      user = User.new(
+      user_attrs = {
         email: email,
         full_name: full_name,
         password: password,
@@ -164,7 +165,12 @@ class EventVendorService
         email_verified_at: Time.current, # Bypass email verification
         role: :vendor,
         status: :active
-      )
+      }
+      
+      # Add created_by_id if creator is provided
+      user_attrs[:created_by_id] = creator.id if creator.present?
+      
+      user = User.new(user_attrs)
 
       unless user.save
         return Result.new(success: false, errors: user.errors.full_messages)

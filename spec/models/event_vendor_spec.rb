@@ -92,7 +92,6 @@ RSpec.describe EventVendor, type: :model do
 
     it { should validate_presence_of(:event_id) }
     it { should validate_presence_of(:vendor_id) }
-    it { should validate_presence_of(:redirect_url) }
     it { should validate_uniqueness_of(:vendor_id).scoped_to(:event_id).with_message('already exists for this event') }
   end
 

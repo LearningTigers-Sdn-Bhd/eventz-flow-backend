@@ -108,8 +108,19 @@ RSpec.describe 'V1::Groups', type: :request do
         end
       end
 
-      response '403', 'Forbidden (Not Org Owner)' do
+      response '201', 'Group created by organizer' do
         let(:Authorization) { "Bearer #{manager_token}" }
+        let(:group) { group_params }
+        schema GROUP_SCHEMA
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          created_group = Group.find(json['id'])
+          expect(created_group.group_members.where(user_id: manager_user.id, has_manager_access: true).exists?).to be true
+        end
+      end
+
+      response '403', 'Forbidden (Not Org Owner or Organizer)' do
+        let(:Authorization) { "Bearer #{member_token}" }
         let(:group) { group_params }
         run_test!
       end

@@ -12,7 +12,7 @@ RSpec.describe GroupAffiliate, type: :model do
     let(:manager) { create(:organizer_user) }
     subject { build(:group_affiliate, group: group, vendor: vendor) }
 
-    it { should validate_uniqueness_of(:group_id) }
+    it { should validate_uniqueness_of(:vendor_id).scoped_to(:group_id).with_message('is already asssigned to this group') }
 
     it 'validates that vendor must have vendor role' do
       affiliate = build(:group_affiliate, group: group, vendor: manager)

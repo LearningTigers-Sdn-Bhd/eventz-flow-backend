@@ -11,6 +11,9 @@ FactoryBot.define do
 
 		# Default role is the base user role
 		role { :member }
+		
+		# created_by is optional (NULL for self-registered users)
+		created_by { nil }
 
 		# Trait for unverified users
 		trait :unverified do
@@ -45,8 +48,10 @@ FactoryBot.define do
 			# This creates a generic user who will be assigned the EventTeamMember role in the tests.
 		end
 
-
-
+		# Trait for users created by another user (e.g., organizer creating members)
+		trait :created_by_organizer do
+			created_by { association :organizer_user }
+		end
 
 		# DEPRECATED/Removed Factories:
 		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user'

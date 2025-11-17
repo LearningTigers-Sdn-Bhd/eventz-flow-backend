@@ -4,8 +4,8 @@ RSpec.describe Group, type: :model do
   describe 'associations' do
     it { should have_many(:group_members).dependent(:destroy) }
     it { should have_many(:users).through(:group_members) }
-    it { should have_one(:group_affiliate).dependent(:destroy) }
-    it { should have_one(:vendor).through(:group_affiliate) }
+    it { should have_many(:group_affiliates).dependent(:destroy) }
+    it { should have_many(:vendors).through(:group_affiliates) }
   end
 
   describe 'validations' do

@@ -25,7 +25,7 @@ class V1::TeamMembersController < ApplicationController
 
   # POST /v1/team_members
   def create
-    @team_member = User.new(team_member_create_params)
+    @team_member = User.new(team_member_create_params.merge(created_by_id: current_user.id))
 
     if @team_member.save
       render json: format_user(@team_member), status: :created

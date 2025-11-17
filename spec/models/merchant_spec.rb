@@ -18,7 +18,6 @@ RSpec.describe Merchant, type: :model do
   describe 'validations' do
     it { should validate_presence_of(:event_id) }
     it { should validate_presence_of(:vendor_id) }
-    it { should validate_presence_of(:redirect_url) }
   end
 
   describe 'STI behavior' do

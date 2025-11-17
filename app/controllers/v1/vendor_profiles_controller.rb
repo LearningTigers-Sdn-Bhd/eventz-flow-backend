@@ -25,8 +25,7 @@ module V1
     end
 
     def set_vendor_affiliate
-      @vendor_affiliate = @group.group_affiliate
-      @vendor_affiliate = nil unless @vendor_affiliate&.vendor_id == current_user.id
+      @vendor_affiliate = @group.group_affiliates.find_by(vendor_id: current_user.id)
     end
 
     def authorize_group_vendor!

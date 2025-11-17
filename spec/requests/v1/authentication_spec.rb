@@ -143,7 +143,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 
       it 'returns error for invalid token' do
         get '/v1/auth/password/verify_reset_password_request', params: { token: 'bad' }
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json_response['success']).to be false
       end
     end
@@ -163,7 +163,7 @@ RSpec.describe 'V1::Authentication', type: :request do
 
       it 'fails when token invalid' do
         post '/v1/auth/password/reset_password', params: { token: 'bad', password: 'x', password_confirmation: 'x' }
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json_response['success']).to be false
       end
 

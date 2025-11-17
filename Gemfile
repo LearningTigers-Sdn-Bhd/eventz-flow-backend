@@ -41,6 +41,10 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
 
+# Ruby 3.5+ compatibility - these will no longer be default gems
+gem "fiddle"
+gem "ostruct"
+
 gem "jwt"
 
 # Email delivery with Resend

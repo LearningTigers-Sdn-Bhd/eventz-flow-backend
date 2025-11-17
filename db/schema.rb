@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_17_095633) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_17_095634) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -230,8 +230,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_17_095633) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "status", default: 1, null: false
-    t.string "jti"
+    t.string "jti", null: false
     t.datetime "email_verified_at"
+    t.bigint "created_by_id"
+    t.index ["created_by_id"], name: "index_users_on_created_by_id"
     t.index ["email"], name: "index_users_on_email"
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["status"], name: "index_users_on_status"
@@ -295,6 +297,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_17_095633) do
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "groups"
   add_foreign_key "vendor_profiles", "users", column: "manager_id"
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"

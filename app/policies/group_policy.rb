@@ -13,7 +13,7 @@ class GroupPolicy < ApplicationPolicy
 
     # Vendors see groups they're assigned to
     if user.vendor?
-      return record.group_affiliate&.vendor_id == user.id
+      return record.group_affiliates.exists?(vendor_id: user.id)
     end
 
     # Organizers and members see groups they belong to

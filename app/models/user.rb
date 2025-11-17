@@ -23,6 +23,10 @@ class User < ApplicationRecord
 
   # --- Associations ---
 
+  # 0. USER CREATION TRACKING
+  belongs_to :created_by, class_name: 'User', optional: true
+  has_many :created_users, class_name: 'User', foreign_key: 'created_by_id', dependent: :nullify
+
   # 1. EVENT STAFFING (Unified Event Assignment Model)
   has_many :event_assignments, dependent: :destroy
   has_many :assigned_events, through: :event_assignments, source: :event

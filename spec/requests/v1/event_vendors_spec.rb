@@ -169,7 +169,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
               email: 'vendor@example.com',
               phone: '+1234567890',
               password: 'securepassword123',
-              password_confirmation: 'securepassword123'
+              password_confirmation: 'securepassword123',
+              redirect_url: 'https://example.com'
             }
           }
         end
@@ -192,7 +193,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         let(:body) do
           {
             vendor: {
-              vendor_id: existing_vendor.id
+              vendor_id: existing_vendor.id,
+              redirect_url: 'https://example.com'
             }
           }
         end
@@ -218,7 +220,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
               email: '',
               phone: '+1234567890',
               password: 'securepassword123',
-              password_confirmation: 'securepassword123'
+              password_confirmation: 'securepassword123',
+              redirect_url: 'https://example.com'
             }
           }
         end
@@ -274,7 +277,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
               email: '',
               phone: '+1234567890',
               password: 'securepassword123',
-              password_confirmation: 'securepassword123'
+              password_confirmation: 'securepassword123',
+              redirect_url: 'https://example.com'
             }
           }
         end
