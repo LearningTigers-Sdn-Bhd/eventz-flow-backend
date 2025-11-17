@@ -52,19 +52,25 @@ class TicketPolicy < ApplicationPolicy
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
 
-  # Deletion/Refunds are usually restricted to Organizers/Owners.
+  # Deletion/Refunds are usually restricted to Organizers/Owners/Event Admins only.
+  # Event team members (staff) cannot delete, force delete, cancel, or restore tickets.
   def destroy?
     return false if user.blank? || record.blank?
 
     # 1. Organization-level permissions (can delete ANY ticket)
     return true if user.is_org_owner? || user.is_organizer?
 
-    # 2. Event-level permissions (can only delete tickets for their assigned event)
-    user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
+    # 2. Event-level permissions (only event_admin, NOT event_team_member)
+    user.is_event_admin?(record.event)
   end
 
   # Force delete requires organizer/admin authorization (same as destroy)
   def force_delete?
+    destroy?
+  end
+
+  # Cancel ticket requires organizer/admin authorization (same as destroy)
+  def cancel_ticket?
     destroy?
   end
 

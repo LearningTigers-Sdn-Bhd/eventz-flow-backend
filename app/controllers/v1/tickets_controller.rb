@@ -93,7 +93,7 @@ module V1
     # DELETE /v1/events/:event_id/tickets/:id/force_delete
     def force_delete
       # Authorization check: Can the user (Organizer/Admin) force delete this ticket?
-      authorize @ticket, :destroy?
+      authorize @ticket, :force_delete?
       @ticket.delete
       head :no_content
     end
@@ -101,7 +101,7 @@ module V1
     # PATCH /v1/events/:event_id/tickets/:id/cancel_ticket
     def cancel_ticket
       # Authorization check: Can the user (Organizer/Admin) cancel this ticket?
-      authorize @ticket, :destroy?
+      authorize @ticket, :cancel_ticket?
 
       if @ticket.update(status: :canceled)
         head :no_content
@@ -113,7 +113,7 @@ module V1
     # PATCH /v1/events/:event_id/tickets/:id/restore
     def restore
       # Authorization check: Can the user (Organizer/Admin) restore this ticket?
-      authorize @ticket, :destroy?
+      authorize @ticket, :restore?
 
       if @ticket.restore
         render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
