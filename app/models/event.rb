@@ -78,7 +78,16 @@ class Event < ApplicationRecord
   end
 
   def delete
-    self.class.unscoped.find(id).destroy!
+    # Use unscoped to properly destroy soft-deleted associations
+    # Manually destroy all associations (including soft-deleted ones) before destroying the event
+    Ticket.unscoped.where(event_id: id).destroy_all
+    EventLocation.where(event_id: id).destroy_all
+    TicketType.where(event_id: id).destroy_all
+    EventVendor.where(event_id: id).destroy_all
+    EventAssignment.where(event_id: id).destroy_all
+    Visitor.where(event_id: id).destroy_all
+    # Now destroy the event itself (unscoped to find soft-deleted events)
+    Event.unscoped.find(id).destroy!
   end
 
   def send_webhook_notification

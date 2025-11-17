@@ -51,7 +51,8 @@ module V1
     private
 
     def set_event
-      @event = Event.find(params[:event_id])
+      # Allow accessing archived events for record-keeping
+      @event = Event.with_deleted.find(params[:event_id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
     end

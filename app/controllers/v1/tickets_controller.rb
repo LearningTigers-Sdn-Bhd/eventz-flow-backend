@@ -384,7 +384,8 @@ module V1
     private
 
     def set_event
-      @event = Event.find(params[:event_id])
+      # Allow accessing archived events for record-keeping
+      @event = Event.with_deleted.find(params[:event_id])
     end
 
     # Refactored set_event and authorize into one method for clarity and correct execution order.
@@ -401,9 +402,9 @@ module V1
 
     def set_ticket
       # Prioritize finding by UUID (public_id) for security and external API use
-      # For restore action, use unscoped to find soft-deleted tickets
-      if action_name == 'restore'
-        @ticket = @event.tickets.unscoped.find_by!(public_id: params[:id])
+      # For restore and force_delete actions, use unscoped to find soft-deleted tickets
+      if action_name.in?(['restore', 'force_delete'])
+        @ticket = @event.tickets.unscoped.where(event_id: @event.id).find_by!(public_id: params[:id])
       else
         @ticket = @event.tickets.find_by!(public_id: params[:id])
       end

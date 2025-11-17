@@ -93,7 +93,10 @@ class Ticket < ApplicationRecord
   end
 
   def delete
-    self.class.unscoped.find(id).destroy!
+    # Use unscoped to properly destroy soft-deleted record
+    Ticket.unscoped do
+      Ticket.unscoped.find(id).destroy!
+    end
   end
 
   # --- Private Methods ---

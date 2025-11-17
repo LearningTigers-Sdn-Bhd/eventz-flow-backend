@@ -103,8 +103,8 @@ module V1
     def set_event
       # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which
       # the ApplicationController should rescue and convert to a 404 response.
-      # For restore action, use unscoped to find soft-deleted events
-      if action_name == 'restore'
+      # For restore and force_delete actions, use unscoped to find soft-deleted events
+      if action_name.in?(['restore', 'force_delete'])
         @event = Event.unscoped.find_by!(id: params[:id])
       else
         @event = Event.find_by!(id: params[:id])
