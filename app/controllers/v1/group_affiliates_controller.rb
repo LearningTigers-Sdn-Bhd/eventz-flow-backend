@@ -6,7 +6,7 @@ module V1
     # GET /v1/groups/:group_id/affiliates
     def index
       authorize @group, policy_class: GroupPolicy
-      
+
       @affiliates = @group.group_affiliates.includes(:vendor)
       render json: @affiliates.map { |affiliate| format_affiliate(affiliate) }
     end
@@ -34,7 +34,7 @@ module V1
     # DELETE /v1/groups/:group_id/affiliates/:id
     def destroy
       @affiliate = @group.group_affiliates.find(params[:id])
-      
+
       authorize @affiliate, policy_class: GroupAffiliatePolicy
 
       if @affiliate.destroy

@@ -102,7 +102,8 @@ module V1
     end
 
     def set_event
-      @event = Event.find(params[:event_id])
+      # Allow accessing archived events for record-keeping
+      @event = Event.with_deleted.find(params[:event_id])
     end
 
     def set_event_and_authorize

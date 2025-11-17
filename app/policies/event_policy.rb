@@ -53,6 +53,16 @@ class EventPolicy < ApplicationPolicy
     update?
   end
 
+  # Force delete requires organizer/admin authorization (same as destroy)
+  def force_delete?
+    destroy?
+  end
+
+  # Restore requires organizer/admin authorization (same as destroy)
+  def restore?
+    destroy?
+  end
+
   # ============================================================
   # Analytics permissions
   # ============================================================

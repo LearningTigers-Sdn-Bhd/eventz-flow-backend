@@ -51,8 +51,18 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
+      member do
+        delete :force_delete
+        patch :restore
+      end
       resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
-      resources :tickets, only: [:index, :show, :create, :update, :destroy]
+      resources :tickets, only: [:index, :show, :create, :update, :destroy] do
+        member do
+          delete :force_delete
+          patch :cancel_ticket
+          patch :restore
+        end
+      end
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
 
       # New: Event Staff Management (GET/POST/DELETE)

@@ -186,6 +186,8 @@ RSpec.describe 'V1::Events', type: :request do
       security [{ BearerAuth: [] }]
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :archived, in: :query, type: :string, required: false, description: 'Set to "true" to show only archived events'
+      parameter name: :full, in: :query, type: :string, required: false, description: 'Set to "true" to show all events including archived ones'
 
       # 1. Success (Org Owner - sees ALL events)
       response '200', 'Org Owner sees all events' do
@@ -225,6 +227,49 @@ RSpec.describe 'V1::Events', type: :request do
           json = JSON.parse(response.body)
           # Member user has no event assignments, so sees 0 events
           expect(json.count).to eq(0)
+        end
+      end
+
+      # 4. Success (Show only archived events)
+      response '200', 'Lists only archived events' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:archived) { 'true' }
+
+        before do
+          event_paid.archive
+        end
+
+        schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          # Should only see archived events
+          expect(json.count).to be >= 1
+          json.each do |event|
+            expect(event['deleted_at']).not_to be_nil
+          end
+        end
+      end
+
+      # 5. Success (Show all events including archived)
+      response '200', 'Lists all events including archived' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:full) { 'true' }
+
+        before do
+          event_paid.archive
+        end
+
+        schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          # Should see both active and archived events
+          expect(json.count).to be >= 3
+          has_archived = json.any? { |event| event['deleted_at'].present? }
+          has_active = json.any? { |event| event['deleted_at'].nil? }
+          expect(has_archived).to be true
+          expect(has_active).to be true
         end
       end
     end
@@ -360,6 +405,71 @@ RSpec.describe 'V1::Events', type: :request do
       response '403', 'Forbidden (Member user)' do
         let(:Authorization) { "Bearer #{member_token}" }
         let(:id) { event_paid.id }
+        run_test!
+      end
+    end
+  end
+
+  # --- DELETE - Force Delete ---
+  path '/v1/events/{id}/force_delete' do
+    parameter name: :id, in: :path, type: :integer, description: 'Event ID'
+
+    delete 'Force deletes the event (hard delete)' do
+      tags 'Events'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+
+      # 1. Success
+      response '204', 'Force deletion successful' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { event_paid.id }
+        run_test!
+      end
+
+      # 2. Forbidden (Member user)
+      response '403', 'Forbidden (Member user)' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) { event_paid.id }
+        run_test!
+      end
+    end
+  end
+
+  # --- PATCH - Restore ---
+  path '/v1/events/{id}/restore' do
+    parameter name: :id, in: :path, type: :integer, description: 'Event ID'
+
+    patch 'Restores an archived event' do
+      tags 'Events'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+
+      # 1. Success
+      response '200', 'Event successfully restored' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { event_paid.id }
+
+        before do
+          event_paid.archive
+        end
+
+        schema EVENT_SCHEMA
+        run_test!
+      end
+
+      # 2. Forbidden (Member user)
+      response '403', 'Forbidden (Member user)' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) { event_paid.id }
+        run_test!
+      end
+
+      # 3. Not Found (already active event)
+      response '404', 'Event not found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { 99999 }
         run_test!
       end
     end

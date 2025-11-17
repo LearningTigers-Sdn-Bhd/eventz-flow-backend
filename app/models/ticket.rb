@@ -17,6 +17,11 @@ class Ticket < ApplicationRecord
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3 }
   enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
+  # --- Soft Delete Scopes ---
+  default_scope { where(deleted_at: nil) }
+  scope :with_deleted, -> { unscoped }
+  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+
   # --- Validations ---
 
   # Explicitly validate foreign keys for clear error messages.
@@ -76,6 +81,22 @@ class Ticket < ApplicationRecord
     return if event_type.nil?  # Skip if no significant change
 
     WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+  end
+
+  # --- Soft Delete Methods ---
+  def archive
+    update(deleted_at: Time.current)
+  end
+
+  def restore
+    self.class.unscoped.find(id).update(deleted_at: nil)
+  end
+
+  def delete
+    # Use unscoped to properly destroy soft-deleted record
+    Ticket.unscoped do
+      Ticket.unscoped.find(id).destroy!
+    end
   end
 
   # --- Private Methods ---
@@ -197,7 +218,7 @@ class Ticket < ApplicationRecord
     else
       # Add changes for updates
       payload[:changes] = format_changes
-      
+
       # Include check_in_at for scanned events
       if event_type == 'ticket.scanned'
         payload[:ticket][:checked_in] = self.checked_in
