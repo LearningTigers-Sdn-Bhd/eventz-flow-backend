@@ -20,9 +20,9 @@ class GroupPolicy < ApplicationPolicy
     record.group_members.exists?(user_id: user.id)
   end
 
-  # --- Create: Only org_owner can create groups ---
+  # --- Create: org_owner and organizers can create groups ---
   def create?
-    user&.is_org_owner?
+    user&.is_org_owner? || user&.organizer?
   end
 
   # --- Update: org_owner and group managers can update group details ---
@@ -51,7 +51,7 @@ class GroupPolicy < ApplicationPolicy
 
       # Vendors see groups they're assigned to via group_affiliate
       if user.vendor?
-        return scope.joins(:group_affiliate).where(group_affiliates: { vendor_id: user.id }).distinct
+        return scope.joins(:group_affiliates).where(group_affiliates: { vendor_id: user.id }).distinct
       end
 
       # Organizers and members see groups they belong to via group_members

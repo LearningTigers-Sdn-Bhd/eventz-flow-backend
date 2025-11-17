@@ -24,9 +24,14 @@ module V1
       @group = Group.new(group_params)
 
       if @group.save
-        # Create the first manager if manager_id is provided
+        # If organizer creates the group, add them as manager automatically
+        if current_user.organizer?
+          @group.group_members.create!(user: current_user, has_manager_access: true)
+        end
+
+        # Create additional manager if manager_id is provided
         manager_id = params.dig(:group, :manager_id) || params[:manager_id]
-        if manager_id.present?
+        if manager_id.present? && manager_id.to_i != current_user.id
           manager = User.find(manager_id)
           @group.group_members.create!(user: manager, has_manager_access: true)
         end
