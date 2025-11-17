@@ -71,7 +71,7 @@ Rails.application.routes.draw do
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
 
-      resources :vendors, controller: 'event_vendors', only: [:index, :create, :destroy] do
+      resources :vendors, controller: 'event_vendors', only: [:index, :create, :update, :destroy] do
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'

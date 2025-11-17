@@ -72,7 +72,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_17_094742) do
   create_table "event_vendors", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.bigint "vendor_id", null: false
-    t.string "redirect_url", null: false
+    t.string "redirect_url"
     t.string "poster_url"
     t.string "type", null: false
     t.bigint "exhibitor_owner_id"

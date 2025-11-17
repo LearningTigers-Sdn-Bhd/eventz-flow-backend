@@ -3,7 +3,7 @@ module V1
     before_action :authenticate_user!
     before_action :set_event
     before_action :authorize_event_admin!, except: [:index]
-    before_action :set_event_vendor, only: [:destroy]
+    before_action :set_event_vendor, only: [:update, :destroy]
 
     # GET /v1/events/:event_id/vendors
     def index
@@ -26,6 +26,18 @@ module V1
       else
         render json: { error: 'Validation Error', errors: result.errors },
                status: :unprocessable_content
+      end
+    end
+
+    # PATCH /v1/events/:event_id/vendors/:id
+    def update
+      if @event_vendor.update(update_vendor_params)
+        render json: format_event_vendor(@event_vendor),
+        status: :ok
+      else
+        render json: { error: 'Validation error', errors:
+      @event_vendor.errors.full_messages },
+              status: :unprocessable_content
       end
     end
 
@@ -62,6 +74,10 @@ module V1
 
     def vendor_params
       params.require(:vendor).permit(:full_name, :email, :phone, :password, :password_confirmation, :vendor_id, :redirect_url, :exhibitor_owner_id)
+    end
+
+    def update_vendor_params
+      params.require(:vendor).permit(:redirect_url, :poster_url)
     end
 
     def format_event_vendor(event_vendor)

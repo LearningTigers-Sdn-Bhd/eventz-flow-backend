@@ -7,7 +7,6 @@ class EventVendor < ApplicationRecord
   # --- Validations ---
   validates :event_id, presence: true
   validates :vendor_id, presence: true
-  validates :redirect_url, presence: true
   validates :vendor_id, uniqueness: { scope: :event_id, message: 'already exists for this event' }
 
   # --- STI Scopes ---

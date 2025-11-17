@@ -6,9 +6,9 @@ module V1
     # GET /v1/groups/:group_id/affiliates
     def index
       authorize @group, policy_class: GroupPolicy
-      
-      @affiliate = @group.group_affiliate
-      render json: @affiliate ? [format_affiliate(@affiliate)] : []
+
+      @affiliates = @group.group_affiliates.includes(:vendor)
+      render json: @affiliates.map { |affiliate| format_affiliate(affiliate) }
     end
 
     # POST /v1/groups/:group_id/affiliates
@@ -18,7 +18,7 @@ module V1
 
       vendor = User.find(group_affiliate_params[:vendor_id])
 
-      @affiliate = @group.build_group_affiliate(vendor: vendor)
+      @affiliate = @group.group_affiliates.build(vendor: vendor)
 
       if @affiliate.save
         render json: format_affiliate(@affiliate), status: :created
@@ -31,13 +31,9 @@ module V1
       end
     end
 
-    # DELETE /v1/groups/:group_id/affiliates
+    # DELETE /v1/groups/:group_id/affiliates/:id
     def destroy
-      @affiliate = @group.group_affiliate
-      
-      unless @affiliate
-        return error_response(message: 'Vendor affiliate not found', status: :not_found)
-      end
+      @affiliate = @group.group_affiliates.find(params[:id])
 
       authorize @affiliate, policy_class: GroupAffiliatePolicy
 
@@ -50,6 +46,8 @@ module V1
           status: :unprocessable_content
         )
       end
+    rescue ActiveRecord::RecordNotFound
+      error_response(message: 'Vendor affiliate not found', status: :not_found)
     end
 
     private
