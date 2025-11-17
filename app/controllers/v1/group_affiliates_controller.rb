@@ -8,7 +8,7 @@ module V1
       authorize @group, policy_class: GroupPolicy
       
       @affiliate = @group.group_affiliate
-      render json: @affiliate ? format_affiliate(@affiliate) : {}
+      render json: @affiliate ? [format_affiliate(@affiliate)] : []
     end
 
     # POST /v1/groups/:group_id/affiliates
