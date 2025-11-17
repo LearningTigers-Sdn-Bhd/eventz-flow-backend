@@ -29,6 +29,11 @@ class Event < ApplicationRecord
   enum :status, { draft: 0, published: 1, cancelled: 2 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
 
+  # --- Soft Delete Scopes ---
+  default_scope { where(deleted_at: nil) }
+  scope :with_deleted, -> { unscoped }
+  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+
   # --- Scopes for specific event staff roles ---
 
   has_many :admins, -> { where(event_assignments: { role: :event_admin }) },
@@ -61,6 +66,19 @@ class Event < ApplicationRecord
 
     # Ensure ONLY the roles that can update are listed
     ['event_admin'].include?(assignment.role)
+  end
+
+  # --- Soft Delete Methods ---
+  def archive
+    update(deleted_at: Time.current)
+  end
+
+  def restore
+    self.class.unscoped.find(id).update(deleted_at: nil)
+  end
+
+  def delete
+    self.class.unscoped.find(id).destroy!
   end
 
   def send_webhook_notification

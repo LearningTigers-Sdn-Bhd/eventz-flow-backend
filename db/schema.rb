@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_14_025626) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_17_094742) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -100,6 +100,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_14_025626) do
     t.decimal "price", precision: 8, scale: 2, default: "0.0"
     t.boolean "published", default: false, null: false
     t.boolean "use_ticket", default: true, null: false
+    t.datetime "deleted_at"
+    t.index ["deleted_at"], name: "index_events_on_deleted_at"
   end
 
   create_table "exhibitor_owners", force: :cascade do |t|
@@ -206,6 +208,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_14_025626) do
     t.string "attendee_email_norm"
     t.string "attendee_phone_norm"
     t.string "attendee_name_norm"
+    t.datetime "deleted_at"
+    t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
@@ -226,7 +230,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_14_025626) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "status", default: 1, null: false
-    t.string "jti", null: false
+    t.string "jti"
     t.datetime "email_verified_at"
     t.index ["email"], name: "index_users_on_email"
     t.index ["jti"], name: "index_users_on_jti", unique: true

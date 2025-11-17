@@ -3,17 +3,31 @@ module V1
     # Load and Authorize the parent event before every action
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
-    # Load the specific ticket for actions that require it (only show, check_in now)
-    before_action :set_ticket, only: [:show, :update, :destroy]
+    # Load the specific ticket for actions that require it
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
 
     # GET /v1/events/:event_id/tickets
+    # Query params:
+    #   - archived=true: Show only archived (soft-deleted) tickets
+    #   - full=true: Show all tickets including archived ones
     def index
       # 1. Scope the tickets based on the authorized events and filter by the current event.
       # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
       @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by)
+
+      # Apply filtering based on query parameters
+      if params[:archived] == 'true'
+        # Show only archived tickets
+        @tickets = @tickets.only_deleted
+      elsif params[:full] == 'true'
+        # Show all tickets including archived
+        @tickets = @tickets.with_deleted
+      end
+      # Default: only non-archived tickets (handled by default_scope)
+
       # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
       # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
 
@@ -66,16 +80,44 @@ module V1
     end
 
     def destroy
-      # Authorization check: Can the user (Organizer/Admin) cancel/refund this ticket?
+      # Authorization check: Can the user (Organizer/Admin) archive this ticket?
       authorize @ticket, :destroy?
 
-      # Note: A "delete" often means setting a status like 'canceled' or 'refunded',
-      # rather than destroying the record entirely. We'll implement a soft-delete/cancel here.
+      if @ticket.archive
+        head :no_content
+      else
+        render json: @ticket.errors, status: :unprocessable_content
+      end
+    end
+
+    # DELETE /v1/events/:event_id/tickets/:id/force_delete
+    def force_delete
+      # Authorization check: Can the user (Organizer/Admin) force delete this ticket?
+      authorize @ticket, :destroy?
+      @ticket.delete
+      head :no_content
+    end
+
+    # PATCH /v1/events/:event_id/tickets/:id/cancel_ticket
+    def cancel_ticket
+      # Authorization check: Can the user (Organizer/Admin) cancel this ticket?
+      authorize @ticket, :destroy?
 
       if @ticket.update(status: :canceled)
         head :no_content
       else
-        # This might fail if the status change is invalid (e.g., trying to cancel a canceled ticket without logic to prevent it).
+        render json: @ticket.errors, status: :unprocessable_content
+      end
+    end
+
+    # PATCH /v1/events/:event_id/tickets/:id/restore
+    def restore
+      # Authorization check: Can the user (Organizer/Admin) restore this ticket?
+      authorize @ticket, :destroy?
+
+      if @ticket.restore
+        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      else
         render json: @ticket.errors, status: :unprocessable_content
       end
     end
@@ -285,7 +327,7 @@ module V1
       if @ticket.update(update_params)
         # Clear the thread-local variable after update
         Thread.current[:check_in_url] = nil
-        
+
         render json: @ticket.as_json(
           include: {
             ticket_type: { only: [:id, :name, :price] },
@@ -308,15 +350,15 @@ module V1
     def unscan
       # Find the ticket by ID (internal ID or public_id)
       @ticket = Ticket.find_by(id: params[:id]) || Ticket.find_by!(public_id: params[:id])
-      
+
       # Authorization: Only org_owner can unscan tickets
       authorize @ticket, :unscan?
-      
+
       # Check if ticket is actually scanned
       unless @ticket.checked_in?
         render json: { error: 'Ticket is not checked in' }, status: :unprocessable_content and return
       end
-      
+
       # Reset ticket to not scanned state
       if @ticket.update(
         checked_in: false,
@@ -324,7 +366,7 @@ module V1
         scanned_by_id: nil,
         status: :purchased
       )
-        render json: { 
+        render json: {
           message: 'Ticket successfully unscanned',
           ticket: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } })
         }, status: :ok
@@ -359,7 +401,12 @@ module V1
 
     def set_ticket
       # Prioritize finding by UUID (public_id) for security and external API use
-      @ticket = @event.tickets.find_by!(public_id: params[:id])
+      # For restore action, use unscoped to find soft-deleted tickets
+      if action_name == 'restore'
+        @ticket = @event.tickets.unscoped.find_by!(public_id: params[:id])
+      else
+        @ticket = @event.tickets.find_by!(public_id: params[:id])
+      end
     rescue ActiveRecord::RecordNotFound
       # Fallback to internal ID if UUID fails (e.g., if staff uses the internal integer ID)
       render json: { error: 'Ticket not found' }, status: :not_found
