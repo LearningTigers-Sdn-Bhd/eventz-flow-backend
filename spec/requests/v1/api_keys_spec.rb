@@ -63,11 +63,11 @@ API_KEY_CREATE_SCHEMA = {
 
 RSpec.describe 'V1::ApiKeys', type: :request do
   let!(:org_owner) { create(:org_owner) }
-  let!(:manager_user) { create(:manager_user) }
+  let!(:organizer_user) { create(:organizer_user) }
   let!(:member_user) { create(:member_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # Setup existing API keys for testing
@@ -77,9 +77,9 @@ RSpec.describe 'V1::ApiKeys', type: :request do
     api_key
   end
 
-  let!(:manager_api_key) do
-    api_key = manager_user.api_keys.create!(name: "Test Key")
-    @manager_raw_key = api_key.raw_key
+  let!(:organizer_api_key) do
+    api_key = organizer_user.api_keys.create!(name: "Test Key")
+    @organizer_raw_key = api_key.raw_key
     api_key
   end
 
@@ -111,7 +111,7 @@ RSpec.describe 'V1::ApiKeys', type: :request do
           expect(api_key_ids).to include(org_owner_api_key.id)
 
           # Should NOT include other users' keys (only their own)
-          expect(api_key_ids).not_to include(manager_api_key.id)
+          expect(api_key_ids).not_to include(organizer_api_key.id)
 
           # Check that name is included
           first_key = json.first
@@ -120,9 +120,9 @@ RSpec.describe 'V1::ApiKeys', type: :request do
         end
       end
 
-      # Forbidden (Manager - not org_owner)
+      # Forbidden (Organizer - not org_owner)
       response '403', 'Forbidden (Only org_owner can manage API keys)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         schema SIMPLE_ERROR_SCHEMA
 
@@ -256,9 +256,9 @@ RSpec.describe 'V1::ApiKeys', type: :request do
         end
       end
 
-      # Forbidden (Manager - not org_owner)
+      # Forbidden (Organizer - not org_owner)
       response '403', 'Forbidden (Only org_owner can create API keys)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:api_key_data) { { name: 'Test Key' } }
 
         schema SIMPLE_ERROR_SCHEMA
@@ -336,21 +336,21 @@ RSpec.describe 'V1::ApiKeys', type: :request do
       # Not Found (User tries to delete another user's key)
       response '404', 'Cannot access another user\'s API key' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
-        let(:id) { manager_api_key.id } # Trying to delete manager's key
+        let(:id) { organizer_api_key.id } # Trying to delete organizer's key
 
         schema SIMPLE_ERROR_SCHEMA
 
         run_test! do
-          # Verify the manager's key was NOT affected
-          api_key = ApiKey.find(manager_api_key.id)
+          # Verify the organizer's key was NOT affected
+          api_key = ApiKey.find(organizer_api_key.id)
           expect(api_key.is_active).to be true
         end
       end
 
-      # Forbidden (Manager - not org_owner)
+      # Forbidden (Organizer - not org_owner)
       response '403', 'Forbidden (Only org_owner can revoke API keys)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
-        let(:id) { manager_api_key.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { organizer_api_key.id }
 
         schema SIMPLE_ERROR_SCHEMA
 

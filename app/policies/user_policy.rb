@@ -5,8 +5,8 @@ class UserPolicy < ApplicationPolicy
   # Scope: Defines which records a user can see when fetching a collection (User.all)
   class Scope < Scope
     def resolve
-      if user.org_owner? || user.manager?
-        # Org Owners and Managers can see all users in the system
+      if user.org_owner? || user.organizer?
+        # Org Owners and Organizers can see all users in the system
         scope.all 
       else
         # Standard members can only see themselves
@@ -16,14 +16,14 @@ class UserPolicy < ApplicationPolicy
   end
 
   def index?
-    # Org Owners and Managers can list all users
-    user.org_owner? || user.manager?
+    # Org Owners and Organizers can list all users
+    user.org_owner? || user.organizer?
   end
 
   def show?
     # 1. User can view their own profile (record == user).
-    # 2. Org Owners/Managers can view any profile.
-    user.org_owner? || user.manager? || record == user
+    # 2. Org Owners/Organizers can view any profile.
+    user.org_owner? || user.organizer? || record == user
   end
 
   def create?

@@ -55,7 +55,7 @@ module V1
     end
 
     def update
-      # Authorization check: Can the user (Manager/Staff) update this ticket?
+      # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
 
       if @ticket.update(ticket_params)
@@ -66,7 +66,7 @@ module V1
     end
 
     def destroy
-      # Authorization check: Can the user (Manager/Admin) cancel/refund this ticket?
+      # Authorization check: Can the user (Organizer/Admin) cancel/refund this ticket?
       authorize @ticket, :destroy?
 
       # Note: A "delete" often means setting a status like 'canceled' or 'refunded',
@@ -380,7 +380,7 @@ module V1
         custom_fields_data: {}
       ]
 
-      # Add fields often needed for staff/manager updates or specific actions,
+      # Add fields often needed for staff/organizer updates or specific actions,
       # but ensure the controller logic authorizes these updates (e.g., status/checked_in).
       # We assume the controller handles setting user_id and order_id internally.
       if action_name.in?(['update', 'destroy', 'check_in'])

@@ -8,7 +8,7 @@ RSpec.describe GroupMember, type: :model do
 
   describe 'validations' do
     let(:group) { create(:group) }
-    let(:manager) { create(:manager_user) }
+    let(:manager) { create(:organizer_user) }
     let(:member) { create(:member_user) }
     let(:org_owner) { create(:org_owner) }
     subject { build(:group_member, group: group, user: manager) }
@@ -35,13 +35,13 @@ RSpec.describe GroupMember, type: :model do
       vendor = create(:vendor_user)
       group_member = build(:group_member, group: group, user: vendor)
       expect(group_member).not_to be_valid
-      expect(group_member.errors[:user]).to include('must be a manager or member')
+      expect(group_member.errors[:user]).to include('must be an organizer or member')
     end
   end
 
   describe 'methods' do
     let(:group) { create(:group) }
-    let(:manager) { create(:manager_user) }
+    let(:manager) { create(:organizer_user) }
     let(:member) { create(:member_user) }
 
     describe '#manager?' do

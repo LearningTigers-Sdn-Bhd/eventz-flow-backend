@@ -48,12 +48,12 @@ EVENT_ANALYTICS_SCHEMA = {
 RSpec.describe 'V1::EventAnalytics', type: :request do
   # --- Setup Users & Tokens ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:staff_user) { create(:staff_user) }
   let(:member_user) { create(:member_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
@@ -68,7 +68,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
   # Assign users to event
   before do
-    EventAssignment.find_or_create_by!(event: event, user: manager_user, role: :event_admin)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     EventAssignment.find_or_create_by!(event: event, user: staff_user, role: :event_team_member)
   end
 
@@ -86,7 +86,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -103,7 +103,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
       response '404', 'Event not found' do
         let(:event_id) { 99999 }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test!
       end
@@ -124,7 +124,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -148,7 +148,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -172,7 +172,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -205,7 +205,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -241,7 +241,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -275,7 +275,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                }
 
         let(:event_id) { event.id }
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)

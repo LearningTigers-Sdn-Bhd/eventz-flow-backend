@@ -4,12 +4,12 @@ require 'swagger_helper'
 RSpec.describe 'V1::Analytics', type: :request do
   # --- Setup Users & Tokens ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:staff_user) { create(:staff_user) }
   let(:member_user) { create(:member_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
@@ -36,10 +36,10 @@ RSpec.describe 'V1::Analytics', type: :request do
     # Staff user has access to event1 only
     EventAssignment.find_or_create_by!(event: event1, user: staff_user, role: :event_admin)
 
-    # Manager user has access to all events (event1, event2, event3)
-    EventAssignment.find_or_create_by!(event: event1, user: manager_user, role: :event_admin)
-    EventAssignment.find_or_create_by!(event: event2, user: manager_user, role: :event_admin)
-    EventAssignment.find_or_create_by!(event: event3, user: manager_user, role: :event_admin)
+    # Organizer user has access to all events (event1, event2, event3)
+    EventAssignment.find_or_create_by!(event: event1, user: organizer_user, role: :event_admin)
+    EventAssignment.find_or_create_by!(event: event2, user: organizer_user, role: :event_admin)
+    EventAssignment.find_or_create_by!(event: event3, user: organizer_user, role: :event_admin)
   end
 
   # ===================================================================
@@ -89,13 +89,13 @@ RSpec.describe 'V1::Analytics', type: :request do
         end
       end
 
-      response '200', 'Events overview retrieved successfully for manager (all assigned events)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '200', 'Events overview retrieved successfully for organizer (all assigned events)' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['events']).to be_an(Array)
-          expect(data['events'].length).to eq(3) # All events assigned to manager
+          expect(data['events'].length).to eq(3) # All events assigned to organizer
         end
       end
 
@@ -147,12 +147,12 @@ RSpec.describe 'V1::Analytics', type: :request do
         end
       end
 
-      response '200', 'Analytics summary retrieved successfully for manager (all assigned events)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '200', 'Analytics summary retrieved successfully for organizer (all assigned events)' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['total_events']).to eq(3) # All events assigned to manager
+          expect(data['total_events']).to eq(3) # All events assigned to organizer
           expect(data['active_events']).to eq(2) # event1, event2 (published)
           expect(data['total_tickets']).to eq(10)
           expect(data['total_scanned']).to eq(3)
@@ -415,7 +415,7 @@ RSpec.describe 'V1::Analytics', type: :request do
   end
 
   # ===================================================================
-  # EXISTING GLOBAL ENDPOINTS (Requires org_owner/manager)
+  # EXISTING GLOBAL ENDPOINTS (Requires org_owner/organizer)
   # ===================================================================
 
   path '/v1/metrics/total_tickets' do
@@ -464,7 +464,7 @@ RSpec.describe 'V1::Analytics', type: :request do
                  totalScannedTickets: { type: :integer, description: 'Total number of scanned tickets across all events' }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -508,7 +508,7 @@ RSpec.describe 'V1::Analytics', type: :request do
                  totalAmountPrice: { type: :integer, description: 'Total sales amount in cents across all events' }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -576,7 +576,7 @@ RSpec.describe 'V1::Analytics', type: :request do
                  }
                }
 
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         run_test! do |response|
           data = JSON.parse(response.body)

@@ -20,7 +20,7 @@ GROUP_SCHEMA = {
 RSpec.describe 'V1::Groups', type: :request do
   # --- Setup Users ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:manager_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
   let(:vendor_user) { create(:vendor_user) }
 

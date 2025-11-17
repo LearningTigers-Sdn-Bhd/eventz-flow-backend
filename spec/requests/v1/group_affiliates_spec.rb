@@ -22,7 +22,7 @@ GROUP_AFFILIATE_SCHEMA = {
 
 RSpec.describe 'V1::GroupAffiliates', type: :request do
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:manager_user) { create(:organizer_user) }
   let(:vendor_user) { create(:vendor_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }

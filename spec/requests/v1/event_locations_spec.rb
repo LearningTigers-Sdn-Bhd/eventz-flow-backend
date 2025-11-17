@@ -34,22 +34,22 @@ EVENT_LOCATION_SCHEMA = {
 RSpec.describe 'V1::EventLocations', type: :request do
   # --- Setup Users ---
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
 
   # --- Setup Tokens ---
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup API Keys ---
-  let!(:manager_api_key) { ApiKey.create_key_for_user(manager_user) }
+  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user) }
   let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user) }
 
   # --- Setup Event ---
   let!(:event) do
     event = create(:event, title: "Test Event", payment_status: :paid, published: false)
-    create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
@@ -115,9 +115,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
-      # 1. Success (Manager JWT)
+      # 1. Success (Organizer JWT)
       response '200', 'Event locations returned' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
 
         schema type: :array, items: EVENT_LOCATION_SCHEMA
@@ -132,7 +132,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 2. Success (API Key)
       response '200', 'Event locations returned via API Key' do
-        let(:Authorization) { manager_api_key }
+        let(:Authorization) { organizer_api_key }
         let(:event_id) { event.id }
 
         run_test! do
@@ -159,7 +159,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 5. Not Found (Invalid Event ID)
       response '404', 'Event not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { 99999 }
         run_test!
       end
@@ -189,9 +189,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
         required: ['name']
       }
 
-      # 1. Success (Manager JWT)
+      # 1. Success (Organizer JWT)
       response '201', 'Event location created successfully' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:event_location) { valid_create_params }
 
@@ -204,9 +204,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
         end
       end
 
-      # 2. Success with Members (Manager JWT)
+      # 2. Success with Members (Organizer JWT)
       response '201', 'Event location created with assigned members' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:event_location) { valid_create_params_with_members }
 
@@ -228,7 +228,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 4. Validation Error
       response '422', 'Unprocessable Entity (Invalid params)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:event_location) { invalid_params }
 
@@ -248,7 +248,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 6. Unique Constraint (Duplicate name for same event)
       response '422', 'Unprocessable Entity (Duplicate location name)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:event_location) { { event_location: { name: 'Main Hall', scan_limit: 100 } } }
 
@@ -278,7 +278,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 1. Success (JWT)
       response '200', 'Event location found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
 
@@ -293,7 +293,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 2. Success (API Key)
       response '200', 'Event location found via API Key' do
-        let(:Authorization) { manager_api_key }
+        let(:Authorization) { organizer_api_key }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
         run_test!
@@ -301,7 +301,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 3. Not Found (Invalid Location ID)
       response '404', 'Event location not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { 99999 }
         run_test!
@@ -339,9 +339,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
         }
       }
 
-      # 1. Success (Manager JWT)
+      # 1. Success (Organizer JWT)
       response '200', 'Update successful' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
         let(:event_location) { update_params }
@@ -366,7 +366,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 3. Validation Error
       response '422', 'Unprocessable Entity (Invalid params)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
         let(:event_location) { invalid_params }
@@ -388,7 +388,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 5. Not Found (Invalid Location ID)
       response '404', 'Event location not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { 99999 }
         let(:event_location) { update_params }
@@ -403,9 +403,9 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
-      # 1. Success (Manager JWT)
+      # 1. Success (Organizer JWT)
       response '204', 'Deletion successful' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { event_location_1.id }
 
@@ -432,7 +432,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
 
       # 4. Not Found (Invalid Location ID)
       response '404', 'Event location not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:event_id) { event.id }
         let(:id) { 99999 }
         run_test!

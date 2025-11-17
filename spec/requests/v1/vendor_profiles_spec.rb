@@ -5,7 +5,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
   # --- Setup Users & Tokens ---
   let(:vendor_user) { create(:user, role: :vendor) }
   let(:other_vendor) { create(:user, role: :vendor) }
-  let(:admin_user) { create(:manager_user) }
+  let(:admin_user) { create(:organizer_user) }
 
   let(:vendor_token) { JwtService.generate_tokens(vendor_user)[:access_token] }
   let(:other_vendor_token) { JwtService.generate_tokens(other_vendor)[:access_token] }

@@ -5,7 +5,7 @@ RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swag
   # --- Setup Users & Tokens ---
   let(:vendor_user) { create(:user, role: :vendor) }
   let(:other_vendor) { create(:user, role: :vendor) }
-  let(:admin_user) { create(:user, role: :manager) }
+  let(:admin_user) { create(:user, role: :organizer) }
 
   let(:vendor_token) { JwtService.generate_tokens(vendor_user)[:access_token] }
   let(:other_vendor_token) { JwtService.generate_tokens(other_vendor)[:access_token] }

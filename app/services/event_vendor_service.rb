@@ -40,9 +40,9 @@ class EventVendorService
       result = assign_existing_vendor(event, params[:vendor_id], params, vendor_type)
       return result
     else
-      # Create new vendor user (only managers can do this)
-      unless current_user.is_manager?
-        return Result.new(success: false, errors: ['Only managers can create new vendor users'])
+      # Create new vendor user (only organizers can do this)
+      unless current_user.is_organizer?
+        return Result.new(success: false, errors: ['Only organizers can create new vendor users'])
       end
 
       result = create_vendor_user(params, event, vendor_type)

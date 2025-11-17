@@ -3,9 +3,9 @@ class User < ApplicationRecord
   has_secure_password
 
   # --- Global Roles ---
-  # Rails best practice is to use the provided methods (org_owner?, manager?, etc.)
+  # Rails best practice is to use the provided methods (org_owner?, organizer?, etc.)
   # The enum values should remain integers for database consistency.
-  enum :role, { org_owner: 0, manager: 1, member: 2, vendor: 3 }, scopes: false
+  enum :role, { org_owner: 0, organizer: 1, member: 2, vendor: 3 }, scopes: false
 
   # --- Status ---
   enum :status, { active: 1, inactive: 0 }
@@ -49,14 +49,14 @@ class User < ApplicationRecord
 
   # --- Global Role Helper Methods (FIXED LOGIC) ---
 
-  # Ensures Org Owner is included as a Manager
-  def is_manager?
-    manager? || org_owner?
+  # Ensures Org Owner is included as a Organizer
+  def is_organizer?
+    organizer? || org_owner?
   end
 
-  # Check if a user is an Org Owner or Manager
-  def is_org_owner_or_manager?
-    is_manager?
+  # Check if a user is an Org Owner or Organizer
+  def is_org_owner_or_organizer?
+    is_organizer?
   end
 
   # Pure check for Org Owner role
@@ -64,7 +64,7 @@ class User < ApplicationRecord
     org_owner?
   end
 
-  # Pure check for Member role (exclusive of Manager/Owner)
+  # Pure check for Member role (exclusive of Organizer/Owner)
   def is_member?
     member?
   end
@@ -118,7 +118,7 @@ class User < ApplicationRecord
 
   private
 
-  # Use the Rails enum helper methods (org_owner?, manager?, etc.) instead of string comparisons ('manager')
+  # Use the Rails enum helper methods (org_owner?, organizer?, etc.) instead of string comparisons ('organizer')
   # when the methods are defined on the User class itself.
 
   def set_default_role

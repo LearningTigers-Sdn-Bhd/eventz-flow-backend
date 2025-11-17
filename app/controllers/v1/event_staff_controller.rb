@@ -57,21 +57,21 @@ module V1
     end
 
     # def authorize_staff_management!
-    #   # Only Org Owner OR Manager (global roles) can manage event staff
-    #   unless current_user.is_org_owner_or_manager?
-    #     render json: { error: 'Forbidden', message: 'Only an organization owner or manager can manage event staff.' }, status: :forbidden
+    #   # Only Org Owner OR Organizer (global roles) can manage event staff
+    #   unless current_user.is_org_owner_or_organizer?
+    #     render json: { error: 'Forbidden', message: 'Only an organization owner or organizer can manage event staff.' }, status: :forbidden
     #   end
     # end
 
     def authorize_staff_view!
-      # Allow Org Owner, Manager (global roles), OR Event Staff (event_admin/event_team_member) to VIEW
+      # Allow Org Owner, Organizer (global roles), OR Event Staff (event_admin/event_team_member) to VIEW
       is_event_staff = @event.event_assignments.exists?(
         user_id: current_user.id,
         role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
       )
 
-      unless current_user.is_org_owner_or_manager? || is_event_staff
-        render json: { error: 'Forbidden', message: 'Only an organization owner, manager, or event staff can view event staff.' }, status: :forbidden
+      unless current_user.is_org_owner_or_organizer? || is_event_staff
+        render json: { error: 'Forbidden', message: 'Only an organization owner, organizer, or event staff can view event staff.' }, status: :forbidden
       end
     end
 

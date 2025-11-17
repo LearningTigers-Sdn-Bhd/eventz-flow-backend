@@ -40,20 +40,20 @@ EVENT_INDEX_ITEM_SCHEMA = {
 
 RSpec.describe 'V1::Events', type: :request do
   # --- Setup Users ---
-  # Assuming create(:org_owner), create(:manager_user), create(:member_user) factories exist
+  # Assuming create(:org_owner), create(:organizer_user), create(:member_user) factories exist
   let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:manager_user) }
+  let(:organizer_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
 
   # --- Setup Tokens ---
   # Assuming JsonWebToken.encode exists
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
-  let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- SETUP API KEYS ---
   # Assuming ApiKey.create_key_for_user exists
-  let!(:manager_api_key) { ApiKey.create_key_for_user(manager_user) }
+  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user) }
   let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user) }
 
   # --- Setup Event Data ---
@@ -70,23 +70,23 @@ RSpec.describe 'V1::Events', type: :request do
   end
   let(:update_params) { { event: { title: 'Updated Event Title' } } }
 
-  # --- Create Events (Managed by manager_user) ---
-  # Note: The policy now allows the manager to update both paid and unpaid events.
+  # --- Create Events (Managed by organizer_user) ---
+  # Note: The policy now allows the organizer to update both paid and unpaid events.
   let!(:event_unpaid) do
     event = create(:event, title: "Unpaid Event", payment_status: :unpaid, published: false, visibility: true)
-    create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
   let!(:event_paid) do
     event = create(:event, title: "Paid Event", payment_status: :paid, published: false, visibility: true)
-    create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
   let!(:event_public) do
     event = create(:event, title: "Public Event", payment_status: :paid, published: true, visibility: true)
-    create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
@@ -103,7 +103,7 @@ RSpec.describe 'V1::Events', type: :request do
   path '/v1/events' do
 
     # --- POST - Create ---
-    post 'Creates a new event (ORG_OWNER or MANAGER ONLY)' do
+    post 'Creates a new event (ORG_OWNER or ORGANIZER ONLY)' do
       tags 'Events'
       consumes 'application/json'
       produces 'application/json'
@@ -149,7 +149,7 @@ RSpec.describe 'V1::Events', type: :request do
               price: 100.00,
               start_date: Time.current + 1.hour,
               end_date: Time.current + 2.hours,
-              event_admin_id: manager_user.id
+              event_admin_id: organizer_user.id
             )
           }
         end
@@ -159,13 +159,13 @@ RSpec.describe 'V1::Events', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           created_event = Event.find(json['id'])
-          # Verify the manager_user was assigned as event admin
-          expect(created_event.event_assignments.where(user_id: manager_user.id, role: 'event_admin').exists?).to be true
+          # Verify the organizer_user was assigned as event admin
+          expect(created_event.event_assignments.where(user_id: organizer_user.id, role: 'event_admin').exists?).to be true
         end
       end
 
       # 4. Forbidden (Member JWT)
-      response '403', 'Forbidden (Not Org Owner or Manager)' do
+      response '403', 'Forbidden (Not Org Owner or Organizer)' do
         let(:Authorization) { "Bearer #{member_token}" }
         let(:event) { valid_create_params }
         run_test!
@@ -202,9 +202,9 @@ RSpec.describe 'V1::Events', type: :request do
         end
       end
 
-      # 2. Success (Manager - sees only assigned events with visibility: true)
-      response '200', 'Manager sees only assigned visible events' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      # 2. Success (Organizer - sees only assigned events with visibility: true)
+      response '200', 'Organizer sees only assigned visible events' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
 
         before { event_unpaid.reload; event_paid.reload; event_public.reload }
 
@@ -212,8 +212,8 @@ RSpec.describe 'V1::Events', type: :request do
 
         run_test! do
           json = JSON.parse(response.body)
-          # Manager is admin on 3 events (unpaid, paid, public), all with visibility: true
-          # Manager does NOT see event_private (visibility: false)
+          # Organizer is admin on 3 events (unpaid, paid, public), all with visibility: true
+          # Organizer does NOT see event_private (visibility: false)
           expect(json.count).to eq(3)
         end
       end
@@ -247,7 +247,7 @@ RSpec.describe 'V1::Events', type: :request do
 
       # 1. Success (JWT)
       response '200', 'Event found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
 
         schema EVENT_SCHEMA
@@ -256,7 +256,7 @@ RSpec.describe 'V1::Events', type: :request do
 
       # 2. Success (API Key)
       response '200', 'Event found via API Key' do
-        let(:Authorization) { manager_api_key }
+        let(:Authorization) { organizer_api_key }
         let(:id) { event_paid.id }
         run_test!
       end
@@ -297,7 +297,7 @@ RSpec.describe 'V1::Events', type: :request do
 
       # 6. Not Found
       response '404', 'Event not found' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { 99999 }
         run_test!
       end
@@ -323,8 +323,8 @@ RSpec.describe 'V1::Events', type: :request do
       }
 
       # 1. Success
-      response '200', 'Update successful (Manager)' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+      response '200', 'Update successful (Organizer)' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
         let(:event) { update_params }
 
@@ -334,7 +334,7 @@ RSpec.describe 'V1::Events', type: :request do
 
       # 2. Forbidden (Policy check: Member user)
       response '403', 'Forbidden (Member user)' do
-        # FIX: Changed token from manager_token to member_token
+        # FIX: Changed token from organizer_token to member_token
         let(:Authorization) { "Bearer #{member_token}" }
         let(:id) { event_unpaid.id }
         let(:event) { update_params }
@@ -351,7 +351,7 @@ RSpec.describe 'V1::Events', type: :request do
 
       # 1. Success
       response '204', 'Deletion successful' do
-        let(:Authorization) { "Bearer #{manager_token}" }
+        let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
         run_test!
       end
@@ -394,12 +394,12 @@ RSpec.describe 'V1::Events', type: :request do
     end
 
     context 'when API key is used' do
-      let!(:manager_user) { create(:manager_user) }
-      let!(:api_key) { ApiKey.create_key_for_user(manager_user) }
+      let!(:organizer_user) { create(:organizer_user) }
+      let!(:api_key) { ApiKey.create_key_for_user(organizer_user) }
 
       it 'bypasses email verification for API key authentication' do
         event = create(:event)
-        create(:event_assignment, role: :event_admin, event: event, user: manager_user)
+        create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
 
         get "/v1/events/#{event.id}", headers: { 'Authorization' => api_key }
 

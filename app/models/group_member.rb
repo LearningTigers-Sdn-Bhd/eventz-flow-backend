@@ -6,7 +6,7 @@ class GroupMember < ApplicationRecord
   # --- Validations ---
   validates :user_id, uniqueness: { scope: :group_id }
   validate :user_cannot_be_org_owner
-  validate :user_must_be_manager_or_member
+  validate :user_must_be_organizer_or_member
 
   # --- Methods ---
   def manager?
@@ -21,9 +21,9 @@ class GroupMember < ApplicationRecord
     end
   end
 
-  def user_must_be_manager_or_member
-    if user.present? && !user.manager? && !user.member?
-      errors.add(:user, 'must be a manager or member')
+  def user_must_be_organizer_or_member
+    if user.present? && !user.is_organizer? && !user.member?
+      errors.add(:user, 'must be an organizer or member')
     end
   end
 end

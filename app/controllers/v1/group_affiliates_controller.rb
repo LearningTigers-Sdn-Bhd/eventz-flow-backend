@@ -2,14 +2,13 @@ module V1
   class GroupAffiliatesController < ApplicationController
     before_action :authenticate_user!
     before_action :set_group
-    before_action :set_affiliate, only: [:destroy]
 
     # GET /v1/groups/:group_id/affiliates
     def index
       authorize @group, policy_class: GroupPolicy
       
-      @affiliates = @group.group_affiliates.includes(:vendor)
-      render json: @affiliates.map { |affiliate| format_affiliate(affiliate) }
+      @affiliate = @group.group_affiliate
+      render json: @affiliate ? format_affiliate(@affiliate) : {}
     end
 
     # POST /v1/groups/:group_id/affiliates
@@ -19,7 +18,7 @@ module V1
 
       vendor = User.find(group_affiliate_params[:vendor_id])
 
-      @affiliate = @group.group_affiliates.build(vendor: vendor)
+      @affiliate = @group.build_group_affiliate(vendor: vendor)
 
       if @affiliate.save
         render json: format_affiliate(@affiliate), status: :created
@@ -32,8 +31,14 @@ module V1
       end
     end
 
-    # DELETE /v1/groups/:group_id/affiliates/:id
+    # DELETE /v1/groups/:group_id/affiliates
     def destroy
+      @affiliate = @group.group_affiliate
+      
+      unless @affiliate
+        return error_response(message: 'Vendor affiliate not found', status: :not_found)
+      end
+
       authorize @affiliate, policy_class: GroupAffiliatePolicy
 
       if @affiliate.destroy
@@ -53,12 +58,6 @@ module V1
       @group = Group.find(params[:group_id])
     rescue ActiveRecord::RecordNotFound
       error_response(message: 'Group not found', status: :not_found)
-    end
-
-    def set_affiliate
-      @affiliate = @group.group_affiliates.find(params[:id])
-    rescue ActiveRecord::RecordNotFound
-      error_response(message: 'Vendor affiliate not found', status: :not_found)
     end
 
     def group_affiliate_params

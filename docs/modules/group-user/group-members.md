@@ -15,7 +15,7 @@
 **Constraints:**
 - Unique index on `[group_id, user_id]` (one membership per user per group)
 - User cannot be `org_owner`
-- User must have role `manager` or `member` (vendors excluded)
+- User must have role `organizer` or `member` (vendors excluded)
 
 ---
 
@@ -40,9 +40,9 @@ Returns all members of a specific group.
     "user_id": 5,
     "user": {
       "id": 5,
-      "email": "manager@example.com",
-      "full_name": "John Manager",
-      "role": "manager"
+      "email": "organizer@example.com",
+      "full_name": "John Organizer",
+      "role": "organizer"
     },
     "has_manager_access": true,
     "created_at": "2025-11-11T03:20:00Z",
@@ -100,7 +100,7 @@ Adds a user to a group as a member or manager.
 
 **Validation Rules:**
 - User cannot be `org_owner`
-- User must have role `manager` or `member`
+- User must have role `organizer` or `member`
 - User cannot already be a member of the group
 
 **Success (201):**
@@ -215,5 +215,5 @@ Multiple users can have manager access to the same group. This allows for collab
 ## Related Data
 
 - **Group:** Parent group that contains the members
-- **User:** Users with roles `manager` or `member` can be group members
+- **User:** Users with roles `organizer` or `member` can be group members
 - **GroupAffiliate:** Separate from group members, used for vendor assignments

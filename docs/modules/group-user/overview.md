@@ -1,6 +1,6 @@
 # Group-User Module Overview
 
-The group-user module enables organizational grouping of users (managers and members) and vendor assignment. Groups allow vendors to manage multiple organizational units (e.g., "Mall A" and "Mall B") while maintaining clear ownership and access control.
+The group-user module enables organizational grouping of users (organizers and members) and vendor assignment. Groups allow vendors to manage multiple organizational units (e.g., "Mall A" and "Mall B") while maintaining clear ownership and access control.
 
 ## Feature Map
 
@@ -13,7 +13,7 @@ The group-user module enables organizational grouping of users (managers and mem
 ## Architecture Highlights
 
 - **Groups:** `Group` model stores name and description. Groups are created by org_owner and can be updated by org_owner or group managers.
-- **Group Members:** `GroupMember` join table connects users (managers/members only) to groups with `has_manager_access` flag. Multiple users can have manager access per group.
+- **Group Members:** `GroupMember` join table connects users (organizers/members only) to groups with `has_manager_access` flag. Multiple users can have manager access per group.
 - **Group Affiliates:** `GroupAffiliate` assigns one vendor per group. Vendors can be assigned to multiple groups (many-to-many relationship).
 - **Authorization:**
   - **org_owner:** Full control (create, delete groups, assign vendors)
@@ -25,7 +25,7 @@ The group-user module enables organizational grouping of users (managers and mem
 ## Use Cases
 
 1. **Vendor Multi-Location Management:** A vendor can manage multiple groups (e.g., "Mall A" and "Mall B") to organize their operations.
-2. **Organizational Structure:** Managers can be assigned to groups to handle internal operations while org_owner maintains system-wide control.
+2. **Organizational Structure:** Organizers can be assigned to groups to handle internal operations while org_owner maintains system-wide control.
 3. **Member Organization:** Members can be added to groups for better organization and access control.
 
 ## Key Business Rules

@@ -12,7 +12,7 @@
 | `image_path` | string | optional asset path |
 | `vendor_name` | string | defaults to `"Vendor Name"` |
 | `vendor_description` | text | optional marketing copy |
-| `manager_id` | bigint | optional, FK to `users` (manager who assigned vendor) |
+| `manager_id` | bigint | optional, FK to `users` (organizer who assigned vendor) |
 | `created_at` / `updated_at` | timestamps | standard Rails timestamps |
 
 ### Automatic creation

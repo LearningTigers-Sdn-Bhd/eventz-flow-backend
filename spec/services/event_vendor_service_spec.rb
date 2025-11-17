@@ -53,7 +53,7 @@ RSpec.describe EventVendorService, type: :service do
   end
 
   describe '.create' do
-    let(:current_user) { create(:manager_user) }
+    let(:current_user) { create(:organizer_user) }
     let(:event) { create(:event, use_ticket: true) }
     let(:exhibitor_owner) { create(:exhibitor_owner) }
 
@@ -153,8 +153,8 @@ RSpec.describe EventVendorService, type: :service do
       end
     end
 
-    context 'when user is not a manager' do
-      let(:non_manager) { create(:member_user) }
+    context 'when user is not an organizer' do
+      let(:non_organizer) { create(:member_user) }
       let(:params) do
         {
           full_name: 'John Doe',
@@ -166,10 +166,10 @@ RSpec.describe EventVendorService, type: :service do
       end
 
       it 'returns error when trying to create new vendor' do
-        result = EventVendorService.create(event: event, params: params, current_user: non_manager)
+        result = EventVendorService.create(event: event, params: params, current_user: non_organizer)
 
         expect(result).to be_failure
-        expect(result.errors).to include('Only managers can create new vendor users')
+        expect(result.errors).to include('Only organizers can create new vendor users')
       end
     end
 

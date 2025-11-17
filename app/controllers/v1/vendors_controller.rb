@@ -1,7 +1,7 @@
 module V1
   class VendorsController < ApplicationController
     before_action :authenticate_user!
-    before_action :authorize_manager!
+    before_action :authorize_organizer!
     before_action :set_vendor, only: [:show, :update, :toggle_status]
 
     # GET /v1/vendors
@@ -102,9 +102,9 @@ module V1
       }
     end
 
-    def authorize_manager!
-      unless current_user.is_manager?
-        render json: { error: 'Forbidden', message: 'Only managers can manage vendors.' },
+    def authorize_organizer!
+      unless current_user.is_organizer?
+        render json: { error: 'Forbidden', message: 'Only organizers can manage vendors.' },
                status: :forbidden
       end
     end

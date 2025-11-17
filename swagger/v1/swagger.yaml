@@ -1121,7 +1121,7 @@ paths:
           type: integer
       responses:
         '200':
-          description: Manager can view staff if they are event staff
+          description: Organizer can view staff if they are event staff
           content:
             application/json:
               schema:
@@ -1171,8 +1171,8 @@ paths:
                     example: Forbidden
                   message:
                     type: string
-                    example: Only an organization owner or manager can manage event
-                      staff.
+                    example: Only an organization owner or organizer can manage
+                      event staff.
                 required:
                 - error
                 - message
@@ -1221,8 +1221,8 @@ paths:
                     example: Forbidden
                   message:
                     type: string
-                    example: Only an organization owner or manager can manage event
-                      staff.
+                    example: Only an organization owner or organizer can manage
+                      event staff.
                 required:
                 - error
                 - message
@@ -1281,7 +1281,7 @@ paths:
           description: Not Found when user not assigned
   "/v1/events":
     post:
-      summary: Creates a new event (ORG_OWNER or MANAGER ONLY)
+      summary: Creates a new event (ORG_OWNER or ORGANIZER ONLY)
       tags:
       - Events
       security:
@@ -1357,7 +1357,7 @@ paths:
                 - published
                 - visibility
         '403':
-          description: Forbidden (Not Org Owner or Manager)
+          description: Forbidden (Not Org Owner or Organizer)
         '401':
           description: Unauthorized (Missing Token)
       requestBody:
@@ -1521,7 +1521,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Update successful (Manager)
+          description: Update successful (Organizer)
           content:
             application/json:
               schema:
@@ -1942,7 +1942,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Ticket successfully updated by Manager
+          description: Ticket successfully updated by Organizer
           content:
             application/json:
               schema:
@@ -2077,7 +2077,7 @@ paths:
           type: string
       responses:
         '204':
-          description: Ticket successfully canceled by Manager
+          description: Ticket successfully canceled by Organizer
         '403':
           description: Forbidden for event staff
         '404':
@@ -2577,9 +2577,9 @@ paths:
                       type: string
                       enum:
                       - org_owner
-                      - manager
+                      - organizer
                       - member
-                      example: manager
+                      example: organizer
                   required:
                   - role
               required:

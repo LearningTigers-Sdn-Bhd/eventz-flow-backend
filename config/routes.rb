@@ -108,7 +108,9 @@ Rails.application.routes.draw do
 
     resources :groups do
       resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
-      resources :affiliates, controller: 'group_affiliates', only: [:index, :create, :destroy], path: 'affiliates'
+      resource :affiliates, controller: 'group_affiliates', only: [:create, :destroy], path: 'affiliates' do
+        get '', action: :index, on: :collection
+      end
       resources :vendors, only: [], controller: 'vendor_profiles' do
         member do
           patch :profile, to: 'vendor_profiles#update'

@@ -9,7 +9,7 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
     type: :object,
     properties: {
       error: { type: :string, example: 'Forbidden' },
-      message: { type: :string, example: 'Only managers can create vendors.' }
+      message: { type: :string, example: 'Only organizers can create vendors.' }
     },
     required: %w[error message]
   }.freeze
@@ -30,9 +30,9 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
   # ============================================================
   # Setup
   # ============================================================
-  let(:manager) { create(:manager_user) }
+  let(:organizer) { create(:organizer_user) }
   let(:member) { create(:member_user) }
-  let(:auth_header_manager) { "Bearer #{JwtService.generate_tokens(manager)[:access_token]}" }
+  let(:auth_header_organizer) { "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" }
   let(:auth_header_member) { "Bearer #{JwtService.generate_tokens(member)[:access_token]}" }
 
   # ============================================================
@@ -64,7 +64,7 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
         required: ['vendor']
       }
 
-      let(:Authorization) { auth_header_manager }
+      let(:Authorization) { auth_header_organizer }
 
       response '201', 'Vendor created successfully' do
         let(:body) do
@@ -116,7 +116,7 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
         run_test!
       end
 
-      response '403', 'Forbidden for non-manager' do
+      response '403', 'Forbidden for non-organizer' do
         let(:Authorization) { auth_header_member }
         let(:body) do
           {

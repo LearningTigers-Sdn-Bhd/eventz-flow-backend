@@ -26,9 +26,9 @@ FactoryBot.define do
 			email { "org_owner_#{Faker::Number.unique.number(digits: 5)}@platform.com" }
 		end
 
-		# 2. Manager User
-		factory :manager_user, parent: :user do
-			role { :manager }
+		# 2. Organizer User
+		factory :organizer_user, parent: :user do
+			role { :organizer }
 		end
 
 		# 3. Standard User/Participant
@@ -50,7 +50,7 @@ FactoryBot.define do
 
 		# DEPRECATED/Removed Factories:
 		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user'
-		# factories are no longer used, as their logic is covered by :org_owner, :manager_user,
+		# factories are no longer used, as their logic is covered by :org_owner, :organizer_user,
 		# and the default :user/:member_user factory.
 	end
 end

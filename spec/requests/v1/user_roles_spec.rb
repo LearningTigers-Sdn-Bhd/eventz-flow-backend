@@ -28,7 +28,7 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
           user: {
             type: :object,
             properties: {
-              role: { type: :string, enum: %w[org_owner manager member], example: 'manager' }
+              role: { type: :string, enum: %w[org_owner organizer member], example: 'organizer' }
             },
             required: %w[role]
           }
@@ -39,7 +39,7 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
       # ----------------- 200 OK -----------------
       response '200', 'Role updated successfully' do
         let(:Authorization) { auth_header_owner['Authorization'] } # 👈 satisfies rswag
-        let(:user) { { user: { role: 'manager' } } }
+        let(:user) { { user: { role: 'organizer' } } }
 
         run_test! do
           put role_v1_user_path(id: id),
@@ -48,14 +48,14 @@ RSpec.describe 'User Role Management', type: :request, openapi_spec: 'v1/swagger
 
           puts "Response: #{response.status} #{response.body}"
           expect(response).to have_http_status(:ok)
-          expect(target_user.reload.role).to eq('manager')
+          expect(target_user.reload.role).to eq('organizer')
         end
       end
 
       # ----------------- 403 Forbidden -----------------
       response '403', 'Forbidden' do
         let(:Authorization) { auth_header_member['Authorization'] } # 👈 satisfies rswag
-        let(:user) { { user: { role: 'manager' } } }
+        let(:user) { { user: { role: 'organizer' } } }
 
         run_test! do
           put role_v1_user_path(id: id),

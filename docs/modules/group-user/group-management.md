@@ -13,7 +13,7 @@
 
 ### Associations
 
-- `has_many :group_members` - Users (managers/members) in the group
+- `has_many :group_members` - Users (organizers/members) in the group
 - `has_many :users, through: :group_members` - Direct access to member users
 - `has_one :group_affiliate` - Vendor assignment (one per group)
 - `has_one :vendor, through: :group_affiliate` - Direct access to assigned vendor
@@ -30,7 +30,7 @@ Returns groups visible to the current user based on their role.
 
 **Authorization:**
 - **org_owner:** Sees all groups
-- **Manager/Member:** Sees groups they belong to via `group_members`
+- **Organizer/Member:** Sees groups they belong to via `group_members`
 - **Vendor:** Sees groups they're assigned to via `group_affiliates`
 
 **Success (200):**
@@ -69,7 +69,7 @@ Returns detailed information about a specific group including members.
 
 **Authorization:**
 - **org_owner:** Can view any group
-- **Manager/Member:** Can view groups they belong to
+- **Organizer/Member:** Can view groups they belong to
 - **Vendor:** Can view groups they're assigned to
 
 **Success (200):**
@@ -87,9 +87,9 @@ Returns detailed information about a specific group including members.
       "user_id": 5,
       "user": {
         "id": 5,
-        "email": "manager@example.com",
-        "full_name": "John Manager",
-        "role": "manager"
+        "email": "organizer@example.com",
+        "full_name": "John Organizer",
+        "role": "organizer"
       },
       "has_manager_access": true
     },
@@ -228,4 +228,4 @@ Deletes a group. Only org_owner can delete groups.
 
 - **GroupMember:** Stores user-group relationships with manager access flags
 - **GroupAffiliate:** Stores vendor-group assignments (one vendor per group)
-- **User:** Users with roles `manager` or `member` can be added as group members
+- **User:** Users with roles `organizer` or `member` can be added as group members

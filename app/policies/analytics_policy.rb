@@ -1,8 +1,8 @@
 # app/policies/analytics_policy.rb
 class AnalyticsPolicy < ApplicationPolicy
-  # Global analytics access - only org owners and managers
+  # Global analytics access - only org owners and organizers
   def index?
-    user&.is_org_owner? || user&.is_manager?
+    user&.is_org_owner? || user&.is_organizer?
   end
 
   # Scope for global analytics - tickets across all events user has access to
@@ -13,8 +13,8 @@ class AnalyticsPolicy < ApplicationPolicy
       # Get all events the user has access to
       accessible_event_ids = user.event_assignments.pluck(:event_id)
 
-      # If user is org owner or manager, they can see all tickets
-      if user.is_org_owner? || user.is_manager?
+      # If user is org owner or organizer, they can see all tickets
+      if user.is_org_owner? || user.is_organizer?
         return scope.all
       end
 

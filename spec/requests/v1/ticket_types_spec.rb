@@ -5,8 +5,8 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
   let!(:admin_user) { create(:org_owner) }
   let!(:regular_user) { create(:member_user) }
 
-  # Create a test event with an owner (manager)
-  let!(:event_owner) { create(:manager_user) }
+  # Create a test event with an owner
+  let!(:event_owner) { create(:organizer_user) }
   let!(:test_event) do
     event = create(:event)
     create(:event_assignment, role: :event_admin, event: event, user: event_owner)
