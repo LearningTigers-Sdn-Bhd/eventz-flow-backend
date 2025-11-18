@@ -2,46 +2,84 @@
 
 ## Model Snapshot
 
-`vendor_profiles` table
+`vendor_profiles` table (Vendor-Centric)
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | bigint | primary key |
-| `group_id` | bigint | required, FK to `groups` |
-| `vendor_id` | bigint | required, FK to `users` (vendor role) |
+| `vendor_id` | bigint | required, unique, FK to `users` (vendor role) |
 | `image_path` | string | optional asset path |
-| `vendor_name` | string | defaults to `"Vendor Name"` |
-| `vendor_description` | text | optional marketing copy |
-| `manager_id` | bigint | optional, FK to `users` (organizer who assigned vendor) |
+| `description` | text | optional business description |
+| `category` | string | optional business category (e.g., Technology, Food & Beverage) |
+| `person_in_charge` | string | optional contact person name |
+| `address` | text | optional business address |
+| `notes` | text | optional additional notes |
 | `created_at` / `updated_at` | timestamps | standard Rails timestamps |
 
-### Automatic creation
+### Key Design
 
-A `GroupAffiliate` created (assigning a vendor to a group) triggers:
+**One Profile Per Vendor:** Each vendor user has exactly one profile, regardless of how many groups they join or events they participate in. This is enforced by a unique index on `vendor_id`.
 
-```ruby
-VendorProfile.find_or_create_by(group: group, vendor: vendor)
-```
+**Creator Tracking:** The vendor's creator is tracked via `users.created_by_id`, not in the profile table.
 
-This guarantees every vendor has a profile per group without a manual API call.
+**Group Membership:** Vendor-to-group relationships are managed separately through `group_affiliates` table.
 
 ---
 
-## Dashboard: Update Profile
+## Vendor: View Profile
 
-`PATCH /v1/events/:event_id/vendors/:id/profile`
+`GET /v1/vendor_profile`
 
-Updates the authenticated vendor's profile for a specific event. The profile content still comes from the underlying group/vendor relationship, but the route now scopes access through the `EventVendor` record.
+Retrieves the authenticated vendor's profile.
 
-**Auth:** Bearer token (must be the vendor attached to the `EventVendor`)
+**Auth:** Bearer token (must be a vendor user)
+
+**Success (200):**
+
+```json
+{
+  "id": 12,
+  "vendor_id": 27,
+  "image_path": "/cdn/vendor.png",
+  "description": "Premium technology solutions provider.",
+  "category": "Technology",
+  "person_in_charge": "John Doe",
+  "address": "123 Main St, City, Country",
+  "notes": "Specializing in event management systems.",
+  "created_at": "2025-11-10T07:20:00Z",
+  "updated_at": "2025-11-10T08:15:12Z",
+  "vendor": {
+    "id": 27,
+    "full_name": "Acme Corp",
+    "email": "contact@acme.com",
+    "phone": "+1234567890"
+  }
+}
+```
+
+**Errors:**
+- `403 Forbidden` – current user is not a vendor
+
+---
+
+## Vendor: Update Profile
+
+`PATCH /v1/vendor_profile`
+
+Updates the authenticated vendor's profile.
+
+**Auth:** Bearer token (must be a vendor user)
 **Body:**
 
 ```json
 {
   "vendor_profile": {
     "image_path": "/cdn/vendor.png",
-    "vendor_name": "Acme Corp",
-    "vendor_description": "Premium partner booth."
+    "description": "Updated description",
+    "category": "Technology",
+    "person_in_charge": "Jane Doe",
+    "address": "456 New St, City, Country",
+    "notes": "Updated notes"
   }
 }
 ```
@@ -51,20 +89,27 @@ Updates the authenticated vendor's profile for a specific event. The profile con
 ```json
 {
   "id": 12,
-  "group_id": 4,
   "vendor_id": 27,
   "image_path": "/cdn/vendor.png",
-  "vendor_name": "Acme Corp",
-  "vendor_description": "Premium partner booth.",
+  "description": "Updated description",
+  "category": "Technology",
+  "person_in_charge": "Jane Doe",
+  "address": "456 New St, City, Country",
+  "notes": "Updated notes",
   "created_at": "2025-11-10T07:20:00Z",
-  "updated_at": "2025-11-10T08:15:12Z"
+  "updated_at": "2025-11-18T09:30:00Z",
+  "vendor": {
+    "id": 27,
+    "full_name": "Acme Corp",
+    "email": "contact@acme.com",
+    "phone": "+1234567890"
+  }
 }
 ```
 
 **Errors:**
-- `404 Not Found` – group missing
-- `403 Forbidden` – current user is not the assigned vendor for this group
-- `422 Unprocessable Content` – validation errors (e.g., duplicate profile)
+- `403 Forbidden` – current user is not a vendor
+- `422 Unprocessable Content` – validation errors
 
 ---
 

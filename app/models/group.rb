@@ -4,7 +4,6 @@ class Group < ApplicationRecord
   has_many :users, through: :group_members
   has_many :group_affiliates, dependent: :destroy
   has_many :vendors, through: :group_affiliates, source: :vendor
-  has_many :vendor_profiles, dependent: :destroy
 
   # --- Validations ---
   validates :name, presence: true

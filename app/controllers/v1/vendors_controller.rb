@@ -2,7 +2,7 @@ module V1
   class VendorsController < ApplicationController
     before_action :authenticate_user!
     before_action :authorize_organizer!
-    before_action :set_vendor, only: [:show, :update, :toggle_status]
+    before_action :set_vendor, only: [:show, :update, :toggle_status, :destroy]
 
     # GET /v1/vendors
     def index
@@ -65,6 +65,14 @@ module V1
       end
     end
 
+    # DELETE /v1/vendors/:id
+    def destroy
+      return render_cannot_delete_self if deleting_self?
+
+      @vendor.destroy
+      render json: format_vendor(@vendor), status: :ok
+    end
+
     private
 
     def set_vendor
@@ -108,6 +116,14 @@ module V1
         render json: { error: 'Forbidden', message: 'Only organizers can manage vendors.' },
                status: :forbidden
       end
+    end
+
+    def deleting_self?
+      @vendor.id == current_user.id
+    end
+
+    def render_cannot_delete_self
+      render json: { error: 'You cannot delete your own account' }, status: :unprocessable_content
     end
   end
 end

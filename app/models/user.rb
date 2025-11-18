@@ -14,6 +14,7 @@ class User < ApplicationRecord
   after_initialize :set_default_role, if: :new_record?
   after_initialize :set_default_status, if: :new_record?
   before_create :generate_jti
+  after_create :create_vendor_profile_if_vendor
 
   # --- Validations ---
   validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -41,6 +42,9 @@ class User < ApplicationRecord
   # Event vendor assignments (for exhibitors/merchants)
   has_many :event_vendor_assignments, class_name: 'EventVendor', foreign_key: 'vendor_id', dependent: :destroy
   has_many :vendor_events, through: :event_vendor_assignments, source: :event
+  
+  # Vendor profile (for vendors only - one profile per vendor)
+  has_one :vendor_profile, foreign_key: 'vendor_id', dependent: :destroy
 
   # 2. GROUP MEMBERSHIPS
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
@@ -143,5 +147,11 @@ class User < ApplicationRecord
 
   def generate_jti
     self.jti = SecureRandom.uuid
+  end
+  
+  def create_vendor_profile_if_vendor
+    return unless vendor?
+    
+    VendorProfile.create(vendor: self)
   end
 end

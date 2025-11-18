@@ -2,11 +2,12 @@
 
 FactoryBot.define do
   factory :vendor_profile do
-    association :group
-    association :vendor, factory: :user
-    vendor_name { 'Vendor Name' }
-    vendor_description { 'Vendor description' }
+    association :vendor, factory: :user, role: :vendor
+    description { 'Vendor description' }
     image_path { nil }
-    manager_id { nil }
+    category { 'Technology' }
+    person_in_charge { 'John Doe' }
+    address { '123 Main St, City, Country' }
+    notes { 'Additional notes' }
   end
 end

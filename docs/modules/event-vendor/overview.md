@@ -7,14 +7,14 @@ It covers profile management and visitor stamp tracking for non-ticket events.
 
 | Area | Summary | Docs |
 | --- | --- | --- |
-| Vendor Profiles | Auto-generated per group + editable details | [`vendor-profiles.md`](vendor-profiles.md) |
+| Vendor Profiles | One profile per vendor with business details | [`vendor-profiles.md`](vendor-profiles.md) |
 | Visitor Stamps | Stamp tracking system for visitors visiting vendors | *(below)* |
 | STI Polymorphism | Exhibitor and Merchant vendor types | [`sti-polymorphism.md`](sti-polymorphism.md) |
 
 ## Architecture Highlights
 
-- **Group Affiliations:** `GroupAffiliate` (assigning a vendor to a group) automatically creates a `VendorProfile` (see callback in `app/models/group_affiliate.rb`).
-- **Profiles:** `VendorProfile` stores marketing copy and media for the vendor within a group.
+- **Group Affiliations:** `GroupAffiliate` assigns a vendor to a group for organizational purposes.
+- **Profiles:** `VendorProfile` is vendor-centric (one profile per vendor) and stores business information like category, description, contact details, and address. Profiles are automatically created when a vendor user is created.
 - **Event Vendors:** `EventVendor` uses Single Table Inheritance (STI) to support two vendor types:
   - **Exhibitor**: For ticket-based events (`event.use_ticket = true`), can be independent or owned by an `ExhibitorOwner`
   - **Merchant**: For non-ticket events (`event.use_ticket = false`), base implementation

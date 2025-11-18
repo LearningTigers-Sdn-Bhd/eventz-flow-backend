@@ -119,13 +119,19 @@ Vendors cannot be added as group members. They are only associated with groups t
 
 ---
 
-## Automatic Vendor Profile Creation
+## Vendor Profile Management
 
-When a vendor is assigned to a group via `GroupAffiliate`, a single `VendorProfile` is automatically created for that **group/vendor** pair (e.g., “KFC @ Imago Mall”). This profile stays at the group level.
+**Note:** As of the vendor-centric refactor, `VendorProfile` is now independent of groups. Each vendor has exactly one profile that is automatically created when the vendor user is created.
 
-Later, when that same vendor is added to an event, the system creates an `EventVendor` record (e.g., “KFC at Christmas Event”). The event record reuses the existing VendorProfile—no second profile is created. Event-specific details (redirect URL, posters, etc.) live on `EventVendor`.
+- **Vendor Profile:** One profile per vendor user (stored in `vendor_profiles` table)
+- **Group Affiliates:** Links vendors to groups for organizational purposes only
+- **Event Vendors:** Links vendors to specific events with event-specific data (redirect URL, posters, etc.)
 
-Event-level profile settings are updated through `PATCH /v1/events/:event_id/vendors/:id/profile` (see [`vendor-profiles.md`](../event-vendor/vendor-profiles.md) for details). The `:id` here is the `EventVendor.id` that links the vendor to a specific event.
+Vendor profiles can be managed through:
+- `GET/PATCH /v1/vendor_profile` - Vendors manage their own profile
+- `GET/PATCH /v1/vendors/:vendor_id/profile` - Organizers/org_owners manage vendor profiles
+
+See [`vendor-profiles.md`](../event-vendor/vendor-profiles.md) for complete API documentation.
 
 ---
 

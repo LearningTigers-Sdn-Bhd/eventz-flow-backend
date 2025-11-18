@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_17_095634) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -240,16 +240,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_17_095634) do
   end
 
   create_table "vendor_profiles", force: :cascade do |t|
-    t.bigint "group_id", null: false
     t.bigint "vendor_id", null: false
-    t.bigint "manager_id"
     t.string "image_path"
-    t.string "vendor_name", default: "Vendor Name", null: false
-    t.text "vendor_description"
+    t.text "description"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["group_id", "vendor_id"], name: "index_vendor_profiles_on_group_id_and_vendor_id", unique: true
-    t.index ["group_id"], name: "index_vendor_profiles_on_group_id"
+    t.string "category"
+    t.string "person_in_charge"
+    t.text "address"
+    t.text "notes"
+    t.index ["vendor_id"], name: "index_vendor_profiles_on_vendor_id", unique: true
   end
 
   create_table "visitor_vendor_stamps", force: :cascade do |t|
@@ -298,8 +298,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_17_095634) do
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
-  add_foreign_key "vendor_profiles", "groups"
-  add_foreign_key "vendor_profiles", "users", column: "manager_id"
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
   add_foreign_key "visitor_vendor_stamps", "event_vendors"
   add_foreign_key "visitor_vendor_stamps", "visitors"

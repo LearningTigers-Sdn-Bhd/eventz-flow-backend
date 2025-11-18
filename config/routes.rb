@@ -122,16 +122,16 @@ Rails.application.routes.draw do
     resources :groups do
       resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
       resources :affiliates, controller: 'group_affiliates', only: [:index, :create, :destroy]
-      resources :vendors, only: [], controller: 'vendor_profiles' do
-        member do
-          patch :profile, to: 'vendor_profiles#update'
-        end
-      end
     end
+    
+    # Vendor profile management (vendor-centric, not group-specific)
+    resource :vendor_profile, only: [:show, :update]
 
-    resources :vendors, only: [:index, :show, :create, :update] do
+    resources :vendors, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
+        get :profile, to: 'vendor_profiles#show'
+        patch :profile, to: 'vendor_profiles#update'
       end
     end
 

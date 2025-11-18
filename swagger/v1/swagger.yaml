@@ -4,65 +4,6 @@ info:
   title: API V1
   version: v1
 paths:
-  "/v1/auth/password":
-    patch:
-      summary: Update password for authenticated user
-      tags:
-      - Auth
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        description: Bearer JWT token
-        schema:
-          type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                current_password:
-                  type: string
-                  example: OldPass123!
-                new_password:
-                  type: string
-                  example: NewPass123!
-                confirm_new_password:
-                  type: string
-                  example: NewPass123!
-              required:
-              - current_password
-              - new_password
-              - confirm_new_password
-      responses:
-        '200':
-          description: Password updated successfully; returns fresh tokens
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      access_token:
-                        type: string
-                      refresh_token:
-                        type: string
-                      expires_at:
-                        type: string
-        '401':
-          description: Unauthorized - current password incorrect or missing token
-        '422':
-          description: Unprocessable Entity - validation error (e.g., passwords do not match)
   "/v1/metrics/events_overview":
     get:
       summary: Get all accessible events with their analytics data
@@ -529,6 +470,46 @@ paths:
           description: Forbidden (Only org_owner can revoke API keys)
         '401':
           description: Unauthorized (Empty token)
+  "/v1/auth/password":
+    patch:
+      summary: Update password for authenticated user
+      tags:
+      - Auth
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Bearer JWT token
+      responses:
+        '200':
+          description: Password updated successfully
+        '401':
+          description: Current password incorrect
+        '422':
+          description: Validation error (password mismatch)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_password:
+                  type: string
+                  example: OldPass123!
+                new_password:
+                  type: string
+                  example: NewPass123!
+                confirm_new_password:
+                  type: string
+                  example: NewPass123!
+              required:
+              - current_password
+              - new_password
+              - confirm_new_password
   "/v1/events/{event_id}/metrics/total_tickets":
     get:
       summary: Get total tickets count for an event
@@ -1171,8 +1152,8 @@ paths:
                     example: Forbidden
                   message:
                     type: string
-                    example: Only an organization owner or organizer can manage
-                      event staff.
+                    example: Only an organization owner or organizer can manage event
+                      staff.
                 required:
                 - error
                 - message
@@ -1221,8 +1202,8 @@ paths:
                     example: Forbidden
                   message:
                     type: string
-                    example: Only an organization owner or organizer can manage
-                      event staff.
+                    example: Only an organization owner or organizer can manage event
+                      staff.
                 required:
                 - error
                 - message
@@ -1279,6 +1260,395 @@ paths:
           description: Forbidden for member
         '404':
           description: Not Found when user not assigned
+  "/v1/events/{event_id}/vendors/{id}/profile":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Event Vendor ID
+      required: true
+      schema:
+        type: integer
+    - name: Authorization
+      in: header
+      description: Bearer token
+      schema:
+        type: string
+    get:
+      summary: Get event vendor profile
+      tags:
+      - Event Vendor Profiles
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  event_id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  redirect_url:
+                    type: string
+                  poster_url:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+        '403':
+          description: Forbidden - not the vendor
+    patch:
+      summary: Update event vendor profile
+      tags:
+      - Event Vendor Profiles
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Profile updated successfully
+        '403':
+          description: Forbidden - not the vendor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile:
+                  type: object
+                  properties:
+                    redirect_url:
+                      type: string
+                    poster_url:
+                      type: string
+  "/v1/events/{event_id}/vendors":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: ID of the parent event
+      schema:
+        type: integer
+    get:
+      summary: Lists all vendors assigned to an event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: event_id
+        in: path
+        required: true
+        description: Event ID
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Returns list of vendors assigned to the event
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    event_id:
+                      type: integer
+                    vendor_id:
+                      type: integer
+                    type:
+                      type: string
+                      enum:
+                      - Exhibitor
+                      - Merchant
+                      description: Vendor type based on event.use_ticket
+                    redirect_url:
+                      type: string
+                    poster_url:
+                      type: string
+                      nullable: true
+                    created_at:
+                      type: string
+                      format: date_time
+                    updated_at:
+                      type: string
+                      format: date_time
+                    vendor:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        email:
+                          type: string
+                        full_name:
+                          type: string
+                          nullable: true
+                        phone:
+                          type: string
+                          nullable: true
+                        role:
+                          type: string
+                        status:
+                          type: string
+                    exhibitor_owner:
+                      type: object
+                      nullable: true
+                      description: ExhibitorOwner object (only present for Exhibitor
+                        type)
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                          nullable: true
+                        contact_email:
+                          type: string
+                          nullable: true
+                        contact_phone:
+                          type: string
+                          nullable: true
+                  required:
+                  - id
+                  - event_id
+                  - vendor_id
+                  - type
+                  - redirect_url
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    post:
+      summary: Creates a new vendor for an event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: event_id
+        in: path
+        required: true
+        description: Event ID
+        schema:
+          type: integer
+      responses:
+        '201':
+          description: Merchant created and ignores exhibitor_owner_id if provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  event_id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  type:
+                    type: string
+                    enum:
+                    - Exhibitor
+                    - Merchant
+                    description: Vendor type based on event.use_ticket
+                  redirect_url:
+                    type: string
+                  poster_url:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      full_name:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                      role:
+                        type: string
+                      status:
+                        type: string
+                  exhibitor_owner:
+                    type: object
+                    nullable: true
+                    description: ExhibitorOwner object (only present for Exhibitor
+                      type)
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      contact_email:
+                        type: string
+                        nullable: true
+                      contact_phone:
+                        type: string
+                        nullable: true
+                required:
+                - id
+                - event_id
+                - vendor_id
+                - type
+                - redirect_url
+        '422':
+          description: Exhibitor creation fails with invalid exhibitor_owner_id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '403':
+          description: Forbidden for non-event-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Forbidden
+                  message:
+                    type: string
+                    example: Only event admins can perform this action.
+                required:
+                - error
+                - message
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor:
+                  type: object
+                  properties:
+                    vendor_id:
+                      type: integer
+                      description: ID of existing vendor user (optional)
+                    full_name:
+                      type: string
+                      example: John Doe
+                    email:
+                      type: string
+                      example: vendor@example.com
+                    phone:
+                      type: string
+                      nullable: true
+                      example: "+1234567890"
+                    password:
+                      type: string
+                      example: securepassword
+                    password_confirmation:
+                      type: string
+                      example: securepassword
+                    redirect_url:
+                      type: string
+                      example: https://example.com
+                      description: Redirect URL for vendor
+                    exhibitor_owner_id:
+                      type: integer
+                      nullable: true
+                      description: ID of ExhibitorOwner (required for Exhibitor type
+                        when event.use_ticket=true, ignored for Merchant type)
+                  required:
+                  - full_name
+                  - password
+                  - password_confirmation
+              required:
+              - vendor
+        required: true
+  "/v1/events/{event_id}/vendors/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Vendor Assignment ID
+      schema:
+        type: integer
+    delete:
+      summary: Removes a vendor from an event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Vendor removed successfully
+        '403':
+          description: Forbidden for non-event-admin
+        '404':
+          description: Event vendor not found
   "/v1/events":
     post:
       summary: Creates a new event (ORG_OWNER or ORGANIZER ONLY)
@@ -1330,10 +1700,6 @@ paths:
                     nullable: true
                   labels_data:
                     type: object
-                    example:
-                      Label 1: Role
-                      Label 2: Company
-                      Label 3: Position
                   payment_status:
                     type: string
                     example: paid
@@ -1408,17 +1774,15 @@ paths:
         description: Set to "true" to show only archived events
         schema:
           type: string
-          example: "true"
       - name: full
         in: query
         required: false
         description: Set to "true" to show all events including archived ones
         schema:
           type: string
-          example: "true"
       responses:
         '200':
-          description: Empty list for member user (no assigned events)
+          description: Lists all events including archived
           content:
             application/json:
               schema:
@@ -1490,10 +1854,6 @@ paths:
                     nullable: true
                   labels_data:
                     type: object
-                    example:
-                      Label 1: Role
-                      Label 2: Company
-                      Label 3: Position
                   payment_status:
                     type: string
                     example: paid
@@ -1570,10 +1930,6 @@ paths:
                     nullable: true
                   labels_data:
                     type: object
-                    example:
-                      Label 1: Role
-                      Label 2: Company
-                      Label 3: Position
                   payment_status:
                     type: string
                     example: paid
@@ -1641,7 +1997,7 @@ paths:
     parameters:
     - name: id
       in: path
-      description: ID of the Event
+      description: Event ID
       required: true
       schema:
         type: integer
@@ -1667,7 +2023,7 @@ paths:
     parameters:
     - name: id
       in: path
-      description: ID of the Event
+      description: Event ID
       required: true
       schema:
         type: integer
@@ -1687,14 +2043,738 @@ paths:
       responses:
         '200':
           description: Event successfully restored
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Event'
         '403':
           description: Forbidden (Member user)
         '404':
           description: Event not found
+  "/v1/groups/{group_id}/affiliates":
+    parameters:
+    - name: group_id
+      in: path
+      description: Group ID
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Assigns a vendor to a group (ORG_OWNER ONLY)
+      tags:
+      - Group Affiliates
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Vendor assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  group_id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      full_name:
+                        type: string
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+        '403':
+          description: Forbidden (Not Org Owner)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor_id:
+                  type: integer
+              required:
+              - vendor_id
+  "/v1/groups/{group_id}/affiliates/{id}":
+    parameters:
+    - name: group_id
+      in: path
+      description: Group ID
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Affiliate ID
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Removes vendor from a group (ORG_OWNER ONLY)
+      tags:
+      - Group Affiliates
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Vendor removed
+        '403':
+          description: Forbidden (Not Org Owner)
+        '404':
+          description: No affiliate found
+  "/v1/groups/{group_id}/members":
+    parameters:
+    - name: group_id
+      in: path
+      description: Group ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Lists group members
+      tags:
+      - Group Members
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Members retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    user_id:
+                      type: integer
+                    user:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        email:
+                          type: string
+                        full_name:
+                          type: string
+                        role:
+                          type: string
+                    has_manager_access:
+                      type: boolean
+                    created_at:
+                      type: string
+                      format: date_time
+                    updated_at:
+                      type: string
+                      format: date_time
+        '403':
+          description: Forbidden
+    post:
+      summary: Adds a member to a group
+      tags:
+      - Group Members
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: group_id
+        in: path
+        description: Group ID
+        required: true
+        schema:
+          type: integer
+      responses:
+        '201':
+          description: Member added by group manager
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  user_id:
+                    type: integer
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      full_name:
+                        type: string
+                      role:
+                        type: string
+                  has_manager_access:
+                    type: boolean
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+        '403':
+          description: Forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: integer
+                has_manager_access:
+                  type: boolean
+              required:
+              - user_id
+  "/v1/groups/{group_id}/members/{id}":
+    parameters:
+    - name: group_id
+      in: path
+      description: Group ID
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Group Member ID
+      required: true
+      schema:
+        type: integer
+    patch:
+      summary: Updates a group member
+      tags:
+      - Group Members
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  user_id:
+                    type: integer
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      full_name:
+                        type: string
+                      role:
+                        type: string
+                  has_manager_access:
+                    type: boolean
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                has_manager_access:
+                  type: boolean
+    delete:
+      summary: Removes a member from a group
+      tags:
+      - Group Members
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Member removed
+  "/v1/groups":
+    post:
+      summary: Creates a new group (ORG_OWNER ONLY)
+      tags:
+      - Groups
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Group created by organizer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Mall A Group
+                  description:
+                    type: string
+                    example: Group for managing vendors in Mall A
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                required:
+                - id
+                - name
+                - created_at
+                - updated_at
+        '403':
+          description: Forbidden (Not Org Owner or Organizer)
+        '401':
+          description: Unauthorized
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                manager_id:
+                  type: integer
+                  description: 'Optional: User ID to assign as group manager'
+              required:
+              - name
+    get:
+      summary: Lists groups visible to the user
+      tags:
+      - Groups
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Member sees groups they belong to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    name:
+                      type: string
+                      example: Mall A Group
+                    description:
+                      type: string
+                      example: Group for managing vendors in Mall A
+                    created_at:
+                      type: string
+                      format: date_time
+                    updated_at:
+                      type: string
+                      format: date_time
+                  required:
+                  - id
+                  - name
+                  - created_at
+                  - updated_at
+  "/v1/groups/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Group ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Retrieves a specific group
+      tags:
+      - Groups
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Group found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Mall A Group
+                  description:
+                    type: string
+                    example: Group for managing vendors in Mall A
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                required:
+                - id
+                - name
+                - created_at
+                - updated_at
+        '403':
+          description: Forbidden (Not authorized to view)
+        '404':
+          description: Group not found
+    patch:
+      summary: Updates a group (ORG_OWNER or GROUP MANAGER)
+      tags:
+      - Groups
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: Group ID
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Group updated by group manager
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Mall A Group
+                  description:
+                    type: string
+                    example: Group for managing vendors in Mall A
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                required:
+                - id
+                - name
+                - created_at
+                - updated_at
+        '403':
+          description: Forbidden (Not org owner or group manager)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+    delete:
+      summary: Deletes a group (ORG_OWNER ONLY)
+      tags:
+      - Groups
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: Group ID
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Group deleted
+        '403':
+          description: Forbidden (Not Org Owner)
+  "/v1/imports/tickets":
+    post:
+      summary: Import tickets from Excel file
+      tags:
+      - Imports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: dry_run
+        in: query
+        required: false
+        description: If true, validate and report without writing changes
+        schema:
+          type: boolean
+      - name: full
+        in: query
+        required: false
+        description: If true, use full import mode with additional validation and
+          processing
+        schema:
+          type: boolean
+      - name: no_label
+        in: query
+        required: false
+        description: When true, use sequential Label N keys; when false, use header
+          names as keys
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Allows same phone/email when names differ (business rule)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total number of tickets processed
+                      created:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets created
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of created ticket data
+                      updated:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets updated (more complete
+                              rows or data changes)
+                          data:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                model:
+                                  type: string
+                                id:
+                                  type: string
+                                changed_fields:
+                                  type: array
+                                  items:
+                                    type: string
+                                  description: Array of field names that changed (e.g.,
+                                    ["payment_status", "custom_fields_data"])
+                            description: Array of updated ticket data with changed_fields
+                              tracking
+                        description: Present only when tickets were updated
+                      skipped:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of tickets skipped (duplicates)
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of skipped ticket data
+                      duplicates_in_file:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of duplicate rows collapsed within
+                              the file
+                          data:
+                            type: array
+                            items:
+                              type: object
+                            description: Array of duplicate ticket data
+                        description: Present only when duplicates were found in the
+                          file
+                      errors:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of errors encountered
+                          data:
+                            type: array
+                            items:
+                              type: string
+                            description: Array of error messages
+                    required:
+                    - total
+                    - created
+                    - skipped
+                    - errors
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - No file provided or import failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: Excel file (.xlsx) with ticket data
+  "/v1/events/{event_id}/vendors/{id}/stamp_count":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: Event Vendor ID
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Gets stamp count for a vendor
+      tags:
+      - Stamp Analytics
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Stamp count retrieved
+        '404':
+          description: Event vendor not found
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id
@@ -1721,17 +2801,15 @@ paths:
         description: Set to "true" to show only archived tickets
         schema:
           type: string
-          example: "true"
       - name: full
         in: query
         required: false
         description: Set to "true" to show all tickets including archived ones
         schema:
           type: string
-          example: "true"
       responses:
         '200':
-          description: Returns list of tickets for authorized staff
+          description: Lists all tickets including archived
           content:
             application/json:
               schema:
@@ -2150,7 +3228,7 @@ paths:
                       type: string
                       example: credit_card
     delete:
-      summary: Archives a ticket (Soft Delete)
+      summary: Cancels/Deletes a ticket (Soft Delete)
       tags:
       - Tickets
       security:
@@ -2163,7 +3241,7 @@ paths:
           type: string
       responses:
         '204':
-          description: Ticket successfully archived by Organizer
+          description: Ticket successfully canceled by Organizer
         '403':
           description: Forbidden for event staff
         '404':
@@ -2172,18 +3250,17 @@ paths:
     parameters:
     - name: event_id
       in: path
-      description: ID of the parent Event
       required: true
       schema:
         type: integer
     - name: id
       in: path
-      description: Ticket ID (public_id UUID or internal ID)
+      description: Ticket Public ID (UUID)
       required: true
       schema:
         type: string
     delete:
-      summary: Force deletes a ticket (hard delete)
+      summary: Force deletes a ticket (Hard Delete)
       tags:
       - Tickets
       security:
@@ -2205,13 +3282,12 @@ paths:
     parameters:
     - name: event_id
       in: path
-      description: ID of the parent Event
       required: true
       schema:
         type: integer
     - name: id
       in: path
-      description: Ticket ID (public_id UUID or internal ID)
+      description: Ticket Public ID (UUID)
       required: true
       schema:
         type: string
@@ -2238,13 +3314,12 @@ paths:
     parameters:
     - name: event_id
       in: path
-      description: ID of the parent Event
       required: true
       schema:
         type: integer
     - name: id
       in: path
-      description: Ticket ID (public_id UUID or internal ID)
+      description: Ticket Public ID (UUID)
       required: true
       schema:
         type: string
@@ -2263,10 +3338,6 @@ paths:
       responses:
         '200':
           description: Ticket successfully restored by Organizer
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Ticket'
         '403':
           description: Forbidden for event staff
         '404':
@@ -2580,153 +3651,6 @@ paths:
                 properties:
                   error:
                     type: string
-  "/v1/imports/tickets":
-    post:
-      summary: Import tickets from Excel file
-      description: |
-        Imports tickets from an uploaded Excel (.xlsx) file.
-        - Empty custom label cells are preserved as empty strings in `custom_fields_data` using the current event label schema.
-        - When `no_label` is true, sequential keys like `"Label 1"` are used; when false, machine keys derived from headers (e.g., `role`) are used.
-      tags:
-      - Imports
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        schema:
-          type: string
-      - name: dry_run
-        in: query
-        required: false
-        description: If true, validate and report without writing changes
-        schema:
-          type: boolean
-      - name: full
-        in: query
-        required: false
-        description: If true, use full import mode with additional validation and processing
-        schema:
-          type: boolean
-      - name: no_label
-        in: query
-        required: false
-        description: When true, use sequential Label N keys; when false, use header names as keys
-        schema:
-          type: boolean
-          default: false
-      responses:
-        '200':
-          description: Tickets imported successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                        description: Total number of tickets processed
-                      created:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of tickets created
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of created ticket data
-                      updated:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of tickets updated (more complete rows)
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of updated ticket data
-                        description: Present only when tickets were updated
-                      skipped:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of tickets skipped (duplicates)
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of skipped ticket data
-                      duplicates_in_file:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of duplicate rows collapsed within the file
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of duplicate ticket data
-                        description: Present only when duplicates were found in the file
-                      errors:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of errors encountered
-                          data:
-                            type: array
-                            items:
-                              type: string
-                            description: Array of error messages
-                    required:
-                    - total
-                    - created
-                    - skipped
-                    - errors
-        '401':
-          description: Unauthorized - Missing or invalid token
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-        '422':
-          description: Unprocessable Entity - No file provided or import failed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: file
-        required: true
-        description: Excel file (.xlsx) with ticket data
   "/v1/users/{id}/role":
     put:
       summary: Updates a global user's role
@@ -2997,6 +3921,566 @@ paths:
                 phone:
                   type: string
                   example: '1234567890'
+  "/v1/vendor_profile":
+    parameters:
+    - name: Authorization
+      in: header
+      description: Bearer token
+      schema:
+        type: string
+    get:
+      summary: Get vendor profile
+      tags:
+      - Vendor Profiles
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Vendor profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  image_path:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
+                  category:
+                    type: string
+                    nullable: true
+                  person_in_charge:
+                    type: string
+                    nullable: true
+                  address:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+        '403':
+          description: Forbidden - not a vendor
+    patch:
+      summary: Update vendor profile (own)
+      tags:
+      - Vendor Profiles
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Vendor profile updated with partial data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  image_path:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
+                  category:
+                    type: string
+                    nullable: true
+                  person_in_charge:
+                    type: string
+                    nullable: true
+                  address:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+        '403':
+          description: Forbidden - not a vendor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor_profile:
+                  type: object
+                  properties:
+                    image_path:
+                      type: string
+                      nullable: true
+                      example: "/images/vendor.jpg"
+                    description:
+                      type: string
+                      nullable: true
+                      example: Vendor description
+                    category:
+                      type: string
+                      nullable: true
+                      example: Technology
+                    person_in_charge:
+                      type: string
+                      nullable: true
+                      example: John Doe
+                    address:
+                      type: string
+                      nullable: true
+                      example: 123 Main St
+                    notes:
+                      type: string
+                      nullable: true
+                      example: Additional notes
+              required:
+              - vendor_profile
+  "/v1/vendors/{vendor_id}/profile":
+    parameters:
+    - name: vendor_id
+      in: path
+      description: Vendor ID
+      required: true
+      schema:
+        type: integer
+    - name: Authorization
+      in: header
+      description: Bearer token
+      schema:
+        type: string
+    get:
+      summary: Get vendor profile by ID (organizer/org_owner - same action as vendor)
+      tags:
+      - Vendor Profiles
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Vendor profile retrieved by creator organizer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  image_path:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
+                  category:
+                    type: string
+                    nullable: true
+                  person_in_charge:
+                    type: string
+                    nullable: true
+                  address:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+                      created_by_id:
+                        type: integer
+                        nullable: true
+        '403':
+          description: Forbidden - organizer who did not create vendor
+        '404':
+          description: Vendor not found
+    patch:
+      summary: Update vendor profile by ID (organizer/org_owner - same action as vendor)
+      tags:
+      - Vendor Profiles
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Vendor profile updated by creator organizer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  vendor_id:
+                    type: integer
+                  image_path:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
+                  category:
+                    type: string
+                    nullable: true
+                  person_in_charge:
+                    type: string
+                    nullable: true
+                  address:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date_time
+                  updated_at:
+                    type: string
+                    format: date_time
+                  vendor:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+                      created_by_id:
+                        type: integer
+                        nullable: true
+        '403':
+          description: Forbidden - organizer who did not create vendor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor_profile:
+                  type: object
+                  properties:
+                    image_path:
+                      type: string
+                      nullable: true
+                    description:
+                      type: string
+                      nullable: true
+                    category:
+                      type: string
+                      nullable: true
+                    person_in_charge:
+                      type: string
+                      nullable: true
+                    address:
+                      type: string
+                      nullable: true
+                    notes:
+                      type: string
+                      nullable: true
+              required:
+              - vendor_profile
+  "/v1/vendors":
+    post:
+      summary: Creates a new vendor user
+      tags:
+      - Vendors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Vendor created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  email:
+                    type: string
+                  full_name:
+                    type: string
+                  phone:
+                    type: string
+                    nullable: true
+                  role:
+                    type: string
+                    example: vendor
+                  status:
+                    type: string
+                required:
+                - id
+                - email
+                - full_name
+                - role
+                - status
+        '422':
+          description: Validation error - password mismatch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '403':
+          description: Forbidden for non-organizer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Forbidden
+                  message:
+                    type: string
+                    example: Only organizers can create vendors.
+                required:
+                - error
+                - message
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor:
+                  type: object
+                  properties:
+                    full_name:
+                      type: string
+                      example: John Doe
+                    email:
+                      type: string
+                      example: vendor@example.com
+                    phone:
+                      type: string
+                      nullable: true
+                      example: "+1234567890"
+                    password:
+                      type: string
+                      example: securepassword
+                    password_confirmation:
+                      type: string
+                      example: securepassword
+                  required:
+                  - full_name
+                  - password
+                  - password_confirmation
+              required:
+              - vendor
+        required: true
+  "/v1/events/{event_id}/visitors":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Lists visitors for an event
+      tags:
+      - Visitors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Visitors retrieved successfully
+        '401':
+          description: Unauthorized
+    post:
+      summary: Creates a visitor
+      tags:
+      - Visitors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Visitor created
+        '422':
+          description: Validation error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visitor:
+                  type: object
+                  properties:
+                    full_name:
+                      type: string
+                    email:
+                      type: string
+                    phone:
+                      type: string
+                    gender:
+                      type: string
+                    age:
+                      type: integer
+                  required:
+                  - full_name
+  "/v1/events/{event_id}/visitors/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: Visitor public_id or ID
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Shows a visitor
+      tags:
+      - Visitors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Visitor retrieved
+        '404':
+          description: Visitor not found
+    patch:
+      summary: Updates a visitor
+      tags:
+      - Visitors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Visitor updated
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visitor:
+                  type: object
+                  properties:
+                    full_name:
+                      type: string
+                    email:
+                      type: string
+                    phone:
+                      type: string
+    delete:
+      summary: Deletes a visitor
+      tags:
+      - Visitors
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Visitor deleted
 servers:
 - url: https://{defaultHost}
   variables:
