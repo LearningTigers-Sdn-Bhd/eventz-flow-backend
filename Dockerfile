@@ -7,8 +7,12 @@ FROM registry.docker.com/library/ruby:$RUBY_VERSION-slim as base
 # Rails app lives here
 WORKDIR /rails
 
-# Set production environment
-ENV RAILS_ENV="production" \
+# Accept build arguments
+ARG RAILS_ENV=production
+ARG RAILS_MASTER_KEY
+
+# Set environment
+ENV RAILS_ENV="${RAILS_ENV}" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development"
@@ -16,6 +20,11 @@ ENV RAILS_ENV="production" \
 
 # Throw-away build stage to reduce size of final image
 FROM base as build
+
+# Re-declare build args for this stage
+ARG RAILS_ENV
+ARG RAILS_MASTER_KEY
+ENV RAILS_MASTER_KEY="${RAILS_MASTER_KEY}"
 
 # Install packages needed to build gems
 RUN apt-get update -qq && \
