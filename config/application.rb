@@ -65,5 +65,9 @@ module EventzFlowApi
     # --- 2. Active Job Adapter (for Sidekiq) ---
     # Set the queue adapter for webhooks and notifications
     config.active_job.queue_adapter = :sidekiq
+
+    # --- 3. Timezone Configuration (Rails 8.1 compatibility) ---
+    # Preserve full timezone information in time conversions
+    config.active_support.to_time_preserves_timezone = :zone
   end
 end
