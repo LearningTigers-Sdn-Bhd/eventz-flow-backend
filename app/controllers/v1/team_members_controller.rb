@@ -89,7 +89,7 @@
     if current_user.org_owner?
       org_owner_visible_users
     else
-      current_user.created_users
+      current_user.created_users.where(role: :member)
     end
   end
 

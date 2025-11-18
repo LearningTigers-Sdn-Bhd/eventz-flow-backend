@@ -6,7 +6,7 @@ module V1
 
     # GET /v1/vendors
     def index
-      vendors = User.where(role: :vendor)
+      vendors = policy_scope(User).where(role: :vendor)
 
       render json: vendors.map { |vendor| format_vendor(vendor) }, status: :ok
     end
@@ -95,10 +95,26 @@ module V1
         )
       end
 
+      # Include vendor_profile attributes if provided
+      if params[:vendor][:vendor_profile_attributes].present?
+        permitted.merge!(
+          params.require(:vendor).permit(vendor_profile_attributes: [
+            :image_path,
+            :description,
+            :category,
+            :person_in_charge,
+            :address,
+            :notes
+          ])
+        )
+      end
+
       permitted
     end
 
     def format_vendor(vendor)
+      vendor_profile = vendor.vendor_profile
+
       {
         id: vendor.id,
         email: vendor.email,
@@ -107,7 +123,23 @@ module V1
         role: vendor.role,
         status: vendor.status,
         created_at: vendor.created_at.iso8601,
-        updated_at: vendor.updated_at.iso8601
+        updated_at: vendor.updated_at.iso8601,
+        vendor_profile: vendor_profile ? format_vendor_profile(vendor_profile) : nil
+      }
+    end
+
+    def format_vendor_profile(vendor_profile)
+      {
+        id: vendor_profile.id,
+        vendor_id: vendor_profile.vendor_id,
+        image_path: vendor_profile.image_path,
+        description: vendor_profile.description,
+        category: vendor_profile.category,
+        person_in_charge: vendor_profile.person_in_charge,
+        address: vendor_profile.address,
+        notes: vendor_profile.notes,
+        created_at: vendor_profile.created_at.iso8601,
+        updated_at: vendor_profile.updated_at.iso8601
       }
     end
 

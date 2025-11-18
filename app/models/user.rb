@@ -45,6 +45,7 @@ class User < ApplicationRecord
   
   # Vendor profile (for vendors only - one profile per vendor)
   has_one :vendor_profile, foreign_key: 'vendor_id', dependent: :destroy
+  accepts_nested_attributes_for :vendor_profile
 
   # 2. GROUP MEMBERSHIPS
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
