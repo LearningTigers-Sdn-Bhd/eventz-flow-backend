@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -78,6 +78,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
     t.bigint "exhibitor_owner_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "qr_url"
     t.index ["event_id", "vendor_id"], name: "index_event_vendors_on_event_and_vendor", unique: true
     t.index ["exhibitor_owner_id"], name: "index_event_vendors_on_exhibitor_owner_id"
     t.index ["type"], name: "index_event_vendors_on_type"
