@@ -28,6 +28,23 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
 
   end
 
+  # Configuration for staging
+  allow do
+    # Add your staging frontend domains here
+    origins ENV.fetch('STAGING_FRONTEND_URL', 'https://staging.eventzflow.com'),
+            'https://staging.eventzflow.com',
+            'https://staging-frontend.eventzflow.com',
+            'http://staging.eventzflow.com',  # Include http if testing without SSL
+            /\Ahttps:\/\/staging.*\.eventzflow\.com\z/  # Wildcard for staging subdomains
+
+    resource '*',
+      headers: :any,
+      methods: [:get, :post, :put, :patch, :delete, :options, :head],
+      credentials: true,
+      expose: ['Authorization', 'X-Refresh-Token'],
+      max_age: 600
+  end
+
   # Configuration for production
   allow do
     origins 'https://eventzflow.com',
