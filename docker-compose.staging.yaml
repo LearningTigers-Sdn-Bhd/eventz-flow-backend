@@ -1,0 +1,104 @@
+version: "3.9"
+
+x-rails-env: &rails-env
+  RAILS_ENV: staging
+  RAILS_SERVE_STATIC_FILES: "1"
+  RAILS_LOG_TO_STDOUT: "1"
+  RAILS_MAX_THREADS: "5"
+  REDIS_URL: "redis://redis:6379/1"
+  RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+  DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db:5432/eventz_flow_api_staging}
+  # Mail configuration
+  RESEND_API_KEY: ${RESEND_API_KEY}
+  REDIRECT_BASE_URL: ${REDIRECT_BASE_URL}
+
+x-db-env: &db-env
+  POSTGRES_DB: eventz_flow_api_staging
+  POSTGRES_USER: ${DATABASE_USER:-postgres}
+  POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+
+services:
+  web:
+    build: .
+    image: eventz-flow-backend:latest
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *rails-env
+    ports:
+      - "3000"
+    volumes:
+      - app-storage:/rails/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - coolify
+
+  sidekiq:
+    build: .
+    image: eventz-flow-backend:latest
+    command: bundle exec sidekiq
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *rails-env
+    volumes:
+      - app-storage:/rails/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bundle exec sidekiqctl status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - coolify
+
+  postgres-db:
+    image: pgvector/pgvector:pg18-trixie
+    environment:
+      <<: *db-env
+    volumes:
+      - pg-staging-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coolify
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-staging-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - coolify
+
+volumes:
+  pg-staging-data:
+  app-storage:
+  redis-staging-data:
+
+networks:
+  coolify:
+    external: true
