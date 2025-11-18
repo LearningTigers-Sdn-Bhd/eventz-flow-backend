@@ -20,11 +20,7 @@ x-db-env: &db-env
 
 services:
   web:
-    build:
-      context: .
-      args:
-        RAILS_ENV: staging
-        RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+    build: .
     image: eventz-flow-backend-staging:latest
     depends_on:
       postgres-db:
@@ -47,11 +43,7 @@ services:
       - coolify
 
   sidekiq:
-    build:
-      context: .
-      args:
-        RAILS_ENV: staging
-        RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+    build: .
     image: eventz-flow-backend-staging:latest
     command: bundle exec sidekiq
     depends_on:
@@ -81,7 +73,7 @@ services:
     ports:
       - "5435:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d eventz_flow_api_staging"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
