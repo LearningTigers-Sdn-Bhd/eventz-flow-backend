@@ -93,6 +93,8 @@ class EventVendorService
     if existing_vendor
       # Update existing vendor attributes
       existing_vendor.redirect_url = params[:redirect_url] if params.key?(:redirect_url)
+      existing_vendor.poster_url = params[:poster_url] if params.key?(:poster_url)
+      existing_vendor.qr_url = params[:qr_url] if params.key?(:qr_url)
 
       # Update type and exhibitor_owner_id if needed
       if existing_vendor.type != vendor_type
@@ -114,7 +116,9 @@ class EventVendorService
     else
       # Create new vendor with appropriate type
       vendor_attributes = {
-        redirect_url: params[:redirect_url]
+        redirect_url: params[:redirect_url],
+        poster_url: params[:poster_url],
+        qr_url: params[:qr_url]
       }
 
       if vendor_type == 'Exhibitor'
@@ -188,6 +192,8 @@ class EventVendorService
     if existing_vendor
       # Update existing vendor attributes
       existing_vendor.redirect_url = params[:redirect_url] if params.key?(:redirect_url)
+      existing_vendor.poster_url = params[:poster_url] if params.key?(:poster_url)
+      existing_vendor.qr_url = params[:qr_url] if params.key?(:qr_url)
 
       # Update type and exhibitor_owner_id if needed
       if existing_vendor.type != vendor_type
@@ -209,7 +215,9 @@ class EventVendorService
     else
       # Create new vendor with appropriate type
       vendor_attributes = {
-        redirect_url: params[:redirect_url]
+        redirect_url: params[:redirect_url],
+        poster_url: params[:poster_url],
+        qr_url: params[:qr_url]
       }
 
       if vendor_type == 'Exhibitor'

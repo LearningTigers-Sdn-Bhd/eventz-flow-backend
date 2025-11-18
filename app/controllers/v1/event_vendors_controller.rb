@@ -74,7 +74,9 @@ module V1
     end
 
     def vendor_params
-      params.require(:vendor).permit(:full_name, :email, :phone, :password, :password_confirmation, :vendor_id, :redirect_url, :exhibitor_owner_id)
+      params.require(:vendor).permit(:full_name, :email, :phone, 
+      :password, :password_confirmation, :vendor_id, 
+      :redirect_url, :poster_url, :qr_url, :exhibitor_owner_id)
     end
 
     def update_vendor_params
