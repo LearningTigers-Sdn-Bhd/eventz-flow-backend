@@ -43,7 +43,6 @@ services:
       - coolify
 
   sidekiq:
-    build: .
     image: eventz-flow-backend-staging:latest
     command: bundle exec sidekiq
     depends_on:
