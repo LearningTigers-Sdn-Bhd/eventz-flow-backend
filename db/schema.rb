@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_19_040009) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -222,6 +222,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
     t.index ["user_id"], name: "index_tickets_on_user_id"
   end
 
+  create_table "user_voucher_usages", force: :cascade do |t|
+    t.bigint "voucher_id", null: false
+    t.bigint "user_id", null: false
+    t.integer "redemption_count"
+    t.datetime "first_view_timestamp"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_user_voucher_usages_on_user_id"
+    t.index ["voucher_id"], name: "index_user_voucher_usages_on_voucher_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email"
     t.string "password_digest"
@@ -231,7 +242,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "status", default: 1, null: false
-    t.string "jti", null: false
+    t.string "jti"
     t.datetime "email_verified_at"
     t.bigint "created_by_id"
     t.index ["created_by_id"], name: "index_users_on_created_by_id"
@@ -277,6 +288,53 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
   end
 
+  create_table "voucher_redemption_logs", force: :cascade do |t|
+    t.bigint "voucher_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "redeemer_staff_id"
+    t.datetime "redemption_timestamp"
+    t.string "redemption_location"
+    t.string "redemption_status"
+    t.decimal "transaction_gross_amount", precision: 10, scale: 2
+    t.decimal "discount_applied_value", precision: 10, scale: 2
+    t.decimal "transaction_net_amount", precision: 10, scale: 2
+    t.datetime "cancellation_timestamp"
+    t.text "cancellation_reason"
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["redeemer_staff_id"], name: "index_voucher_redemption_logs_on_redeemer_staff_id"
+    t.index ["user_id"], name: "index_voucher_redemption_logs_on_user_id"
+    t.index ["voucher_id"], name: "index_voucher_redemption_logs_on_voucher_id"
+  end
+
+  create_table "vouchers", force: :cascade do |t|
+    t.string "title"
+    t.uuid "voucher_uuid", default: -> { "gen_random_uuid()" }, null: false
+    t.text "description"
+    t.bigint "vendor_id"
+    t.bigint "event_id"
+    t.string "voucher_code"
+    t.string "status"
+    t.date "start_date"
+    t.date "end_date"
+    t.time "start_time"
+    t.time "end_time"
+    t.integer "total_redemption_available"
+    t.integer "redeemed_count"
+    t.integer "max_redemptions_per_user"
+    t.text "user_role_restriction"
+    t.string "voucher_type"
+    t.decimal "voucher_value", precision: 10, scale: 2
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "image_path"
+    t.index ["event_id"], name: "index_vouchers_on_event_id"
+    t.index ["status"], name: "index_vouchers_on_status"
+    t.index ["vendor_id"], name: "index_vouchers_on_vendor_id"
+    t.index ["voucher_code"], name: "index_vouchers_on_voucher_code"
+  end
+
   add_foreign_key "api_keys", "users"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
@@ -298,9 +356,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_044853) do
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "user_voucher_usages", "users"
+  add_foreign_key "user_voucher_usages", "vouchers"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
   add_foreign_key "visitor_vendor_stamps", "event_vendors"
   add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
+  add_foreign_key "voucher_redemption_logs", "users"
+  add_foreign_key "voucher_redemption_logs", "users", column: "redeemer_staff_id"
+  add_foreign_key "voucher_redemption_logs", "vouchers"
+  add_foreign_key "vouchers", "events"
+  add_foreign_key "vouchers", "users", column: "vendor_id"
 end

@@ -53,6 +53,10 @@ FactoryBot.define do
 			created_by { association :organizer_user }
 		end
 
+		trait :staff_member do
+			# role { :staff }
+		end
+
 		# DEPRECATED/Removed Factories:
 		# The old 'admin_user', 'superadmin', 'participant_user', and 'team_member_user'
 		# factories are no longer used, as their logic is covered by :org_owner, :organizer_user,

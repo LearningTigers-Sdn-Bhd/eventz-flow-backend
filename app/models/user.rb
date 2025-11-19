@@ -132,6 +132,10 @@ class User < ApplicationRecord
     update!(jti: SecureRandom.uuid)
   end
 
+  def is_vendor?
+    vendor?
+  end
+
   private
 
   # Use the Rails enum helper methods (org_owner?, organizer?, etc.) instead of string comparisons ('organizer')
