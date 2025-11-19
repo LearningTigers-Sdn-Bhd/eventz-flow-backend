@@ -3,11 +3,10 @@ require 'rails_helper'
 # RSpec idiom for chaining negative expectations: define a negated matcher for :change
 RSpec::Matchers.define_negated_matcher :not_change, :change
 
-RSpec.describe VoucherRedemptionService, type: :service do  
-  let(:vendor_user) { create(:vendor_user) } 
-  let(:event) { create(:event) } 
+RSpec.describe VoucherRedemptionService, type: :service do
+  let(:vendor_user) { create(:vendor_user) }
+  let(:event) { create(:event) }
   let(:user) { create(:user) }
-  let(:staff) { create(:user, :staff_member) } 
   let(:gross_amount) { 100.00.to_d }
 
   # Helper method to simplify the service call
@@ -15,7 +14,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
     described_class.call(
       voucher: voucher,
       user: user_to_redeem,
-      staff_id: staff.id,
+      vendor_id: vendor_user.id,
       gross_amount: amount
     )
   end
@@ -31,13 +30,13 @@ RSpec.describe VoucherRedemptionService, type: :service do
   context 'when redemption is successful and constraints are met' do
     let(:valid_date) { 1.day.from_now.to_date }
     # CRITICAL FIX: Ensure non-nil Time objects are provided for successful validation
-    let(:valid_start_time) { Time.zone.parse('00:00:00') } 
+    let(:valid_start_time) { Time.zone.parse('00:00:00') }
     let(:valid_end_time) { Time.zone.parse('23:59:59') }
 
     def create_valid_voucher(overrides = {})
       create(:voucher, {
-        vendor: vendor_user, 
-        event: event, 
+        vendor: vendor_user,
+        event: event,
         end_date: valid_date,
         start_time: valid_start_time,
         end_time: valid_end_time
@@ -96,11 +95,11 @@ RSpec.describe VoucherRedemptionService, type: :service do
 
     it 'updates global and per-user counts correctly' do
       voucher = create_valid_voucher(total_redemption_available: 5, max_redemptions_per_user: 2)
-      
+
       # 1st Redemption
       result = nil # Initialize result for later checking
       expect { result = call_service(voucher, user) }.to change { voucher.reload.redeemed_count }.by(1)
-      
+
       # Add explicit success check with diagnostics, as rollback implies failure
       expect(result).to be_success, "Service failed during successful redemption check. Error: #{result.error}"
 
@@ -121,14 +120,14 @@ RSpec.describe VoucherRedemptionService, type: :service do
     let(:valid_date) { 1.day.from_now.to_date }
     let(:valid_start_time) { Time.zone.parse('00:00:00') }
     let(:valid_end_time) { Time.zone.parse('23:59:59') }
-    
+
     # Global Limit Check
     it 'fails redemption when global limit is reached' do
       limited_voucher = create(:voucher, vendor: vendor_user, event: event, total_redemption_available: 1, end_date: valid_date, start_time: valid_start_time, end_time: valid_end_time)
       call_service(limited_voucher, create(:user)) # First redemption consumes the limit
 
       result = call_service(limited_voucher, create(:user)) # Second attempt by a new user
-      
+
       expect(result).not_to be_success
       expect(result.error).to include('Global limit reached')
     end
@@ -139,7 +138,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       call_service(user_limited_voucher, user) # First redemption
 
       result = call_service(user_limited_voucher, user) # Second attempt by same user
-      
+
       expect(result).not_to be_success
       expect(result.error).to include('personal redemption limit')
     end
@@ -169,7 +168,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       limited_voucher = create(:voucher, vendor: vendor_user, event: event, total_redemption_available: 1, end_date: valid_date, start_time: valid_start_time, end_time: valid_end_time)
       call_service(limited_voucher, create(:user)) # First redemption consumes the limit
 
-      expect { 
+      expect {
         call_service(limited_voucher, create(:user)) # This call should fail and rollback
       }.to not_change(VoucherRedemptionLog, :count) # Check 1: Log count should not increase
        .and(not_change { limited_voucher.reload.redeemed_count }) # Check 2: Global count should not change

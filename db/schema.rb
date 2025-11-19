@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_19_040009) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -78,6 +78,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
     t.bigint "exhibitor_owner_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "qr_url"
     t.index ["event_id", "vendor_id"], name: "index_event_vendors_on_event_and_vendor", unique: true
     t.index ["exhibitor_owner_id"], name: "index_event_vendors_on_exhibitor_owner_id"
     t.index ["type"], name: "index_event_vendors_on_type"
@@ -241,7 +242,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "status", default: 1, null: false
-    t.string "jti", null: false
+    t.string "jti"
     t.datetime "email_verified_at"
     t.bigint "created_by_id"
     t.index ["created_by_id"], name: "index_users_on_created_by_id"
@@ -327,6 +328,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_18_000000) do
     t.decimal "voucher_value", precision: 10, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "image_path"
     t.index ["event_id"], name: "index_vouchers_on_event_id"
     t.index ["status"], name: "index_vouchers_on_status"
     t.index ["vendor_id"], name: "index_vouchers_on_vendor_id"

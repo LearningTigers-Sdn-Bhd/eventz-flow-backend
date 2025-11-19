@@ -7,15 +7,15 @@ class VoucherRedemptionService
 
   # Class method entry point (the recommended way to call the service)
   # Usage: VoucherRedemptionService.call(voucher: ..., user: ..., ...)
-  def self.call(voucher:, user:, staff_id:, gross_amount:)
-    new(voucher:, user:, staff_id:, gross_amount:).call
+  def self.call(voucher:, user:, vendor_id:, gross_amount:)
+    new(voucher:, user:, vendor_id:, gross_amount:).call
   end
 
   # Initializes the service with all required data
-  def initialize(voucher:, user:, staff_id:, gross_amount:)
+  def initialize(voucher:, user:, vendor_id:, gross_amount:)
     @voucher = voucher
     @user = user
-    @staff_id = staff_id
+    @vendor_id = vendor_id
     @gross_amount = gross_amount.to_d # Ensure monetary value is Decimal
   end
 
@@ -52,10 +52,10 @@ class VoucherRedemptionService
     # Check 1: Time/Date Validity
     # The 'time_is_valid?' logic now handles the possibility of missing data.
     raise "Voucher has expired or is not yet active." unless time_is_valid?
-    
+
     # Check 2: Global Count Limit
     raise "Voucher is out of stock (Global limit reached)." unless global_count_is_available?
-    
+
     # Check 3: Per-User Limit
     raise "User has reached their personal redemption limit." unless per_user_limit_is_available?
 
@@ -68,22 +68,22 @@ class VoucherRedemptionService
     return false if required_attributes.any?(&:nil?)
 
     now = Time.current
-    
+
     begin
-      # FIX: Use the robust Rails pattern to safely combine Date and Time attributes 
+      # FIX: Use the robust Rails pattern to safely combine Date and Time attributes
       # into Time objects in the current time zone ('Asia/Kuala_Lumpur' in RSpec).
       start_time_in_zone = @voucher.start_time.in_time_zone(Time.zone)
       end_time_in_zone = @voucher.end_time.in_time_zone(Time.zone)
 
       # Combine date component with time components using .change
       start_at = @voucher.start_date.to_time.in_time_zone(Time.zone).change(
-        hour: start_time_in_zone.hour, 
-        min: start_time_in_zone.min, 
+        hour: start_time_in_zone.hour,
+        min: start_time_in_zone.min,
         sec: start_time_in_zone.sec
       )
       end_at   = @voucher.end_date.to_time.in_time_zone(Time.zone).change(
-        hour: end_time_in_zone.hour, 
-        min: end_time_in_zone.min, 
+        hour: end_time_in_zone.hour,
+        min: end_time_in_zone.min,
         sec: end_time_in_zone.sec
       )
 
@@ -95,12 +95,12 @@ class VoucherRedemptionService
   end
 
   def global_count_is_available?
-    # Use .to_i to guarantee that total_redemption_available and redeemed_count 
-    # are treated as integers, resolving the `undefined method '<' for nil` error 
+    # Use .to_i to guarantee that total_redemption_available and redeemed_count
+    # are treated as integers, resolving the `undefined method '<' for nil` error
     # if database columns were nil.
     total = @voucher.total_redemption_available.to_i
     redeemed = @voucher.redeemed_count.to_i
-    
+
     # True if limit is 0 (unlimited) OR if redeemed count is less than available count
     total.zero? || (redeemed < total)
   end
@@ -108,10 +108,10 @@ class VoucherRedemptionService
   def per_user_limit_is_available?
     # Use find_or_initialize_by to get the current usage record
     usage = UserVoucherUsage.find_or_initialize_by(user: @user, voucher: @voucher)
-    
+
     # Use .to_i on max_redemptions_per_user to guarantee it's an integer.
     max_limit = @voucher.max_redemptions_per_user.to_i
-    
+
     # True if limit is 0 (unlimited) OR if usage count is less than the max limit
     max_limit.zero? || (usage.redemption_count < max_limit)
   end
@@ -120,8 +120,8 @@ class VoucherRedemptionService
 
   def calculate_discount
     value = @voucher.voucher_value.to_d
-    
-    # FIX: Use the Rails enum predicate methods (e.g., .percentage?) instead of 
+
+    # FIX: Use the Rails enum predicate methods (e.g., .percentage?) instead of
     # comparing the returned symbol/string to the underlying string value.
     if @voucher.percentage?
       # Calculate discount: (Gross Amount * Value / 100)
@@ -136,7 +136,7 @@ class VoucherRedemptionService
       0.to_d
     else
       # Fallback for unknown type (should not happen if enum is used correctly)
-      0.to_d 
+      0.to_d
     end
   end
 
@@ -155,7 +155,7 @@ class VoucherRedemptionService
     VoucherRedemptionLog.create!(
       voucher: @voucher,
       user: @user,
-      redeemer_staff_id: @staff_id,
+      redeemer_staff_id: @vendor_id,
       redemption_timestamp: Time.current,
       redemption_status: 'Completed',
       transaction_gross_amount: @gross_amount,

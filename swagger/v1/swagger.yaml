@@ -4481,6 +4481,629 @@ paths:
       responses:
         '204':
           description: Visitor deleted
+  "/v1/voucher_redemptions":
+    post:
+      summary: Redeems a voucher
+      tags:
+      - Voucher Redemptions
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Voucher redeemed successfully (vendor redeeming for another
+            user)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Voucher redeemed successfully
+                  data:
+                    type: object
+                    properties:
+                      net_amount:
+                        type: string
+                        example: '75.0'
+                        description: Final amount after discount
+                      discount_applied:
+                        type: string
+                        example: '25.0'
+                        description: Discount amount applied
+                      voucher_type:
+                        type: string
+                        example: fixed_amount
+                        enum:
+                        - fixed_amount
+                        - percentage
+                        - free_item
+                    required:
+                    - net_amount
+                    - discount_applied
+                    - voucher_type
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Voucher validation failed (user limit reached)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Voucher has expired or is not yet active.
+                required:
+                - success
+                - message
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: User not found
+        '403':
+          description: Forbidden - Only vendors can redeem vouchers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Only vendors can redeem vouchers
+        '400':
+          description: Bad Request - Missing required parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Gross amount is required
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                voucher_uuid:
+                  type: string
+                  format: uuid
+                  example: 550e8400-e29b-41d4-a716-446655440000
+                  description: UUID of the voucher to redeem
+                gross_amount:
+                  type: number
+                  format: decimal
+                  example: 100.0
+                  description: Purchase amount before discount (required)
+                user_id:
+                  type: integer
+                  example: 123
+                  description: 'Optional: User ID to redeem for. If not provided,
+                    redeems for the authenticated vendor.'
+              required:
+              - voucher_uuid
+              - gross_amount
+        required: true
+  "/v1/vouchers":
+    get:
+      summary: Lists vouchers
+      tags:
+      - Vouchers
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      - name: vendor_id
+        in: query
+        required: false
+        description: Filter by vendor ID
+        schema:
+          type: integer
+      - name: event_id
+        in: query
+        required: false
+        description: Filter by event ID
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Vouchers filtered by event_id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                          example: 20% Off Deal
+                        description:
+                          type: string
+                          nullable: true
+                          example: Get 20% off on all items
+                        voucher_uuid:
+                          type: string
+                          format: uuid
+                        voucher_code:
+                          type: string
+                          example: SAVE20
+                        status:
+                          type: string
+                          example: active
+                        vendor_id:
+                          type: integer
+                        event_id:
+                          type: integer
+                        start_date:
+                          type: string
+                          format: date
+                          example: '2024-01-01'
+                        end_date:
+                          type: string
+                          format: date
+                          example: '2024-12-31'
+                        start_time:
+                          type: string
+                          format: time
+                          example: '00:00:00'
+                        end_time:
+                          type: string
+                          format: time
+                          example: '23:59:59'
+                        total_redemption_available:
+                          type: integer
+                          nullable: true
+                          example: 100
+                        redeemed_count:
+                          type: integer
+                          example: 0
+                        max_redemptions_per_user:
+                          type: integer
+                          nullable: true
+                          example: 5
+                        voucher_type:
+                          type: string
+                          enum:
+                          - fixed_amount
+                          - percentage
+                          - free_item
+                          example: percentage
+                        voucher_value:
+                          type: string
+                          example: '20.00'
+                        image_path:
+                          type: string
+                          nullable: true
+                          example: 'https://example.com/images/voucher.jpg'
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - title
+                      - voucher_uuid
+                      - vendor_id
+                      - event_id
+                    example:
+                    - id: 1
+                      title: V1E1
+                      voucher_uuid: 550e8400-e29b-41d4-a716-446655440000
+                      vendor_id: 1
+                      event_id: 1
+                      voucher_code: SAVE20
+                      status: active
+                      voucher_type: percentage
+                      voucher_value: '20.00'
+                required:
+                - success
+                - message
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+    post:
+      summary: Creates a new voucher
+      tags:
+      - Vouchers
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Voucher created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                required:
+                - success
+                - message
+        '403':
+          description: Forbidden - Cannot create voucher for another vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: 20% Off Deal
+                  description: Voucher title
+                description:
+                  type: string
+                  nullable: true
+                  example: Get 20% off on all items
+                vendor_id:
+                  type: integer
+                  example: 1
+                  description: Vendor user ID (must be current user for vendors)
+                event_id:
+                  type: integer
+                  example: 1
+                  description: Event ID
+                voucher_code:
+                  type: string
+                  example: SAVE20
+                  description: Unique voucher code
+                status:
+                  type: string
+                  example: active
+                  description: Voucher status
+                start_date:
+                  type: string
+                  format: date
+                  example: '2024-01-01'
+                end_date:
+                  type: string
+                  format: date
+                  example: '2024-12-31'
+                start_time:
+                  type: string
+                  format: time
+                  example: '00:00:00'
+                end_time:
+                  type: string
+                  format: time
+                  example: '23:59:59'
+                total_redemption_available:
+                  type: integer
+                  nullable: true
+                  example: 100
+                  description: Total redemptions allowed (0 = unlimited)
+                max_redemptions_per_user:
+                  type: integer
+                  nullable: true
+                  example: 5
+                  description: Max redemptions per user (0 = unlimited)
+                voucher_type:
+                  type: string
+                  enum:
+                  - FIXED_AMOUNT
+                  - PERCENTAGE
+                  - FREE_ITEM
+                  example: PERCENTAGE
+                voucher_value:
+                  type: number
+                  format: decimal
+                  example: 20.0
+                  description: Discount value (amount or percentage)
+                image:
+                  type: string
+                  format: binary
+                  nullable: true
+                  description: Optional voucher image file (jpg, png, etc)
+              required:
+              - title
+              - vendor_id
+              - event_id
+              - voucher_code
+              - start_date
+              - end_date
+              - start_time
+              - end_time
+              - voucher_type
+              - voucher_value
+        required: true
+  "/v1/vouchers/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Voucher ID
+      schema:
+        type: integer
+    get:
+      summary: Retrieves a voucher
+      tags:
+      - Vouchers
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Voucher retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                required:
+                - success
+                - message
+        '403':
+          description: Forbidden - Access denied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: You are not authorized to show? this voucher.
+        '404':
+          description: Voucher not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource not found
+    patch:
+      summary: Updates a voucher
+      tags:
+      - Vouchers
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Voucher updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                required:
+                - success
+                - message
+        '403':
+          description: Forbidden - Cannot update another vendor's voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Updated Title
+                description:
+                  type: string
+                  nullable: true
+                voucher_code:
+                  type: string
+                status:
+                  type: string
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                  format: time
+                end_time:
+                  type: string
+                  format: time
+                total_redemption_available:
+                  type: integer
+                  nullable: true
+                max_redemptions_per_user:
+                  type: integer
+                  nullable: true
+                voucher_type:
+                  type: string
+                  enum:
+                  - FIXED_AMOUNT
+                  - PERCENTAGE
+                  - FREE_ITEM
+                voucher_value:
+                  type: number
+                  format: decimal
+                image:
+                  type: string
+                  format: binary
+                  nullable: true
+                  description: Optional voucher image file (jpg, png, etc)
+        required: true
+    delete:
+      summary: Deletes a voucher
+      tags:
+      - Vouchers
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Voucher deleted successfully
+        '403':
+          description: Forbidden - Cannot delete another vendor's voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+        '404':
+          description: Voucher not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource not found
 servers:
 - url: https://{defaultHost}
   variables:

@@ -5,7 +5,7 @@ class VoucherPolicy < ApplicationPolicy
 			if user&.is_org_owner? || user&.is_organizer?
 				scope.all
 			elsif user&.is_vendor?
-				scope.where(vendor_id: user.vendor_id).or(scope.where(status: 'published'))
+				scope.where(vendor_id: user.id).or(scope.where(status: 'published'))
 			else
 				scope.where(status: 'published')
 			end
@@ -13,19 +13,30 @@ class VoucherPolicy < ApplicationPolicy
 	end
 
 	def create?
-		user&.is_org_owner? || user&.is_organizer? || user&.is_vendor?
+		return false unless user&.is_org_owner? || user&.is_organizer? || user&.is_vendor?
+
+		# Vendors can only create vouchers for themselves
+		if user.is_vendor?
+			record.vendor_id == user.id
+		else
+			true
+		end
 	end
 
 	def show?
 		return true if user&.is_org_owner? || user&.is_organizer?
 
-		return true if user&.is_vendor? && user.vendor_id == record.vendor_id
+		return true if user&.is_vendor? && user.id == record.vendor_id
 
 		record.status == 'published'
 	end
 
+	def update?
+		edit?
+	end
+
 	def edit?
-		user&.is_org_owner? || user&.is_organizer? || (user&.is_vendor? && user.vendor_id == record.vendor_id)
+		user&.is_org_owner? || user&.is_organizer? || (user&.is_vendor? && user.id == record.vendor_id)
 	end
 
 	def destroy?

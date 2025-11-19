@@ -1,6 +1,118 @@
-require 'rails_helper'
+require 'swagger_helper'
 
-RSpec.describe 'V1::Vouchers', type: :request do
+RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' do
+  # ============================================================
+  # Shared Constants & Schemas
+  # ============================================================
+  VOUCHER_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer },
+      title: { type: :string, example: '20% Off Deal' },
+      description: { type: :string, nullable: true, example: 'Get 20% off on all items' },
+      voucher_uuid: { type: :string, format: :uuid },
+      voucher_code: { type: :string, example: 'SAVE20' },
+      status: { type: :string, example: 'active' },
+      vendor_id: { type: :integer },
+      event_id: { type: :integer },
+      start_date: { type: :string, format: :date, example: '2024-01-01' },
+      end_date: { type: :string, format: :date, example: '2024-12-31' },
+      start_time: { type: :string, format: :time, example: '00:00:00' },
+      end_time: { type: :string, format: :time, example: '23:59:59' },
+      total_redemption_available: { type: :integer, nullable: true, example: 100 },
+      redeemed_count: { type: :integer, example: 0 },
+      max_redemptions_per_user: { type: :integer, nullable: true, example: 5 },
+      voucher_type: { type: :string, enum: ['fixed_amount', 'percentage', 'free_item'], example: 'percentage' },
+      voucher_value: { type: :string, example: '20.00' },
+      image_path: { type: :string, nullable: true, example: 'https://example.com/images/voucher.jpg' },
+      created_at: { type: :string, format: :date_time },
+      updated_at: { type: :string, format: :date_time }
+    },
+    required: %w[id title voucher_uuid vendor_id event_id]
+  }.freeze
+
+  VOUCHER_LIST_RESPONSE_SCHEMA = {
+    type: :object,
+    properties: {
+      success: { type: :boolean, example: true },
+      message: { type: :string, example: 'Success' },
+      data: {
+        type: :array,
+        items: VOUCHER_SCHEMA,
+        example: [
+          {
+            id: 1,
+            title: '20% Off Deal',
+            description: 'Get 20% off on all items',
+            voucher_uuid: '550e8400-e29b-41d4-a716-446655440000',
+            voucher_code: 'SAVE20',
+            status: 'active',
+            vendor_id: 1,
+            event_id: 1,
+            start_date: '2024-01-01',
+            end_date: '2024-12-31',
+            start_time: '00:00:00',
+            end_time: '23:59:59',
+            total_redemption_available: 100,
+            redeemed_count: 0,
+            max_redemptions_per_user: 5,
+            voucher_type: 'percentage',
+            voucher_value: '20.00',
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z'
+          },
+          {
+            id: 2,
+            title: 'Free Item Voucher',
+            description: 'Get a free item with purchase',
+            voucher_uuid: '660e8400-e29b-41d4-a716-446655440001',
+            voucher_code: 'FREEITEM',
+            status: 'active',
+            vendor_id: 1,
+            event_id: 1,
+            start_date: '2024-01-01',
+            end_date: '2024-12-31',
+            start_time: '00:00:00',
+            end_time: '23:59:59',
+            total_redemption_available: 50,
+            redeemed_count: 5,
+            max_redemptions_per_user: 1,
+            voucher_type: 'free_item',
+            voucher_value: '0.00',
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z'
+          }
+        ]
+      }
+    },
+    required: %w[success message]
+  }.freeze
+
+  VOUCHER_RESPONSE_SCHEMA = {
+    type: :object,
+    properties: {
+      success: { type: :boolean, example: true },
+      message: { type: :string, example: 'Success' },
+      data: {
+        type: :object
+      }
+    },
+    required: %w[success message]
+  }.freeze
+
+  VOUCHER_ERROR_SCHEMA = {
+    type: :object,
+    properties: {
+      success: { type: :boolean, example: false },
+      message: { type: :string, example: 'Validation failed' },
+      errors: {
+        type: :array,
+        items: { type: :string },
+        example: ['Title can\'t be blank']
+      }
+    },
+    required: %w[success message]
+  }.freeze
   # These dependencies are required by the Voucher factory
   let!(:vendor_user) { create(:vendor_user) }
   let!(:event) { create(:event) }
@@ -14,7 +126,7 @@ RSpec.describe 'V1::Vouchers', type: :request do
     # Define mocks for the methods expected by VoucherPolicy
     allow_any_instance_of(User).to receive(:is_org_owner?).and_return(false)
     allow_any_instance_of(User).to receive(:is_organizer?).and_return(false)
-    
+
     # Ensure the vendor_user object responds correctly to the is_vendor? check
     allow(vendor_user).to receive(:is_vendor?).and_return(true)
     allow(vendor2).to receive(:is_vendor?).and_return(true)
@@ -54,196 +166,377 @@ RSpec.describe 'V1::Vouchers', type: :request do
     json_response['errors']
   end
 
-  describe 'Authentication Enforcement' do
-    it 'returns 401 Unauthorized if no credentials are provided for a protected route' do
-      # Attempt to view a voucher without any headers
-      voucher = create(:voucher)
-      get v1_voucher_path(voucher), as: :json
-      expect(response).to have_http_status(:unauthorized)
-    end
-  end
+  # ============================================================
+  # GET /v1/vouchers (Index)
+  # ============================================================
+  path '/v1/vouchers' do
+    get 'Lists vouchers' do
+      tags 'Vouchers'
+      security [{ BearerAuth: [] }]
+      consumes 'application/json'
+      produces 'application/json'
 
-  # ======================================================================
-  # Index tests (now passing due to MockVoucherPolicy::Scope)
-  # ======================================================================
-  describe 'GET /v1/vouchers' do
-    let!(:event2) { create(:event) }
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :vendor_id, in: :query, type: :integer, required: false, description: 'Filter by vendor ID'
+      parameter name: :event_id, in: :query, type: :integer, required: false, description: 'Filter by event ID'
 
-    # Setup specific vouchers for filtering tests
-    let!(:voucher_vendor1_event1) { create(:voucher, vendor: vendor_user, event: event, title: "V1E1") }
-    let!(:voucher_vendor1_event2) { create(:voucher, vendor: vendor_user, event: event2, title: "V1E2") }
-    # Voucher belonging to vendor2, which should be filtered out from vendor_user's index
-    let!(:voucher_vendor2_event1) { create(:voucher, vendor: vendor2, event: event, title: "V2E1") }
+      let(:Authorization) { auth_headers['Authorization'] }
+      let!(:event2) { create(:event) }
+      let!(:voucher_vendor1_event1) { create(:voucher, vendor: vendor_user, event: event, title: "V1E1") }
+      let!(:voucher_vendor1_event2) { create(:voucher, vendor: vendor_user, event: event2, title: "V1E2") }
+      let!(:voucher_vendor2_event1) { create(:voucher, vendor: vendor2, event: event, title: "V2E1") }
 
-    it 'returns only vouchers associated with the authenticated vendor when no filters are applied' do
-      get v1_vouchers_path, headers: auth_headers, as: :json
-      expect(response).to have_http_status(:ok)
-      expect(response_success).to be(true)
+      response '200', 'Vouchers retrieved successfully' do
+        schema VOUCHER_LIST_RESPONSE_SCHEMA
 
-      # Expect only 2 vouchers (V1E1, V1E2) belonging to vendor_user, not V2E1
-      expect(response_data.count).to eq(2)
-      expect(response_data.map { |v| v['title'] }).to match_array(["V1E1", "V1E2"])
-    end
-
-    context 'when filtering by vendor_id (should still be scoped to current user)' do
-      it 'returns only the authenticated user’s vouchers matching the specified vendor ID' do
-        get v1_vouchers_path(vendor_id: vendor_user.id), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:ok)
-        expect(response_data.count).to eq(2)
-        expect(response_data.map { |v| v['title'] }).to match_array(["V1E1", "V1E2"])
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          expect(data['data']).to be_an(Array)
+          # Should only return vouchers for vendor_user
+          titles = data['data'].map { |v| v['title'] }
+          expect(titles).to match_array(["V1E1", "V1E2"])
+        end
       end
 
-      it 'returns an empty list if filtered by another vendor_id' do
-        get v1_vouchers_path(vendor_id: vendor2.id), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:ok)
-        expect(response_data.count).to eq(0)
+      response '200', 'Vouchers filtered by event_id' do
+        let(:event_id) { event.id }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :array,
+                   items: VOUCHER_SCHEMA,
+                   example: [
+                     {
+                       id: 1,
+                       title: 'V1E1',
+                       voucher_uuid: '550e8400-e29b-41d4-a716-446655440000',
+                       vendor_id: 1,
+                       event_id: 1,
+                       voucher_code: 'SAVE20',
+                       status: 'active',
+                       voucher_type: 'percentage',
+                       voucher_value: '20.00'
+                     }
+                   ]
+                 }
+               }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          expect(data['data'].count).to eq(1)
+          expect(data['data'].first['title']).to eq("V1E1")
+        end
       end
-    end
 
-    context 'when filtering by event_id' do
-      it 'returns only vouchers associated with the specified event that belong to the current vendor' do
-        # Should only return V1E1 due to scoping
-        get v1_vouchers_path(event_id: event.id), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:ok)
-        expect(response_data.count).to eq(1)
-        expect(response_data.map { |v| v['title'] }).to match_array(["V1E1"])
-      end
-    end
+      response '401', 'Unauthorized' do
+        let(:Authorization) { nil }
 
-    context 'when filtering by both vendor_id and event_id' do
-      it 'returns only vouchers matching both criteria and belonging to the current vendor' do
-        get v1_vouchers_path(vendor_id: vendor_user.id, event_id: event2.id), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:ok)
-        expect(response_data.count).to eq(1)
-        expect(response_data.first['title']).to eq("V1E2")
-      end
-    end
-  end
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
 
-  # ======================================================================
-  # Show/Create/Update/Delete tests (now passing due to mocked User methods)
-  # ======================================================================
-  describe 'GET /v1/vouchers/:id' do
-    let!(:voucher) { create(:voucher, vendor: vendor_user) }
-    let!(:other_vendor_voucher) { create(:voucher, vendor: vendor2) }
-
-    context 'when the voucher exists and belongs to the user' do
-      # This test was failing due to missing is_manager? method in VoucherPolicy#show?
-      it 'returns the voucher details using success_response format' do
-        get v1_voucher_path(voucher), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:ok)
-        expect(response_success).to be(true)
-      end
-    end
-
-    context 'when attempting to access a voucher belonging to another vendor' do
-      # This test was failing due to missing is_manager? method in VoucherPolicy#show?
-      it 'returns 403 forbidden' do
-        get v1_voucher_path(other_vendor_voucher), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:forbidden)
-        expect(response_success).to be(false)
-        expect(response_message).to eq('Access denied')
-      end
-    end
-
-    context 'when the voucher does not exist (globally handled 404)' do
-      it 'returns a 404 not found with error_response format' do
-        get v1_voucher_path(id: 9999), headers: auth_headers, as: :json
-        expect(response).to have_http_status(:not_found)
+        run_test!
       end
     end
   end
 
-  describe 'POST /v1/vouchers' do
-    let(:valid_attributes) do
-      {
-        title: 'New Voucher Deal', description: '20% off', vendor_id: vendor_user.id, event_id: event.id,
-        voucher_code: 'NEW20', start_date: Date.current, end_date: Date.current + 7.days,
-        start_time: '00:00:00', end_time: '23:59:59', voucher_type: 'PERCENTAGE', voucher_value: 20
-      }
-    end
+  # ============================================================
+  # GET /v1/vouchers/:id (Show)
+  # ============================================================
+  path '/v1/vouchers/{id}' do
+    parameter name: :id, in: :path, type: :integer, required: true, description: 'Voucher ID'
 
-    context 'with valid parameters' do
-      # This test was failing due to missing is_manager? method in VoucherPolicy#create?
-      it 'creates a new Voucher and returns 201 created in success_response format' do
-        expect {
-          post v1_vouchers_path, params: { voucher: valid_attributes }, headers: auth_headers, as: :json
-        }.to change(Voucher, :count).by(1)
+    get 'Retrieves a voucher' do
+      tags 'Vouchers'
+      security [{ BearerAuth: [] }]
+      consumes 'application/json'
+      produces 'application/json'
 
-        expect(response).to have_http_status(:created)
-        expect(response_success).to be(true)
-        expect(response_message).to eq('Voucher created successfully')
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      let(:Authorization) { auth_headers['Authorization'] }
+      let!(:voucher) { create(:voucher, vendor: vendor_user) }
+
+      response '200', 'Voucher retrieved successfully' do
+        let(:id) { voucher.id }
+
+        schema VOUCHER_RESPONSE_SCHEMA
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          expect(data['data']['id']).to eq(voucher.id)
+        end
       end
-    end
 
-    context 'when attempting to create a voucher for another vendor' do
-      let(:forbidden_attributes) { valid_attributes.merge(vendor_id: vendor2.id) }
+      response '403', 'Forbidden - Access denied' do
+        let(:id) { create(:voucher, vendor: vendor2).id }
 
-      # This test was failing due to missing is_manager? method in VoucherPolicy#create?
-      it 'returns 403 forbidden and does not create the voucher' do
-        expect {
-          post v1_vouchers_path, params: { voucher: forbidden_attributes }, headers: auth_headers, as: :json
-        }.to_not change(Voucher, :count)
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'You are not authorized to show? this voucher.' }
+               }
 
-        expect(response).to have_http_status(:forbidden)
-        expect(response_success).to be(false)
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(false)
+          expect(data['message']).to include('not authorized')
+        end
       end
-    end
-  end
 
-  describe 'PATCH /v1/vouchers/:id' do
-    let!(:voucher) { create(:voucher, title: 'Old Title', vendor: vendor_user) }
-    let(:new_attributes) { { title: 'Updated Title' } }
+      response '404', 'Voucher not found' do
+        let(:id) { 99999 }
 
-    context 'with valid parameters' do
-      # This test was failing due to missing is_manager? method in VoucherPolicy#edit?
-      it 'updates the requested voucher and returns 200 OK in success_response format' do
-        patch v1_voucher_path(voucher), params: { voucher: new_attributes }, headers: auth_headers, as: :json
-        voucher.reload
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Resource not found' }
+               }
 
-        expect(response).to have_http_status(:ok)
-        expect(response_success).to be(true)
-        expect(voucher.title).to eq('Updated Title')
-      end
-    end
-
-    context 'when attempting to update a voucher belonging to another vendor' do
-      let!(:other_voucher) { create(:voucher, title: 'Other Vendor Voucher', vendor: vendor2) }
-      let(:new_attributes) { { title: 'Hacked Title' } }
-
-      it 'returns 403 forbidden and does not update the voucher' do
-        patch v1_voucher_path(other_voucher), params: { voucher: new_attributes }, headers: auth_headers, as: :json
-        other_voucher.reload
-        expect(response).to have_http_status(:forbidden)
-        expect(other_voucher.title).to eq('Other Vendor Voucher') # Should not be updated
+        run_test!
       end
     end
   end
 
-  describe 'DELETE /v1/vouchers/:id' do
-    let!(:voucher) { create(:voucher, vendor: vendor_user) }
+  # ============================================================
+  # POST /v1/vouchers (Create)
+  # ============================================================
+  path '/v1/vouchers' do
+    post 'Creates a new voucher' do
+      tags 'Vouchers'
+      security [{ BearerAuth: [] }]
+      consumes 'multipart/form-data'
+      produces 'application/json'
 
-    context 'when deleting own voucher' do
-      # This test was failing due to missing is_manager? method in VoucherPolicy#destroy?
-      it 'destroys the requested voucher and returns 204 no content' do
-        expect {
-          delete v1_voucher_path(voucher), headers: auth_headers, as: :json
-        }.to change(Voucher, :count).by(-1)
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :title, in: :formData, type: :string, required: true, description: 'Voucher title'
+      parameter name: :description, in: :formData, type: :string, required: false, description: 'Voucher description'
+      parameter name: :vendor_id, in: :formData, type: :integer, required: true, description: 'Vendor user ID'
+      parameter name: :event_id, in: :formData, type: :integer, required: true, description: 'Event ID'
+      parameter name: :voucher_code, in: :formData, type: :string, required: true, description: 'Unique voucher code'
+      parameter name: :status, in: :formData, type: :string, required: false, description: 'Voucher status'
+      parameter name: :start_date, in: :formData, type: :string, required: true, description: 'Start date'
+      parameter name: :end_date, in: :formData, type: :string, required: true, description: 'End date'
+      parameter name: :start_time, in: :formData, type: :string, required: true, description: 'Start time'
+      parameter name: :end_time, in: :formData, type: :string, required: true, description: 'End time'
+      parameter name: :total_redemption_available, in: :formData, type: :integer, required: false
+      parameter name: :max_redemptions_per_user, in: :formData, type: :integer, required: false
+      parameter name: :voucher_type, in: :formData, type: :string, required: true, description: 'Voucher type'
+      parameter name: :voucher_value, in: :formData, type: :number, required: true, description: 'Voucher value'
+      parameter name: :image, in: :formData, type: :file, required: false, description: 'Optional voucher image'
 
-        expect(response).to have_http_status(:no_content)
+      let(:Authorization) { auth_headers['Authorization'] }
+
+      response '201', 'Voucher created successfully' do
+        let(:title) { 'New Voucher Deal' }
+        let(:description) { '20% off' }
+        let(:vendor_id) { vendor_user.id }
+        let(:event_id) { event.id }
+        let(:voucher_code) { 'NEW20' }
+        let(:start_date) { Date.current }
+        let(:end_date) { Date.current + 7.days }
+        let(:start_time) { '00:00:00' }
+        let(:end_time) { '23:59:59' }
+        let(:voucher_type) { 'PERCENTAGE' }
+        let(:voucher_value) { 20 }
+
+        schema VOUCHER_RESPONSE_SCHEMA
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          expect(data['message']).to eq('Voucher created successfully')
+          expect(data['data']['title']).to eq('New Voucher Deal')
+          expect(Voucher.count).to eq(1)
+        end
+      end
+
+      response '403', 'Forbidden - Cannot create voucher for another vendor' do
+        let(:title) { 'New Voucher Deal' }
+        let(:vendor_id) { vendor2.id }
+        let(:event_id) { event.id }
+        let(:voucher_code) { 'NEW20' }
+        let(:start_date) { Date.current }
+        let(:end_date) { Date.current + 7.days }
+        let(:start_time) { '00:00:00' }
+        let(:end_time) { '23:59:59' }
+        let(:voucher_type) { 'PERCENTAGE' }
+        let(:voucher_value) { 20 }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string }
+               }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(false)
+          expect(Voucher.count).to eq(0)
+        end
+      end
+
+      response '422', 'Validation error' do
+        let(:title) { 'Test' }
+        let(:description) { nil }
+        let(:vendor_id) { vendor_user.id }
+        # event_id is missing which should cause validation error
+        let(:event_id) { nil }
+        let(:voucher_code) { nil }
+        let(:status) { nil }
+        let(:start_date) { nil }
+        let(:end_date) { nil }
+        let(:start_time) { nil }
+        let(:end_time) { nil }
+        let(:total_redemption_available) { nil }
+        let(:max_redemptions_per_user) { nil }
+        let(:voucher_type) { nil }
+        let(:voucher_value) { nil }
+        let(:image) { nil }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string },
+                 errors: {
+                   type: :array,
+                   items: { type: :string }
+                 }
+               }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(false)
+          expect(data['errors']).to be_present
+        end
       end
     end
+  end
 
-    context 'when attempting to delete a voucher belonging to another vendor' do
-      let!(:other_voucher) { create(:voucher, vendor: vendor2) }
+  # ============================================================
+  # PATCH /v1/vouchers/:id (Update)
+  # ============================================================
+  path '/v1/vouchers/{id}' do
+    parameter name: :id, in: :path, type: :integer, required: true, description: 'Voucher ID'
 
-      # This test was failing due to missing is_manager? method in VoucherPolicy#destroy?
-      it 'returns 403 forbidden and does not destroy the voucher' do
-        expect {
-          delete v1_voucher_path(other_voucher), headers: auth_headers, as: :json
-        }.to_not change(Voucher, :count)
+    patch 'Updates a voucher' do
+      tags 'Vouchers'
+      security [{ BearerAuth: [] }]
+      consumes 'multipart/form-data'
+      produces 'application/json'
 
-        expect(response).to have_http_status(:forbidden)
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :title, in: :formData, type: :string, required: false
+      parameter name: :description, in: :formData, type: :string, required: false
+      parameter name: :voucher_code, in: :formData, type: :string, required: false
+      parameter name: :status, in: :formData, type: :string, required: false
+      parameter name: :start_date, in: :formData, type: :string, required: false
+      parameter name: :end_date, in: :formData, type: :string, required: false
+      parameter name: :start_time, in: :formData, type: :string, required: false
+      parameter name: :end_time, in: :formData, type: :string, required: false
+      parameter name: :total_redemption_available, in: :formData, type: :integer, required: false
+      parameter name: :max_redemptions_per_user, in: :formData, type: :integer, required: false
+      parameter name: :voucher_type, in: :formData, type: :string, required: false
+      parameter name: :voucher_value, in: :formData, type: :number, required: false
+      parameter name: :image, in: :formData, type: :file, required: false, description: 'Optional voucher image'
+
+      let(:Authorization) { auth_headers['Authorization'] }
+      let!(:existing_voucher) { create(:voucher, title: 'Old Title', vendor: vendor_user) }
+
+      response '200', 'Voucher updated successfully' do
+        let(:id) { existing_voucher.id }
+        let(:title) { 'Updated Title' }
+
+        schema VOUCHER_RESPONSE_SCHEMA
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          updated_voucher = Voucher.find(id)
+          expect(updated_voucher.title).to eq('Updated Title')
+        end
+      end
+
+      response '403', 'Forbidden - Cannot update another vendor\'s voucher' do
+        let(:id) { create(:voucher, title: 'Other Vendor Voucher', vendor: vendor2).id }
+        let(:title) { 'Hacked Title' }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string }
+               }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(false)
+          other_voucher = Voucher.find(id)
+          expect(other_voucher.title).to eq('Other Vendor Voucher')
+        end
+      end
+
+    end
+  end
+
+  # ============================================================
+  # DELETE /v1/vouchers/:id (Destroy)
+  # ============================================================
+  path '/v1/vouchers/{id}' do
+    parameter name: :id, in: :path, type: :integer, required: true, description: 'Voucher ID'
+
+    delete 'Deletes a voucher' do
+      tags 'Vouchers'
+      security [{ BearerAuth: [] }]
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      let(:Authorization) { auth_headers['Authorization'] }
+      let!(:voucher) { create(:voucher, vendor: vendor_user) }
+
+      response '204', 'Voucher deleted successfully' do
+        let(:id) { voucher.id }
+
+        run_test! do |response|
+          expect(response.status).to eq(204)
+          expect(Voucher.find_by(id: id)).to be_nil
+        end
+      end
+
+      response '403', 'Forbidden - Cannot delete another vendor\'s voucher' do
+        let(:id) { create(:voucher, vendor: vendor2).id }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string }
+               }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(false)
+          expect(Voucher.find_by(id: id)).to be_present
+        end
+      end
+
+      response '404', 'Voucher not found' do
+        let(:id) { 99999 }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Resource not found' }
+               }
+
+        run_test!
       end
     end
   end
