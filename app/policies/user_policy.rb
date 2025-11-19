@@ -5,9 +5,12 @@ class UserPolicy < ApplicationPolicy
   # Scope: Defines which records a user can see when fetching a collection (User.all)
   class Scope < Scope
     def resolve
-      if user.org_owner? || user.organizer?
-        # Org Owners and Organizers can see all users in the system
+      if user.org_owner?
+        # Org Owners can see all users in the system
         scope.all 
+      elsif user.organizer?
+        # Organizer can only see usees they created
+        scope.where(created_by_id: user.id)
       else
         # Standard members can only see themselves
         scope.where(id: user.id)

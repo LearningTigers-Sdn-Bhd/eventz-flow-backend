@@ -74,11 +74,13 @@ module V1
     end
 
     def vendor_params
-      params.require(:vendor).permit(:full_name, :email, :phone, :password, :password_confirmation, :vendor_id, :redirect_url, :exhibitor_owner_id)
+      params.require(:vendor).permit(:full_name, :email, :phone, 
+      :password, :password_confirmation, :vendor_id, 
+      :redirect_url, :poster_url, :qr_url, :exhibitor_owner_id)
     end
 
     def update_vendor_params
-      params.require(:vendor).permit(:redirect_url, :poster_url)
+      params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
     end
 
     def format_event_vendor(event_vendor)
@@ -89,6 +91,7 @@ module V1
         type: event_vendor.type,
         redirect_url: event_vendor.redirect_url,
         poster_url: event_vendor.poster_url,
+        qr_url: event_vendor.qr_url,
         created_at: event_vendor.created_at,
         updated_at: event_vendor.updated_at,
         vendor: {
