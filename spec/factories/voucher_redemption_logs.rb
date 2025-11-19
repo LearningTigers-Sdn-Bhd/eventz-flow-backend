@@ -1,0 +1,15 @@
+FactoryBot.define do
+  factory :voucher_redemption_log do
+    voucher { nil }
+    user { nil }
+    redeemer_staff { nil }
+    redemption_timestamp { "2025-11-14 10:38:04" }
+    redemption_location { nil }
+    redemption_status { "MyString" }
+    transaction_gross_amount { "9.99" }
+    discount_applied_value { "9.99" }
+    transaction_net_amount { "9.99" }
+    cancellation_timestamp { "2025-11-14 10:38:04" }
+    cancellation_reason { "MyText" }
+  end
+end

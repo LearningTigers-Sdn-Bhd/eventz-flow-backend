@@ -135,6 +135,9 @@ Rails.application.routes.draw do
       end
     end
 
+    resources :vouchers, only: [:index, :show, :create, :update, :destroy]
+    resources :voucher_redemptions, only: [:create]
+
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do
       # Optimized bulk endpoints (works for all roles)
@@ -185,5 +188,5 @@ Rails.application.routes.draw do
     # 8. API KEYS MANAGEMENT
     resources :api_keys, only: [:index, :create, :destroy]
 
-  end # end of namespace :v1
+  end
 end

@@ -13,6 +13,7 @@ class Event < ApplicationRecord
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
+  has_many :vouchers, dependent: :destroy
 
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
