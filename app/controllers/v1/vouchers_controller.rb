@@ -8,6 +8,9 @@ module V1
     # Authorizes the loaded @voucher for the three standard resource actions (show?, update?, destroy?).
     before_action :authorize_resource, only: [:show, :update, :destroy]
 
+    skip_before_action :authenticate_user!, only: [:serve_image]
+    skip_before_action :require_verified_email!, only: [:serve_image]
+
     # GET /api/v1/vouchers
     def index
       # 1. Scope the results using the VoucherPolicy::Scope
@@ -55,6 +58,23 @@ module V1
         )
       end
       # Pundit::NotAuthorizedError rescue block removed, handled globally
+    end
+
+    # GET /voucher_images/:filename [activestorage-implementation-change]
+    def serve_image
+      filename = params[:filename]
+      # Security check to prevent directory traversal
+      if filename.include?('..') || filename.include?('/') || filename.include?('\\')
+        return head :bad_request
+      end
+
+      path = Rails.root.join('storage', 'voucher_images', filename)
+
+      if File.exist?(path)
+        send_file path, disposition: 'inline'
+      else
+        head :not_found
+      end
     end
 
     # PATCH/PUT /api/v1/vouchers/:id

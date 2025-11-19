@@ -137,6 +137,8 @@ Rails.application.routes.draw do
 
     resources :vouchers, only: [:index, :show, :create, :update, :destroy]
     resources :voucher_redemptions, only: [:create]
+    # Public route for serving voucher images
+    get '/voucher_images/:filename', to: 'vouchers#serve_image', constraints: { filename: /.+/ }
 
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do
