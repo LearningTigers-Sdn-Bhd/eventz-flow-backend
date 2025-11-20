@@ -23,6 +23,6 @@ class VoucherRedemptionLog < ApplicationRecord
   scope :total_discount_value, -> { sum(:discount_applied_value) }
   scope :total_sales, -> { sum(:transaction_net_amount) }
   scope :daily_redemption_trend, -> { group_by_day(:redemption_timestamp).count }
-  scope :top_scanned_vouchers, -> { group(:voucher).order('count_all DESC').limit(5).count }
+  scope :top_scanned_vouchers, -> { joins(:voucher).group('vouchers.title').order('count_all DESC').limit(5).count }
   scope :latest_redemption_transactions, -> { order(redemption_timestamp: :desc).limit(10) }
 end
