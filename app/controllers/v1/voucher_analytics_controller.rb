@@ -4,10 +4,14 @@ module V1
 
     def index
       redemption_logs = VoucherRedemptionLog.for_event(@event)
+      total_vouchers_issued = Voucher.for_event(@event).count
+      total_redemptions = redemption_logs.count
+      event_redemption_rate = total_vouchers_issued.zero? ? 0 : (total_redemptions.to_f / total_vouchers_issued) * 100
 
       render json: {
-        total_vouchers_issued: Voucher.for_event(@event).count,
-        total_redemptions: redemption_logs.count,
+        total_vouchers_issued: total_vouchers_issued,
+        total_redemptions: total_redemptions,
+        event_redemption_rate: event_redemption_rate,
         total_discount_value: redemption_logs.total_discount_value,
         total_sales: redemption_logs.total_sales,
         daily_redemption_trend: redemption_logs.daily_redemption_trend,

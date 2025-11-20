@@ -23,6 +23,7 @@ RSpec.describe "V1::VoucherAnalytics", type: :request do
 
       expect(json["total_vouchers_issued"]).to eq(5)
       expect(json["total_redemptions"]).to eq(15)
+      expect(json["event_redemption_rate"]).to eq(300.0) # (15 / 5) * 100
     end
   end
 end
