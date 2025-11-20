@@ -1,12 +1,11 @@
 # Audits every successful voucher redemption transaction.
 class VoucherRedemptionLog < ApplicationRecord
   # --- Enums ---
-  enum :redeemer_type, { user_redeemer: 0, visitor_redeemer: 1 }
-  enum :redemption_status, { completed: 0, cancelled: 1 }
+  # enum :redemption_status, { completed: 0, cancelled: 1 }
 
   # --- Associations ---
   belongs_to :voucher
-  belongs_to :redeemer, polymorphic: true, foreign_type: 'polymorphic_redeemer_type'
+  belongs_to :redeemer, polymorphic: true  # Uses redeemer_type (string) and redeemer_id
   belongs_to :redeemer_staff, class_name: 'User', foreign_key: 'redeemer_staff_id', optional: true
 
   # --- Validations ---

@@ -81,7 +81,11 @@ Rails.application.routes.draw do
 
       resources :visitors, only: [:index, :show, :create, :update, :destroy]
 
-      resources :voucher_analytics, only: [:index], controller: 'voucher_analytics'
+      resources :voucher_analytics, only: [:index], controller: 'voucher_analytics' do
+        collection do
+          get :redemption_logs
+        end
+      end
 
       # Event Metrics moved outside to avoid impacting event resources
     end

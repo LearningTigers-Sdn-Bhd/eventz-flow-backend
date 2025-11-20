@@ -1,10 +1,8 @@
 FactoryBot.define do
   factory :voucher_redemption_log do
     voucher
-    # Use a user as the default redeemer
+    # Use a user as the default redeemer (polymorphic association auto-sets redeemer_type to "User")
     association :redeemer, factory: :user
-    polymorphic_redeemer_type { 'User' }
-    redeemer_type { :user_redeemer }
 
     redeemer_staff { nil }
     redemption_timestamp { "2025-11-14 10:38:04" }

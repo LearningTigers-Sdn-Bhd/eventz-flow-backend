@@ -155,9 +155,7 @@ class VoucherRedemptionService
   def log_redemption
     VoucherRedemptionLog.create!(
       voucher: @voucher,
-      redeemer: @redeemer,
-      polymorphic_redeemer_type: @redeemer.class.name,
-      redeemer_type: @redeemer.is_a?(User) ? :user_redeemer : :visitor_redeemer,
+      redeemer: @redeemer,  # Polymorphic association automatically sets redeemer_type and redeemer_id
       redeemer_staff_id: @vendor_id,
       redemption_timestamp: Time.current,
       redemption_status: :completed,

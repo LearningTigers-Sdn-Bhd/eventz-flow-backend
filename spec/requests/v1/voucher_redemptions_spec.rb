@@ -153,7 +153,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           log = VoucherRedemptionLog.last
           expect(log.voucher_id).to eq(voucher.id)
           expect(log.redeemer_id).to eq(vendor_user.id)
-          expect(log.redeemer_type).to eq('user_redeemer') # Enum key as string
+          expect(log.redeemer_type).to eq('User') # Rails polymorphic convention
           expect(log.redeemer).to eq(vendor_user) # Verify polymorphic association
         end
       end
@@ -196,7 +196,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           # Verify the redemption log is for the specified user
           log = VoucherRedemptionLog.last
           expect(log.redeemer_id).to eq(other_user.id)
-          expect(log.redeemer_type).to eq('user_redeemer') # Enum key as string
+          expect(log.redeemer_type).to eq('User') # Rails polymorphic convention
           expect(log.redeemer).to eq(other_user) # Verify polymorphic association
           expect(log.redeemer_staff_id).to eq(vendor_user.id)
         end

@@ -20,6 +20,25 @@ module V1
       }
     end
 
+    # GET /v1/events/:event_id/voucher_analytics/redemption_logs
+    # Fetch all redemption logs for an event with optional filters
+    def redemption_logs
+      logs = VoucherRedemptionLog.for_event(@event)
+                                  .includes(:voucher, :redeemer_staff)
+                                  .preload(:redeemer)
+                                  .order(redemption_timestamp: :desc)
+
+      # Optional filters
+      logs = logs.where(voucher_id: params[:voucher_id]) if params[:voucher_id].present?
+      logs = logs.where(redeemer_staff_id: params[:vendor_id]) if params[:vendor_id].present?
+
+      render json: logs.as_json(include: {
+        voucher: { only: [:id, :title, :voucher_uuid, :voucher_code, :voucher_type] },
+        redeemer: { only: [:id, :full_name, :email, :phone, :public_id] },
+        redeemer_staff: { only: [:id, :full_name, :email] }
+      })
+    end
+
     private
 
     def set_event

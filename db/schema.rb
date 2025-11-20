@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_20_064239) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_20_075307) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -292,10 +292,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_20_064239) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "redeemer_id"
-    t.integer "redeemer_type", limit: 2
-    t.string "polymorphic_redeemer_type"
+    t.string "redeemer_type"
     t.index ["redeemer_staff_id"], name: "index_voucher_redemption_logs_on_redeemer_staff_id"
-    t.index ["redeemer_type", "redeemer_id"], name: "index_voucher_redemption_logs_on_redeemer_type_and_redeemer_id"
+    t.index ["redeemer_type", "redeemer_id"], name: "index_voucher_redemption_logs_on_redeemer"
     t.index ["voucher_id"], name: "index_voucher_redemption_logs_on_voucher_id"
   end
 
