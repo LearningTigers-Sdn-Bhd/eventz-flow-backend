@@ -50,6 +50,9 @@ gem "jwt"
 # Email delivery with Resend
 gem "resend"
 
+# Groupdate for date-based grouping in ActiveRecord
+gem "groupdate"
+
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 # gem "image_processing", "~> 1.2"
 

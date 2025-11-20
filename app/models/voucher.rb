@@ -12,4 +12,6 @@ class Voucher < ApplicationRecord
     percentage: 1, 
     free_item: 2 
   }
+
+  scope :for_event, ->(event) { where(event: event) }
 end

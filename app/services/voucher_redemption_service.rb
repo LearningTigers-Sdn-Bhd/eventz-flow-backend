@@ -156,9 +156,11 @@ class VoucherRedemptionService
     VoucherRedemptionLog.create!(
       voucher: @voucher,
       redeemer: @redeemer,
+      polymorphic_redeemer_type: @redeemer.class.name,
+      redeemer_type: @redeemer.is_a?(User) ? :user_redeemer : :visitor_redeemer,
       redeemer_staff_id: @vendor_id,
       redemption_timestamp: Time.current,
-      redemption_status: 'Completed',
+      redemption_status: :completed,
       transaction_gross_amount: @gross_amount,
       discount_applied_value: @discount_amount,
       transaction_net_amount: @net_amount
