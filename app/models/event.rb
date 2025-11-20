@@ -1,4 +1,6 @@
 class Event < ApplicationRecord
+  extend FriendlyId
+  friendly_id :title, use: :slugged
   # --- Associations (Refactored) ---
 
   # Unified event staff assignment

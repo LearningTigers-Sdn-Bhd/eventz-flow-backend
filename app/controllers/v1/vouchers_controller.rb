@@ -17,11 +17,12 @@ module V1
       @vouchers = policy_scope(Voucher)
 
       # 2. Apply filters if provided in query parameters (only to the authorized set)
-      if filter_params.key?(:vendor_id)
+      if params[:event_id].present? # Check for event_id from nested route (friendly ID)
+        event = Event.friendly.find(params[:event_id])
+        @vouchers = @vouchers.where(event_id: event.id)
+      elsif filter_params.key?(:vendor_id)
         @vouchers = @vouchers.where(vendor_id: filter_params[:vendor_id])
-      end
-
-      if filter_params.key?(:event_id)
+      elsif filter_params.key?(:event_id) # Fallback for event_id as a query parameter (original behavior)
         @vouchers = @vouchers.where(event_id: filter_params[:event_id])
       end
 

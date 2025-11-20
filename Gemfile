@@ -47,6 +47,8 @@ gem "ostruct"
 
 gem "jwt"
 
+gem "friendly_id", "~> 5.5"
+
 # Email delivery with Resend
 gem "resend"
 

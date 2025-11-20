@@ -87,6 +87,9 @@ Rails.application.routes.draw do
         end
       end
 
+      resources :vouchers, only: [:index]
+
+
       # Event Metrics moved outside to avoid impacting event resources
     end
 
