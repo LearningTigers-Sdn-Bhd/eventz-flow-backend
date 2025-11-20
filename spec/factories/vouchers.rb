@@ -11,7 +11,7 @@ FactoryBot.define do
     association :event 
     
     voucher_code { "MyString" }
-    status { "active" } # Changed from "MyString" to a likely enum value
+    status { :active } 
 
     # FIX 2: Use dynamic date/time values to ensure the voucher is usually valid for redemption.
     start_date { Date.current - 1.day }
@@ -26,7 +26,7 @@ FactoryBot.define do
     redeemed_count { 0 } # Should start at 0
     max_redemptions_per_user { 5 } # More realistic default
     
-    voucher_type { "FIXED_AMOUNT" }
+    voucher_type { :fixed_amount }
     voucher_value { "9.99" }
   end
 end

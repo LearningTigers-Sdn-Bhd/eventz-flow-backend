@@ -5,9 +5,11 @@ class Voucher < ApplicationRecord
   has_many :voucher_redemption_logs
   has_many :voucher_usages
 
+  enum :status, { active: 0, inactive: 1 }
+
   enum :voucher_type, { 
-    fixed_amount: 'FIXED_AMOUNT', 
-    percentage: 'PERCENTAGE', 
-    free_item: 'FREE_ITEM' 
+    fixed_amount: 0, 
+    percentage: 1, 
+    free_item: 2 
   }
 end

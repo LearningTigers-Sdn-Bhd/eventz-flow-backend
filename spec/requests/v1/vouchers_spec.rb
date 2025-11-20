@@ -344,7 +344,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
         let(:end_date) { Date.current + 7.days }
         let(:start_time) { '00:00:00' }
         let(:end_time) { '23:59:59' }
-        let(:voucher_type) { 'PERCENTAGE' }
+        let(:voucher_type) { 'percentage' }
         let(:voucher_value) { 20 }
 
         schema VOUCHER_RESPONSE_SCHEMA
@@ -367,7 +367,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
         let(:end_date) { Date.current + 7.days }
         let(:start_time) { '00:00:00' }
         let(:end_time) { '23:59:59' }
-        let(:voucher_type) { 'PERCENTAGE' }
+        let(:voucher_type) { 'percentage' }
         let(:voucher_value) { 20 }
 
         schema type: :object,

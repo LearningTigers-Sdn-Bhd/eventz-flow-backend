@@ -130,7 +130,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
       end
 
       response '201', 'Voucher redeemed successfully' do
-        let(:voucher) { create_valid_voucher(voucher_type: 'FIXED_AMOUNT', voucher_value: 25.00) }
+        let(:voucher) { create_valid_voucher(voucher_type: :fixed_amount, voucher_value: 25.00) }
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid,
@@ -159,7 +159,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
       end
 
       response '201', 'Voucher redeemed successfully (percentage discount)' do
-        let(:voucher) { create_valid_voucher(voucher_type: 'PERCENTAGE', voucher_value: 10) }
+        let(:voucher) { create_valid_voucher(voucher_type: :percentage, voucher_value: 10) }
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid,

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_20_002009) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_20_044824) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -317,7 +317,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_20_002009) do
     t.bigint "vendor_id"
     t.bigint "event_id"
     t.string "voucher_code"
-    t.string "status"
     t.date "start_date"
     t.date "end_date"
     t.time "start_time"
@@ -326,11 +325,13 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_20_002009) do
     t.integer "redeemed_count"
     t.integer "max_redemptions_per_user"
     t.text "user_role_restriction"
-    t.string "voucher_type"
     t.decimal "voucher_value", precision: 10, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "image_path"
+    t.string "voucher_category"
+    t.integer "status", default: 0
+    t.integer "voucher_type"
     t.index ["event_id"], name: "index_vouchers_on_event_id"
     t.index ["status"], name: "index_vouchers_on_status"
     t.index ["vendor_id"], name: "index_vouchers_on_vendor_id"

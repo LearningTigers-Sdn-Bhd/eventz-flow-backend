@@ -44,7 +44,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
     end
 
     context 'for FIXED_AMOUNT voucher' do
-      let(:voucher) { create_valid_voucher(voucher_type: 'FIXED_AMOUNT', voucher_value: 25.00) }
+      let(:voucher) { create_valid_voucher(voucher_type: :fixed_amount, voucher_value: 25.00) }
 
       it 'returns success, calculates net amount, and logs the transaction' do
         expect {
@@ -64,7 +64,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
     end
 
     context 'for PERCENTAGE voucher' do
-      let(:voucher) { create_valid_voucher(voucher_type: 'PERCENTAGE', voucher_value: 10) }
+      let(:voucher) { create_valid_voucher(voucher_type: :percentage, voucher_value: 10) }
 
       it 'returns success and calculates 10% discount correctly' do
         result = call_service(voucher, user, 300.00)
@@ -74,7 +74,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       end
 
       it 'caps the percentage discount at the gross amount' do
-        over_100_voucher = create_valid_voucher(voucher_type: 'PERCENTAGE', voucher_value: 150)
+        over_100_voucher = create_valid_voucher(voucher_type: :percentage, voucher_value: 150)
         result = call_service(over_100_voucher, user, 50.00)
         expect(result).to be_success
         expect(result.data[:net_amount]).to eq(0.00.to_d)
@@ -83,7 +83,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
     end
 
     context 'for FREE_ITEM voucher' do
-      let(:voucher) { create_valid_voucher(voucher_type: 'FREE_ITEM', voucher_value: 0) }
+      let(:voucher) { create_valid_voucher(voucher_type: :free_item, voucher_value: 0) }
 
       it 'returns success with a 0.00 discount applied' do
         result = call_service(voucher, user, 10.00)

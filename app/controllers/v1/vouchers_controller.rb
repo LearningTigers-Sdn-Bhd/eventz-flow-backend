@@ -25,14 +25,14 @@ module V1
         @vouchers = @vouchers.where(event_id: filter_params[:event_id])
       end
 
-      # Convert to array to ensure data is always included (even if empty)
-      success_response(data: @vouchers.to_a)
+      # Include vendor association and convert to array
+      success_response(data: @vouchers.includes(:vendor).as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } }))
     end
 
     # GET /api/v1/vouchers/:id
     def show
       # Authorization handled by before_action :authorize_resource
-      success_response(data: @voucher)
+      success_response(data: @voucher.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } }))
     end
 
     # POST /api/v1/vouchers
@@ -48,7 +48,7 @@ module V1
       end
 
       if @voucher.save
-        success_response(data: @voucher, status: :created, message: 'Voucher created successfully')
+        success_response(data: @voucher.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } }), status: :created, message: 'Voucher created successfully')
       else
         # Rely on ApplicationController's error_response format
         error_response(
@@ -88,7 +88,7 @@ module V1
       end
 
       if @voucher.update(voucher_params)
-        success_response(data: @voucher, status: :ok, message: 'Voucher updated successfully')
+        success_response(data: @voucher.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } }), status: :ok, message: 'Voucher updated successfully')
       else
         # Rely on ApplicationController's error_response format
         error_response(
@@ -138,7 +138,8 @@ module V1
         :total_redemption_available,
         :max_redemptions_per_user,
         :voucher_type,
-        :voucher_value
+        :voucher_value,
+        :voucher_category
       )
     end
 
