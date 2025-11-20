@@ -6,15 +6,15 @@ class VoucherRedemptionService
   Result = Struct.new(:success?, :data, :error, keyword_init: true)
 
   # Class method entry point (the recommended way to call the service)
-  # Usage: VoucherRedemptionService.call(voucher: ..., user: ..., ...)
-  def self.call(voucher:, user:, vendor_id:, gross_amount:)
-    new(voucher:, user:, vendor_id:, gross_amount:).call
+  # Usage: VoucherRedemptionService.call(voucher: ..., redeemer: ..., ...)
+  def self.call(voucher:, redeemer:, vendor_id:, gross_amount:)
+    new(voucher:, redeemer:, vendor_id:, gross_amount:).call
   end
 
   # Initializes the service with all required data
-  def initialize(voucher:, user:, vendor_id:, gross_amount:)
+  def initialize(voucher:, redeemer:, vendor_id:, gross_amount:)
     @voucher = voucher
-    @user = user
+    @redeemer = redeemer
     @vendor_id = vendor_id
     @gross_amount = gross_amount.to_d # Ensure monetary value is Decimal
   end
@@ -107,13 +107,14 @@ class VoucherRedemptionService
 
   def per_user_limit_is_available?
     # Use find_or_initialize_by to get the current usage record
-    usage = UserVoucherUsage.find_or_initialize_by(user: @user, voucher: @voucher)
+    usage = VoucherUsage.find_or_initialize_by(redeemer: @redeemer, voucher: @voucher)
 
     # Use .to_i on max_redemptions_per_user to guarantee it's an integer.
     max_limit = @voucher.max_redemptions_per_user.to_i
+    current_count = usage.redemption_count.to_i
 
     # True if limit is 0 (unlimited) OR if usage count is less than the max limit
-    max_limit.zero? || (usage.redemption_count < max_limit)
+    max_limit.zero? || (current_count < max_limit)
   end
 
   # --- CALCULATION ---
@@ -146,15 +147,15 @@ class VoucherRedemptionService
     # 1. Update global count (atomic database operation)
     @voucher.increment!(:redeemed_count)
 
-    # 2. Update per-user count (atomic database operation)
-    usage = UserVoucherUsage.find_or_create_by!(user: @user, voucher: @voucher)
+    # 2. Update per-redeemer count (atomic database operation)
+    usage = VoucherUsage.find_or_create_by!(redeemer: @redeemer, voucher: @voucher)
     usage.increment!(:redemption_count)
   end
 
   def log_redemption
     VoucherRedemptionLog.create!(
       voucher: @voucher,
-      user: @user,
+      redeemer: @redeemer,
       redeemer_staff_id: @vendor_id,
       redemption_timestamp: Time.current,
       redemption_status: 'Completed',

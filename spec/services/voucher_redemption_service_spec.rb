@@ -10,10 +10,10 @@ RSpec.describe VoucherRedemptionService, type: :service do
   let(:gross_amount) { 100.00.to_d }
 
   # Helper method to simplify the service call
-  def call_service(voucher, user_to_redeem = user, amount = gross_amount)
+  def call_service(voucher, redeemer_to_use = user, amount = gross_amount)
     described_class.call(
       voucher: voucher,
-      user: user_to_redeem,
+      redeemer: redeemer_to_use,
       vendor_id: vendor_user.id,
       gross_amount: amount
     )
@@ -103,7 +103,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       # Add explicit success check with diagnostics, as rollback implies failure
       expect(result).to be_success, "Service failed during successful redemption check. Error: #{result.error}"
 
-      usage = UserVoucherUsage.find_by(user: user, voucher: voucher)
+      usage = VoucherUsage.find_by(redeemer: user, voucher: voucher)
       expect(usage.redemption_count).to eq(1)
 
       # 2nd Redemption

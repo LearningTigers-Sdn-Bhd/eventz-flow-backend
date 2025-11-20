@@ -7,6 +7,8 @@ class Visitor < ApplicationRecord
   # --- Associations ---
   belongs_to :event
   has_many :visitor_vendor_stamps, dependent: :destroy
+  has_many :voucher_usages, as: :redeemer, dependent: :destroy
+  has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
 
   # --- Validations ---
   validates :event_id, presence: true

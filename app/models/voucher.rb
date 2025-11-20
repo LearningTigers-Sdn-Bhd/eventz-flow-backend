@@ -3,7 +3,7 @@ class Voucher < ApplicationRecord
   belongs_to :event
 
   has_many :voucher_redemption_logs
-  has_many :user_voucher_usages
+  has_many :voucher_usages
 
   enum :voucher_type, { 
     fixed_amount: 'FIXED_AMOUNT', 

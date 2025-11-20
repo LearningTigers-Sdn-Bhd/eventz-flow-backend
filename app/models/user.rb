@@ -59,7 +59,11 @@ class User < ApplicationRecord
   # 2. PARTICIPATION
   has_many :tickets, dependent: :destroy
 
-  # 3. SECURITY
+  # 3. VOUCHER REDEMPTIONS
+  has_many :voucher_usages, as: :redeemer, dependent: :destroy
+  has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+
+  # 4. SECURITY
   has_many :api_keys, dependent: :destroy
   has_many :email_verifications, dependent: :destroy
 

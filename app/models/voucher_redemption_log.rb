@@ -1,8 +1,11 @@
 # Audits every successful voucher redemption transaction.
 class VoucherRedemptionLog < ApplicationRecord
+  # --- Enums ---
+  enum :redeemer_type, { User: 0, Visitor: 1 }
+
   # --- Associations ---
   belongs_to :voucher
-  belongs_to :user # The user who used the voucher
+  belongs_to :redeemer, polymorphic: true # The user or visitor who used the voucher
   
   # The staff member who processed the redemption, if applicable (staff_id is passed to the service)
   # NOTE: Assuming 'redeemer_staff_id' is a column storing a User ID.
@@ -11,7 +14,7 @@ class VoucherRedemptionLog < ApplicationRecord
 
   # --- Validations (Inferred from service data) ---
   validates :voucher, presence: true
-  validates :user, presence: true
+  validates :redeemer, presence: true
   validates :redemption_timestamp, presence: true
   validates :redemption_status, presence: true
   

@@ -3,7 +3,7 @@ module V1
     before_action :authenticate_user!
     before_action :authorize_vendor!
     before_action :set_voucher, only: [:create]
-    before_action :set_redemption_user, only: [:create]
+    before_action :set_redeemer, only: [:create]
 
     # POST /v1/voucher_redemptions
     def create
@@ -17,7 +17,7 @@ module V1
 
       result = VoucherRedemptionService.call(
         voucher: @voucher,
-        user: @redemption_user,
+        redeemer: @redeemer,
         vendor_id: current_user.id,
         gross_amount: gross_amount
       )
@@ -67,16 +67,19 @@ module V1
       return
     end
 
-    def set_redemption_user
-      if redemption_params[:user_id].present?
-        @redemption_user = User.find(redemption_params[:user_id])
+    def set_redeemer
+      # Support both User and Visitor redemptions
+      if redemption_params[:visitor_id].present?
+        @redeemer = Visitor.find_by!(public_id: redemption_params[:visitor_id])
+      elsif redemption_params[:user_id].present?
+        @redeemer = User.find(redemption_params[:user_id])
       else
-        @redemption_user = current_user
+        @redeemer = current_user
       end
     rescue ActiveRecord::RecordNotFound
       render json: {
         success: false,
-        message: 'User not found'
+        message: 'Redeemer not found'
       }, status: :not_found
       return
     end
@@ -85,6 +88,7 @@ module V1
       params.require(:voucher_redemption).permit(
         :voucher_uuid,
         :user_id,
+        :visitor_id,
         :gross_amount
       )
     end

@@ -102,7 +102,13 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           user_id: {
             type: :integer,
             example: 123,
-            description: 'Optional: User ID to redeem for. If not provided, redeems for the authenticated vendor.'
+            description: 'Optional: User ID to redeem for. Cannot be used with visitor_id.'
+          },
+          visitor_id: {
+            type: :string,
+            format: :uuid,
+            example: '550e8400-e29b-41d4-a716-446655440000',
+            description: 'Optional: Visitor public_id to redeem for. Cannot be used with user_id.'
           }
         },
         required: %w[voucher_uuid gross_amount]
@@ -146,7 +152,9 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           expect(VoucherRedemptionLog.count).to eq(1)
           log = VoucherRedemptionLog.last
           expect(log.voucher_id).to eq(voucher.id)
-          expect(log.user_id).to eq(vendor_user.id)
+          expect(log.redeemer_id).to eq(vendor_user.id)
+          expect(log.redeemer_type).to eq('User') # Enum key as string
+          expect(log.redeemer).to eq(vendor_user) # Verify polymorphic association
         end
       end
 
@@ -187,7 +195,9 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
 
           # Verify the redemption log is for the specified user
           log = VoucherRedemptionLog.last
-          expect(log.user_id).to eq(other_user.id)
+          expect(log.redeemer_id).to eq(other_user.id)
+          expect(log.redeemer_type).to eq('User') # Enum key as string
+          expect(log.redeemer).to eq(other_user) # Verify polymorphic association
           expect(log.redeemer_staff_id).to eq(vendor_user.id)
         end
       end
@@ -235,7 +245,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           # First redemption to consume the limit
           VoucherRedemptionService.call(
             voucher: limited_voucher,
-            user: create(:user),
+            redeemer: create(:user),
             vendor_id: vendor_user.id,
             gross_amount: 100.00
           )
@@ -266,7 +276,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           # First redemption to consume user's limit
           VoucherRedemptionService.call(
             voucher: user_limited_voucher,
-            user: user,
+            redeemer: user,
             vendor_id: vendor_user.id,
             gross_amount: 100.00
           )
@@ -302,7 +312,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         end
       end
 
-      response '404', 'User not found' do
+      response '404', 'Redeemer not found' do
         let(:voucher) { create_valid_voucher }
         let(:voucher_redemption) do
           {
@@ -315,13 +325,13 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         schema type: :object,
                properties: {
                  success: { type: :boolean, example: false },
-                 message: { type: :string, example: 'User not found' }
+                 message: { type: :string, example: 'Redeemer not found' }
                }
 
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['success']).to be(false)
-          expect(data['message']).to eq('User not found')
+          expect(data['message']).to eq('Redeemer not found')
         end
       end
 
