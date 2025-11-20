@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_20_075307) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_20_090411) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -102,7 +102,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_20_075307) do
     t.boolean "published", default: false, null: false
     t.boolean "use_ticket", default: true, null: false
     t.datetime "deleted_at"
+    t.string "slug"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
+    t.index ["slug"], name: "index_events_on_slug", unique: true
   end
 
   create_table "exhibitor_owners", force: :cascade do |t|
