@@ -23,5 +23,23 @@ class VoucherRedemptionLog < ApplicationRecord
   scope :total_sales, -> { sum(:transaction_net_amount) }
   scope :daily_redemption_trend, -> { group_by_day(:redemption_timestamp).count }
   scope :top_scanned_vouchers, -> { joins(:voucher).group('vouchers.title').order('count_all DESC').limit(5).count }
-  scope :latest_redemption_transactions, -> { order(redemption_timestamp: :desc).limit(10) }
+  scope :latest_redemption_transactions, -> { includes(voucher: :vendor).order(redemption_timestamp: :desc).limit(10) }
+
+  # -- Class Methods --
+  def self.daily_redemption_trend
+    group_by_day(:redemption_timestamp).count.map do |date, count|
+      { date: date.to_s, count: count }
+    end
+  end
+
+  # -- Instance Methods --
+  def as_json(options = {})
+    super(options).merge(
+      voucher_title: voucher.title,
+      voucher_code: voucher.voucher_code,
+      vendor_name: voucher.vendor&.full_name || voucher.vendor&.email || "Unknown",
+      redeemer_name: redeemer.try(:full_name) || redeemer.try(:email) || "Unknown",
+      redeemer_type: redeemer_type
+    )
+  end
 end

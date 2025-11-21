@@ -4553,7 +4553,7 @@ paths:
                 - success
                 - message
         '404':
-          description: User not found
+          description: Redeemer not found
           content:
             application/json:
               schema:
@@ -4564,7 +4564,7 @@ paths:
                     example: false
                   message:
                     type: string
-                    example: User not found
+                    example: Redeemer not found
         '403':
           description: Forbidden - Only vendors can redeem vouchers
           content:
@@ -4610,8 +4610,14 @@ paths:
                 user_id:
                   type: integer
                   example: 123
-                  description: 'Optional: User ID to redeem for. If not provided,
-                    redeems for the authenticated vendor.'
+                  description: 'Optional: User ID to redeem for. Cannot be used with
+                    visitor_id.'
+                visitor_id:
+                  type: string
+                  format: uuid
+                  example: 550e8400-e29b-41d4-a716-446655440000
+                  description: 'Optional: Visitor public_id to redeem for. Cannot
+                    be used with user_id.'
               required:
               - voucher_uuid
               - gross_amount
@@ -4723,7 +4729,7 @@ paths:
                         image_path:
                           type: string
                           nullable: true
-                          example: 'https://example.com/images/voucher.jpg'
+                          example: https://example.com/images/voucher.jpg
                         created_at:
                           type: string
                           format: date_time
@@ -4823,87 +4829,9 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                  example: 20% Off Deal
-                  description: Voucher title
-                description:
-                  type: string
-                  nullable: true
-                  example: Get 20% off on all items
-                vendor_id:
-                  type: integer
-                  example: 1
-                  description: Vendor user ID (must be current user for vendors)
-                event_id:
-                  type: integer
-                  example: 1
-                  description: Event ID
-                voucher_code:
-                  type: string
-                  example: SAVE20
-                  description: Unique voucher code
-                status:
-                  type: string
-                  example: active
-                  description: Voucher status
-                start_date:
-                  type: string
-                  format: date
-                  example: '2024-01-01'
-                end_date:
-                  type: string
-                  format: date
-                  example: '2024-12-31'
-                start_time:
-                  type: string
-                  format: time
-                  example: '00:00:00'
-                end_time:
-                  type: string
-                  format: time
-                  example: '23:59:59'
-                total_redemption_available:
-                  type: integer
-                  nullable: true
-                  example: 100
-                  description: Total redemptions allowed (0 = unlimited)
-                max_redemptions_per_user:
-                  type: integer
-                  nullable: true
-                  example: 5
-                  description: Max redemptions per user (0 = unlimited)
-                voucher_type:
-                  type: string
-                  enum:
-                  - FIXED_AMOUNT
-                  - PERCENTAGE
-                  - FREE_ITEM
-                  example: PERCENTAGE
-                voucher_value:
-                  type: number
-                  format: decimal
-                  example: 20.0
-                  description: Discount value (amount or percentage)
-                image:
-                  type: string
-                  format: binary
-                  nullable: true
-                  description: Optional voucher image file (jpg, png, etc)
-              required:
-              - title
-              - vendor_id
-              - event_id
-              - voucher_code
-              - start_date
-              - end_date
-              - start_time
-              - end_time
-              - voucher_type
-              - voucher_value
+              type: string
         required: true
+        description: Voucher title
   "/v1/vouchers/{id}":
     parameters:
     - name: id
@@ -5018,51 +4946,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                  example: Updated Title
-                description:
-                  type: string
-                  nullable: true
-                voucher_code:
-                  type: string
-                status:
-                  type: string
-                start_date:
-                  type: string
-                  format: date
-                end_date:
-                  type: string
-                  format: date
-                start_time:
-                  type: string
-                  format: time
-                end_time:
-                  type: string
-                  format: time
-                total_redemption_available:
-                  type: integer
-                  nullable: true
-                max_redemptions_per_user:
-                  type: integer
-                  nullable: true
-                voucher_type:
-                  type: string
-                  enum:
-                  - FIXED_AMOUNT
-                  - PERCENTAGE
-                  - FREE_ITEM
-                voucher_value:
-                  type: number
-                  format: decimal
-                image:
-                  type: string
-                  format: binary
-                  nullable: true
-                  description: Optional voucher image file (jpg, png, etc)
-        required: true
+              type: string
     delete:
       summary: Deletes a voucher
       tags:
