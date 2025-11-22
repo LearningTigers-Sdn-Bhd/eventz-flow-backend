@@ -285,4 +285,94 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       end
     end
   end
+
+  path '/v1/events/{event_id}/metrics/mall_live_feed' do
+    get 'Get live feed dashboard data' do
+      tags 'Event Analytics'
+      produces 'application/json'
+      parameter name: :event_id, in: :path, type: :integer, description: 'Event ID'
+      parameter name: 'Authorization', in: :header, type: :string, description: 'Bearer token'
+
+      response '200', 'Live feed data retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 shoppers_registered_today: { type: :integer },
+                 estimated_sales_today: { type: :string }, # BigDecimal is often serialized as string
+                 voucher_issuances: { type: :integer },
+                 voucher_redemptions: { type: :integer },
+                 redemption_rate: { type: :number },
+                 top_merchants: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       name: { type: :string },
+                       count: { type: :integer }
+                     }
+                   }
+                 },
+                 popular_halls: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       name: { type: :string },
+                       percentage: { type: :number }
+                     }
+                   }
+                 }
+               }
+
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        
+        before do
+          # Shoppers (Visitors)
+          create_list(:visitor, 3, event: event, created_at: Time.zone.now)
+          
+          # Vouchers & Redemptions
+          voucher = create(:voucher, event: event, total_redemption_available: 100)
+          create_list(:voucher_redemption_log, 2, 
+            voucher: voucher, 
+            transaction_net_amount: 50.0, 
+            redemption_timestamp: Time.zone.now,
+            redeemer: create(:visitor, event: event),
+            redemption_status: 'completed',
+            transaction_gross_amount: 50.0,
+            discount_applied_value: 0.0
+          )
+          
+          # Top Merchants & Halls
+          vendor_user = create(:vendor_user)
+          event_vendor = create(:event_vendor, event: event, vendor: vendor_user)
+          
+          # Assign Vendor to a Location (Hall A)
+          location = create(:event_location, event: event, name: "Hall A")
+          create(:event_location_member, event_location: location, member: vendor_user)
+
+          # Create stamps (Traffic)
+          4.times do
+            create(:visitor_vendor_stamp, event_vendor: event_vendor, visitor: create(:visitor, event: event))
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['shoppers_registered_today']).to eq(8)
+          expect(data['estimated_sales_today'].to_f).to eq(100.0) 
+          expect(data['voucher_issuances']).to eq(100)
+          expect(data['voucher_redemptions']).to eq(2)
+          expect(data['redemption_rate']).to eq(2.0)
+          expect(data['top_merchants'].length).to eq(1)
+          expect(data['top_merchants'][0]['count']).to eq(4)
+          
+          # Popular Halls Check
+          expect(data['popular_halls']).to be_an(Array)
+          expect(data['popular_halls'].length).to eq(1)
+          expect(data['popular_halls'][0]['name']).to eq("Hall A")
+          expect(data['popular_halls'][0]['percentage']).to eq(100.0)
+        end
+      end
+    end
+  end
 end

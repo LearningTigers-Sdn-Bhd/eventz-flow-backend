@@ -176,6 +176,7 @@ Rails.application.routes.draw do
           get 'weekly_registered',        to: 'event_analytics#weekly_registered_tickets'
           get 'weekly_scanned',           to: 'event_analytics#weekly_scanned_tickets'
           get 'weekly_sales_amount',      to: 'event_analytics#weekly_sales_amount'
+          get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
         end
       end
     end
