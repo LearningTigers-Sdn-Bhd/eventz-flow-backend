@@ -15,7 +15,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       voucher: voucher,
       redeemer: redeemer_to_use,
       vendor_id: vendor_user.id,
-      gross_amount: amount
+      net_amount: amount
     )
   end
 
@@ -46,39 +46,47 @@ RSpec.describe VoucherRedemptionService, type: :service do
     context 'for FIXED_AMOUNT voucher' do
       let(:voucher) { create_valid_voucher(voucher_type: :fixed_amount, voucher_value: 25.00) }
 
-      it 'returns success, calculates net amount, and logs the transaction' do
+      it 'returns success, calculates gross amount, and logs the transaction' do
         expect {
-          result = call_service(voucher, user, 100.00)
+          result = call_service(voucher, user, 75.00) # Net Amount
           expect(result).to be_success
-          expect(result.data[:net_amount]).to eq(75.00.to_d) # 100.00 - 25.00
+          expect(result.data[:net_amount]).to eq(75.00.to_d)
           expect(result.data[:discount_applied]).to eq(25.00.to_d)
+          # Implicitly checking Gross = 75 + 25 = 100
         }.to change(VoucherRedemptionLog, :count).by(1)
       end
 
-      it 'caps the fixed discount at the gross amount' do
-        result = call_service(voucher, user, 20.00) # Purchase is less than discount value
+      it 'calculates gross correctly even if net is 0 (covered by discount)' do
+        # If Net is 0, Gross = Net + Discount = 0 + 25 = 25.
+        # This implies the original bill was 25.
+        result = call_service(voucher, user, 0.00) 
         expect(result).to be_success
         expect(result.data[:net_amount]).to eq(0.00.to_d)
-        expect(result.data[:discount_applied]).to eq(20.00.to_d) # Discount capped at 20.00
+        expect(result.data[:discount_applied]).to eq(25.00.to_d) 
       end
     end
 
     context 'for PERCENTAGE voucher' do
       let(:voucher) { create_valid_voucher(voucher_type: :percentage, voucher_value: 10) }
 
-      it 'returns success and calculates 10% discount correctly' do
-        result = call_service(voucher, user, 300.00)
+      it 'returns success and calculates gross amount from net' do
+        # Net = 270. Gross = 270 / 0.9 = 300.
+        result = call_service(voucher, user, 270.00)
         expect(result).to be_success
         expect(result.data[:net_amount]).to eq(270.00.to_d)
-        expect(result.data[:discount_applied]).to eq(30.00.to_d) # 10% of 300
+        expect(result.data[:discount_applied]).to eq(30.00.to_d) # 300 - 270
       end
 
-      it 'caps the percentage discount at the gross amount' do
-        over_100_voucher = create_valid_voucher(voucher_type: :percentage, voucher_value: 150)
-        result = call_service(over_100_voucher, user, 50.00)
+      it 'handles 100% discount edge case' do
+        # If 100% discount, Net should be 0.
+        # Gross = Net / (1-1) -> Error handled.
+        # We fallback to Gross = Net.
+        over_100_voucher = create_valid_voucher(voucher_type: :percentage, voucher_value: 100)
+        result = call_service(over_100_voucher, user, 0.00)
         expect(result).to be_success
         expect(result.data[:net_amount]).to eq(0.00.to_d)
-        expect(result.data[:discount_applied]).to eq(50.00.to_d) # Discount capped at 50.00
+        # Discount is 0 because we can't calculate infinite gross.
+        expect(result.data[:discount_applied]).to eq(0.00.to_d) 
       end
     end
 

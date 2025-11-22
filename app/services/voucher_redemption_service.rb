@@ -7,16 +7,16 @@ class VoucherRedemptionService
 
   # Class method entry point (the recommended way to call the service)
   # Usage: VoucherRedemptionService.call(voucher: ..., redeemer: ..., ...)
-  def self.call(voucher:, redeemer:, vendor_id:, gross_amount:)
-    new(voucher:, redeemer:, vendor_id:, gross_amount:).call
+  def self.call(voucher:, redeemer:, vendor_id:, net_amount:)
+    new(voucher:, redeemer:, vendor_id:, net_amount:).call
   end
 
   # Initializes the service with all required data
-  def initialize(voucher:, redeemer:, vendor_id:, gross_amount:)
+  def initialize(voucher:, redeemer:, vendor_id:, net_amount:)
     @voucher = voucher
     @redeemer = redeemer
     @vendor_id = vendor_id
-    @gross_amount = gross_amount.to_d # Ensure monetary value is Decimal
+    @net_amount = net_amount.to_d # Ensure monetary value is Decimal
   end
 
   # Main execution method
@@ -26,9 +26,8 @@ class VoucherRedemptionService
       # 1. Run all critical validations
       check_validity!
 
-      # 2. Calculate the discount and net amount
-      @discount_amount = calculate_discount
-      @net_amount = @gross_amount - @discount_amount
+      # 2. Calculate the discount and gross amount
+      calculate_financials
 
       # 3. Update usage counts
       update_counts!
@@ -119,25 +118,40 @@ class VoucherRedemptionService
 
   # --- CALCULATION ---
 
-  def calculate_discount
+  def calculate_financials
     value = @voucher.voucher_value.to_d
 
-    # FIX: Use the Rails enum predicate methods (e.g., .percentage?) instead of
-    # comparing the returned symbol/string to the underlying string value.
     if @voucher.percentage?
-      # Calculate discount: (Gross Amount * Value / 100)
-      discount = @gross_amount * (value / 100)
-      # Discount cannot exceed the gross amount
-      [discount, @gross_amount].min
+      # Net = Gross * (1 - value/100)
+      # Gross = Net / (1 - value/100)
+      factor = 1 - (value / 100.0)
+      
+      if factor <= 0
+        # Handle 100% discount or invalid > 100% discount
+        # If 100% discount, we can't reverse calculate Gross from Net=0 accurately without more info.
+        # Assuming Gross = Net for safety if invalid, or 0 if Net is 0.
+        @gross_amount = @net_amount 
+        @discount_amount = 0
+      else
+        @gross_amount = @net_amount / factor
+        @discount_amount = @gross_amount - @net_amount
+      end
     elsif @voucher.fixed_amount?
-      # Discount is the fixed value, capped at the gross amount
-      [value, @gross_amount].min
+      # Gross = Net + Discount
+      # Note: If the original Gross was < Discount, the Net would be 0.
+      # Here we assume Gross = Net + Discount.
+      @discount_amount = value
+      @gross_amount = @net_amount + @discount_amount
     elsif @voucher.free_item?
-      # For a free item voucher, the discount recorded is $0.00
-      0.to_d
+      # For free item, we assume the Net Amount entered is for other items, 
+      # and the "discount" is 0 in terms of the bill reduction logic here, 
+      # or maybe we shouldn't calculate backwards for free items.
+      # Keeping it simple:
+      @gross_amount = @net_amount
+      @discount_amount = 0.to_d
     else
-      # Fallback for unknown type (should not happen if enum is used correctly)
-      0.to_d
+      @gross_amount = @net_amount
+      @discount_amount = 0.to_d
     end
   end
 

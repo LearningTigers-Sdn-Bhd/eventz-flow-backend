@@ -7,10 +7,10 @@ module V1
 
     # POST /v1/voucher_redemptions
     def create
-      gross_amount = redemption_params[:gross_amount]
-      if gross_amount.blank?
+      net_amount = redemption_params[:net_amount]
+      if net_amount.blank?
         return error_response(
-          message: 'Gross amount is required',
+          message: 'Net amount is required',
           status: :bad_request
         )
       end
@@ -19,7 +19,7 @@ module V1
         voucher: @voucher,
         redeemer: @redeemer,
         vendor_id: current_user.id,
-        gross_amount: gross_amount
+        net_amount: net_amount
       )
 
       if result.success?
@@ -89,7 +89,7 @@ module V1
         :voucher_uuid,
         :user_id,
         :visitor_id,
-        :gross_amount
+        :net_amount
       )
     end
   end

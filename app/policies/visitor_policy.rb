@@ -28,7 +28,9 @@ class VisitorPolicy < ApplicationPolicy
 
   # Staff can view any single visitor for their event.
   def show?
-    user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
+    user.is_event_admin?(record.event) || 
+    user.is_event_team_member?(record.event) || 
+    user.is_event_vendor?(record.event)
   end
 
   # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Organizers).

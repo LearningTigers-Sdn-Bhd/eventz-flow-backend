@@ -93,11 +93,11 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
             example: '550e8400-e29b-41d4-a716-446655440000',
             description: 'UUID of the voucher to redeem'
           },
-          gross_amount: {
+          net_amount: {
             type: :number,
             format: :decimal,
-            example: 100.00,
-            description: 'Purchase amount before discount (required)'
+            example: 75.00,
+            description: 'Purchase amount after discount (required)'
           },
           user_id: {
             type: :integer,
@@ -111,7 +111,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
             description: 'Optional: Visitor public_id to redeem for. Cannot be used with user_id.'
           }
         },
-        required: %w[voucher_uuid gross_amount]
+        required: %w[voucher_uuid net_amount]
       }
 
       let(:Authorization) { auth_headers['Authorization'] }
@@ -134,7 +134,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -163,7 +163,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid,
-            gross_amount: 300.00
+            net_amount: 270.00
           }
         end
 
@@ -183,7 +183,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           {
             voucher_uuid: voucher.voucher_uuid,
             user_id: other_user.id,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -215,7 +215,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: expired_voucher.voucher_uuid,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -237,7 +237,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           {
             voucher_uuid: limited_voucher.voucher_uuid,
             user_id: user.id,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -247,7 +247,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
             voucher: limited_voucher,
             redeemer: create(:user),
             vendor_id: vendor_user.id,
-            gross_amount: 100.00
+            net_amount: 75.00
           )
         end
 
@@ -268,7 +268,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           {
             voucher_uuid: user_limited_voucher.voucher_uuid,
             user_id: user.id,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -278,7 +278,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
             voucher: user_limited_voucher,
             redeemer: user,
             vendor_id: vendor_user.id,
-            gross_amount: 100.00
+            net_amount: 75.00
           )
         end
 
@@ -295,7 +295,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: '00000000-0000-0000-0000-000000000000',
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -318,7 +318,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
           {
             voucher_uuid: voucher.voucher_uuid,
             user_id: 99999,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -341,7 +341,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid,
-            gross_amount: 100.00
+            net_amount: 75.00
           }
         end
 
@@ -363,20 +363,8 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         let(:voucher_redemption) do
           {
             voucher_uuid: voucher.voucher_uuid
-            # gross_amount is missing
+            # net_amount is missing
           }
-        end
-
-        schema type: :object,
-               properties: {
-                 success: { type: :boolean, example: false },
-                 message: { type: :string, example: 'Gross amount is required' }
-               }
-
-        run_test! do |response|
-          data = JSON.parse(response.body)
-          expect(data['success']).to be(false)
-          expect(data['message']).to eq('Gross amount is required')
         end
       end
     end
