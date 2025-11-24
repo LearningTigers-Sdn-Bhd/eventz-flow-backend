@@ -729,6 +729,59 @@ paths:
                         count:
                           type: integer
                           description: Amount in cents
+  "/v1/events/{event_id}/metrics/mall_live_feed":
+    get:
+      summary: Get live feed dashboard data
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Live feed data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shoppers_registered_today:
+                    type: integer
+                  estimated_sales_today:
+                    type: string
+                  voucher_issuances:
+                    type: integer
+                  voucher_redemptions:
+                    type: integer
+                  redemption_rate:
+                    type: number
+                  top_merchants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        count:
+                          type: integer
+                  popular_halls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        percentage:
+                          type: number
   "/v1/events/{event_id}/event_locations":
     parameters:
     - name: event_id
@@ -4578,19 +4631,6 @@ paths:
                   message:
                     type: string
                     example: Only vendors can redeem vouchers
-        '400':
-          description: Bad Request - Missing required parameters
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
-                    example: Gross amount is required
       requestBody:
         content:
           application/json:
@@ -4602,11 +4642,11 @@ paths:
                   format: uuid
                   example: 550e8400-e29b-41d4-a716-446655440000
                   description: UUID of the voucher to redeem
-                gross_amount:
+                net_amount:
                   type: number
                   format: decimal
-                  example: 100.0
-                  description: Purchase amount before discount (required)
+                  example: 75.0
+                  description: Purchase amount after discount (required)
                 user_id:
                   type: integer
                   example: 123
@@ -4620,7 +4660,7 @@ paths:
                     be used with user_id.'
               required:
               - voucher_uuid
-              - gross_amount
+              - net_amount
         required: true
   "/v1/vouchers":
     get:

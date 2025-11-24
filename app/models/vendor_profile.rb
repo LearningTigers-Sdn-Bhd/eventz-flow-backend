@@ -11,6 +11,7 @@ class VendorProfile < ApplicationRecord
   
   # --- Callbacks ---
   validate :vendor_must_have_vendor_role
+  before_destroy :delete_image_file
   
   private
   
@@ -18,5 +19,14 @@ class VendorProfile < ApplicationRecord
     if vendor.present? && !vendor.vendor?
       errors.add(:vendor, 'must have vendor role')
     end
+  end
+
+  def delete_image_file
+    return unless image_path.present?
+
+    file_patch = Rails.root.join('storage', image_path)
+    File.delete(file_patch) if File.exist?(file_patch)
+  rescue StandardError => e
+    Rails.logger.error "Failed to delete vendor image: #{e.message}" 
   end
 end
