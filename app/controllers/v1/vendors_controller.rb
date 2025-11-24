@@ -1,11 +1,12 @@
 module V1
   class VendorsController < ApplicationController
     before_action :authenticate_user!
-    before_action :authorize_organizer!
     before_action :set_vendor, only: [:show, :update, :toggle_status, :destroy]
 
     # GET /v1/vendors
     def index
+      authorize User.new(role: :vendor), :index?, policy_class: VendorPolicy
+      
       vendors = policy_scope(User).where(role: :vendor)
 
       render json: vendors.map { |vendor| format_vendor(vendor) }, status: :ok
@@ -13,6 +14,8 @@ module V1
 
     # GET /v1/vendors/:id
     def show
+      authorize @vendor, :show?, policy_class: VendorPolicy
+      
       render json: format_vendor(@vendor), status: :ok
     end
 
@@ -33,6 +36,8 @@ module V1
         created_by_id: current_user.id
       )
 
+      authorize vendor_user, :create?, policy_class: VendorPolicy
+
       if vendor_user.save
         render json: format_vendor(vendor_user), status: :created
       else
@@ -43,6 +48,8 @@ module V1
 
     # PUT/PATCH /v1/vendors/:id
     def update
+      authorize @vendor, :update?, policy_class: VendorPolicy
+      
       # Handle vendor profile image if present
       if params[:vendor][:vendor_profile_attributes].present?
         handle_vendor_profile_image_upload
@@ -58,6 +65,8 @@ module V1
 
     # PATCH /v1/vendors/:id/toggle_status
     def toggle_status
+      authorize @vendor, :toggle_status?, policy_class: VendorPolicy
+      
       unless params[:status].in?(['active', 'inactive'])
         return render json: { error: 'Invalid status value' }, status: :unprocessable_content
       end
@@ -72,6 +81,8 @@ module V1
 
     # DELETE /v1/vendors/:id
     def destroy
+      authorize @vendor, :destroy?, policy_class: VendorPolicy
+      
       return render_cannot_delete_self if deleting_self?
 
       @vendor.destroy
@@ -196,13 +207,6 @@ module V1
         created_at: vendor_profile.created_at.iso8601,
         updated_at: vendor_profile.updated_at.iso8601
       }
-    end
-
-    def authorize_organizer!
-      unless current_user.is_organizer?
-        render json: { error: 'Forbidden', message: 'Only organizers can manage vendors.' },
-               status: :forbidden
-      end
     end
 
     def deleting_self?

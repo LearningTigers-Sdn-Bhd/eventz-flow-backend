@@ -3,15 +3,17 @@ module V1
     before_action :authenticate_user!
     before_action :set_event
     before_action :set_event_vendor
-    before_action :authorize_vendor_or_admin!
 
     # GET /v1/events/:event_id/vendors/:id/profile
     def show
+      authorize @event_vendor, policy_class: EventVendorPolicy
       render json: @event_vendor, status: :ok
     end
 
     # PATCH/PUT /v1/events/:event_id/vendors/:id/profile
     def update
+      authorize @event_vendor, policy_class: EventVendorPolicy
+      
       if @event_vendor.update(profile_params)
         render json: @event_vendor, status: :ok
       else
@@ -34,16 +36,6 @@ module V1
       @vendor = @event_vendor.vendor
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event vendor not found.' }, status: :not_found
-    end
-
-    def authorize_vendor_or_admin!
-      is_vendor = current_user.id == @vendor.id && current_user.vendor?
-      is_admin = current_user.is_event_admin?(@event)
-
-      unless is_vendor || is_admin
-        render json: { error: 'Forbidden', message: 'Only the vendor or event admin can perform this action.' },
-               status: :forbidden
-      end
     end
 
     def profile_params

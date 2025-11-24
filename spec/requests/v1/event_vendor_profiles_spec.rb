@@ -54,6 +54,12 @@ RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swag
         let(:id) { event_vendor.id }
         let(:Authorization) { "Bearer #{other_vendor_token}" }
 
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
     end
@@ -102,6 +108,12 @@ RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swag
         let(:id) { event_vendor.id }
         let(:Authorization) { "Bearer #{other_vendor_token}" }
         let(:body) { { profile: { redirect_url: 'https://updated.example.com' } } }
+
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
 
         run_test!
       end

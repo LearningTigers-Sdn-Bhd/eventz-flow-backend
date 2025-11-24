@@ -329,7 +329,12 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           }
         end
 
-        schema EVENT_VENDOR_ERROR_SCHEMA
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
 
@@ -527,7 +532,13 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
       response '403', 'Forbidden for non-event-admin' do
         let(:Authorization) { auth_header_non_admin }
-        schema EVENT_VENDOR_ERROR_SCHEMA
+        
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
 

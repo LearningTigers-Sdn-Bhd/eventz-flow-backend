@@ -62,6 +62,13 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
 
       response '403', 'Forbidden - not a vendor' do
         let(:Authorization) { "Bearer #{non_vendor_token}" }
+        
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
     end
@@ -138,6 +145,13 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
       response '403', 'Forbidden - not a vendor' do
         let(:Authorization) { "Bearer #{non_vendor_token}" }
         let(:vendor_profile) { { vendor_profile: { description: 'Test' } } }
+        
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
 
@@ -210,6 +224,13 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
       response '403', 'Forbidden - organizer who did not create vendor' do
         let(:vendor_id) { vendor_user.id }
         let(:Authorization) { "Bearer #{other_organizer_token}" }
+        
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
 
@@ -308,6 +329,13 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
         let(:vendor_id) { vendor_user.id }
         let(:Authorization) { "Bearer #{other_organizer_token}" }
         let(:vendor_profile) { { vendor_profile: { category: 'Test' } } }
+        
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
     end

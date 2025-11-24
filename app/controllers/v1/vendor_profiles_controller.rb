@@ -4,12 +4,13 @@ module V1
     skip_before_action :authenticate_user!, only: [:serve_image]
     skip_before_action :require_verified_email!, only: [:serve_image] if defined?(require_verified_email!)
 
-    before_action :set_vendor_and_authorize, only: [:show, :update]
+    before_action :set_vendor, only: [:show, :update]
     before_action :set_vendor_profile, only: [:show, :update]
 
     # GET /v1/vendor_profile (vendor's own)
     # GET /v1/vendors/:vendor_id/profile (organizer/org_owner)
     def show
+      authorize @vendor_profile
       render json: format_vendor_profile(@vendor_profile), status: :ok
     end
 
@@ -33,6 +34,8 @@ module V1
     # PATCH /v1/vendor_profile (vendor's own)
     # PATCH /v1/vendors/:vendor_id/profile (organizer/org_owner)
     def update
+      authorize @vendor_profile
+      
       attributes = vendor_profile_params.to_h
 
       # Handle explicit image removal (empty string means remove)
@@ -63,28 +66,15 @@ module V1
 
     private
 
-    def set_vendor_and_authorize
+    def set_vendor
       # If id param exists, it's an admin accessing another vendor's profile via /vendors/:id/profile
       if params[:id].present?
         @vendor = User.find(params[:id])
         unless @vendor.vendor?
           render json: { error: 'Not Found', message: 'User is not a vendor.' }, status: :not_found and return
         end
-        
-        # Check if user is org_owner or the organizer who created this vendor
-        is_org_owner = current_user.is_org_owner?
-        is_creator = @vendor.created_by_id == current_user.id && current_user.is_organizer?
-        
-        unless is_org_owner || is_creator
-          render json: { error: 'Forbidden', message: 'Only org owners or the organizer who created this vendor can manage their profile.' },
-                 status: :forbidden and return
-        end
       else
         # No vendor_id param, vendor accessing their own profile
-        unless current_user.vendor?
-          render json: { error: 'Forbidden', message: 'Only vendors can manage their profile.' },
-                 status: :forbidden and return
-        end
         @vendor = current_user
       end
     rescue ActiveRecord::RecordNotFound
@@ -94,6 +84,8 @@ module V1
     def set_vendor_profile
       @vendor_profile = @vendor.vendor_profile || @vendor.build_vendor_profile
     end
+
+
 
     def vendor_profile_params
       params.require(:vendor_profile).permit(

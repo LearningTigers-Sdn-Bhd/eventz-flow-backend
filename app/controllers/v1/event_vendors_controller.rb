@@ -2,11 +2,13 @@ module V1
   class EventVendorsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event
-    before_action :authorize_event_admin!, except: [:index]
     before_action :set_event_vendor, only: [:update, :destroy]
 
     # GET /v1/events/:event_id/vendors
     def index
+      # Authorization is handled by event show policy
+      authorize @event, :show?
+      
       event_vendors = @event.event_vendors.includes(:vendor)
       # Note: exhibitor_owner is lazy-loaded in format_event_vendor only for Exhibitor types
 
@@ -16,6 +18,10 @@ module V1
 
     # POST /v1/events/:event_id/vendors
     def create
+      # Build a temporary event_vendor for authorization
+      event_vendor = @event.event_vendors.build
+      authorize event_vendor, policy_class: EventVendorPolicy
+      
       result = EventVendorService.create(event: @event, params: vendor_params, current_user: current_user)
 
       if result.success?
@@ -31,6 +37,8 @@ module V1
 
     # PATCH /v1/events/:event_id/vendors/:id
     def update
+      authorize @event_vendor, policy_class: EventVendorPolicy
+      
       if @event_vendor.update(update_vendor_params)
         render json: format_event_vendor(@event_vendor),
         status: :ok
@@ -43,6 +51,8 @@ module V1
 
     # DELETE /v1/events/:event_id/vendors/:id
     def destroy
+      authorize @event_vendor, policy_class: EventVendorPolicy
+      
       if @event_vendor.destroy
         head :no_content
       else
@@ -64,13 +74,6 @@ module V1
       @event_vendor = @event.event_vendors.find(params[:id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event vendor not found.' }, status: :not_found
-    end
-
-    def authorize_event_admin!
-      unless current_user.is_event_admin?(@event)
-        render json: { error: 'Forbidden', message: 'Only event admins can perform this action.' },
-               status: :forbidden
-      end
     end
 
     def vendor_params

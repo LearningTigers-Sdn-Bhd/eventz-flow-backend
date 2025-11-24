@@ -1,0 +1,50 @@
+# app/policies/event_vendor_policy.rb
+class EventVendorPolicy < ApplicationPolicy
+  # Note: user = @current_user, record = the EventVendor instance being acted upon
+
+  class Scope < Scope
+    def resolve
+      if user.org_owner?
+        # Org owners can see all event vendors
+        scope.all
+      elsif user.organizer?
+        # Organizers can see event vendors for events they created
+        scope.joins(:event).where(events: { created_by_id: user.id })
+      elsif user.vendor?
+        # Vendors can only see their own event vendor assignments
+        scope.where(vendor_id: user.id)
+      else
+        # Members and others can't see event vendors
+        scope.none
+      end
+    end
+  end
+
+  def index?
+    # Anyone can list event vendors if they can view the event
+    # (event authorization is handled separately in the controller)
+    true
+  end
+
+  def show?
+    # Vendors can view their own event vendor record
+    # Event admins can view any event vendor in their events
+    user.is_event_admin?(record.event) || record.vendor_id == user.id
+  end
+
+  def create?
+    # Only event admins can add vendors to events
+    user.is_event_admin?(record.event)
+  end
+
+  def update?
+    # Event admins can update event vendor records
+    # Vendors can update their own event vendor profile (redirect_url, poster_url)
+    user.is_event_admin?(record.event) || record.vendor_id == user.id
+  end
+
+  def destroy?
+    # Only event admins can remove vendors from events
+    user.is_event_admin?(record.event)
+  end
+end

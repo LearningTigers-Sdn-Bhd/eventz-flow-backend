@@ -129,7 +129,12 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
           }
         end
 
-        schema VENDOR_ERROR_SCHEMA
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean },
+                 message: { type: :string }
+               }
+
         run_test!
       end
     end
