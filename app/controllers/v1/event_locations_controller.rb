@@ -46,8 +46,11 @@ module V1
       authorize @event, :update?
 
       if @event_location.update(event_location_params)
-        # Update members if provided
-        assign_members if params[:event_location].key?(:member_ids)
+        # Only update members if member_ids is explicitly provided and not nil
+        # This prevents accidentally clearing members when updating other location attributes
+        if params[:event_location].key?(:member_ids) && !params[:event_location][:member_ids].nil?
+          assign_members
+        end
 
         render json: format_location_response(@event_location), status: :ok
       else

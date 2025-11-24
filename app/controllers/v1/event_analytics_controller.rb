@@ -133,8 +133,10 @@ module V1
     end
 
     def fetch_popular_halls
-      location_traffic = VisitorVendorStamp.joins(event_vendor: :vendor)
-                                           .joins("INNER JOIN event_location_members ON event_location_members.member_id = users.id")
+      # Join visitor stamps -> event vendors -> location members -> locations
+      # This tracks which locations (halls) get the most visitor traffic based on vendor stamps
+      location_traffic = VisitorVendorStamp.joins(:event_vendor)
+                                           .joins("INNER JOIN event_location_members ON event_location_members.member_id = event_vendors.vendor_id")
                                            .joins("INNER JOIN event_locations ON event_locations.id = event_location_members.event_location_id")
                                            .where(event_vendors: { event_id: @event.id })
                                            .where(event_locations: { event_id: @event.id })
