@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_20_090411) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_24_022348) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,8 +65,12 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_20_090411) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.boolean "is_unlimited", default: false, null: false
+    t.string "floor"
+    t.jsonb "location_details", default: {}
+    t.index ["event_id", "floor"], name: "index_event_locations_on_event_id_and_floor"
     t.index ["event_id", "name"], name: "index_event_locations_on_event_id_and_name", unique: true
     t.index ["event_id"], name: "index_event_locations_on_event_id"
+    t.index ["location_details"], name: "index_event_locations_on_location_details", using: :gin
   end
 
   create_table "event_vendors", force: :cascade do |t|

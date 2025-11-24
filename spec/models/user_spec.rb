@@ -48,10 +48,9 @@ RSpec.describe User, type: :model do
 		# Test 5: Relationships (Using the new unified EventAssignment model)
 		it { is_expected.to have_many(:event_assignments).dependent(:destroy) }
 		it { is_expected.to have_many(:assigned_events).through(:event_assignments).source(:event) }
-
-		# If you defined helper associations like `assigned_event_admins` in user.rb, test them too:
-		# it { is_expected.to have_many(:assigned_event_admins).dependent(:destroy).class_name('EventAssignment') }
-		# it { is_expected.to have_many(:assigned_event_team_members).dependent(:destroy).class_name('EventAssignment') }
+		it { is_expected.to have_many(:event_location_members).dependent(:destroy) }
+		it { is_expected.to have_many(:assigned_locations).through(:event_location_members).source(:event_location) }
+		it { is_expected.to have_many(:assigned_event_admins).dependent(:destroy).class_name('EventAssignment') }
 		# ------------------------------
 
 		# Test 6: Role Helper Methods
@@ -59,6 +58,7 @@ RSpec.describe User, type: :model do
 		let(:org_owner_user) { create(:org_owner) }
 		let(:organizer_user) { create(:organizer_user) }
 		let(:member_user) { create(:member_user) }
+		let(:vendor_user) { create(:vendor_user) }
 
 		it 'correctly identifies a Organization owner' do
 			expect(org_owner_user.org_owner?).to be true
@@ -75,6 +75,18 @@ RSpec.describe User, type: :model do
 		it 'correctly identifies a Member' do
 			expect(member_user.is_member?).to be true
 			expect(organizer_user.is_member?).to be false
+		end
+
+		it 'correctly identifies staff members' do
+			expect(org_owner_user.is_staff?).to be true
+			expect(organizer_user.is_staff?).to be true
+			expect(member_user.is_staff?).to be true
+			expect(vendor_user.is_staff?).to be false
+		end
+
+		it 'correctly identifies vendors' do
+			expect(vendor_user.is_vendor?).to be true
+			expect(member_user.is_vendor?).to be false
 		end
 	end
 end

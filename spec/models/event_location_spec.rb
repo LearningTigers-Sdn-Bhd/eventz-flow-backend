@@ -13,6 +13,8 @@ RSpec.describe EventLocation, type: :model do
     it { should belong_to(:event).inverse_of(:event_locations) }
     it { should have_many(:event_location_members).dependent(:destroy) }
     it { should have_many(:members).through(:event_location_members) }
+    it { should have_many(:staff_members).through(:event_location_members) }
+    it { should have_many(:vendor_members).through(:event_location_members) }
   end
 
   # =========================================================================
@@ -96,6 +98,42 @@ RSpec.describe EventLocation, type: :model do
 
       expect(location.members.count).to eq(2)
       expect(location.members).to include(user1, user2)
+    end
+
+    it 'separates staff and vendor members' do
+      staff = create(:member_user)
+      vendor = create(:vendor_user)
+      location = create(:event_location, event: event)
+
+      location.event_location_members.create(member: staff)
+      location.event_location_members.create(member: vendor)
+
+      expect(location.staff_members).to include(staff)
+      expect(location.staff_members).not_to include(vendor)
+      expect(location.vendor_members).to include(vendor)
+      expect(location.vendor_members).not_to include(staff)
+    end
+
+    it 'generates location display name correctly' do
+      location = create(:event_location, 
+        event: event, 
+        name: 'Main Hall',
+        floor: 2,
+        location_details: { 'wing' => 'A', 'booth_number' => '101' }
+      )
+
+      expect(location.location_display_name).to eq('Main Hall - Floor 2 - Wing A - Booth 101')
+    end
+
+    it 'handles location_details with custom keys' do
+      location = create(:event_location, 
+        event: event, 
+        name: 'Exhibition Area',
+        location_details: { 'zone' => 'North', 'section' => 'B' }
+      )
+
+      expect(location.location_details['zone']).to eq('North')
+      expect(location.location_details['section']).to eq('B')
     end
 
     it 'destroys associated event_location_members when destroyed' do

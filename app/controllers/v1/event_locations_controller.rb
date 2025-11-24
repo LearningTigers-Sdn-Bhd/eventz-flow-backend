@@ -11,17 +11,16 @@ module V1
 
     # GET /v1/events/:event_id/event_locations
     def index
-      @event_locations = @event.event_locations.includes(:members)
-      render json: @event_locations.as_json(include: {
-        members: { only: [:id, :full_name, :email] }
-      }), status: :ok
+      # Use policy scope to filter locations based on user role (vendors see only their assigned locations)
+      @event_locations = policy_scope(@event.event_locations).includes(:members)
+      
+      render json: @event_locations.map { |location| format_location_response(location) }, 
+             status: :ok
     end
 
     # GET /v1/events/:event_id/event_locations/:id
     def show
-      render json: @event_location.as_json(include: {
-        members: { only: [:id, :full_name, :email] }
-      }), status: :ok
+      render json: format_location_response(@event_location), status: :ok
     end
 
     # POST /v1/events/:event_id/event_locations
@@ -35,9 +34,7 @@ module V1
         # Assign members if provided
         assign_members if params[:event_location][:member_ids].present?
 
-        render json: @event_location.as_json(include: {
-          members: { only: [:id, :full_name, :email] }
-        }), status: :created
+        render json: format_location_response(@event_location), status: :created
       else
         render json: { errors: @event_location.errors.full_messages }, status: :unprocessable_content
       end
@@ -50,13 +47,9 @@ module V1
 
       if @event_location.update(event_location_params)
         # Update members if provided
-        # assign_members if params[:event_location][:member_ids].present?
-
         assign_members if params[:event_location].key?(:member_ids)
 
-        render json: @event_location.as_json(include: {
-          members: { only: [:id, :full_name, :email] }
-        }), status: :ok
+        render json: format_location_response(@event_location), status: :ok
       else
         render json: { errors: @event_location.errors.full_messages }, status: :unprocessable_content
       end
@@ -88,11 +81,21 @@ module V1
     end
 
     def event_location_params
-      params.require(:event_location).permit(
+      # First, get the basic permitted params
+      basic_params = params.require(:event_location).permit(
         :name,
         :scan_limit,
-        :is_unlimited
+        :is_unlimited,
+        :floor
       )
+      
+      # Allow any keys in location_details (dynamic JSONB field)
+      if params[:event_location].key?(:location_details) && params[:event_location][:location_details].present?
+        # Use permit! to allow all nested keys in location_details
+        basic_params[:location_details] = params[:event_location][:location_details].to_unsafe_h
+      end
+      
+      basic_params
     end
 
     # Helper method to assign members to the event location
@@ -109,6 +112,46 @@ module V1
           @event_location.event_location_members.create(member: user)
         end
       end
+      
+      # Reload associations to get updated members
+      @event_location.reload
+    end
+
+    # Format location response with separated staff and vendors
+    def format_location_response(location)
+      # Separate members by role
+      all_members = location.members
+      
+      staff_members = all_members.select { |m| ['org_owner', 'organizer', 'member'].include?(m.role) }
+      vendor_members = all_members.select { |m| m.role == 'vendor' }
+      
+      {
+        id: location.id,
+        name: location.name,
+        scan_limit: location.scan_limit,
+        is_unlimited: location.is_unlimited,
+        event_id: location.event_id,
+        floor: location.floor,
+        location_details: location.location_details || {},
+        location_display_name: location.location_display_name,
+        created_at: location.created_at,
+        updated_at: location.updated_at,
+        
+        # Separated by role
+        staff_members: staff_members.map { |m| format_member(m, 'staff') },
+        vendors: vendor_members.map { |m| format_member(m, 'vendor') }
+      }
+    end
+
+    # Format individual member with role information
+    def format_member(member, member_type = nil)
+      {
+        id: member.id,
+        full_name: member.full_name,
+        email: member.email,
+        role: member.role,
+        member_type: member_type || (member.role == 'vendor' ? 'vendor' : 'staff')
+      }
     end
   end
 end

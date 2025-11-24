@@ -52,6 +52,24 @@ RSpec.describe EventLocationMember, type: :model do
         expect(assignment2).to be_valid
       end
     end
+
+    context 'role validation' do
+      it 'allows staff members (org_owner, organizer, member)' do
+        staff_roles = [:org_owner, :organizer_user, :member_user]
+        
+        staff_roles.each do |role|
+          staff_user = create(role)
+          assignment = build(:event_location_member, event_location: event_location, member: staff_user)
+          expect(assignment).to be_valid
+        end
+      end
+
+      it 'allows vendor members' do
+        vendor = create(:vendor_user)
+        assignment = build(:event_location_member, event_location: event_location, member: vendor)
+        expect(assignment).to be_valid
+      end
+    end
   end
 
   # =========================================================================

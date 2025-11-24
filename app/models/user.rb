@@ -51,19 +51,23 @@ class User < ApplicationRecord
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
   has_many :groups, through: :group_memberships
 
+  # 3. EVENT LOCATION ASSIGNMENTS
+  has_many :event_location_members, foreign_key: :member_id, dependent: :destroy
+  has_many :assigned_locations, through: :event_location_members, source: :event_location
+
   # Add the required scoped association for the controller (Failures 8, 9 from previous run)
   has_many :assigned_event_admins, -> { where(role: EventAssignment.roles[:event_admin]) },
            class_name: 'EventAssignment',
            dependent: :destroy
 
-  # 2. PARTICIPATION
+  # 4. PARTICIPATION
   has_many :tickets, dependent: :destroy
 
-  # 3. VOUCHER REDEMPTIONS
+  # 5. VOUCHER REDEMPTIONS
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
 
-  # 4. SECURITY
+  # 6. SECURITY
   has_many :api_keys, dependent: :destroy
   has_many :email_verifications, dependent: :destroy
 
@@ -138,6 +142,10 @@ class User < ApplicationRecord
 
   def is_vendor?
     vendor?
+  end
+
+  def is_staff?
+    ['org_owner', 'organizer', 'member'].include?(role)
   end
 
   private

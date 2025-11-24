@@ -51,8 +51,17 @@ class EventLocationPolicy < ApplicationPolicy
       # Get all events the user can view
       viewable_event_ids = EventPolicy::Scope.new(user, Event).resolve.pluck(:id)
 
-      # Return locations for those events
-      scope.where(event_id: viewable_event_ids)
+      # Base scope: locations for events the user can view
+      locations = scope.where(event_id: viewable_event_ids)
+
+      # If user is a vendor, only show locations they're assigned to
+      if user.role == 'vendor'
+        locations = locations.joins(:event_location_members)
+                            .where(event_location_members: { member_id: user.id })
+                            .distinct
+      end
+
+      locations
     end
   end
 end

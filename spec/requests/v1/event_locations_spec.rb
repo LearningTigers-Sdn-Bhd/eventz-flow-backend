@@ -14,16 +14,38 @@ EVENT_LOCATION_SCHEMA = {
     name: { type: :string, example: 'Main Hall' },
     scan_limit: { type: :integer, example: 100 },
     is_unlimited: { type: :boolean, default: false },
+    floor: { type: :integer, example: 1, nullable: true },
+    location_details: { 
+      type: :object,
+      additionalProperties: true,
+      example: { wing: 'A', booth_number: '101' }
+    },
+    location_display_name: { type: :string, example: 'Main Hall - Floor 1 - Wing A' },
     created_at: { type: :string, format: :date_time },
     updated_at: { type: :string, format: :date_time },
-    members: {
+    staff_members: {
       type: :array,
       items: {
         type: :object,
         properties: {
           id: { type: :integer },
           full_name: { type: :string },
-          email: { type: :string }
+          email: { type: :string },
+          role: { type: :string },
+          member_type: { type: :string, example: 'staff' }
+        }
+      }
+    },
+    vendors: {
+      type: :array,
+      items: {
+        type: :object,
+        properties: {
+          id: { type: :integer },
+          full_name: { type: :string },
+          email: { type: :string },
+          role: { type: :string },
+          member_type: { type: :string, example: 'vendor' }
         }
       }
     }
@@ -36,6 +58,7 @@ RSpec.describe 'V1::EventLocations', type: :request do
   let(:org_owner_user) { create(:org_owner) }
   let(:organizer_user) { create(:organizer_user) }
   let(:member_user) { create(:member_user) }
+  let(:vendor_user) { create(:vendor_user) }
 
   # --- Setup Tokens ---
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
@@ -78,6 +101,18 @@ RSpec.describe 'V1::EventLocations', type: :request do
         name: 'New Location with Members',
         scan_limit: 80,
         member_ids: [member_user.id]
+      }
+    }
+  end
+
+  let(:valid_create_params_with_staff_and_vendors) do
+    {
+      event_location: {
+        name: 'Location with Staff and Vendors',
+        scan_limit: 100,
+        floor: 2,
+        location_details: { wing: 'A', booth_number: '101' },
+        member_ids: [member_user.id, vendor_user.id]
       }
     }
   end
@@ -179,11 +214,18 @@ RSpec.describe 'V1::EventLocations', type: :request do
           name: { type: :string, example: 'Main Stage' },
           scan_limit: { type: :integer, example: 200 },
           is_unlimited: { type: :boolean, default: false },
+          floor: { type: :integer, example: 1, nullable: true },
+          location_details: {
+            type: :object,
+            additionalProperties: true,
+            example: { wing: 'A', booth_number: '101', zone: 'North' },
+            description: 'Optional: Dynamic JSONB field for custom location details'
+          },
           member_ids: {
             type: :array,
             items: { type: :integer },
             example: [1, 2, 3],
-            description: 'Optional: Array of user IDs to assign as location members'
+            description: 'Optional: Array of user IDs to assign as location members (staff or vendors)'
           }
         },
         required: ['name']
@@ -213,8 +255,29 @@ RSpec.describe 'V1::EventLocations', type: :request do
         run_test! do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('New Location with Members')
-          expect(json['members'].count).to eq(1)
-          expect(json['members'].first['id']).to eq(member_user.id)
+          expect(json['staff_members'].count).to eq(1)
+          expect(json['staff_members'].first['id']).to eq(member_user.id)
+          expect(json['staff_members'].first['member_type']).to eq('staff')
+        end
+      end
+
+      # 2b. Success with Staff and Vendors separated
+      response '201', 'Event location created with staff and vendors separated' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { event.id }
+        let(:event_location) { valid_create_params_with_staff_and_vendors }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['name']).to eq('Location with Staff and Vendors')
+          expect(json['floor'].to_i).to eq(2)
+          expect(json['location_details']['wing']).to eq('A')
+          expect(json['location_details']['booth_number']).to eq('101')
+          expect(json['location_display_name']).to include('Floor 2')
+          expect(json['staff_members'].count).to eq(1)
+          expect(json['vendors'].count).to eq(1)
+          expect(json['staff_members'].first['id']).to eq(member_user.id)
+          expect(json['vendors'].first['id']).to eq(vendor_user.id)
         end
       end
 
@@ -330,11 +393,18 @@ RSpec.describe 'V1::EventLocations', type: :request do
           name: { type: :string, example: 'Updated Hall Name' },
           scan_limit: { type: :integer, example: 250 },
           is_unlimited: { type: :boolean, default: false },
+          floor: { type: :integer, example: 2, nullable: true },
+          location_details: {
+            type: :object,
+            additionalProperties: true,
+            example: { wing: 'B', booth_number: '202' },
+            description: 'Optional: Dynamic JSONB field for custom location details'
+          },
           member_ids: {
             type: :array,
             items: { type: :integer },
             example: [1, 2, 3],
-            description: 'Optional: Array of user IDs to assign as location members'
+            description: 'Optional: Array of user IDs to assign as location members (staff or vendors)'
           }
         }
       }
