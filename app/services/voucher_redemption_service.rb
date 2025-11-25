@@ -50,43 +50,117 @@ class VoucherRedemptionService
   def check_validity!
     # Check 1: Time/Date Validity
     # The 'time_is_valid?' logic now handles the possibility of missing data.
-    raise "Voucher has expired or is not yet active." unless time_is_valid?
+    unless time_is_valid?
+      raise build_time_error_message
+    end
 
     # Check 2: Global Count Limit
-    raise "Voucher is out of stock (Global limit reached)." unless global_count_is_available?
+    unless global_count_is_available?
+      total = @voucher.total_redemption_available.to_i
+      redeemed = @voucher.redeemed_count.to_i
+      raise "Voucher is out of stock. All #{total} redemptions have been used (#{redeemed}/#{total})."
+    end
 
     # Check 3: Per-User Limit
-    raise "User has reached their personal redemption limit." unless per_user_limit_is_available?
+    unless per_user_limit_is_available?
+      max_limit = @voucher.max_redemptions_per_user.to_i
+      raise "This visitor has reached their personal limit of #{max_limit} redemption(s) for this voucher."
+    end
 
     # NOTE: The minimum purchase check was omitted as per user request.
   end
 
+  def build_time_error_message
+    now = Time.current
+    
+    if @voucher.start_date.present?
+      start_time_in_zone = @voucher.start_time.present? ? @voucher.start_time.in_time_zone(Time.zone) : nil
+      start_at = if start_time_in_zone
+        @voucher.start_date.to_time.in_time_zone(Time.zone).change(
+          hour: start_time_in_zone.hour,
+          min: start_time_in_zone.min,
+          sec: start_time_in_zone.sec
+        )
+      else
+        @voucher.start_date.to_time.in_time_zone(Time.zone).beginning_of_day
+      end
+      
+      if now < start_at
+        return "Voucher is not yet active. It will be valid from #{start_at.strftime('%d %b %Y %I:%M %p')}."
+      end
+    end
+    
+    if @voucher.end_date.present?
+      end_time_in_zone = @voucher.end_time.present? ? @voucher.end_time.in_time_zone(Time.zone) : nil
+      end_at = if end_time_in_zone
+        @voucher.end_date.to_time.in_time_zone(Time.zone).change(
+          hour: end_time_in_zone.hour,
+          min: end_time_in_zone.min,
+          sec: end_time_in_zone.sec
+        )
+      else
+        @voucher.end_date.to_time.in_time_zone(Time.zone).end_of_day
+      end
+      
+      if now > end_at
+        return "Voucher has expired. It was valid until #{end_at.strftime('%d %b %Y %I:%M %p')}."
+      end
+    end
+    
+    # Fallback message
+    "Voucher has expired or is not yet active."
+  end
+
   def time_is_valid?
-    # FIX: Ensure all required attributes are present before attempting calculation
-    required_attributes = [@voucher.start_date, @voucher.end_date, @voucher.start_time, @voucher.end_time]
-    return false if required_attributes.any?(&:nil?)
+    # If no date/time restrictions are set, the voucher is always valid (time-wise)
+    # This allows vouchers without time restrictions to be redeemed anytime
+    has_start_date = @voucher.start_date.present?
+    has_end_date = @voucher.end_date.present?
+    has_start_time = @voucher.start_time.present?
+    has_end_time = @voucher.end_time.present?
+
+    # If no date restrictions at all, voucher is always valid
+    return true unless has_start_date || has_end_date
 
     now = Time.current
 
     begin
-      # FIX: Use the robust Rails pattern to safely combine Date and Time attributes
-      # into Time objects in the current time zone ('Asia/Kuala_Lumpur' in RSpec).
-      start_time_in_zone = @voucher.start_time.in_time_zone(Time.zone)
-      end_time_in_zone = @voucher.end_time.in_time_zone(Time.zone)
+      # Build start_at: use start_date + start_time, or start of day if no time
+      if has_start_date
+        if has_start_time
+          start_time_in_zone = @voucher.start_time.in_time_zone(Time.zone)
+          start_at = @voucher.start_date.to_time.in_time_zone(Time.zone).change(
+            hour: start_time_in_zone.hour,
+            min: start_time_in_zone.min,
+            sec: start_time_in_zone.sec
+          )
+        else
+          # No start_time, use beginning of the start_date
+          start_at = @voucher.start_date.to_time.in_time_zone(Time.zone).beginning_of_day
+        end
+        # Check if current time is before the start
+        return false if now < start_at
+      end
 
-      # Combine date component with time components using .change
-      start_at = @voucher.start_date.to_time.in_time_zone(Time.zone).change(
-        hour: start_time_in_zone.hour,
-        min: start_time_in_zone.min,
-        sec: start_time_in_zone.sec
-      )
-      end_at   = @voucher.end_date.to_time.in_time_zone(Time.zone).change(
-        hour: end_time_in_zone.hour,
-        min: end_time_in_zone.min,
-        sec: end_time_in_zone.sec
-      )
+      # Build end_at: use end_date + end_time, or end of day if no time
+      if has_end_date
+        if has_end_time
+          end_time_in_zone = @voucher.end_time.in_time_zone(Time.zone)
+          end_at = @voucher.end_date.to_time.in_time_zone(Time.zone).change(
+            hour: end_time_in_zone.hour,
+            min: end_time_in_zone.min,
+            sec: end_time_in_zone.sec
+          )
+        else
+          # No end_time, use end of the end_date
+          end_at = @voucher.end_date.to_time.in_time_zone(Time.zone).end_of_day
+        end
+        # Check if current time is after the end
+        return false if now > end_at
+      end
 
-      now.between?(start_at, end_at)
+      # All checks passed
+      true
     rescue StandardError
       # Catch any remaining time-related errors during object construction or comparison
       false

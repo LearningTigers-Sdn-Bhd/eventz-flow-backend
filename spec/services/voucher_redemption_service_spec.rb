@@ -137,7 +137,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       result = call_service(limited_voucher, create(:user)) # Second attempt by a new user
 
       expect(result).not_to be_success
-      expect(result.error).to include('Global limit reached')
+      expect(result.error).to include('out of stock')
     end
 
     # Per-User Limit Check
@@ -148,7 +148,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       result = call_service(user_limited_voucher, user) # Second attempt by same user
 
       expect(result).not_to be_success
-      expect(result.error).to include('personal redemption limit')
+      expect(result.error).to include('personal limit')
     end
 
     # Time/Date Check (Expired)
@@ -158,7 +158,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       result = call_service(expired_voucher)
 
       expect(result).not_to be_success
-      expect(result.error).to include('expired or is not yet active')
+      expect(result.error).to include('expired')
     end
 
     # Time/Date Check (Future Start)
@@ -168,7 +168,7 @@ RSpec.describe VoucherRedemptionService, type: :service do
       result = call_service(future_voucher)
 
       expect(result).not_to be_success
-      expect(result.error).to include('expired or is not yet active')
+      expect(result.error).to include('not yet active')
     end
 
     # Transaction Rollback Check (Crucial!)
