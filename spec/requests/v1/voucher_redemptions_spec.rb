@@ -224,7 +224,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['success']).to be(false)
-          expect(data['message']).to include('expired or is not yet active')
+          expect(data['message']).to include('expired')
           expect(VoucherRedemptionLog.count).to eq(0)
         end
       end
@@ -256,7 +256,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['success']).to be(false)
-          expect(data['message']).to include('Global limit reached')
+          expect(data['message']).to include('out of stock')
         end
       end
 
@@ -287,7 +287,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['success']).to be(false)
-          expect(data['message']).to include('personal redemption limit')
+          expect(data['message']).to include('personal limit')
         end
       end
 
