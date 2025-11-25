@@ -13,6 +13,14 @@ Rails.application.routes.draw do
   # API Namespace V1
   # ====================================================================
   namespace :v1 do
+    # Public endpoints (No authentication required)
+    namespace :public do
+      # Public event info - accessible without login (limited fields)
+      resources :events, only: [:show]
+      # Public voucher showcase - accessible without login
+      resources :vouchers, only: [:index, :show]
+    end
+
     # Authentication endpoints
     post 'auth/login', to: 'authentication#login'
     post 'auth/register', to: 'authentication#register'
