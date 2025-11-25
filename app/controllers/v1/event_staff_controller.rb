@@ -57,13 +57,6 @@ module V1
       render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
     end
 
-    # def authorize_staff_management!
-    #   # Only Org Owner OR Organizer (global roles) can manage event staff
-    #   unless current_user.is_org_owner_or_organizer?
-    #     render json: { error: 'Forbidden', message: 'Only an organization owner or organizer can manage event staff.' }, status: :forbidden
-    #   end
-    # end
-
     def authorize_staff_view!
       # Allow Org Owner, Organizer (global roles), OR Event Staff (event_admin/event_team_member) to VIEW
       is_event_staff = @event.event_assignments.exists?(
@@ -77,9 +70,9 @@ module V1
     end
 
     def authorize_staff_management!
-      # Only Org Owner can CREATE/DELETE staff assignments
-      unless current_user.is_org_owner?
-        render json: { error: 'Forbidden', message: 'Only an organization owner can manage event staff.' }, status: :forbidden
+      # Only Org Owner OR Organizer (global roles) can manage event staff
+      unless current_user.is_org_owner_or_organizer?
+        render json: { error: 'Forbidden', message: 'Only an organization owner or organizer can manage event staff.' }, status: :forbidden
       end
     end
 

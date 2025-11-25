@@ -154,13 +154,12 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   let(:Authorization) { auth_header_org_owner }
   let(:body) { { staff_assignment: { user_id: member_user.id, role: 'event_admin' } } }
 
-  response '201', 'Staff appointed successfully (Org Owner only)' do
+  response '201', 'Staff appointed successfully (Org Owner)' do
     run_test!
   end
 
-  response '403', 'Forbidden for organizer' do
+  response '201', 'Staff appointed successfully (Organizer)' do
     let(:Authorization) { auth_header_organizer }
-    schema EVENT_STAFF_ERROR_SCHEMA
     run_test!
   end
 
@@ -192,14 +191,13 @@ end
         create(:event_assignment, event: event, user: member_user, role: 'event_team_member')
       end
 
-      response '204', 'Staff removed successfully (Org Owner only)' do
+      response '204', 'Staff removed successfully (Org Owner)' do
         let(:Authorization) { auth_header_org_owner }
         run_test!
       end
 
-      response '403', 'Forbidden for organizer' do
+      response '204', 'Staff removed successfully (Organizer)' do
         let(:Authorization) { auth_header_organizer }
-        schema EVENT_STAFF_ERROR_SCHEMA
         run_test!
       end
 
