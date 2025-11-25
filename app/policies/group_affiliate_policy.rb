@@ -1,10 +1,10 @@
 class GroupAffiliatePolicy < ApplicationPolicy
-  # Only org_owner can assign/remove vendors from groups
+  # Org owners and group managers can assign/remove vendors from groups
   def create?
-    user&.is_org_owner?
+    user&.is_org_owner? || user&.is_group_manager?(record.group)
   end
 
   def destroy?
-    user&.is_org_owner?
+    user&.is_org_owner? || user&.is_group_manager?(record.group)
   end
 end
