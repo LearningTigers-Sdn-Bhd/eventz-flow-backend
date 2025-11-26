@@ -77,13 +77,39 @@ module V1
     end
 
     def vendor_params
-      params.require(:vendor).permit(:full_name, :email, :phone, 
-      :password, :password_confirmation, :vendor_id, 
-      :redirect_url, :poster_url, :qr_url, :exhibitor_owner_id)
+      params.require(:vendor).permit(
+        :full_name, :email, :phone, 
+        :password, :password_confirmation, :vendor_id, 
+        :redirect_url, :poster_url, :qr_url,
+        exhibitor_kit_attributes: [
+          :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
+          :side_wall_right_required, :name_on_fascia, :fascia_upgrade_required,
+          :company_name, :company_address, :pic_full_name, :pic_contact_number,
+          :pic_email_address, :extra_crew_count, :special_requirements,
+          :digital_brochure_link, :qr_code_url, :is_raw_space, :contractor_company_name,
+          :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url,
+          :furniture_requests, :electrical_requests, :printing_orders,
+          :indemnity_signed, :indemnity_document_url, :_destroy,
+          exhibitor_team_members_attributes: [:id, :full_name, :_destroy]
+        ]
+      )
     end
 
     def update_vendor_params
-      params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
+      params.require(:vendor).permit(
+        :redirect_url, :poster_url, :qr_url,
+        exhibitor_kit_attributes: [
+          :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
+          :side_wall_right_required, :name_on_fascia, :fascia_upgrade_required,
+          :company_name, :company_address, :pic_full_name, :pic_contact_number,
+          :pic_email_address, :extra_crew_count, :special_requirements,
+          :digital_brochure_link, :qr_code_url, :is_raw_space, :contractor_company_name,
+          :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url,
+          :furniture_requests, :electrical_requests, :printing_orders,
+          :indemnity_signed, :indemnity_document_url, :_destroy,
+          exhibitor_team_members_attributes: [:id, :full_name, :_destroy]
+        ]
+      )
     end
 
     def format_event_vendor(event_vendor)
@@ -107,18 +133,43 @@ module V1
         }
       }
 
-      # Include exhibitor_owner for Exhibitor type
-      if event_vendor.is_a?(Exhibitor) && event_vendor.exhibitor_owner.present?
-        response[:exhibitor_owner] = {
-          id: event_vendor.exhibitor_owner.id,
-          name: event_vendor.exhibitor_owner.name,
-          description: event_vendor.exhibitor_owner.description,
-          contact_email: event_vendor.exhibitor_owner.contact_email,
-          contact_phone: event_vendor.exhibitor_owner.contact_phone
-        }
+      if event_vendor.is_a?(Exhibitor) && event_vendor.exhibitor_kit.present?
+        response[:exhibitor_kit] = format_exhibitor_kit(event_vendor.exhibitor_kit)
       end
 
       response
+    end
+
+    def format_exhibitor_kit(exhibitor_kit)
+      {
+        id: exhibitor_kit.id,
+        event_vendor_id: exhibitor_kit.event_vendor_id,
+        booth_number: exhibitor_kit.booth_number,
+        booth_type: exhibitor_kit.booth_type,
+        booth_dimensions: exhibitor_kit.booth_dimensions,
+        side_wall_left_required: exhibitor_kit.side_wall_left_required,
+        side_wall_right_required: exhibitor_kit.side_wall_right_required,
+        name_on_fascia: exhibitor_kit.name_on_fascia,
+        fascia_upgrade_required: exhibitor_kit.fascia_upgrade_required,
+        company_name: exhibitor_kit.company_name,
+        company_address: exhibitor_kit.company_address,
+        pic_full_name: exhibitor_kit.pic_full_name,
+        pic_contact_number: exhibitor_kit.pic_contact_number,
+        pic_email_address: exhibitor_kit.pic_email_address,
+        extra_crew_count: exhibitor_kit.extra_crew_count,
+        special_requirements: exhibitor_kit.special_requirements,
+        digital_brochure_link: exhibitor_kit.digital_brochure_link,
+        contractor_company_name: exhibitor_kit.contractor_company_name,
+        contractor_pic_name: exhibitor_kit.contractor_pic_name,
+        contractor_pic_contact: exhibitor_kit.contractor_pic_contact,
+        stand_design_file_url: exhibitor_kit.stand_design_file_url,
+        furniture_requests: exhibitor_kit.furniture_requests,
+        electrical_requests: exhibitor_kit.electrical_requests,
+        printing_orders: exhibitor_kit.printing_orders,
+        indemnity_signed: exhibitor_kit.indemnity_signed,
+        indemnity_document_url: exhibitor_kit.indemnity_document_url,
+        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json
+      }
     end
   end
 end

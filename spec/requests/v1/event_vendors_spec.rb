@@ -14,6 +14,49 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
     required: %w[error message]
   }.freeze
 
+  EXHIBITOR_TEAM_MEMBER_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, nullable: true },
+      full_name: { type: :string, example: 'Team Member Name' }
+    },
+    required: %w[full_name]
+  }.freeze
+
+  EXHIBITOR_KIT_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, nullable: true },
+      event_vendor_id: { type: :integer },
+      booth_number: { type: :string, example: 'A101' },
+      booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'shell_scheme' },
+      booth_dimensions: { type: :string, nullable: true, example: '10x10' },
+      side_wall_left_required: { type: :boolean, example: false },
+      side_wall_right_required: { type: :boolean, example: false },
+      name_on_fascia: { type: :string, example: 'Company Name' },
+      fascia_upgrade_required: { type: :boolean, example: false },
+      company_name: { type: :string, example: 'Exhibitor Co.' },
+      company_address: { type: :string, example: '123 Exhibitor St.' },
+      pic_full_name: { type: :string, example: 'PIC Name' },
+      pic_contact_number: { type: :string, example: '+1234567890' },
+      pic_email_address: { type: :string, example: 'pic@example.com' },
+      extra_crew_count: { type: :integer, example: 0 },
+      special_requirements: { type: :string, nullable: true, example: 'Extra power outlets' },
+      digital_brochure_link: { type: :string, nullable: true, example: 'http://brochure.com' },
+      contractor_company_name: { type: :string, nullable: true },
+      contractor_pic_name: { type: :string, nullable: true },
+      contractor_pic_contact: { type: :string, nullable: true },
+      stand_design_file_url: { type: :string, nullable: true },
+      furniture_requests: { type: :object, nullable: true },
+      electrical_requests: { type: :object, nullable: true },
+      printing_orders: { type: :object, nullable: true },
+      indemnity_signed: { type: :boolean, example: false },
+      indemnity_document_url: { type: :string, nullable: true },
+      exhibitor_team_members: { type: :array, items: EXHIBITOR_TEAM_MEMBER_SCHEMA, nullable: true }
+    },
+    required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address extra_crew_count is_raw_space indemnity_signed]
+  }.freeze
+
   VENDOR_RESPONSE_SCHEMA = {
     type: :object,
     properties: {
@@ -23,6 +66,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       type: { type: :string, enum: ['Exhibitor', 'Merchant'], description: 'Vendor type based on event.use_ticket' },
       redirect_url: { type: :string },
       poster_url: { type: :string, nullable: true },
+      qr_url: { type: :string, nullable: true },
       created_at: { type: :string, format: :date_time },
       updated_at: { type: :string, format: :date_time },
       vendor: {
@@ -36,17 +80,11 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           status: { type: :string }
         }
       },
-      exhibitor_owner: {
+      exhibitor_kit: {
         type: :object,
         nullable: true,
-        description: 'ExhibitorOwner object (only present for Exhibitor type)',
-        properties: {
-          id: { type: :integer },
-          name: { type: :string },
-          description: { type: :string, nullable: true },
-          contact_email: { type: :string, nullable: true },
-          contact_phone: { type: :string, nullable: true }
-        }
+        description: 'ExhibitorKit object (only present for Exhibitor type)',
+        properties: EXHIBITOR_KIT_SCHEMA[:properties]
       }
     },
     required: %w[id event_id vendor_id type redirect_url]
@@ -55,16 +93,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
   # ============================================================
   # Setup
   # ============================================================
-  let(:event) { create(:event, title: 'Tech Conference 2024') }
   let(:org_owner) { create(:org_owner) }
   let(:event_admin_user) { create(:member_user) }
   let(:non_admin_user) { create(:member_user) }
   let(:vendor_user) { create(:member_user) }
-
-  # Create event admin assignment
-  let!(:event_admin_assignment) do
-    create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
-  end
 
   # use the real encoder to generate valid tokens
   let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
@@ -75,6 +107,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
   # GET /v1/events/{event_id}/vendors
   # ============================================================
   path '/v1/events/{event_id}/vendors' do
+    let!(:event) { create(:event, title: 'Tech Conference 2024') }
+    let!(:event_admin_assignment) do
+      create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
+    end
     parameter name: :event_id, in: :path, type: :integer, required: true, description: 'ID of the parent event'
 
     get 'Lists all vendors assigned to an event' do
@@ -83,8 +119,6 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       produces 'application/json'
 
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
-      parameter name: :event_id, in: :path, type: :integer, required: true, description: 'Event ID'
-
       let(:event_id) { event.id }
       let(:Authorization) { auth_header_event_admin }
 
@@ -147,7 +181,29 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
               password: { type: :string, example: 'securepassword' },
               password_confirmation: { type: :string, example: 'securepassword' },
               redirect_url: { type: :string, example: 'https://example.com', description: 'Redirect URL for vendor' },
-              exhibitor_owner_id: { type: :integer, nullable: true, description: 'ID of ExhibitorOwner (required for Exhibitor type when event.use_ticket=true, ignored for Merchant type)' }
+              exhibitor_kit_attributes: {
+                type: :object,
+                properties: {
+                  booth_number: { type: :string, example: 'A101' },
+                  booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'shell_scheme' },
+                  name_on_fascia: { type: :string, example: 'Company Name' },
+                  company_name: { type: :string, example: 'Exhibitor Co.' },
+                  company_address: { type: :string, example: '123 Exhibitor St.' },
+                  pic_full_name: { type: :string, example: 'PIC Name' },
+                  pic_contact_number: { type: :string, example: '+1234567890' },
+                  pic_email_address: { type: :string, example: 'pic@example.com' },
+                  exhibitor_team_members_attributes: {
+                    type: :array,
+                    items: {
+                      type: :object,
+                      properties: {
+                        full_name: { type: :string, example: 'Team Member 1' }
+                      }
+                    }
+                  }
+                },
+                required: %w[booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address]
+              }
             },
             required: %w[full_name password password_confirmation]
           }
@@ -338,122 +394,16 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         run_test!
       end
 
-      # ============================================================
-      # Exhibitor Creation Tests (event.use_ticket = true)
-      # ============================================================
-      context 'when event.use_ticket is true (Exhibitor)' do
-        let(:event) { create(:event, title: 'Exhibition Event', use_ticket: true) }
-        let(:exhibitor_owner) { create(:exhibitor_owner, name: 'Exhibitor Owner Inc') }
-        let(:event_admin_user) { create(:organizer_user) }
-        let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
-
-        response '201', 'Exhibitor created successfully with exhibitor_owner_id' do
-          let(:body) do
-            {
-              vendor: {
-                full_name: 'Exhibitor Vendor',
-                email: 'exhibitor@example.com',
-                password: 'securepassword123',
-                password_confirmation: 'securepassword123',
-                redirect_url: 'https://exhibitor.com',
-                exhibitor_owner_id: exhibitor_owner.id
-              }
-            }
-          end
-
-          schema VENDOR_RESPONSE_SCHEMA
-
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['type']).to eq('Exhibitor')
-            expect(data['exhibitor_owner']).to be_present
-            expect(data['exhibitor_owner']['id']).to eq(exhibitor_owner.id)
-            expect(data['exhibitor_owner']['name']).to eq('Exhibitor Owner Inc')
-            expect(data['vendor']['email']).to eq('exhibitor@example.com')
-          end
-        end
-
-        response '201', 'Exhibitor created successfully without exhibitor_owner_id (independent exhibitor)' do
-          let(:body) do
-            {
-              vendor: {
-                full_name: 'Independent Exhibitor',
-                email: 'independent@example.com',
-                password: 'securepassword123',
-                password_confirmation: 'securepassword123',
-                redirect_url: 'https://exhibitor.com'
-              }
-            }
-          end
-
-          schema VENDOR_RESPONSE_SCHEMA
-
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['type']).to eq('Exhibitor')
-            expect(data['exhibitor_owner']).to be_nil
-            expect(data['vendor']['email']).to eq('independent@example.com')
-          end
-        end
-
-        response '422', 'Exhibitor creation fails with invalid exhibitor_owner_id' do
-          let(:body) do
-            {
-              vendor: {
-                full_name: 'Exhibitor Vendor',
-                email: 'exhibitor@example.com',
-                password: 'securepassword123',
-                password_confirmation: 'securepassword123',
-                redirect_url: 'https://exhibitor.com',
-                exhibitor_owner_id: 99999
-              }
-            }
-          end
-
-          schema type: :object,
-            properties: {
-              error: { type: :string },
-              errors: { type: :array, items: { type: :string } }
-            }
-
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['errors']).to include('ExhibitorOwner not found')
-          end
-        end
-
-        response '201', 'Exhibitor assigned when vendor_id provided' do
-          let!(:existing_vendor) { create(:user, role: :vendor, email: 'existing_exhibitor@example.com', full_name: 'Existing Exhibitor') }
-          let(:body) do
-            {
-              vendor: {
-                vendor_id: existing_vendor.id,
-                redirect_url: 'https://exhibitor.com',
-                exhibitor_owner_id: exhibitor_owner.id
-              }
-            }
-          end
-
-          schema VENDOR_RESPONSE_SCHEMA
-
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['type']).to eq('Exhibitor')
-            expect(data['exhibitor_owner']).to be_present
-            expect(data['vendor']['id']).to eq(existing_vendor.id)
-          end
-        end
-      end
 
       # ============================================================
       # Merchant Creation Tests (event.use_ticket = false)
       # ============================================================
       context 'when event.use_ticket is false (Merchant)' do
-        let(:event) { create(:event, title: 'Merchant Event', use_ticket: false) }
+        let!(:event) { create(:event, title: 'Merchant Event', use_ticket: false) }
         let(:event_admin_user) { create(:organizer_user) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
 
-        response '201', 'Merchant created successfully without exhibitor_owner_id' do
+        response '201', 'Merchant created successfully' do
           let(:body) do
             {
               vendor: {
@@ -471,22 +421,43 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           run_test! do |response|
             data = JSON.parse(response.body)
             expect(data['type']).to eq('Merchant')
-            expect(data['exhibitor_owner']).to be_nil
             expect(data['vendor']['email']).to eq('merchant@example.com')
           end
         end
+      end
 
-        response '201', 'Merchant created and ignores exhibitor_owner_id if provided' do
-          let(:exhibitor_owner) { create(:exhibitor_owner) }
+      # ============================================================
+      # Exhibitor Creation Tests (event.use_ticket = true)
+      # ============================================================
+      context 'when event.use_ticket is true (Exhibitor)' do
+        let!(:event) { create(:event, title: 'Exhibition Event', use_ticket: true) }
+        let(:event_admin_user) { create(:organizer_user) }
+        let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
+
+        response '201', 'Exhibitor created successfully with nested exhibitor_kit_attributes' do
           let(:body) do
             {
               vendor: {
-                full_name: 'Merchant Vendor',
-                email: 'merchant2@example.com',
+                full_name: 'Exhibitor with Kit',
+                email: 'exhibitorkit@example.com',
                 password: 'securepassword123',
                 password_confirmation: 'securepassword123',
-                redirect_url: 'https://merchant.com',
-                exhibitor_owner_id: exhibitor_owner.id # Should be ignored
+                redirect_url: 'https://exhibitorkit.com',
+                exhibitor_kit_attributes: {
+                  booth_number: 'B202',
+                  booth_type: 'raw_space',
+                  name_on_fascia: 'Kit Co.',
+                  company_name: 'Kit Exhibitors',
+                  company_address: '456 Kit St.',
+                  pic_full_name: 'Kit PIC',
+                  qr_url: 'https://exhibitorkit.com',
+                  pic_contact_number: '+1987654321',
+                  pic_email_address: 'kitpic@example.com',
+                  exhibitor_team_members_attributes: [
+                    { full_name: 'Team Member Alpha' },
+                    { full_name: 'Team Member Beta' }
+                  ]
+                }
               }
             }
           end
@@ -495,61 +466,268 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
           run_test! do |response|
             data = JSON.parse(response.body)
-            expect(data['type']).to eq('Merchant')
-            expect(data['exhibitor_owner']).to be_nil
+            expect(data['type']).to eq('Exhibitor')
+            expect(data['vendor']['email']).to eq('exhibitorkit@example.com')
+            expect(data['exhibitor_kit']).to be_present
+            expect(data['exhibitor_kit']['booth_number']).to eq('B202')
+            expect(data['exhibitor_kit']['exhibitor_team_members'].count).to eq(2)
           end
         end
-      end
-    end
-  end
 
+        response '422', 'Exhibitor creation fails with invalid exhibitor_kit_attributes' do
+          let(:body) do
+            {
+              vendor: {
+                full_name: 'Invalid Exhibitor',
+                email: 'invalidkit@example.com',
+                password: 'securepassword123',
+                password_confirmation: 'securepassword123',
+                redirect_url: 'https://invalidkit.com',
+                exhibitor_kit_attributes: {
+                  booth_number: 'C303',
+                  booth_type: 'shell_scheme',
+                  name_on_fascia: 'Too long name for fascia that should cause validation error', # Too long
+                  company_name: 'Invalid Kit Exhibitors',
+                  company_address: '789 Invalid St.',
+                  pic_full_name: 'Invalid PIC',
+                  pic_contact_number: '+1123123123',
+                  pic_email_address: 'invalidpic@example.com'
+                }
+              }
+            }
+          end
+
+          schema type: :object,
+            properties: {
+              error: { type: :string },
+              errors: { type: :array, items: { type: :string } }
+            }
+
+          run_test! do |response|
+            data = JSON.parse(response.body)
+            expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 25 characters)')
+          end
+        end
+      end # end context 'when event.use_ticket is true (Exhibitor)'
+    end # end post 'Creates a new vendor for an event'
+  end # end path '/v1/events/{event_id}/vendors'
 
   # ============================================================
-  # DELETE /v1/events/{event_id}/vendors/{id}
+  # PATCH /v1/events/{event_id}/vendors/{id}
   # ============================================================
   path '/v1/events/{event_id}/vendors/{id}' do
+    let!(:event) { create(:event, title: 'Tech Conference 2024') }
+    let!(:event_admin_assignment) do
+      create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
+    end
     parameter name: :event_id, in: :path, type: :integer, required: true, description: 'Event ID'
     parameter name: :id, in: :path, type: :integer, required: true, description: 'Vendor Assignment ID'
 
-    delete 'Removes a vendor from an event' do
+    patch 'Updates an existing vendor for an event' do
       tags 'Events'
       security [{ BearerAuth: [] }]
+      consumes 'application/json'
+      produces 'application/json'
+
       parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          vendor: {
+            type: :object,
+            properties: {
+              redirect_url: { type: :string, example: 'https://updated.com', description: 'Updated redirect URL for vendor' },
+              poster_url: { type: :string, nullable: true },
+              qr_url: { type: :string, nullable: true },
+              exhibitor_kit_attributes: {
+                type: :object,
+                properties: {
+                  id: { type: :integer, description: 'ID of existing exhibitor kit' },
+                  booth_number: { type: :string, example: 'D404' },
+                  booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'raw_space' },
+                  name_on_fascia: { type: :string, example: 'Updated Name' },
+                  exhibitor_team_members_attributes: {
+                    type: :array,
+                    items: {
+                      type: :object,
+                      properties: {
+                        id: { type: :integer, nullable: true },
+                        full_name: { type: :string, example: 'Updated Team Member' },
+                        _destroy: { type: :boolean, example: false }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        required: ['vendor']
+      }
 
       let(:event_id) { event.id }
       let(:Authorization) { auth_header_event_admin }
-      let!(:event_vendor) do
-        vendor = create(:user, role: :vendor, full_name: 'John Doe', email: 'vendor@example.com')
-        create(:merchant, event: event, vendor: vendor, redirect_url: 'https://example.com')
-      end
-      let(:id) { event_vendor.id }
 
-      response '204', 'Vendor removed successfully' do
-        run_test! do
-          expect(EventVendor.find_by(id: event_vendor.id)).to be_nil
+      context 'when updating a Merchant' do
+        let!(:event_vendor) do
+          vendor_user = create(:user, :vendor)
+          create(:merchant, event: event, vendor: vendor_user, redirect_url: 'https://original.com')
+        end
+        let!(:id) { event_vendor.id }
+
+
+        response '200', 'Merchant updated successfully' do
+          let(:body) do
+            {
+              vendor: {
+                redirect_url: 'https://new-merchant.com'
+              }
+            }
+          end
+
+          run_test! do |response|
+            data = JSON.parse(response.body)
+            expect(data['redirect_url']).to eq('https://new-merchant.com')
+            expect(data['type']).to eq('Merchant')
+          end
+        end
+
+        response '403', 'Forbidden for non-event-admin or non-owner' do
+          let(:Authorization) { auth_header_non_admin }
+          let(:body) { { vendor: { redirect_url: 'https://unauthorized.com' } } }
+
+          schema type: :object,
+                 properties: {
+                   success: { type: :boolean },
+                   message: { type: :string }
+                 }
+
+          run_test!
         end
       end
 
-      response '403', 'Forbidden for non-event-admin' do
-        let(:Authorization) { auth_header_non_admin }
-        
-        schema type: :object,
-               properties: {
-                 success: { type: :boolean },
-                 message: { type: :string }
-               }
+      context 'when updating an Exhibitor' do
+        let!(:event) { create(:event, title: 'Exhibition Event, for patch', use_ticket: true) } # This will be the specific event for this context
+        let(:event_id) { event.id } # Override event_id for this context
+        let!(:event_admin_assignment) do # New assignment for this event
+          create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
+        end
+        let(:exhibitor_user) { create(:user, :vendor) }
+        let!(:service_result) do
+          EventVendorService.create(
+            event: event,
+            current_user: event_admin_user, # or another user with permissions
+            params: {
+              vendor_id: exhibitor_user.id,
+              redirect_url: 'https://original-exhibitor.com',
+              exhibitor_kit_attributes: {
+                booth_number: 'X100',
+                booth_type: 'shell_scheme',
+                name_on_fascia: 'Old Name',
+                company_name: 'Original Company',
+                company_address: '123 Test St',
+                pic_full_name: 'Original PIC',
+                pic_contact_number: '1234567890',
+                pic_email_address: 'pic@example.com'
+              }
+            }
+          )
+        end
+        let!(:existing_exhibitor) { service_result.data }
+        let!(:existing_exhibitor_kit) { existing_exhibitor.exhibitor_kit }
+        let!(:team_member) { create(:exhibitor_team_member, exhibitor_kit: existing_exhibitor_kit, full_name: 'Original Member') }
+        let!(:id) { existing_exhibitor.id }
+        let(:auth_header_for_exhibitor_user) { "Bearer #{JwtService.generate_tokens(exhibitor_user)[:access_token]}" } # Use this for exhibitor's own actions
 
-        run_test!
-      end
+        response '200', 'Exhibitor and exhibitor_kit updated successfully' do
+          let(:body) do
+            {
+              vendor: {
+                redirect_url: 'https://new-exhibitor.com',
+                exhibitor_kit_attributes: {
+                  id: existing_exhibitor_kit.id,
+                  booth_number: 'X101',
+                  name_on_fascia: 'New Name for Fascia',
+                  exhibitor_team_members_attributes: [
+                    { id: team_member.id, full_name: 'Updated Member' },
+                    { full_name: 'New Member' }
+                  ]
+                }
+              }
+            }
+          end
 
-      response '404', 'Event vendor not found' do
-        let(:id) { 99999 }
-        schema type: :object,
-          properties: {
-            error: { type: :string },
-            message: { type: :string }
-          }
-        run_test!
+          it 'returns a 200 response' do
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_event_admin }
+            expect(response).to have_http_status(:ok)
+            data = JSON.parse(response.body)
+            expect(data['redirect_url']).to eq('https://new-exhibitor.com')
+            expect(data['exhibitor_kit']['booth_number']).to eq('X101')
+            expect(data['exhibitor_kit']['name_on_fascia']).to eq('New Name for Fascia')
+            expect(data['exhibitor_kit']['exhibitor_team_members'].count).to eq(2)
+            # expect(data['exhibitor_kit']['exhibitor_team_members'].first['full_name']).to eq('Updated Member')
+            # expect(data['exhibitor_kit']['exhibitor_team_members'].last['full_name']).to eq('New Member')
+          end
+        end
+
+        response '200', 'Exhibitor updates their own redirect_url and exhibitor_kit' do
+          let(:body) do
+            {
+              vendor: {
+                redirect_url: 'https://exhibitor-updates-own.com',
+                exhibitor_kit_attributes: {
+                  id: existing_exhibitor_kit.id,
+                  name_on_fascia: 'Exhibitor Own Update'
+                }
+              }
+            }
+          end
+
+          it 'returns a 200 response' do
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_for_exhibitor_user }
+            expect(response).to have_http_status(:ok)
+            data = JSON.parse(response.body)
+            expect(data['redirect_url']).to eq('https://exhibitor-updates-own.com')
+            expect(data['exhibitor_kit']['name_on_fascia']).to eq('Exhibitor Own Update')
+          end
+        end
+
+        response '200', 'Exhibitor can remove team members' do
+          let(:body) do
+            {
+              vendor: {
+                exhibitor_kit_attributes: {
+                  id: existing_exhibitor_kit.id,
+                  exhibitor_team_members_attributes: [
+                    { id: team_member.id, _destroy: true }
+                  ]
+                }
+              }
+            }
+          end
+
+          it 'returns a 200 response' do
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_for_exhibitor_user }
+            expect(response).to have_http_status(:ok)
+            data = JSON.parse(response.body)
+            expect(data['exhibitor_kit']['exhibitor_team_members']).to be_empty
+          end
+        end
+
+        response '403', 'Forbidden for non-event-admin or non-owner' do
+          let(:body) do
+            {
+              vendor: {
+                redirect_url: 'https://unauthorized.com'
+              }
+            }
+          end
+
+          it 'returns a 403 response' do
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_non_admin }
+            expect(response).to have_http_status(:forbidden)
+          end
+        end
       end
     end
   end

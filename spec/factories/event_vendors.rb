@@ -10,7 +10,6 @@ FactoryBot.define do
 
     trait :exhibitor do
       type { 'Exhibitor' }
-      association :exhibitor_owner
     end
 
     trait :merchant do
@@ -18,10 +17,10 @@ FactoryBot.define do
     end
 
     factory :exhibitor, class: 'Exhibitor', traits: [:exhibitor] do
-      association :exhibitor_owner
-
-      trait :independent do
-        exhibitor_owner { nil }
+      # The presence of exhibitor_kit is validated in Exhibitor model,
+      # so ensure a kit is built when creating an exhibitor in tests.
+      after(:create) do |exhibitor|
+        exhibitor.exhibitor_kit ||= build(:exhibitor_kit, event_vendor: exhibitor)
       end
     end
 

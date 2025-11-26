@@ -21,41 +21,11 @@ RSpec.describe EventVendorService, type: :service do
     end
   end
 
-  describe '.validate_exhibitor_params' do
-    context 'when exhibitor_owner_id is blank' do
-      let(:params) { { exhibitor_owner_id: nil } }
 
-      it 'returns success result (exhibitor_owner_id is optional)' do
-        result = EventVendorService.validate_exhibitor_params(params)
-        expect(result).to be_success
-      end
-    end
-
-    context 'when exhibitor_owner_id does not exist' do
-      let(:params) { { exhibitor_owner_id: 99999 } }
-
-      it 'returns failure result with error' do
-        result = EventVendorService.validate_exhibitor_params(params)
-        expect(result).to be_failure
-        expect(result.errors).to include('ExhibitorOwner not found')
-      end
-    end
-
-    context 'when exhibitor_owner_id exists' do
-      let(:exhibitor_owner) { create(:exhibitor_owner) }
-      let(:params) { { exhibitor_owner_id: exhibitor_owner.id } }
-
-      it 'returns success result' do
-        result = EventVendorService.validate_exhibitor_params(params)
-        expect(result).to be_success
-      end
-    end
-  end
 
   describe '.create' do
     let(:current_user) { create(:organizer_user) }
     let(:event) { create(:event, use_ticket: true) }
-    let(:exhibitor_owner) { create(:exhibitor_owner) }
 
     context 'when event.use_ticket is true (Exhibitor)' do
       context 'with vendor_id provided' do
@@ -63,8 +33,7 @@ RSpec.describe EventVendorService, type: :service do
         let(:params) do
           {
             vendor_id: vendor.id,
-            redirect_url: 'https://example.com',
-            exhibitor_owner_id: exhibitor_owner.id
+            redirect_url: 'https://example.com'
           }
         end
 
@@ -73,17 +42,7 @@ RSpec.describe EventVendorService, type: :service do
 
           expect(result).to be_success
           expect(result.data).to be_an(Exhibitor)
-          expect(result.data.exhibitor_owner_id).to eq(exhibitor_owner.id)
-        end
-
-        it 'allows creating Exhibitor without exhibitor_owner_id (independent exhibitor)' do
-          params_without_owner = params.except(:exhibitor_owner_id)
-          result = EventVendorService.create(event: event, params: params_without_owner, current_user: current_user)
-
-          expect(result).to be_success
-          expect(result.data).to be_an(Exhibitor)
-          expect(result.data.exhibitor_owner_id).to be_nil
-          expect(result.data.independent?).to be_truthy
+          expect(result.data.exhibitor_kit).to be_nil # No exhibitor_kit_attributes passed
         end
       end
 
@@ -94,8 +53,7 @@ RSpec.describe EventVendorService, type: :service do
             email: 'john@example.com',
             password: 'password123',
             password_confirmation: 'password123',
-            redirect_url: 'https://example.com',
-            exhibitor_owner_id: exhibitor_owner.id
+            redirect_url: 'https://example.com'
           }
         end
 
@@ -105,7 +63,7 @@ RSpec.describe EventVendorService, type: :service do
           expect(result).to be_success
           expect(result.data).to be_an(Exhibitor)
           expect(result.data.vendor.email).to eq('john@example.com')
-          expect(result.data.exhibitor_owner_id).to eq(exhibitor_owner.id)
+          expect(result.data.exhibitor_kit).to be_nil
         end
       end
     end
@@ -118,8 +76,7 @@ RSpec.describe EventVendorService, type: :service do
         let(:params) do
           {
             vendor_id: vendor.id,
-            redirect_url: 'https://example.com',
-            exhibitor_owner_id: exhibitor_owner.id # Should be ignored
+            redirect_url: 'https://example.com'
           }
         end
 
@@ -128,7 +85,6 @@ RSpec.describe EventVendorService, type: :service do
 
           expect(result).to be_success
           expect(result.data).to be_a(Merchant)
-          expect(result.data.exhibitor_owner_id).to be_nil
         end
       end
 
@@ -197,11 +153,9 @@ RSpec.describe EventVendorService, type: :service do
   describe '.assign_existing_vendor' do
     let(:event) { create(:event, use_ticket: true) }
     let(:vendor) { create(:vendor_user) }
-    let(:exhibitor_owner) { create(:exhibitor_owner) }
     let(:params) do
       {
-        redirect_url: 'https://example.com',
-        exhibitor_owner_id: exhibitor_owner.id
+        redirect_url: 'https://example.com'
       }
     end
 

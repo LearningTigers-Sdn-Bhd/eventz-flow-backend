@@ -22,22 +22,15 @@ class EventVendorService
   # Create a vendor assignment for an event
   #
   # @param event [Event] The event to assign the vendor to
-  # @param params [Hash] Vendor parameters (vendor_id, full_name, email, phone, password, password_confirmation, redirect_url, exhibitor_owner_id)
-  # @param current_user [User] The current user making the request
-  # @return [Result] Result object with EventVendor record and user data, or errors
+  # @param params [Hash] Vendor parameters (vendor_id, full_name, email, phone, password, password_confirmation, redirect_url, exhibitor_kit_attributes)
   def self.create(event:, params:, current_user:)
     # Determine vendor type based on event.use_ticket
     vendor_type = determine_vendor_type(event)
-
-    # Validate exhibitor-specific params if needed (exhibitor_owner_id is optional)
-    if vendor_type == 'Exhibitor'
-      validation_result = validate_exhibitor_params(params)
-      return validation_result if validation_result.failure?
-    end
-
+    exhibitor_kit_attrs = params[:exhibitor_kit_attributes]
+    
     # If vendor_id is provided, assign existing vendor
     if params[:vendor_id].present?
-      result = assign_existing_vendor(event, params[:vendor_id], params, vendor_type)
+      result = assign_existing_vendor(event, params[:vendor_id], params, vendor_type, exhibitor_kit_attrs)
       return result
     else
       # Create new vendor user (only organizers can do this)
@@ -45,7 +38,7 @@ class EventVendorService
         return Result.new(success: false, errors: ['Only organizers can create new vendor users'])
       end
 
-      result = create_vendor_user(params, event, vendor_type, current_user)
+      result = create_vendor_user(params, event, vendor_type, current_user, exhibitor_kit_attrs)
       return result
     end
   end
@@ -58,21 +51,7 @@ class EventVendorService
     event.use_ticket? ? 'Exhibitor' : 'Merchant'
   end
 
-  # Validate exhibitor-specific parameters
-  #
-  # @param params [Hash] Vendor parameters
-  # @return [Result] Result object with errors if validation fails
-  def self.validate_exhibitor_params(params)
-    # exhibitor_owner_id is optional - Exhibitors can be independent
-    # But if provided, it must be valid
-    if params[:exhibitor_owner_id].present?
-      unless ExhibitorOwner.exists?(params[:exhibitor_owner_id])
-        return Result.new(success: false, errors: ['ExhibitorOwner not found'])
-      end
-    end
 
-    Result.new(success: true)
-  end
 
   # Assign existing vendor to event
   #
@@ -80,8 +59,9 @@ class EventVendorService
   # @param vendor_id [Integer] ID of existing vendor user
   # @param params [Hash] Additional parameters
   # @param vendor_type [String] 'Exhibitor' or 'Merchant'
+  # @param exhibitor_kit_attributes [Hash] Attributes for ExhibitorKit
   # @return [Result] Result object with EventVendor record or errors
-  def self.assign_existing_vendor(event, vendor_id, params, vendor_type)
+  def self.assign_existing_vendor(event, vendor_id, params, vendor_type, exhibitor_kit_attributes = nil)
     vendor_user = User.find_by(id: vendor_id, role: :vendor)
     unless vendor_user
       return Result.new(success: false, errors: ['Vendor not found'])
@@ -96,19 +76,22 @@ class EventVendorService
       existing_vendor.poster_url = params[:poster_url] if params.key?(:poster_url)
       existing_vendor.qr_url = params[:qr_url] if params.key?(:qr_url)
 
-      # Update type and exhibitor_owner_id if needed
+      # Update type if needed
       if existing_vendor.type != vendor_type
-        # Type changed - update type column directly and handle exhibitor_owner_id
-        EventVendor.where(id: existing_vendor.id).update_all(
-          type: vendor_type,
-          exhibitor_owner_id: vendor_type == 'Exhibitor' ? params[:exhibitor_owner_id] : nil
-        )
+        # Type changed - update type column directly
+        EventVendor.where(id: existing_vendor.id).update_all(type: vendor_type)
         existing_vendor.reload
-      elsif vendor_type == 'Exhibitor'
-        existing_vendor.exhibitor_owner_id = params[:exhibitor_owner_id]
       end
 
       if existing_vendor.save
+        # Handle exhibitor_kit attributes if it's an Exhibitor
+        if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
+          if existing_vendor.exhibitor_kit
+            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
+          else
+            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
+          end
+        end
         Result.new(success: true, data: existing_vendor.reload)
       else
         Result.new(success: false, errors: existing_vendor.errors.full_messages)
@@ -122,14 +105,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_owner_id] = params[:exhibitor_owner_id]
+        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: vendor_user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: vendor_user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor)
+        Result.new(success: true, data: event_vendor.reload) # Reload to ensure exhibitor_kit is present
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end
@@ -142,8 +125,9 @@ class EventVendorService
   # @param event [Event] The event
   # @param vendor_type [String] 'Exhibitor' or 'Merchant'
   # @param creator [User] The user creating the vendor (optional for backward compatibility)
+  # @param exhibitor_kit_attributes [Hash] Attributes for ExhibitorKit
   # @return [Result] Result object with EventVendor record or errors
-  def self.create_vendor_user(params, event, vendor_type, creator = nil)
+  def self.create_vendor_user(params, event, vendor_type, creator = nil, exhibitor_kit_attributes = nil)
     email = params[:email].to_s.strip
     full_name = params[:full_name]
     password = params[:password]
@@ -195,19 +179,22 @@ class EventVendorService
       existing_vendor.poster_url = params[:poster_url] if params.key?(:poster_url)
       existing_vendor.qr_url = params[:qr_url] if params.key?(:qr_url)
 
-      # Update type and exhibitor_owner_id if needed
+      # Update type if needed
       if existing_vendor.type != vendor_type
-        # Type changed - update type column directly and handle exhibitor_owner_id
-        EventVendor.where(id: existing_vendor.id).update_all(
-          type: vendor_type,
-          exhibitor_owner_id: vendor_type == 'Exhibitor' ? params[:exhibitor_owner_id] : nil
-        )
+        # Type changed - update type column directly
+        EventVendor.where(id: existing_vendor.id).update_all(type: vendor_type)
         existing_vendor.reload
-      elsif vendor_type == 'Exhibitor'
-        existing_vendor.exhibitor_owner_id = params[:exhibitor_owner_id]
       end
 
       if existing_vendor.save
+        # Handle exhibitor_kit attributes if it's an Exhibitor
+        if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
+          if existing_vendor.exhibitor_kit
+            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
+          else
+            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
+          end
+        end
         Result.new(success: true, data: existing_vendor.reload)
       else
         Result.new(success: false, errors: existing_vendor.errors.full_messages)
@@ -221,14 +208,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_owner_id] = params[:exhibitor_owner_id]
+        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor)
+        Result.new(success: true, data: event_vendor.reload) # Reload to ensure exhibitor_kit is present
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end

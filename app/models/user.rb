@@ -5,7 +5,7 @@ class User < ApplicationRecord
   # --- Global Roles ---
   # Rails best practice is to use the provided methods (org_owner?, organizer?, etc.)
   # The enum values should remain integers for database consistency.
-  enum :role, { org_owner: 0, organizer: 1, member: 2, vendor: 3 }, scopes: false
+  enum :role, { org_owner: 0, organizer: 1, member: 2, vendor: 3, exhibitor: 4 }, scopes: false
 
   # --- Status ---
   enum :status, { active: 1, inactive: 0 }
