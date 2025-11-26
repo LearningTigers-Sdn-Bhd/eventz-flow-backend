@@ -82,6 +82,15 @@ participant_user = User.find_or_create_by!(email: 'participant@example.com') do 
 end
 puts "Created participant user: #{participant_user.full_name}"
 
+# F. Dedicated Vendor User
+vendor_user = User.find_or_create_by!(email: 'vendor@example.com') do |u|
+  u.password = '12345678'
+  u.role = :vendor
+  u.full_name = 'The Test Vendor'
+  u.email_verified_at = Time.current
+end
+puts "Created Vendor User: #{vendor_user.full_name}"
+
 # Combined users for easy random assignment
 all_event_staff = organizers + team_members
 
