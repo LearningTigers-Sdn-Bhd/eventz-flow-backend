@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_24_022348) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_24_100303) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -111,6 +111,38 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_24_022348) do
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
 
+  create_table "exhibitor_kits", force: :cascade do |t|
+    t.bigint "event_vendor_id", null: false
+    t.string "booth_number"
+    t.integer "booth_type"
+    t.string "booth_dimensions"
+    t.boolean "side_wall_left_required", default: false
+    t.boolean "side_wall_right_required", default: false
+    t.string "name_on_fascia"
+    t.boolean "fascia_upgrade_required", default: false
+    t.string "company_name"
+    t.text "company_address"
+    t.string "pic_full_name"
+    t.string "pic_contact_number"
+    t.string "pic_email_address"
+    t.integer "extra_crew_count", default: 0
+    t.text "special_requirements"
+    t.string "digital_brochure_link"
+    t.string "qr_code_url"
+    t.string "contractor_company_name"
+    t.string "contractor_pic_name"
+    t.string "contractor_pic_contact"
+    t.string "stand_design_file_url"
+    t.json "furniture_requests"
+    t.json "electrical_requests"
+    t.json "printing_orders"
+    t.boolean "indemnity_signed", default: false
+    t.string "indemnity_document_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
+  end
+
   create_table "exhibitor_owners", force: :cascade do |t|
     t.string "name", null: false
     t.text "description"
@@ -119,6 +151,14 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_24_022348) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_exhibitor_owners_on_name"
+  end
+
+  create_table "exhibitor_team_members", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.string "full_name"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_members_on_exhibitor_kit_id"
   end
 
   create_table "export_logs", force: :cascade do |t|
@@ -354,6 +394,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_24_022348) do
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
+  add_foreign_key "exhibitor_kits", "event_vendors"
+  add_foreign_key "exhibitor_team_members", "exhibitor_kits"
   add_foreign_key "export_logs", "events"
   add_foreign_key "group_affiliates", "groups"
   add_foreign_key "group_affiliates", "users", column: "vendor_id"

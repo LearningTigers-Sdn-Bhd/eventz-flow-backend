@@ -74,6 +74,7 @@ group :development, :test do
   gem "factory_bot_rails"
   gem "faker"
   gem "rswag"
+  gem "pry"
 end
 
 group :test do
