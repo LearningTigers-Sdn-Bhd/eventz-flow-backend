@@ -27,24 +27,22 @@ class EventVendorPolicy < ApplicationPolicy
   end
 
   def show?
-    # Vendors can view their own event vendor record
-    # Event admins can view any event vendor in their events
-    user.is_event_admin?(record.event) || record.vendor_id == user.id
+    user.org_owner? || user.is_event_admin?(record.event) || record.vendor_id == user.id
   end
 
   def create?
-    # Only event admins can add vendors to events
-    user.is_event_admin?(record.event)
+    # Org_owner and Organizers can create vendors for any event they manage
+    user.org_owner? || user.is_organizer? || user.is_event_admin?(record.event)
   end
 
   def update?
     # Event admins can update event vendor records
-    # Vendors can update their own event vendor profile (redirect_url, poster_url)
-    user.is_event_admin?(record.event) || record.vendor_id == user.id
+    # Vendors can update their own event vendor profile (redirect_url, poster_url) and exhibitor_kit
+    user.org_owner? || user.is_organizer? || user.is_event_admin?(record.event) || record.vendor_id == user.id
   end
 
   def destroy?
-    # Only event admins can remove vendors from events
-    user.is_event_admin?(record.event)
+    # Only Org_owner, Organizers and event admins can remove vendors from events
+    user.org_owner? || user.is_organizer? || user.is_event_admin?(record.event)
   end
 end
