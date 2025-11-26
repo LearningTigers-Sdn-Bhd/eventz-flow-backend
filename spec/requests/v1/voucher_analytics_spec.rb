@@ -68,5 +68,46 @@ RSpec.describe "V1::VoucherAnalytics", type: :request do
         expect(json.first["voucher_code"]).to eq(voucher1.voucher_code)
       end
     end
+
+    context "role-based access control" do
+      context "when user is a vendor" do
+        let(:vendor_token) { JwtService.generate_tokens(vendor)[:access_token] }
+
+        it "returns only their own redemption logs" do
+          get "/v1/events/#{event.id}/voucher_analytics/redemption_logs", headers: { 'Authorization' => "Bearer #{vendor_token}" }
+          json = JSON.parse(response.body)
+          expect(json.length).to eq(1)
+          expect(json.first["voucher_code"]).to eq(voucher2.voucher_code)
+        end
+
+        it "ignores vendor_id filter param" do
+          get "/v1/events/#{event.id}/voucher_analytics/redemption_logs", params: { vendor_id: user.id }, headers: { 'Authorization' => "Bearer #{vendor_token}" }
+          json = JSON.parse(response.body)
+          expect(json.length).to eq(1)
+          expect(json.first["voucher_code"]).to eq(voucher2.voucher_code)
+        end
+      end
+
+      context "when user is org_owner" do
+        let(:org_owner) { create(:org_owner) }
+        let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
+
+        it "returns all redemption logs" do
+          get "/v1/events/#{event.id}/voucher_analytics/redemption_logs", headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+          json = JSON.parse(response.body)
+          expect(json.length).to eq(2)
+        end
+      end
+
+      context "when user is unauthorized member" do
+        let(:member) { create(:member_user) }
+        let(:member_token) { JwtService.generate_tokens(member)[:access_token] }
+
+        it "returns forbidden status" do
+          get "/v1/events/#{event.id}/voucher_analytics/redemption_logs", headers: { 'Authorization' => "Bearer #{member_token}" }
+          expect(response).to have_http_status(:forbidden)
+        end
+      end
+    end
   end
 end

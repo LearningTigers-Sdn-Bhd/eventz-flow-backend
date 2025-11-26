@@ -30,14 +30,20 @@ module V1
     # GET /v1/events/:event_id/voucher_analytics/redemption_logs
     # Fetch all redemption logs for an event with optional filters
     def redemption_logs
-      logs = VoucherRedemptionLog.for_event(@event)
-                                  .includes(:voucher, :redeemer_staff)
-                                  .preload(:redeemer)
-                                  .order(redemption_timestamp: :desc)
+      authorize @event, :view_redemption_logs?, policy_class: VoucherRedemptionLogPolicy
 
-      # Optional filters
+      logs = policy_scope(VoucherRedemptionLog.for_event(@event))
+               .includes(:voucher, :redeemer_staff)
+               .preload(:redeemer)
+               .order(redemption_timestamp: :desc)
+
+      # --- Optional Filters (Applied on top of RBAC) ---
       logs = logs.where(voucher_id: params[:voucher_id]) if params[:voucher_id].present?
-      logs = logs.joins(:voucher).where(vouchers: { vendor_id: params[:vendor_id] }) if params[:vendor_id].present?
+
+      # Allow filtering by vendor_id ONLY if the user is allowed to see other vendors (i.e., not a vendor themselves)
+      if params[:vendor_id].present? && !current_user.is_vendor?
+        logs = logs.joins(:voucher).where(vouchers: { vendor_id: params[:vendor_id] })
+      end
 
       render json: logs.as_json(include: {
         voucher: { only: [:id, :title, :voucher_uuid, :voucher_code, :voucher_type] },
