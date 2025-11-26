@@ -1,7 +1,6 @@
 module V1
   class VisitorStampsController < ApplicationController
-    # Public endpoint - no authentication required for scanning
-    skip_before_action :authenticate_user!
+    # Both actions require authentication
     skip_before_action :require_verified_email!
 
     # GET /v1/events/:event_id/visitor-stamps
@@ -11,23 +10,18 @@ module V1
         return render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
       end
 
-      # Get all stamps for this event through visitors
+      # Authorize: Check if user can view stamps for this event
+      authorize event, :index?, policy_class: VisitorVendorStampPolicy
 
-      stamps = VisitorVendorStamp
-        .joins(:visitor, event_vendor: :vendor)
+      # Get base query for stamps in this event
+      base_stamps = VisitorVendorStamp
+        .includes(:visitor, event_vendor: :vendor)
+        .joins(:visitor)
         .where(visitors: { event_id: event.id })
-        .select(
-          'visitor_vendor_stamps.id',
-          'visitor_vendor_stamps.visitor_id',
-          'visitor_vendor_stamps.event_vendor_id',
-          'visitor_vendor_stamps.created_at',
-          'visitors.full_name as visitor_name',
-          'visitors.email as visitor_email',
-          'visitors.phone as visitor_phone',
-          'visitors.public_id as visitor_public_id',
-          'users.full_name as vendor_name'
-        )
-        .order('visitor_vendor_stamps.created_at DESC')
+
+      # Apply policy scope to filter based on user role
+      stamps = policy_scope(base_stamps, policy_scope_class: VisitorVendorStampPolicy::Scope)
+        .order(created_at: :desc)
 
       render json: stamps.map { |stamp| format_stamp_with_details(stamp) }, status: :ok
     end
@@ -47,7 +41,7 @@ module V1
       end
 
       # Find event_vendor
-      event_vendor = EventVendor.find_by(id: event_vendor_id)
+      event_vendor = EventVendor.includes(:vendor).find_by(id: event_vendor_id)
       unless event_vendor
         return render json: { error: 'Not Found', message: 'Event vendor not found.' }, status: :not_found
       end
@@ -57,6 +51,9 @@ module V1
         return render json: { error: 'Bad Request', message: 'Visitor does not belong to this event.' }, status: :bad_request
       end
 
+      # Authorize: Only the vendor themselves can create stamps
+      authorize event_vendor, :create?, policy_class: VisitorVendorStampPolicy
+
       # Create or find existing stamp
       stamp = VisitorVendorStamp.find_or_initialize_by(
         visitor: visitor,
@@ -65,6 +62,8 @@ module V1
 
       if stamp.new_record?
         if stamp.save
+          # Eager load associations to avoid N+1
+          stamp.reload
           render json: format_stamp(stamp), status: :created
         else
           render json: { error: 'Validation Error', errors: stamp.errors.full_messages },
@@ -103,14 +102,19 @@ module V1
       {
         id: stamp.id,
         visitor_id: stamp.visitor_id,
-        visitor_name: stamp.visitor_name,
-        visitor_email: stamp.visitor_email,
-        visitor_phone: stamp.visitor_phone,
-        visitor_public_id: stamp.visitor_public_id,
+        visitor_name: stamp.visitor.full_name,
+        visitor_email: stamp.visitor.email,
+        visitor_phone: stamp.visitor.phone,
+        visitor_public_id: stamp.visitor.public_id,
         event_vendor_id: stamp.event_vendor_id,
-        vendor_name: stamp.vendor_name,
+        vendor_name: stamp.event_vendor.vendor.full_name,
         created_at: stamp.created_at
       }
+    end
+
+    # Helper to get policy scope with event context
+    def policy_scope(scope, policy_scope_class:)
+      policy_scope_class.new(current_user, scope).resolve
     end
   end
 end
