@@ -828,13 +828,26 @@ paths:
                     is_unlimited:
                       type: boolean
                       default: false
+                    floor:
+                      type: integer
+                      example: 1
+                      nullable: true
+                    location_details:
+                      type: object
+                      additionalProperties: true
+                      example:
+                        wing: A
+                        booth_number: '101'
+                    location_display_name:
+                      type: string
+                      example: Main Hall - Floor 1 - Wing A
                     created_at:
                       type: string
                       format: date_time
                     updated_at:
                       type: string
                       format: date_time
-                    members:
+                    staff_members:
                       type: array
                       items:
                         type: object
@@ -845,6 +858,27 @@ paths:
                             type: string
                           email:
                             type: string
+                          role:
+                            type: string
+                          member_type:
+                            type: string
+                            example: staff
+                    vendors:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
+                          role:
+                            type: string
+                          member_type:
+                            type: string
+                            example: vendor
                   required:
                   - id
                   - event_id
@@ -891,13 +925,26 @@ paths:
                   is_unlimited:
                     type: boolean
                     default: false
+                  floor:
+                    type: integer
+                    example: 1
+                    nullable: true
+                  location_details:
+                    type: object
+                    additionalProperties: true
+                    example:
+                      wing: A
+                      booth_number: '101'
+                  location_display_name:
+                    type: string
+                    example: Main Hall - Floor 1 - Wing A
                   created_at:
                     type: string
                     format: date_time
                   updated_at:
                     type: string
                     format: date_time
-                  members:
+                  staff_members:
                     type: array
                     items:
                       type: object
@@ -908,6 +955,27 @@ paths:
                           type: string
                         email:
                           type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: staff
+                  vendors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: vendor
                 required:
                 - id
                 - event_id
@@ -931,6 +999,19 @@ paths:
                 is_unlimited:
                   type: boolean
                   default: false
+                floor:
+                  type: integer
+                  example: 1
+                  nullable: true
+                location_details:
+                  type: object
+                  additionalProperties: true
+                  example:
+                    wing: A
+                    booth_number: '101'
+                    zone: North
+                  description: 'Optional: Dynamic JSONB field for custom location
+                    details'
                 member_ids:
                   type: array
                   items:
@@ -940,7 +1021,7 @@ paths:
                   - 2
                   - 3
                   description: 'Optional: Array of user IDs to assign as location
-                    members'
+                    members (staff or vendors)'
               required:
               - name
   "/v1/events/{event_id}/event_locations/{id}":
@@ -993,13 +1074,26 @@ paths:
                   is_unlimited:
                     type: boolean
                     default: false
+                  floor:
+                    type: integer
+                    example: 1
+                    nullable: true
+                  location_details:
+                    type: object
+                    additionalProperties: true
+                    example:
+                      wing: A
+                      booth_number: '101'
+                  location_display_name:
+                    type: string
+                    example: Main Hall - Floor 1 - Wing A
                   created_at:
                     type: string
                     format: date_time
                   updated_at:
                     type: string
                     format: date_time
-                  members:
+                  staff_members:
                     type: array
                     items:
                       type: object
@@ -1010,6 +1104,27 @@ paths:
                           type: string
                         email:
                           type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: staff
+                  vendors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: vendor
                 required:
                 - id
                 - event_id
@@ -1054,13 +1169,26 @@ paths:
                   is_unlimited:
                     type: boolean
                     default: false
+                  floor:
+                    type: integer
+                    example: 1
+                    nullable: true
+                  location_details:
+                    type: object
+                    additionalProperties: true
+                    example:
+                      wing: A
+                      booth_number: '101'
+                  location_display_name:
+                    type: string
+                    example: Main Hall - Floor 1 - Wing A
                   created_at:
                     type: string
                     format: date_time
                   updated_at:
                     type: string
                     format: date_time
-                  members:
+                  staff_members:
                     type: array
                     items:
                       type: object
@@ -1071,6 +1199,27 @@ paths:
                           type: string
                         email:
                           type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: staff
+                  vendors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          type: string
+                        member_type:
+                          type: string
+                          example: vendor
                 required:
                 - id
                 - event_id
@@ -1096,6 +1245,18 @@ paths:
                 is_unlimited:
                   type: boolean
                   default: false
+                floor:
+                  type: integer
+                  example: 2
+                  nullable: true
+                location_details:
+                  type: object
+                  additionalProperties: true
+                  example:
+                    wing: B
+                    booth_number: '202'
+                  description: 'Optional: Dynamic JSONB field for custom location
+                    details'
                 member_ids:
                   type: array
                   items:
@@ -1105,7 +1266,7 @@ paths:
                   - 2
                   - 3
                   description: 'Optional: Array of user IDs to assign as location
-                    members'
+                    members (staff or vendors)'
     delete:
       summary: Deletes an event location
       tags:
@@ -1242,7 +1403,7 @@ paths:
           type: integer
       responses:
         '201':
-          description: Staff appointed successfully (Org Owner only)
+          description: Staff appointed successfully (Organizer)
         '403':
           description: Forbidden for member
           content:
@@ -1308,7 +1469,7 @@ paths:
           type: string
       responses:
         '204':
-          description: Staff removed successfully (Org Owner only)
+          description: Staff removed successfully (Organizer)
         '403':
           description: Forbidden for member
         '404':
@@ -1365,6 +1526,15 @@ paths:
                     format: date_time
         '403':
           description: Forbidden - not the vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
     patch:
       summary: Update event vendor profile
       tags:
@@ -1377,6 +1547,15 @@ paths:
           description: Profile updated successfully
         '403':
           description: Forbidden - not the vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
       requestBody:
         content:
           application/json:
@@ -1615,15 +1794,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  error:
-                    type: string
-                    example: Forbidden
+                  success:
+                    type: boolean
                   message:
                     type: string
-                    example: Only event admins can perform this action.
-                required:
-                - error
-                - message
       requestBody:
         content:
           application/json:
@@ -4037,6 +4211,15 @@ paths:
                         nullable: true
         '403':
           description: Forbidden - not a vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
     patch:
       summary: Update vendor profile (own)
       tags:
@@ -4094,6 +4277,15 @@ paths:
                         nullable: true
         '403':
           description: Forbidden - not a vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
       requestBody:
         content:
           application/json:
@@ -4201,6 +4393,15 @@ paths:
                         nullable: true
         '403':
           description: Forbidden - organizer who did not create vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
         '404':
           description: Vendor not found
     patch:
@@ -4263,6 +4464,15 @@ paths:
                         nullable: true
         '403':
           description: Forbidden - organizer who did not create vendor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
       requestBody:
         content:
           application/json:
@@ -4354,15 +4564,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  error:
-                    type: string
-                    example: Forbidden
+                  success:
+                    type: boolean
                   message:
                     type: string
-                    example: Only organizers can create vendors.
-                required:
-                - error
-                - message
       requestBody:
         content:
           application/json:
