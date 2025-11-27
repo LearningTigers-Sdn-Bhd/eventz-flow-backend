@@ -48,14 +48,7 @@ RSpec.describe VoucherRedemptionLog, type: :model do
       end
     end
     
-    describe '.top_scanned_vouchers' do
-      it 'returns top vouchers by count' do
-        # Create more logs for log1's voucher to make it top
-        create(:voucher_redemption_log, voucher: voucher)
-        top = described_class.top_scanned_vouchers
-        expect(top.keys).to include(voucher.title)
-      end
-    end
+
 
     describe '.latest_redemption_transactions' do
       it 'returns latest logs ordered by timestamp' do
@@ -65,7 +58,8 @@ RSpec.describe VoucherRedemptionLog, type: :model do
     end
   end
 
-  describe '.daily_redemption_trend (Class Method)' do
+  describe 'Class Methods' do
+    describe '.daily_redemption_trend' do
     let(:event) { create(:event) }
     let(:voucher) { create(:voucher, event: event) }
     let!(:log) { create(:voucher_redemption_log, voucher: voucher, redemption_timestamp: Time.current) }
@@ -75,6 +69,26 @@ RSpec.describe VoucherRedemptionLog, type: :model do
       expect(result).to be_an(Array)
       expect(result.first).to have_key(:date)
       expect(result.first).to have_key(:count)
+    end
+    end
+
+    describe '.top_scanned_vouchers' do
+      let(:event) { create(:event) }
+      let(:vendor) { create(:user, :vendor, full_name: 'Vendor One') }
+      let(:voucher) { create(:voucher, event: event, vendor: vendor, title: 'Voucher A') }
+      let!(:log1) { create(:voucher_redemption_log, voucher: voucher) }
+      let!(:log2) { create(:voucher_redemption_log, voucher: voucher) }
+
+      it 'returns top vouchers with detailed info' do
+        results = described_class.top_scanned_vouchers
+        expect(results).to be_an(Array)
+        
+        entry = results.find { |r| r[:voucher_id] == voucher.id }
+        expect(entry).to be_present
+        expect(entry[:voucher_title]).to eq('Voucher A')
+        expect(entry[:vendor_name]).to eq('Vendor One')
+        expect(entry[:redemption_count]).to eq(2)
+      end
     end
   end
 

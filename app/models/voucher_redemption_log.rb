@@ -22,7 +22,6 @@ class VoucherRedemptionLog < ApplicationRecord
   scope :total_discount_value, -> { sum(:discount_applied_value) }
   scope :total_sales, -> { sum(:transaction_net_amount) }
   scope :daily_redemption_trend, -> { group_by_day(:redemption_timestamp).count }
-  scope :top_scanned_vouchers, -> { joins(:voucher).group('vouchers.title').order('count_all DESC').limit(5).count }
   scope :latest_redemption_transactions, -> { includes(voucher: :vendor).order(redemption_timestamp: :desc).limit(10) }
 
   # -- Class Methods --
@@ -30,6 +29,23 @@ class VoucherRedemptionLog < ApplicationRecord
     group_by_day(:redemption_timestamp).count.map do |date, count|
       { date: date.to_s, count: count }
     end
+  end
+
+  def self.top_scanned_vouchers
+    joins(voucher: :vendor)
+      .select('vouchers.id as voucher_id, vouchers.title as voucher_title, vouchers.voucher_code, users.full_name as vendor_name, COUNT(*) as redemption_count')
+      .group('vouchers.id, vouchers.title, vouchers.voucher_code, users.full_name')
+      .order('redemption_count DESC')
+      .limit(5)
+      .map do |record|
+        {
+          voucher_id: record.voucher_id,
+          voucher_title: record.voucher_title,
+          voucher_code: record.voucher_code,
+          vendor_name: record.vendor_name,
+          redemption_count: record.redemption_count
+        }
+      end
   end
 
   # -- Instance Methods --

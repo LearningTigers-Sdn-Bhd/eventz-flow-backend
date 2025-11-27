@@ -82,8 +82,16 @@ module V1
     def update
       # Authorization handled by before_action :authorize_resource
 
+      # Handle image removal if requested
+      if params[:remove_image] == 'true' || params[:remove_image] == true
+        # Delete the old image file if it exists
+        if @voucher.image_path.present?
+          old_image_path = Rails.root.join('storage', @voucher.image_path)
+          File.delete(old_image_path) if File.exist?(old_image_path)
+        end
+        @voucher.image_path = nil
       # Process image upload if provided (multipart form data sends it at root level)
-      if params[:image].present?
+      elsif params[:image].present?
         image_path = store_voucher_image(params[:image])
         @voucher.image_path = image_path if image_path
       end
@@ -91,14 +99,12 @@ module V1
       if @voucher.update(voucher_params)
         success_response(data: @voucher.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } }), status: :ok, message: 'Voucher updated successfully')
       else
-        # Rely on ApplicationController's error_response format
         error_response(
           message: 'Validation failed',
           errors: @voucher.errors.full_messages,
           status: :unprocessable_entity
         )
       end
-      # Pundit::NotAuthorizedError rescue block removed, handled globally
     end
 
     # DELETE /api/v1/vouchers/:id
