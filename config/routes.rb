@@ -144,6 +144,9 @@ Rails.application.routes.draw do
     # Vendor profile management (vendor-centric, not group-specific)
     resource :vendor_profile, only: [:show, :update]
 
+    # Vendor dashboard
+    get 'vendor/dashboard', to: 'vendor_dashboard#index'
+
     resources :vendors, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
