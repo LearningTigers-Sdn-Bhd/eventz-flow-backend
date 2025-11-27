@@ -15,9 +15,9 @@ module V1
                                         .where(visitors: { event_id: event.id })
                                         .count
 
-        # Voucher stats for this vendor
+        # Voucher stats for this vendor (exclude unlimited vouchers from total count)
         vouchers = Voucher.where(event_id: event.id, vendor_id: current_user.id)
-        total_vouchers = vouchers.sum(:total_redemption_available)
+        total_vouchers = vouchers.where(is_unlimited: false).sum(:total_redemption_available)
         total_redeemed = VoucherRedemptionLog.joins(:voucher)
                                              .where(vouchers: { event_id: event.id, vendor_id: current_user.id })
                                              .count

@@ -122,6 +122,71 @@ RSpec.describe VoucherRedemptionService, type: :service do
     end
   end
 
+  # --- UNLIMITED VOUCHER SCENARIOS ---
+
+  context 'when voucher is unlimited (is_unlimited: true)' do
+    let(:valid_date) { 1.day.from_now.to_date }
+    let(:valid_start_time) { Time.zone.parse('00:00:00') }
+    let(:valid_end_time) { Time.zone.parse('23:59:59') }
+
+    def create_unlimited_voucher(overrides = {})
+      create(:voucher, :unlimited, {
+        vendor: vendor_user,
+        event: event,
+        end_date: valid_date,
+        start_time: valid_start_time,
+        end_time: valid_end_time
+      }.merge(overrides))
+    end
+
+    it 'allows redemption even when redeemed_count exceeds total_redemption_available' do
+      # Create unlimited voucher with a total_redemption_available set (should be ignored)
+      unlimited_voucher = create_unlimited_voucher(
+        total_redemption_available: 1,
+        redeemed_count: 100
+      )
+
+      result = call_service(unlimited_voucher, user)
+      expect(result).to be_success
+    end
+
+    it 'allows multiple redemptions without limit' do
+      unlimited_voucher = create_unlimited_voucher
+
+      # Redeem multiple times
+      5.times do |i|
+        new_user = create(:user)
+        result = call_service(unlimited_voucher, new_user)
+        expect(result).to be_success, "Redemption #{i + 1} failed: #{result.error}"
+      end
+
+      expect(unlimited_voucher.reload.redeemed_count).to eq(5)
+    end
+
+    it 'still respects per-user limit even for unlimited vouchers' do
+      unlimited_voucher = create_unlimited_voucher(max_redemptions_per_user: 1)
+
+      # First redemption should succeed
+      result1 = call_service(unlimited_voucher, user)
+      expect(result1).to be_success
+
+      # Second redemption by same user should fail
+      result2 = call_service(unlimited_voucher, user)
+      expect(result2).not_to be_success
+      expect(result2.error).to include('personal limit')
+    end
+
+    it 'still respects time validity for unlimited vouchers' do
+      expired_unlimited_voucher = create_unlimited_voucher(
+        end_date: 1.day.ago.to_date
+      )
+
+      result = call_service(expired_unlimited_voucher, user)
+      expect(result).not_to be_success
+      expect(result.error).to include('expired')
+    end
+  end
+
   # --- VALIDATION FAILURE SCENARIOS (Testing Rollback) ---
 
   context 'when constraints are violated' do

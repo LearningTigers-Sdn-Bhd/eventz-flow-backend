@@ -11,7 +11,8 @@ module V1
         redemption_logs_scope = redemption_logs_scope.joins(:voucher).where(vouchers: { vendor_id: params[:vendor_id] })
       end
 
-      total_vouchers_issued = vouchers_scope.sum(:total_redemption_available)
+      # Exclude unlimited vouchers from total count as they don't have a fixed quota
+      total_vouchers_issued = vouchers_scope.where(is_unlimited: false).sum(:total_redemption_available)
       total_redemptions = redemption_logs_scope.count
       event_redemption_rate = total_vouchers_issued.zero? ? 0 : (total_redemptions.to_f / total_vouchers_issued) * 100
 

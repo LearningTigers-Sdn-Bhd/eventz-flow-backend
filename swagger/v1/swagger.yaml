@@ -5285,6 +5285,10 @@ paths:
                           type: integer
                           nullable: true
                           example: 100
+                        is_unlimited:
+                          type: boolean
+                          example: false
+                          description: If true, voucher has no redemption quota limit
                         redeemed_count:
                           type: integer
                           example: 0
@@ -5405,9 +5409,66 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: string
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: Voucher title
+                description:
+                  type: string
+                  description: Voucher description
+                vendor_id:
+                  type: integer
+                  description: Vendor ID
+                event_id:
+                  type: integer
+                  description: Event ID
+                voucher_code:
+                  type: string
+                  description: Voucher code
+                status:
+                  type: string
+                  enum: [active, inactive]
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                  format: time
+                end_time:
+                  type: string
+                  format: time
+                total_redemption_available:
+                  type: integer
+                  nullable: true
+                  description: Total quota (ignored if is_unlimited is true)
+                is_unlimited:
+                  type: boolean
+                  default: false
+                  description: If true, voucher has no redemption quota limit
+                max_redemptions_per_user:
+                  type: integer
+                  nullable: true
+                voucher_type:
+                  type: string
+                  enum: [fixed_amount, percentage, free_item]
+                voucher_value:
+                  type: number
+                voucher_category:
+                  type: string
+                image:
+                  type: string
+                  format: binary
+                  description: Voucher image file
+              required:
+                - title
+                - vendor_id
+                - event_id
         required: true
-        description: Voucher title
+        description: Voucher data
   "/v1/vouchers/{id}":
     parameters:
     - name: id

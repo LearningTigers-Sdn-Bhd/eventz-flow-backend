@@ -14,4 +14,13 @@ class Voucher < ApplicationRecord
   }
 
   scope :for_event, ->(event) { where(event: event) }
+
+  # Check if voucher has remaining quota for redemption
+  # Returns true if unlimited, or if redeemed count is less than total available
+  def has_quota_remaining?
+    return true if is_unlimited
+    return true if total_redemption_available.to_i.zero?
+
+    redeemed_count.to_i < total_redemption_available.to_i
+  end
 end

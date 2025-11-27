@@ -99,7 +99,8 @@ module V1
     end
 
     def total_vouchers_issued
-      @total_vouchers_issued ||= Voucher.for_event(@event).sum(:total_redemption_available)
+      # Exclude unlimited vouchers from total count as they don't have a fixed quota
+      @total_vouchers_issued ||= Voucher.for_event(@event).where(is_unlimited: false).sum(:total_redemption_available)
     end
 
     def total_voucher_redemptions

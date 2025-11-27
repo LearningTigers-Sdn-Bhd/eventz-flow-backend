@@ -75,7 +75,8 @@ module V1
 
       # Both event type stats
       total_vendors = EventVendor.where(event_id: event_ids).count
-      total_vouchers = Voucher.where(event_id: event_ids).sum(:total_redemption_available)
+      # Exclude unlimited vouchers from total count as they don't have a fixed quota
+      total_vouchers = Voucher.where(event_id: event_ids, is_unlimited: false).sum(:total_redemption_available)
       total_vouchers_redeemed = VoucherRedemptionLog.joins(:voucher).where(vouchers: { event_id: event_ids }).count
 
       render json: {

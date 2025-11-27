@@ -143,6 +143,7 @@ module V1
         :start_time,
         :end_time,
         :total_redemption_available,
+        :is_unlimited,
         :max_redemptions_per_user,
         :voucher_type,
         :voucher_value,

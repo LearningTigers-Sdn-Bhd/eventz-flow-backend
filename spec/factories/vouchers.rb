@@ -25,6 +25,13 @@ FactoryBot.define do
     total_redemption_available { 100 } # More realistic default
     redeemed_count { 0 } # Should start at 0
     max_redemptions_per_user { 5 } # More realistic default
+    is_unlimited { false } # Default to limited voucher
+
+    # Trait for unlimited vouchers
+    trait :unlimited do
+      is_unlimited { true }
+      total_redemption_available { nil }
+    end
     
     voucher_type { :fixed_amount }
     voucher_value { "9.99" }

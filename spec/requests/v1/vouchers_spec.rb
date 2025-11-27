@@ -20,6 +20,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
       start_time: { type: :string, format: :time, example: '00:00:00' },
       end_time: { type: :string, format: :time, example: '23:59:59' },
       total_redemption_available: { type: :integer, nullable: true, example: 100 },
+      is_unlimited: { type: :boolean, example: false },
       redeemed_count: { type: :integer, example: 0 },
       max_redemptions_per_user: { type: :integer, nullable: true, example: 5 },
       voucher_type: { type: :string, enum: ['fixed_amount', 'percentage', 'free_item'], example: 'percentage' },
@@ -327,6 +328,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
       parameter name: :start_time, in: :formData, type: :string, required: true, description: 'Start time'
       parameter name: :end_time, in: :formData, type: :string, required: true, description: 'End time'
       parameter name: :total_redemption_available, in: :formData, type: :integer, required: false
+      parameter name: :is_unlimited, in: :formData, type: :boolean, required: false, description: 'If true, voucher has no redemption quota limit'
       parameter name: :max_redemptions_per_user, in: :formData, type: :integer, required: false
       parameter name: :voucher_type, in: :formData, type: :string, required: true, description: 'Voucher type'
       parameter name: :voucher_value, in: :formData, type: :number, required: true, description: 'Voucher value'
@@ -355,6 +357,33 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
           expect(data['message']).to eq('Voucher created successfully')
           expect(data['data']['title']).to eq('New Voucher Deal')
           expect(Voucher.count).to eq(1)
+        end
+      end
+
+      response '201', 'Unlimited voucher created successfully' do
+        let(:title) { 'Unlimited Voucher' }
+        let(:description) { 'No redemption limit' }
+        let(:vendor_id) { vendor_user.id }
+        let(:event_id) { event.id }
+        let(:voucher_code) { 'UNLIMITED2024' }
+        let(:start_date) { Date.current }
+        let(:end_date) { Date.current + 7.days }
+        let(:start_time) { '00:00:00' }
+        let(:end_time) { '23:59:59' }
+        let(:voucher_type) { 'fixed_amount' }
+        let(:voucher_value) { 10 }
+        let(:is_unlimited) { true }
+
+        schema VOUCHER_RESPONSE_SCHEMA
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be(true)
+          expect(data['message']).to eq('Voucher created successfully')
+          expect(data['data']['title']).to eq('Unlimited Voucher')
+          expect(data['data']['is_unlimited']).to be(true)
+          expect(Voucher.count).to eq(1)
+          expect(Voucher.last.is_unlimited).to be(true)
         end
       end
 
@@ -442,6 +471,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
       parameter name: :start_time, in: :formData, type: :string, required: false
       parameter name: :end_time, in: :formData, type: :string, required: false
       parameter name: :total_redemption_available, in: :formData, type: :integer, required: false
+      parameter name: :is_unlimited, in: :formData, type: :boolean, required: false, description: 'If true, voucher has no redemption quota limit'
       parameter name: :max_redemptions_per_user, in: :formData, type: :integer, required: false
       parameter name: :voucher_type, in: :formData, type: :string, required: false
       parameter name: :voucher_value, in: :formData, type: :number, required: false

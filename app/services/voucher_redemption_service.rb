@@ -168,13 +168,16 @@ class VoucherRedemptionService
   end
 
   def global_count_is_available?
+    # Unlimited vouchers always have stock
+    return true if @voucher.is_unlimited
+
     # Use .to_i to guarantee that total_redemption_available and redeemed_count
     # are treated as integers, resolving the `undefined method '<' for nil` error
     # if database columns were nil.
     total = @voucher.total_redemption_available.to_i
     redeemed = @voucher.redeemed_count.to_i
 
-    # True if limit is 0 (unlimited) OR if redeemed count is less than available count
+    # True if limit is 0 (legacy unlimited) OR if redeemed count is less than available count
     total.zero? || (redeemed < total)
   end
 
