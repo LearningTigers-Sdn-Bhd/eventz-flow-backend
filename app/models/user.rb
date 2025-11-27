@@ -5,7 +5,7 @@ class User < ApplicationRecord
   # --- Global Roles ---
   # Rails best practice is to use the provided methods (org_owner?, organizer?, etc.)
   # The enum values should remain integers for database consistency.
-  enum :role, { org_owner: 0, organizer: 1, member: 2, vendor: 3, exhibitor: 4 }, scopes: false
+  enum :role, { org_owner: 0, organizer: 1, member: 2, vendor: 3, exhibitor: 4, exhibition_contractor: 5 }, scopes: false
 
   # --- Status ---
   enum :status, { active: 1, inactive: 0 }
@@ -46,6 +46,9 @@ class User < ApplicationRecord
   # Vendor profile (for vendors only - one profile per vendor)
   has_one :vendor_profile, foreign_key: 'vendor_id', dependent: :destroy
   accepts_nested_attributes_for :vendor_profile
+
+  # Exhibition Contractor profile (for exhibition_contractors only - one profile per contractor)
+  has_one :exhibition_contractor_profile, foreign_key: 'user_id', dependent: :destroy
 
   # 2. GROUP MEMBERSHIPS
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
@@ -142,6 +145,10 @@ class User < ApplicationRecord
 
   def is_vendor?
     vendor?
+  end
+
+  def is_exhibition_contractor?
+    exhibition_contractor?
   end
 
   def is_staff?

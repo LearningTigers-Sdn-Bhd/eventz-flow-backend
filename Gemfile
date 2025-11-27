@@ -80,6 +80,8 @@ end
 group :test do
   # Shorthand matchers for testing models
   gem "shoulda-matchers"
+  # For Pundit policy testing
+  gem "pundit-matchers"
   # Ensures a clean database slate between tests
   gem "database_cleaner"
 end

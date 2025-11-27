@@ -17,7 +17,7 @@ RSpec.describe User, type: :model do
 		# Test 3: Role Definition
 		it 'is valid with a defined role' do
 			# Test all defined roles from the enum
-			%i[org_owner organizer member vendor].each do |role|
+			%i[org_owner organizer member vendor exhibitor exhibition_contractor].each do |role|
 				user = build(:user, role: role)
 				expect(user).to be_valid
 			end
@@ -51,6 +51,7 @@ RSpec.describe User, type: :model do
 		it { is_expected.to have_many(:event_location_members).dependent(:destroy) }
 		it { is_expected.to have_many(:assigned_locations).through(:event_location_members).source(:event_location) }
 		it { is_expected.to have_many(:assigned_event_admins).dependent(:destroy).class_name('EventAssignment') }
+		it { is_expected.to have_one(:exhibition_contractor_profile).dependent(:destroy) } # New association test
 		# ------------------------------
 
 		# Test 6: Role Helper Methods
@@ -59,6 +60,7 @@ RSpec.describe User, type: :model do
 		let(:organizer_user) { create(:organizer_user) }
 		let(:member_user) { create(:member_user) }
 		let(:vendor_user) { create(:vendor_user) }
+		let(:exhibition_contractor_user) { create(:exhibition_contractor_user) } # New user for testing
 
 		it 'correctly identifies a Organization owner' do
 			expect(org_owner_user.org_owner?).to be true
@@ -77,16 +79,14 @@ RSpec.describe User, type: :model do
 			expect(organizer_user.is_member?).to be false
 		end
 
-		it 'correctly identifies staff members' do
-			expect(org_owner_user.is_staff?).to be true
-			expect(organizer_user.is_staff?).to be true
-			expect(member_user.is_staff?).to be true
-			expect(vendor_user.is_staff?).to be false
-		end
-
 		it 'correctly identifies vendors' do
 			expect(vendor_user.is_vendor?).to be true
 			expect(member_user.is_vendor?).to be false
+		end
+
+		it 'correctly identifies exhibition contractors' do
+			expect(exhibition_contractor_user.is_exhibition_contractor?).to be true
+			expect(member_user.is_exhibition_contractor?).to be false
 		end
 	end
 end

@@ -91,6 +91,15 @@ vendor_user = User.find_or_create_by!(email: 'vendor@example.com') do |u|
 end
 puts "Created Vendor User: #{vendor_user.full_name}"
 
+# G. Dedicated Exhibition Contractor User
+exhibition_contractor_user = User.find_or_create_by!(email: 'contractor@example.com') do |u|
+  u.password = '12345678'
+  u.role = :exhibition_contractor
+  u.full_name = 'The Test Contractor'
+  u.email_verified_at = Time.current
+end
+puts "Created Exhibition Contractor User: #{exhibition_contractor_user.full_name}"
+
 # Combined users for easy random assignment
 all_event_staff = organizers + team_members
 
