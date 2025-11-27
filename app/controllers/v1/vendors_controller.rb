@@ -39,9 +39,18 @@ module V1
       authorize vendor_user, :create?, policy_class: VendorPolicy
 
       if vendor_user.save
+        # Update vendor profile if attributes provided
+        if params[:vendor][:vendor_profile_attributes].present? && vendor_user.vendor_profile
+          handle_vendor_profile_image_upload(nil)
+          profile_params = params.require(:vendor).permit(vendor_profile_attributes: [
+            :image_path, :description, :category, :person_in_charge, :address, :notes
+          ])[:vendor_profile_attributes]
+          vendor_user.vendor_profile.update(profile_params)
+        end
+        
         render json: format_vendor(vendor_user), status: :created
       else
-        render json: { error: 'Validation Error', errors: vendor_user.errors.full_messages },
+        render json: { error: 'Validation Error', errors: vendor_user.errors.full_messages }, 
                status: :unprocessable_content
       end
     end
@@ -52,7 +61,7 @@ module V1
       
       # Handle vendor profile image if present
       if params[:vendor][:vendor_profile_attributes].present?
-        handle_vendor_profile_image_upload
+        handle_vendor_profile_image_upload(@vendor)
       end
 
       if @vendor.update(vendor_update_params)
@@ -92,49 +101,42 @@ module V1
     private
 
     # Handle image upload for vendor profile nested attributes
-    def handle_vendor_profile_image_upload
+    # @param vendor [User, nil] The vendor user (pass nil for create, vendor instance for update)
+    def handle_vendor_profile_image_upload(vendor = nil)
       uploaded_image = params.dig(:vendor, :vendor_profile_attributes, :image)
       
       if uploaded_image.present? && uploaded_image.respond_to?(:read)
-        # Store the image and get the path
-        image_path = store_vendor_image(uploaded_image)
+        image_path = store_vendor_image(uploaded_image, vendor)
         if image_path
-          # Replace the image param with the stored path
           params[:vendor][:vendor_profile_attributes][:image_path] = image_path
           params[:vendor][:vendor_profile_attributes].delete(:image)
         end
-      elsif params.dig(:vendor, :vendor_profile_attributes, :image_path) == ""
-        # Explicitly handle empty string as removal request
+      elsif vendor && params.dig(:vendor, :vendor_profile_attributes, :image_path) == ""
+        # Explicitly handle empty string as removal request (only on update)
         params[:vendor][:vendor_profile_attributes][:image_path] = nil
       end
     end
 
     # Store uploaded vendor image to filesystem
     # @param uploaded_file [ActionDispatch::Http::UploadedFile] The uploaded image file
+    # @param vendor [User, nil] The vendor user (pass nil for create to skip old image deletion)
     # @return [String, nil] The file path relative to storage root, or nil if storage failed
-    def store_vendor_image(uploaded_file)
-      # Create vendor_images directory if it doesn't exist
+    def store_vendor_image(uploaded_file, vendor = nil)
       images_dir = Rails.root.join('storage', 'vendor_images')
       FileUtils.mkdir_p(images_dir)
 
-      # Generate filename with timestamp to ensure uniqueness
       timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
       extension = File.extname(uploaded_file.original_filename)
       filename = "vendor-#{timestamp}-#{SecureRandom.hex(4)}#{extension}"
       file_path = images_dir.join(filename)
 
-      # Delete old image if exists
-      if @vendor.vendor_profile&.image_path.present?
-        old_image_path = Rails.root.join('storage', @vendor.vendor_profile.image_path)
+      # Delete old image only on update (when vendor exists)
+      if vendor&.vendor_profile&.image_path.present?
+        old_image_path = Rails.root.join('storage', vendor.vendor_profile.image_path)
         File.delete(old_image_path) if File.exist?(old_image_path)
       end
 
-      # Write the uploaded file to disk
-      File.open(file_path, 'wb') do |file|
-        file.write(uploaded_file.read)
-      end
-
-      # Return the relative path (from storage/)
+      File.open(file_path, 'wb') { |file| file.write(uploaded_file.read) }
       "vendor_images/#{filename}"
     rescue StandardError => e
       Rails.logger.error "Failed to store vendor image: #{e.message}"
