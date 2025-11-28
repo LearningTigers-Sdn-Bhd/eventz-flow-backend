@@ -155,6 +155,13 @@ class User < ApplicationRecord
     ['org_owner', 'organizer', 'member'].include?(role)
   end
 
+  def exhibition_contractor_for?(event)
+    return false unless event.present?
+
+    exhibition_contractor_profile.present? &&
+      exhibition_contractor_profile.event_exhibition_contractors.exists?(event_id: event.id)
+  end
+
   private
 
   # Use the Rails enum helper methods (org_owner?, organizer?, etc.) instead of string comparisons ('organizer')

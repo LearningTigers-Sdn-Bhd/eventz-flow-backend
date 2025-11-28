@@ -1,0 +1,91 @@
+class ExhibitorKitPolicy < ApplicationPolicy
+  def show?
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event) || record.event_vendor.vendor_id == user.id
+  end
+
+  def create?
+    user.is_org_owner_or_organizer? || (record.event_vendor.present? && record.event_vendor.vendor_id == user.id)
+  end
+
+  def update?
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event) || record.event_vendor.vendor_id == user.id
+  end
+
+  def permitted_attributes_for_create
+    return exhibitor_kit_attributes if user.is_org_owner_or_organizer?
+    return exhibitor_create_attributes if record.event_vendor&.vendor_id == user.id
+
+    []
+  end
+
+  def permitted_attributes_for_update
+    puts "DEBUG: Permitted Attributes - User role: #{user.role}"
+    puts "DEBUG: is_org_owner_or_organizer?: #{user.is_org_owner_or_organizer?}"
+    puts "DEBUG: exhibition_contractor_for?(record.event): #{user.exhibition_contractor_for?(record.event)}"
+    puts "DEBUG: record.event_vendor.present?: #{record.event_vendor.present?}"
+    puts "DEBUG: record.event_vendor.vendor_id == user.id: #{record.event_vendor.vendor_id == user.id}"
+
+    if user.is_org_owner_or_organizer?
+      puts "DEBUG: Returning exhibitor_kit_attributes (Admin/OrgOwner)"
+      exhibitor_kit_attributes
+    elsif user.exhibition_contractor_for?(record.event)
+      puts "DEBUG: Returning contractor_attributes (Contractor)"
+      contractor_attributes
+    elsif record.event_vendor.present? && record.event_vendor.vendor_id == user.id
+      puts "DEBUG: Returning exhibitor_update_attributes (Exhibitor)"
+      exhibitor_update_attributes
+    else
+      puts "DEBUG: Returning empty array (No specific role match)"
+      []
+    end
+  end
+
+  private
+
+  def exhibitor_kit_attributes
+    %i[
+      booth_number booth_type booth_dimensions side_wall_left_required side_wall_right_required
+      name_on_fascia fascia_upgrade_required company_name company_address pic_full_name
+      pic_contact_number pic_email_address extra_crew_count special_requirements
+      digital_brochure_link qr_code_url is_raw_space contractor_company_name
+      contractor_pic_name contractor_pic_contact stand_design_file_url furniture_requests
+      electrical_requests printing_orders indemnity_signed indemnity_document_url
+      payment_status amount_paid payment_note indemnity_link
+    ]
+  end
+
+  def contractor_attributes
+    %i[
+      payment_status amount_paid payment_note indemnity_link
+    ]
+  end
+
+  def exhibitor_create_attributes
+    exhibitor_update_attributes + [:booth_number, :booth_type, :company_name]
+  end
+
+  def exhibitor_update_attributes
+    %i[
+      booth_dimensions side_wall_left_required side_wall_right_required
+      name_on_fascia fascia_upgrade_required company_address pic_full_name
+      pic_contact_number pic_email_address extra_crew_count special_requirements
+      digital_brochure_link is_raw_space contractor_company_name
+      contractor_pic_name contractor_pic_contact stand_design_file_url furniture_requests
+      electrical_requests printing_orders indemnity_signed indemnity_document_url
+    ]
+  end
+
+  class Scope < Scope
+    def resolve
+      if user.is_org_owner_or_organizer?
+        scope.all
+      elsif user.is_exhibition_contractor?
+        scope.joins(:event_vendor).where(event_vendors: { event_id: user.exhibition_contractor_profile.event_exhibition_contractors.select(:event_id) })
+      elsif user.is_vendor?
+        scope.where(event_vendor_id: user.event_vendor_assignments.select(:id))
+      else
+        scope.none
+      end
+    end
+  end
+end

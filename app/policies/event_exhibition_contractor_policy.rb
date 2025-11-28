@@ -1,26 +1,27 @@
 class EventExhibitionContractorPolicy < ApplicationPolicy
   def index?
-    user.org_owner? || user.organizer? || (user.exhibition_contractor? && record.event.present?)
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event)
+  end
+
+  def show?
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event)
   end
 
   def create?
-    user.org_owner? || user.organizer?
+    user.is_org_owner_or_organizer?
   end
 
   def destroy?
-    user.org_owner? || user.organizer?
+    user.is_org_owner_or_organizer?
   end
 
   class Scope < Scope
     def resolve
-      if user.org_owner? || user.organizer?
-        scope.all
-      elsif user.exhibition_contractor?
-        # Exhibition contractors can only see their own assigned events
-        scope.joins(:exhibition_contractor_profile).where(exhibition_contractor_profiles: { user_id: user.id })
-      else
-        scope.none
+      return scope.all if user.is_org_owner_or_organizer?
+      if user.is_exhibition_contractor? && user.exhibition_contractor_profile.present?
+        return scope.where(exhibition_contractor_profile: user.exhibition_contractor_profile)
       end
+      scope.none
     end
   end
 end

@@ -100,6 +100,8 @@ Rails.application.routes.draw do
       # Nested resource for Event Exhibition Contractor
       resource :event_exhibition_contractor, only: [:show, :create, :destroy]
 
+      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy]
+
 
       # Event Metrics moved outside to avoid impacting event resources
     end

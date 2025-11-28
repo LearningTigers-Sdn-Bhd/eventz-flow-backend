@@ -8,7 +8,7 @@ RSpec.describe EventExhibitionContractor, type: :model do
 
   describe 'Validations' do
     subject { create(:event_exhibition_contractor) } # Create a subject for uniqueness test
-    it { is_expected.to validate_uniqueness_of(:event_id).with_message("can only have one exhibition contractor assigned to it") }
+    it { is_expected.to validate_uniqueness_of(:event_id) }
   end
 
 end

@@ -20,7 +20,7 @@ FactoryBot.define do
       # The presence of exhibitor_kit is validated in Exhibitor model,
       # so ensure a kit is built when creating an exhibitor in tests.
       after(:create) do |exhibitor|
-        exhibitor.exhibitor_kit ||= build(:exhibitor_kit, event_vendor: exhibitor)
+        exhibitor.exhibitor_kit ||= create(:exhibitor_kit, event_vendor: exhibitor)
       end
     end
 

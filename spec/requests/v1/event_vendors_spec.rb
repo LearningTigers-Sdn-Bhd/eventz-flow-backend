@@ -430,7 +430,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       # Exhibitor Creation Tests (event.use_ticket = true)
       # ============================================================
       context 'when event.use_ticket is true (Exhibitor)' do
-        let!(:event) { create(:event, title: 'Exhibition Event', use_ticket: true) }
+        let!(:event) { create(:event, title: 'Exhibition Event', use_exhibitor_kit: true) }
         let(:event_admin_user) { create(:organizer_user) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
 
@@ -466,6 +466,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
           run_test! do |response|
             data = JSON.parse(response.body)
+
             expect(data['type']).to eq('Exhibitor')
             expect(data['vendor']['email']).to eq('exhibitorkit@example.com')
             expect(data['exhibitor_kit']).to be_present
@@ -508,9 +509,9 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
             expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 25 characters)')
           end
         end
-      end # end context 'when event.use_ticket is true (Exhibitor)'
-    end # end post 'Creates a new vendor for an event'
-  end # end path '/v1/events/{event_id}/vendors'
+      end 
+    end 
+  end 
 
   # ============================================================
   # PATCH /v1/events/{event_id}/vendors/{id}
@@ -607,7 +608,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       end
 
       context 'when updating an Exhibitor' do
-        let!(:event) { create(:event, title: 'Exhibition Event, for patch', use_ticket: true) } # This will be the specific event for this context
+        let!(:event) { create(:event, title: 'Exhibition Event, for patch', use_exhibitor_kit: true) } # This will be the specific event for this context
         let(:event_id) { event.id } # Override event_id for this context
         let!(:event_admin_assignment) do # New assignment for this event
           create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
@@ -633,7 +634,9 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
             }
           )
         end
-        let!(:existing_exhibitor) { service_result.data }
+        let!(:existing_exhibitor) do
+          EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(service_result.data.id)
+        end
         let!(:existing_exhibitor_kit) { existing_exhibitor.exhibitor_kit }
         let!(:team_member) { create(:exhibitor_team_member, exhibitor_kit: existing_exhibitor_kit, full_name: 'Original Member') }
         let!(:id) { existing_exhibitor.id }

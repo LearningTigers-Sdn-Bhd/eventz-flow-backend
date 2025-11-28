@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_27_113323) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -116,6 +116,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113323) do
     t.boolean "use_ticket", default: true, null: false
     t.datetime "deleted_at"
     t.string "slug"
+    t.boolean "use_exhibitor_kit", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -160,6 +161,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113323) do
     t.string "indemnity_document_url"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "payment_status", default: 0
+    t.decimal "amount_paid", precision: 10, scale: 2
+    t.text "payment_note"
+    t.string "indemnity_link"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
   end
 

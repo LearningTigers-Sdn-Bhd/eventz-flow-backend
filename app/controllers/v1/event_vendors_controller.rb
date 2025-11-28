@@ -9,8 +9,9 @@ module V1
       # Authorization is handled by event show policy
       authorize @event, :show?
       
-      event_vendors = @event.event_vendors.includes(:vendor)
-      # Note: exhibitor_owner is lazy-loaded in format_event_vendor only for Exhibitor types
+      merchants = @event.event_vendors.merchants.includes(:vendor)
+      exhibitors = @event.event_vendors.exhibitors.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members])
+      event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
 
       render json: event_vendors.map { |event_vendor| format_event_vendor(event_vendor) },
              status: :ok
@@ -26,7 +27,12 @@ module V1
 
       if result.success?
         # Reload to get associations
-        event_vendor = EventVendor.includes(:vendor).find(result.data.id)
+        event_vendor = EventVendor.find(result.data.id) # Find the record
+        if event_vendor.is_a?(Exhibitor)
+          event_vendor = EventVendor.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(result.data.id)
+        else # Merchant
+          event_vendor = EventVendor.includes(:vendor).find(result.data.id)
+        end
         # Note: exhibitor_owner is lazy-loaded in format_event_vendor only for Exhibitor types
         render json: format_event_vendor(event_vendor), status: :created
       else
@@ -39,13 +45,33 @@ module V1
     def update
       authorize @event_vendor, policy_class: EventVendorPolicy
       
-      if @event_vendor.update(update_vendor_params)
-        render json: format_event_vendor(@event_vendor),
-        status: :ok
+      # Extract exhibitor_kit_attributes if present
+      exhibitor_kit_attrs = update_vendor_params[:exhibitor_kit_attributes]
+      vendor_main_params = update_vendor_params.except(:exhibitor_kit_attributes)
+
+      # Update main event_vendor attributes
+      if @event_vendor.update(vendor_main_params)
+        # If exhibitor_kit_attributes are present, update the exhibitor kit
+        if exhibitor_kit_attrs.present? && @event_vendor.exhibitor_kit
+          # Ensure that only permitted attributes for the current user are updated on the exhibitor kit
+          permitted_exhibitor_kit_attrs = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update.each_with_object({}) do |attr, hash|
+            hash[attr] = exhibitor_kit_attrs[attr] if exhibitor_kit_attrs.key?(attr)
+          end
+          
+          if @event_vendor.exhibitor_kit.update(permitted_exhibitor_kit_attrs)
+            @event_vendor.reload # Reload to ensure all associations are fresh
+            render json: format_event_vendor(@event_vendor), status: :ok
+          else
+            render json: { error: 'Validation error', errors: @event_vendor.exhibitor_kit.errors.full_messages },
+                   status: :unprocessable_content
+          end
+        else
+          @event_vendor.reload # Reload to ensure all associations are fresh
+          render json: format_event_vendor(@event_vendor), status: :ok
+        end
       else
-        render json: { error: 'Validation error', errors:
-      @event_vendor.errors.full_messages },
-              status: :unprocessable_content
+        render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
+               status: :unprocessable_content
       end
     end
 
@@ -71,7 +97,10 @@ module V1
     end
 
     def set_event_vendor
-      @event_vendor = @event.event_vendors.find(params[:id])
+      @event_vendor = @event.event_vendors.includes(:vendor).find(params[:id])
+      if @event_vendor.is_a?(Exhibitor)
+        @event_vendor = @event.event_vendors.exhibitors.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(params[:id])
+      end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event vendor not found.' }, status: :not_found
     end
@@ -133,7 +162,7 @@ module V1
         }
       }
 
-      if event_vendor.is_a?(Exhibitor) && event_vendor.exhibitor_kit.present?
+      if @event.use_exhibitor_kit? && event_vendor.is_a?(Exhibitor) && event_vendor.exhibitor_kit
         response[:exhibitor_kit] = format_exhibitor_kit(event_vendor.exhibitor_kit)
       end
 

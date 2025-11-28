@@ -23,7 +23,7 @@ class V1::ExhibitionContractorProfilesController < ApplicationController
     # Policy authorization will be added here
     # authorize ExhibitionContractorProfile
 
-    @exhibition_contractor_profile = ExhibitionContractorProfile.new(exhibition_contractor_profile_params)
+    @exhibition_contractor_profile = current_user.build_exhibition_contractor_profile(exhibition_contractor_profile_params)
 
     if @exhibition_contractor_profile.save
       render json: @exhibition_contractor_profile, status: :created
@@ -62,6 +62,6 @@ class V1::ExhibitionContractorProfilesController < ApplicationController
   end
 
   def exhibition_contractor_profile_params
-    params.require(:exhibition_contractor_profile).permit(:company_name, :contact_person, :contact_email, :contact_phone, :user_id)
+    params.require(:exhibition_contractor_profile).permit(:company_name, :contact_person, :contact_email, :contact_phone)
   end
 end

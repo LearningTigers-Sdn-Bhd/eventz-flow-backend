@@ -88,6 +88,19 @@ class EventPolicy < ApplicationPolicy
     user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record)
   end
 
+  def show_exhibitor_kits?
+    return false unless record.use_exhibitor_kit? # Only if feature is enabled
+
+    # Org owner, Organizer, Event Admin (for this event), or
+    # Exhibition Contractor assigned to this event, or
+    # Exhibitor whose kit it is.
+    user.is_org_owner? ||
+    user.is_organizer? ||
+    user.is_event_admin?(record) ||
+    user.exhibition_contractor_for?(record) ||
+    user.is_event_vendor?(record)
+  end
+
   # ============================================================
   # Scope for Index (GET /v1/events)
   # ============================================================

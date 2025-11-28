@@ -18,4 +18,14 @@ class EventVendor < ApplicationRecord
     type = event.use_ticket? ? 'Exhibitor' : 'Merchant'
     create!(attributes.merge(event: event, vendor: vendor, type: type))
   end
+
+  # --- Custom Associations / Methods ---
+  def exhibitor_kit
+    if is_a?(Exhibitor)
+      super
+    else
+      nil
+    end
+  end
 end
+
