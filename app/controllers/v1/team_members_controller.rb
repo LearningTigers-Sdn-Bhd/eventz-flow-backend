@@ -179,7 +179,8 @@
       :full_name,
       :email,
       :phone,
-      :role
+      :role,
+      :email_verified_at
     )
 
     if password_provided?
@@ -207,7 +208,8 @@
       status: user.status,
       created_at: user.created_at.iso8601,
       updated_at: user.updated_at.iso8601,
-      created_by_id: user.created_by_id&.to_s 
+      created_by_id: user.created_by_id&.to_s,
+      email_verified_at: user.email_verified_at&.iso8601
     }
   end
 end
