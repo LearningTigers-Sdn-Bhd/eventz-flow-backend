@@ -112,7 +112,7 @@ class EventVendorService
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.reload) # Reload to ensure exhibitor_kit is present
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end
@@ -215,7 +215,7 @@ class EventVendorService
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.reload) # Reload to ensure exhibitor_kit is present
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end

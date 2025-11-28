@@ -36,9 +36,11 @@ class EventVendorPolicy < ApplicationPolicy
   end
 
   def update?
-    # Event admins can update event vendor records
-    # Vendors can update their own event vendor profile (redirect_url, poster_url) and exhibitor_kit
-    user.org_owner? || user.is_organizer? || user.is_event_admin?(record.event) || record.vendor_id == user.id
+    user.org_owner? ||
+    user.is_organizer? ||
+    user.is_event_admin?(record.event) ||
+    record.vendor_id == user.id ||
+    (user.is_exhibition_contractor? && user.exhibition_contractor_for?(record.event))
   end
 
   def destroy?

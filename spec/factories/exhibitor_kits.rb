@@ -2,10 +2,10 @@ FactoryBot.define do
   factory :exhibitor_kit do
     association :event_vendor, factory: :exhibitor
 
-    booth_number { Faker::Alphanumeric.unique.alpha(number: 5) }
-    booth_type { [:shell_scheme, :raw_space].sample }
-    name_on_fascia { Faker::Company.name.truncate(25) }
-    company_name { Faker::Company.name }
+    booth_number { 'A123' }
+    booth_type { :shell_scheme }
+    name_on_fascia { 'Test Company Fascia' }
+    company_name { 'Test Company Pte Ltd' }
     company_address { Faker::Address.full_address }
     pic_full_name { Faker::Name.name }
     pic_contact_number { Faker::PhoneNumber.phone_number }

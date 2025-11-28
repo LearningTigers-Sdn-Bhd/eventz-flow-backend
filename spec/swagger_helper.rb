@@ -23,6 +23,15 @@ RSpec.configure do |config|
         version: 'v1'
       },
       paths: {},
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: :http,
+            scheme: :bearer,
+            bearerFormat: :JWT
+          }
+        }
+      },
       servers: [
         {
           url: 'https://{defaultHost}',
@@ -33,7 +42,7 @@ RSpec.configure do |config|
           }
         },
         {
-          url: 'http://localhost:3001',
+          url: 'http://localhost:3000',
           description: 'Local Development'
         }
       ]

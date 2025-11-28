@@ -97,6 +97,11 @@ Rails.application.routes.draw do
 
       resources :vouchers, only: [:index]
 
+      # Nested resource for Event Exhibition Contractor
+      resource :event_exhibition_contractor, only: [:show, :create, :destroy]
+
+      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy]
+
 
       # Event Metrics moved outside to avoid impacting event resources
     end
@@ -212,6 +217,8 @@ Rails.application.routes.draw do
 
     # 8. API KEYS MANAGEMENT
     resources :api_keys, only: [:index, :create, :destroy]
+
+    resources :exhibition_contractor_profiles, only: [:index, :show, :create, :update, :destroy]
 
   end
 end

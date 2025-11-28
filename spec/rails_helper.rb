@@ -10,6 +10,7 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 
 require 'rspec/rails'
 require 'shoulda/matchers'
+require 'pundit/matchers'
 
 # --- Require support files (helpers, shared contexts, etc.) ---
 Dir[Rails.root.join('spec/support/**/*.rb')].sort.each { |f| require f }
@@ -37,6 +38,7 @@ RSpec.configure do |config|
 
   config.include AuthHelpers, type: :request
   config.include AuthHelpers, type: :controller
+  config.include Pundit::Matchers, type: :policy
 
 
   config.before(:suite) do
