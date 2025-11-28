@@ -99,7 +99,7 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
 
       it "returns unprocessable entity" do
         post v1_exhibition_contractor_profiles_path, params: invalid_attributes, headers: auth_header
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
 
@@ -139,7 +139,7 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
 
       it "returns unprocessable entity" do
         patch v1_exhibition_contractor_profile_path(exhibition_contractor_profile), params: invalid_attributes, headers: auth_header
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
 

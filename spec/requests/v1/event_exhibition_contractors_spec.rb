@@ -89,7 +89,7 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       it "returns unprocessable entity" do
         create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: create(:exhibition_contractor_profile))
         post v1_event_event_exhibition_contractor_path(event), params: invalid_attributes, headers: auth_header
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
 

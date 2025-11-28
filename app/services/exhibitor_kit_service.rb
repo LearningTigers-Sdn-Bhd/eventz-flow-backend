@@ -11,7 +11,6 @@ class ExhibitorKitService < BaseService
     return ServiceResult.new(success: false, errors: 'Exhibitor not found for this event', status: :not_found) if event_vendor.nil?
 
     permitted = create_params
-    puts "Create permitted params: #{permitted.inspect}"
 
     exhibitor_kit = event_vendor.build_exhibitor_kit(permitted)
     authorize exhibitor_kit, :create?
@@ -27,7 +26,6 @@ class ExhibitorKitService < BaseService
     authorize exhibitor_kit, :update?
 
     permitted = update_params(exhibitor_kit)
-    puts "Update permitted params: #{permitted.inspect}"
 
     if exhibitor_kit.update(permitted)
       ServiceResult.new(success: true, data: exhibitor_kit, status: :ok)
@@ -40,14 +38,10 @@ class ExhibitorKitService < BaseService
 
   def create_params
     event_vendor = EventVendor.find_by(id: params.dig(:exhibitor_kit, :event_vendor_id))
-    permitted = params.require(:exhibitor_kit).permit(*policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create)
-    puts "Policy permitted_attributes_for_create for create: #{policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create.inspect}"
-    permitted
+    params.require(:exhibitor_kit).permit(*policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create)
   end
 
   def update_params(exhibitor_kit)
-    permitted = params.require(:exhibitor_kit).permit(*policy(exhibitor_kit).permitted_attributes_for_update)
-    puts "Policy permitted_attributes_for_update for update: #{policy(exhibitor_kit).permitted_attributes_for_update.inspect}"
-    permitted
+    params.require(:exhibitor_kit).permit(*policy(exhibitor_kit).permitted_attributes_for_update)
   end
 end
