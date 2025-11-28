@@ -1,8 +1,8 @@
 # app/controllers/v1/authentication_controller.rb
 module V1
   class AuthenticationController < ApplicationController
-    skip_before_action :authenticate_user!, only: %i[login register refresh_token]
-    skip_before_action :require_verified_email!, only: %i[logout send_verification_code verify_email refresh_token]
+    skip_before_action :authenticate_user!, only: %i[login register refresh_token register_invited_vendor check_account]
+    skip_before_action :require_verified_email!, only: %i[logout send_verification_code verify_email refresh_token register_invited_vendor check_account join_event_as_vendor]
 
     def register
       @user = User.new(register_params)
@@ -138,6 +138,106 @@ module V1
     return error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }], status: :unauthorized)
   end
 
+  # POST /v1/auth/register_invited_vendor
+  def register_invited_vendor
+    token = params[:token]
+
+    if token.blank?
+      return error_response(
+        message: 'Token is required',
+        errors: [{ field: 'token', message: 'Invitation token is required' }],
+        status: :unprocessable_content
+      )
+    end
+
+    begin
+      payload = Rails.application.message_verifier(:vendor_invite).verify(token)
+      payload = payload.with_indifferent_access if payload.is_a?(Hash)
+    rescue ActiveSupport::MessageVerifier::InvalidSignature
+      return error_response(
+        message: 'Invalid invitation link',
+        errors: [{ field: 'token', message: 'Invalid or malformed invitation token' }],
+        status: :unauthorized
+      )
+    end
+
+    exp = payload[:exp] || payload['exp']
+    event_id = payload[:event_id] || payload['event_id']
+    organizer_id = payload[:organizer_id] || payload['organizer_id']
+
+    if exp.nil? || exp < Time.current.to_i
+      return error_response(
+        message: 'Invitation link expired',
+        errors: [{ field: 'token', message: 'This invitation link has expired' }],
+        status: :gone
+      )
+    end
+
+    event = Event.find_by(id: event_id)
+    unless event
+      return error_response(
+        message: 'Event not found',
+        errors: [{ field: 'event', message: 'The event for this invitation no longer exists' }],
+        status: :not_found
+      )
+    end
+
+    ActiveRecord::Base.transaction do
+      user_attrs = invited_vendor_params.merge(
+        role: :vendor,
+        email_verified_at: Time.current
+      )
+      user_attrs[:created_by_id] = organizer_id if organizer_id.present?
+
+      @user = User.new(user_attrs)
+
+      unless @user.save
+        return error_response(
+          message: 'Validation Error',
+          errors: format_validation_errors(@user),
+          status: :unprocessable_content
+        )
+      end
+
+      # Update vendor profile if vendor_profile params provided
+      # (VendorProfile is auto-created by User model callback)
+      if params[:vendor_profile].present? && @user.vendor_profile.present?
+        unless @user.vendor_profile.update(invited_vendor_profile_params)
+          return error_response(
+            message: 'Validation Error',
+            errors: format_validation_errors(@user.vendor_profile),
+            status: :unprocessable_content
+          )
+        end
+      end
+
+      # Create event vendor with optional attributes
+      event_vendor_attrs = invited_event_vendor_params || {}
+      event_vendor = EventVendor.create_for_event(event, @user, event_vendor_attrs)
+
+      unless event_vendor.persisted?
+        raise ActiveRecord::Rollback
+      end
+
+      tokens = JwtService.generate_tokens(@user)
+
+      success_response(
+        data: {
+          user: @user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: @user.email_verified?),
+          event_vendor: {
+            id: event_vendor.id,
+            event_id: event.id,
+            event_title: event.title,
+            type: event_vendor.type
+          },
+          **tokens
+        },
+        message: 'Vendor registered successfully',
+        status: :created
+      )
+    end
+  end
+
   # PATCH /v1/auth/password
   def password_update
     current_password = params[:current_password]
@@ -183,7 +283,155 @@ module V1
     end
   end
 
+  # GET /v1/auth/check_account?email=xxx OR ?phone=xxx
+  def check_account
+    email = params[:email]&.downcase&.strip
+    phone = params[:phone]&.strip
+
+    if email.blank? && phone.blank?
+      return error_response(
+        message: 'Email or phone is required',
+        errors: [{ field: 'identifier', message: 'Please provide email or phone number' }],
+        status: :unprocessable_content
+      )
+    end
+
+    # Find user by email or phone
+    user = if email.present?
+      User.find_by(email: email)
+    else
+      User.find_by(phone: phone)
+    end
+
+    if user.present?
+      success_response(
+        data: {
+          exists: true,
+          identifier_type: email.present? ? 'email' : 'phone',
+          masked_identifier: mask_identifier(email || phone)
+        },
+        message: 'Account found'
+      )
+    else
+      success_response(
+        data: {
+          exists: false,
+          identifier_type: email.present? ? 'email' : 'phone'
+        },
+        message: 'No account found'
+      )
+    end
+  end
+
+  # POST /v1/auth/join_event_as_vendor
+  def join_event_as_vendor
+    token = params[:token]
+
+    if token.blank?
+      return error_response(
+        message: 'Token is required',
+        errors: [{ field: 'token', message: 'Invitation token is required' }],
+        status: :unprocessable_content
+      )
+    end
+
+    # Verify current user is a vendor
+    unless current_user.role == 'vendor'
+      return error_response(
+        message: 'Invalid account type',
+        errors: [{ field: 'user', message: 'Only vendor accounts can join events via invitation' }],
+        status: :forbidden
+      )
+    end
+
+    # Decode and verify the invitation token
+    begin
+      payload = Rails.application.message_verifier(:vendor_invite).verify(token)
+      payload = payload.with_indifferent_access if payload.respond_to?(:with_indifferent_access)
+    rescue ActiveSupport::MessageVerifier::InvalidSignature
+      return error_response(
+        message: 'Invalid token',
+        errors: [{ field: 'token', message: 'The invitation link is invalid' }],
+        status: :unprocessable_content
+      )
+    end
+
+    event_id = payload[:event_id] || payload['event_id']
+    exp = payload[:exp] || payload['exp']
+
+    # Check expiration
+    if exp.present? && Time.at(exp) < Time.current
+      return error_response(
+        message: 'Token expired',
+        errors: [{ field: 'token', message: 'The invitation link has expired' }],
+        status: :unprocessable_content
+      )
+    end
+
+    # Find the event
+    event = Event.find_by(id: event_id)
+    unless event
+      return error_response(
+        message: 'Event not found',
+        errors: [{ field: 'event', message: 'The event no longer exists' }],
+        status: :not_found
+      )
+    end
+
+    # Check if already joined
+    existing_event_vendor = EventVendor.find_by(event_id: event.id, vendor_id: current_user.id)
+    if existing_event_vendor
+      return error_response(
+        message: 'Already joined',
+        errors: [{ field: 'event', message: 'You have already joined this event as a vendor' }],
+        status: :unprocessable_content
+      )
+    end
+
+    # Create EventVendor record (type based on event settings)
+    vendor_type = event.use_ticket? ? 'Exhibitor' : 'Merchant'
+    event_vendor = EventVendor.new(
+      event: event,
+      vendor: current_user,
+      type: vendor_type,
+      redirect_url: params.dig(:event_vendor, :redirect_url),
+      poster_url: params.dig(:event_vendor, :poster_url)
+    )
+
+    if event_vendor.save
+      success_response(
+        data: {
+          event_vendor: {
+            id: event_vendor.id,
+            event_id: event.id,
+            event_title: event.title
+          }
+        },
+        message: 'Successfully joined event as vendor',
+        status: :created
+      )
+    else
+      error_response(
+        message: 'Failed to join event',
+        errors: format_validation_errors(event_vendor),
+        status: :unprocessable_content
+      )
+    end
+  end
+
+
   private
+
+  def mask_identifier(value)
+    return nil if value.blank?
+
+    if value.include?('@')
+      parts = value.split('@')
+      "#{parts[0][0..1]}***@#{parts[1]}"
+    else
+      "****#{value[-4..]}"
+    end
+  end
 
   def login_params
     # Handle both nested and flat parameter formats
@@ -199,6 +447,22 @@ module V1
     # Ensure email is downcased
     user_params[:email] = user_params[:email].downcase if user_params[:email].present?
     user_params
+  end
+
+  def invited_vendor_params
+    user_params = params.require(:user).permit(:email, :password, :password_confirmation, :full_name, :phone)
+    user_params[:email] = user_params[:email].downcase if user_params[:email].present?
+    user_params
+  end
+
+  def invited_vendor_profile_params
+    return {} unless params[:vendor_profile].present?
+    params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes)
+  end
+
+  def invited_event_vendor_params
+    return {} unless params[:event_vendor].present?
+    params.require(:event_vendor).permit(:redirect_url, :poster_url, :qr_url)
   end
 end
 end

@@ -1,4 +1,4 @@
-﻿# config/routes.rb
+# config/routes.rb
 
 Rails.application.routes.draw do
   # Rswag Documentation Endpoints
@@ -29,6 +29,9 @@ Rails.application.routes.draw do
     post 'auth/send-verification-code', to: 'authentication#send_verification_code'
     post 'auth/verify-email', to: 'authentication#verify_email'
     patch 'auth/password', to: 'authentication#password_update'
+    post 'auth/register_invited_vendor', to: 'authentication#register_invited_vendor'
+    get 'auth/check_account', to: 'authentication#check_account'
+    post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
 
     # Password reset (follow auth route style, flat controller)
     post 'auth/password/request_reset_password', to: 'password_resets#request_reset_password'
@@ -72,6 +75,14 @@ Rails.application.routes.draw do
         end
       end
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
+
+      # Vendor invitations
+      resources :vendor_invitations, only: [] do
+        collection do
+          post :generate_link
+          get :verify
+        end
+      end
 
       # New: Event Staff Management (GET/POST/DELETE)
       resources :staff, only: [:index, :create], controller: 'event_staff' do

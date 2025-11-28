@@ -2544,6 +2544,117 @@ paths:
           description: Forbidden (Member user)
         '404':
           description: Event not found
+  "/v1/events/{event_id}/exhibitor_kits":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list exhibitor_kits
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    post:
+      summary: create exhibitor_kit
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_vendor_id:
+                  type: integer
+                booth_number:
+                  type: string
+                booth_type:
+                  type: string
+                  enum:
+                  - shell_scheme
+                  - raw_space
+                name_on_fascia:
+                  type: string
+                company_name:
+                  type: string
+                company_address:
+                  type: string
+                pic_full_name:
+                  type: string
+                pic_contact_number:
+                  type: string
+                pic_email_address:
+                  type: string
+                extra_crew_count:
+                  type: integer
+              required:
+              - event_vendor_id
+              - booth_number
+              - booth_type
+              - name_on_fascia
+              - company_name
+              - company_address
+              - pic_full_name
+              - pic_contact_number
+              - pic_email_address
+  "/v1/events/{event_id}/exhibitor_kits/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: ID of the exhibitor kit
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: update exhibitor_kit
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                booth_number:
+                  type: string
+                payment_status:
+                  type: string
+                  enum:
+                  - unpaid
+                  - paid
+                  - waived
+                  - sponsored
+                company_name:
+                  type: string
   "/v1/groups/{group_id}/affiliates":
     parameters:
     - name: group_id
@@ -5288,7 +5399,6 @@ paths:
                         is_unlimited:
                           type: boolean
                           example: false
-                          description: If true, voucher has no redemption quota limit
                         redeemed_count:
                           type: integer
                           example: 0
@@ -5360,7 +5470,7 @@ paths:
           type: string
       responses:
         '201':
-          description: Voucher created successfully
+          description: Unlimited voucher created successfully
           content:
             application/json:
               schema:
@@ -5409,66 +5519,9 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                  description: Voucher title
-                description:
-                  type: string
-                  description: Voucher description
-                vendor_id:
-                  type: integer
-                  description: Vendor ID
-                event_id:
-                  type: integer
-                  description: Event ID
-                voucher_code:
-                  type: string
-                  description: Voucher code
-                status:
-                  type: string
-                  enum: [active, inactive]
-                start_date:
-                  type: string
-                  format: date
-                end_date:
-                  type: string
-                  format: date
-                start_time:
-                  type: string
-                  format: time
-                end_time:
-                  type: string
-                  format: time
-                total_redemption_available:
-                  type: integer
-                  nullable: true
-                  description: Total quota (ignored if is_unlimited is true)
-                is_unlimited:
-                  type: boolean
-                  default: false
-                  description: If true, voucher has no redemption quota limit
-                max_redemptions_per_user:
-                  type: integer
-                  nullable: true
-                voucher_type:
-                  type: string
-                  enum: [fixed_amount, percentage, free_item]
-                voucher_value:
-                  type: number
-                voucher_category:
-                  type: string
-                image:
-                  type: string
-                  format: binary
-                  description: Voucher image file
-              required:
-                - title
-                - vendor_id
-                - event_id
+              type: string
         required: true
-        description: Voucher data
+        description: Voucher title
   "/v1/vouchers/{id}":
     parameters:
     - name: id
@@ -5625,10 +5678,16 @@ paths:
                   message:
                     type: string
                     example: Resource not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 servers:
 - url: https://{defaultHost}
   variables:
     defaultHost:
       default: www.example.com
-- url: http://localhost:3001
+- url: http://localhost:3000
   description: Local Development
