@@ -45,26 +45,31 @@ module V1
     def update
       authorize @event_vendor, policy_class: EventVendorPolicy
       
-      # Extract exhibitor_kit_attributes if present
-      exhibitor_kit_attrs = update_vendor_params[:exhibitor_kit_attributes]
-      vendor_main_params = update_vendor_params.except(:exhibitor_kit_attributes)
+      vendor_attributes = params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
 
       # Update main event_vendor attributes
-      if @event_vendor.update(vendor_main_params)
-        # If exhibitor_kit_attributes are present, update the exhibitor kit
-        if exhibitor_kit_attrs.present? && @event_vendor.exhibitor_kit
-          # Ensure that only permitted attributes for the current user are updated on the exhibitor kit
-          permitted_exhibitor_kit_attrs = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update.each_with_object({}) do |attr, hash|
-            hash[attr] = exhibitor_kit_attrs[attr] if exhibitor_kit_attrs.key?(attr)
-          end
+      if @event_vendor.update(vendor_attributes)
+        # Handle exhibitor_kit_attributes separately if present in params and if exhibitor_kit exists
+        if params[:vendor][:exhibitor_kit_attributes].present? && @event_vendor.is_a?(Exhibitor) && @event_vendor.exhibitor_kit
+          permitted_attrs_structure_for_kit = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update
+
+          # Use permit on the raw exhibitor_kit_attributes to get only permitted data
+          strong_exhibitor_kit_params = params[:vendor][:exhibitor_kit_attributes].permit(*permitted_attrs_structure_for_kit)
           
-          if @event_vendor.exhibitor_kit.update(permitted_exhibitor_kit_attrs)
-            @event_vendor.reload # Reload to ensure all associations are fresh
-            render json: format_event_vendor(@event_vendor), status: :ok
-          else
-            render json: { error: 'Validation error', errors: @event_vendor.exhibitor_kit.errors.full_messages },
-                   status: :unprocessable_content
+          # Only update if there are permitted attributes to update
+          if strong_exhibitor_kit_params.present?
+            if @event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
+              # All good, continue
+            else
+              # If exhibitor kit update fails, add its errors to event_vendor for a combined response
+              @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
+            end
           end
+        end
+
+        if @event_vendor.errors.any? # Check if exhibitor_kit errors were added
+          render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
+                 status: :unprocessable_content
         else
           @event_vendor.reload # Reload to ensure all associations are fresh
           render json: format_event_vendor(@event_vendor), status: :ok
@@ -109,23 +114,6 @@ module V1
       params.require(:vendor).permit(
         :full_name, :email, :phone, 
         :password, :password_confirmation, :vendor_id, 
-        :redirect_url, :poster_url, :qr_url,
-        exhibitor_kit_attributes: [
-          :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
-          :side_wall_right_required, :name_on_fascia, :fascia_upgrade_required,
-          :company_name, :company_address, :pic_full_name, :pic_contact_number,
-          :pic_email_address, :extra_crew_count, :special_requirements,
-          :digital_brochure_link, :qr_code_url, :is_raw_space, :contractor_company_name,
-          :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url,
-          :furniture_requests, :electrical_requests, :printing_orders,
-          :indemnity_signed, :indemnity_document_url, :_destroy,
-          exhibitor_team_members_attributes: [:id, :full_name, :_destroy]
-        ]
-      )
-    end
-
-    def update_vendor_params
-      params.require(:vendor).permit(
         :redirect_url, :poster_url, :qr_url,
         exhibitor_kit_attributes: [
           :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
