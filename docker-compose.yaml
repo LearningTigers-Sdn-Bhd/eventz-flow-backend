@@ -72,7 +72,6 @@ services:
     restart: unless-stopped
     volumes:
       - pg-data:/var/lib/postgresql
-      - ./restorepoint:/docker-entrypoint-initdb.d
     ports:
       - "5434:5432"
     healthcheck:
