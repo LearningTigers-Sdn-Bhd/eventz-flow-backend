@@ -91,6 +91,7 @@ staging:
 
 production:
   <<: *default
-  database: eventz_flow_api_production
-  username: eventz_flow_api
-  password: <%= ENV["EVENTZ_FLOW_API_DATABASE_PASSWORD"] %>
+  # CRITICAL: Production must use DATABASE_URL environment variable.
+  # This ensures the app connects to the persistent production database.
+  # If DATABASE_URL is not set, Rails will fail to start (preventing accidental use of temporary DB).
+  url: <%= ENV["DATABASE_URL"] %>
