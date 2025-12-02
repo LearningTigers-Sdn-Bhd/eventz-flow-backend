@@ -23,8 +23,8 @@ development:
   <<: *default
   host: localhost
   port: 5432
-  username: 
-  password: 
+  username:
+  password:
   database: eventz_flow_api_development
 
   # The specified database role being used to connect to PostgreSQL.
@@ -61,8 +61,8 @@ test:
   <<: *default
   host: localhost
   port: 5432
-  username: 
-  password: 
+  username:
+  password:
   database: eventz_flow_api_test
 
 # As with config/credentials.yml, you never want to store sensitive information,
@@ -85,6 +85,10 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
+staging:
+  <<: *default
+  url: <%= ENV.fetch("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/eventz_flow_api_staging") %>
+
 production:
   <<: *default
   database: eventz_flow_api_production
