@@ -1,4 +1,21 @@
 # db/seeds.rb
+
+# CRITICAL: Prevent destructive seeds from running in production
+# This protects against:
+# - Temporary database connections to empty/new databases during deployment
+# - Database volume resets/recreations
+# - Manual seed execution
+# - Any future Rails behavior changes (db:prepare automatically running seeds)
+if Rails.env.production?
+  puts "=" * 80
+  puts "🚫 ERROR: Seeds are DISABLED in production environment!"
+  puts "   This file contains destructive operations (delete_all) and should"
+  puts "   only run in development/staging environments."
+  puts "   If you need to seed production, do it manually with proper backups."
+  puts "=" * 80
+  exit(1)
+end
+
 require 'faker'
 
 puts "-------------------- Starting High-Volume Database Seeding --------------------"
