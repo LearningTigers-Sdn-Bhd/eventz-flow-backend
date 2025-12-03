@@ -41,13 +41,19 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url, :furniture_requests,
       :electrical_requests, :printing_orders, :indemnity_signed, :indemnity_document_url,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
-      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] }
+      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
+      { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
+      { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
+      { custom_requests_attributes: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :_destroy] },
+      { exhibitor_kit_admin_notes_attributes: [:id, :note, :user_id, :_destroy] }
     ]
   end
 
   def contractor_attributes
     %i[
       payment_status amount_paid payment_note indemnity_link
+    ] + [
+      { custom_requests_attributes: [:id, :status, :resolved_price, :response_notes] }
     ]
   end
 
@@ -63,7 +69,10 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :digital_brochure_link, :is_raw_space, :contractor_company_name,
       :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url, :furniture_requests,
       :electrical_requests, :printing_orders, :indemnity_signed, :indemnity_document_url,
-      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] }
+      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
+      { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
+      { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
+      { custom_requests_attributes: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :_destroy] }
     ]
   end
 

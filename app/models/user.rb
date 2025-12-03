@@ -65,6 +65,10 @@ class User < ApplicationRecord
 
   # 4. PARTICIPATION
   has_many :tickets, dependent: :destroy
+  has_many :rentable_items, dependent: :destroy
+  has_many :printing_services, dependent: :destroy
+  has_many :exhibitor_kit_admin_notes, dependent: :destroy
+
 
   # 5. VOUCHER REDEMPTIONS
   has_many :voucher_usages, as: :redeemer, dependent: :destroy

@@ -1,6 +1,10 @@
 class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kit
   has_many :exhibitor_team_members, dependent: :destroy
+  has_many :exhibitor_kit_items, dependent: :destroy
+  has_many :exhibitor_kit_printings, dependent: :destroy
+  has_many :custom_requests, dependent: :destroy
+
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
 
   delegate :event, to: :event_vendor
