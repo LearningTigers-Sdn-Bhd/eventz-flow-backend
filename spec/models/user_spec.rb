@@ -60,7 +60,7 @@ RSpec.describe User, type: :model do
 		let(:organizer_user) { create(:organizer_user) }
 		let(:member_user) { create(:member_user) }
 		let(:vendor_user) { create(:vendor_user) }
-		let(:exhibition_contractor_user) { create(:exhibition_contractor_user) } # New user for testing
+		let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) } # New user for testing
 
 		it 'correctly identifies a Organization owner' do
 			expect(org_owner_user.org_owner?).to be true

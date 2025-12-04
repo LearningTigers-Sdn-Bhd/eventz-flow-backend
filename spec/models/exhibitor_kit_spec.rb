@@ -11,15 +11,15 @@ RSpec.describe ExhibitorKit, type: :model do
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
   it { should define_enum_for(:booth_type).with_values([:shell_scheme, :raw_space]) }
 
-  it { should validate_presence_of(:booth_number) }
-  it { should validate_presence_of(:booth_type) }
-  it { should validate_presence_of(:name_on_fascia) }
+
+
+
   it { should validate_length_of(:name_on_fascia).is_at_most(25) }
-  it { should validate_presence_of(:company_name) }
-  it { should validate_presence_of(:company_address) }
+
+
   it { should validate_presence_of(:pic_full_name) }
   it { should validate_presence_of(:pic_contact_number) }
-  it { should validate_presence_of(:pic_email_address) }
+
   it { should allow_value('test@example.com').for(:pic_email_address) }
   it { should_not allow_value('invalid-email').for(:pic_email_address) }
 

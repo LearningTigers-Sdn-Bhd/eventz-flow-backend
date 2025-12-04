@@ -229,7 +229,15 @@ Rails.application.routes.draw do
     # 8. API KEYS MANAGEMENT
     resources :api_keys, only: [:index, :create, :destroy]
 
-    resources :exhibition_contractor_profiles, only: [:index, :show, :create, :update, :destroy]
+    # Exhibition Contractors (user accounts with exhibition_contractor role)
+    resources :exhibition_contractors, only: [:index, :show, :create, :update, :destroy] do
+      member do
+        patch :toggle_status
+      end
+    end
+
+    # Exhibition Contractor Profiles (profile data only)
+    resources :exhibition_contractor_profiles, only: [:show, :update]
 
   end
 end

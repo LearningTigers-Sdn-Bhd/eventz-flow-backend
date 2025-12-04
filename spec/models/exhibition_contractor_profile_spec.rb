@@ -7,11 +7,27 @@ RSpec.describe ExhibitionContractorProfile, type: :model do
   end
 
   describe 'Validations' do
-    it { is_expected.to validate_presence_of(:company_name) }
-    it { is_expected.to validate_presence_of(:contact_person) }
-    it { is_expected.to validate_presence_of(:contact_email) }
-    it { is_expected.to validate_presence_of(:contact_phone) }
+    subject { create(:exhibition_contractor_profile) }
+
+    it { is_expected.to validate_uniqueness_of(:user_id).with_message('already has a profile') }
     it { is_expected.to allow_value("test@example.com").for(:contact_email) }
+    it { is_expected.to allow_value("").for(:contact_email) }
     it { is_expected.to_not allow_value("invalid-email").for(:contact_email) }
+
+    describe 'user role validation' do
+      let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) }
+      let(:member_user) { create(:user, :member) }
+
+      it 'is valid when user has exhibition_contractor role' do
+        profile = build(:exhibition_contractor_profile, user: exhibition_contractor_user)
+        expect(profile).to be_valid
+      end
+
+      it 'is invalid when user does not have exhibition_contractor role' do
+        profile = build(:exhibition_contractor_profile, user: member_user)
+        expect(profile).not_to be_valid
+        expect(profile.errors[:user]).to include('must have exhibition_contractor role')
+      end
+    end
   end
 end

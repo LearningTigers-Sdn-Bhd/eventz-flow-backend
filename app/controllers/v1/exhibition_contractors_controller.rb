@@ -1,0 +1,164 @@
+module V1
+  class ExhibitionContractorsController < ApplicationController
+    before_action :authenticate_user!
+    before_action :set_exhibition_contractor, only: [:show, :update, :toggle_status, :destroy]
+
+    # GET /v1/exhibition_contractors
+    def index
+      authorize User.new(role: :exhibition_contractor), :index?, policy_class: ExhibitionContractorPolicy
+
+      contractors = policy_scope(User).where(role: :exhibition_contractor)
+
+      render json: contractors.map { |contractor| format_contractor(contractor) }, status: :ok
+    end
+
+    # GET /v1/exhibition_contractors/:id
+    def show
+      authorize @contractor, :show?, policy_class: ExhibitionContractorPolicy
+
+      render json: format_contractor(@contractor), status: :ok
+    end
+
+    # POST /v1/exhibition_contractors
+    def create
+      contractor_params = params.require(:exhibition_contractor).permit(
+        :full_name, :email, :phone, :password, :password_confirmation
+      )
+
+      contractor_user = User.new(
+        full_name: contractor_params[:full_name],
+        email: contractor_params[:email],
+        phone: contractor_params[:phone],
+        password: contractor_params[:password],
+        password_confirmation: contractor_params[:password_confirmation],
+        role: :exhibition_contractor,
+        status: :active,
+        email_verified_at: Time.current,
+        created_by_id: current_user.id
+      )
+
+      authorize contractor_user, :create?, policy_class: ExhibitionContractorPolicy
+
+      ActiveRecord::Base.transaction do
+        contractor_user.save!
+
+        profile_params = params.require(:exhibition_contractor).permit(
+          exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone]
+        )[:exhibition_contractor_profile_attributes]
+
+        if profile_params.present?
+          contractor_user.create_exhibition_contractor_profile!(profile_params)
+        end
+
+        render json: format_contractor(contractor_user), status: :created
+      end
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: 'Validation Error', errors: e.record.errors.full_messages },
+             status: :unprocessable_content
+    end
+
+    # PUT/PATCH /v1/exhibition_contractors/:id
+    def update
+      authorize @contractor, :update?, policy_class: ExhibitionContractorPolicy
+
+      ActiveRecord::Base.transaction do
+        @contractor.update!(contractor_update_params)
+
+        profile_params = params.dig(:exhibition_contractor, :exhibition_contractor_profile_attributes)
+        if profile_params.present? && @contractor.exhibition_contractor_profile
+          @contractor.exhibition_contractor_profile.update!(profile_params.permit(
+            :company_name, :contact_person, :contact_email, :contact_phone
+          ))
+        end
+
+        render json: format_contractor(@contractor), status: :ok
+      end
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: 'Validation failed', errors: e.record.errors.full_messages },
+             status: :unprocessable_content
+    end
+
+    # PATCH /v1/exhibition_contractors/:id/toggle_status
+    def toggle_status
+      authorize @contractor, :toggle_status?, policy_class: ExhibitionContractorPolicy
+
+      unless params[:status].in?(['active', 'inactive'])
+        return render json: { error: 'Invalid status value' }, status: :unprocessable_content
+      end
+
+      if @contractor.update(status: params[:status])
+        render json: format_contractor(@contractor), status: :ok
+      else
+        render json: { error: 'Validation failed', errors: @contractor.errors.full_messages },
+               status: :unprocessable_content
+      end
+    end
+
+    # DELETE /v1/exhibition_contractors/:id
+    def destroy
+      authorize @contractor, :destroy?, policy_class: ExhibitionContractorPolicy
+
+      return render_cannot_delete_self if deleting_self?
+
+      @contractor.destroy
+      render json: format_contractor(@contractor), status: :ok
+    end
+
+    private
+
+    def set_exhibition_contractor
+      @contractor = User.find(params[:id])
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Exhibition contractor not found' }, status: :not_found
+    end
+
+    def contractor_update_params
+      permitted = params.require(:exhibition_contractor).permit(:full_name, :email, :phone)
+
+      if params[:exhibition_contractor][:password].present?
+        permitted.merge!(
+          params.require(:exhibition_contractor).permit(:password, :password_confirmation)
+        )
+      end
+
+      permitted
+    end
+
+    def format_contractor(contractor)
+      profile = contractor.exhibition_contractor_profile
+
+      {
+        id: contractor.id,
+        email: contractor.email,
+        full_name: contractor.full_name,
+        phone: contractor.phone,
+        role: contractor.role,
+        status: contractor.status,
+        created_at: contractor.created_at.iso8601,
+        updated_at: contractor.updated_at.iso8601,
+        exhibition_contractor_profile: profile ? format_profile(profile) : nil
+      }
+    end
+
+    def format_profile(profile)
+      {
+        id: profile.id,
+        user_id: profile.user_id,
+        company_name: profile.company_name,
+        contact_person: profile.contact_person,
+        contact_email: profile.contact_email,
+        contact_phone: profile.contact_phone,
+        created_at: profile.created_at.iso8601,
+        updated_at: profile.updated_at.iso8601
+      }
+    end
+
+    def deleting_self?
+      @contractor.id == current_user.id
+    end
+
+    def render_cannot_delete_self
+      render json: { error: 'You cannot delete your own account' }, status: :unprocessable_content
+    end
+  end
+end

@@ -185,6 +185,10 @@ module V1
         printing_orders: exhibitor_kit.printing_orders,
         indemnity_signed: exhibitor_kit.indemnity_signed,
         indemnity_document_url: exhibitor_kit.indemnity_document_url,
+        payment_status: exhibitor_kit.payment_status,
+        amount_paid: exhibitor_kit.amount_paid,
+        payment_note: exhibitor_kit.payment_note,
+        indemnity_link: exhibitor_kit.indemnity_link,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json
       }
     end

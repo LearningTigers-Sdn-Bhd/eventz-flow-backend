@@ -118,6 +118,14 @@ class EventPolicy < ApplicationPolicy
         return scope.where(id: vendor_event_ids, visibility: true).distinct
       end
 
+      # For exhibition contractors: See only events they are assigned to
+      if user.exhibition_contractor?
+        return scope.none unless user.exhibition_contractor_profile.present?
+
+        assigned_event_ids = user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
+        return scope.where(id: assigned_event_ids, visibility: true).distinct
+      end
+
       # Organizer/Member: See only events they are assigned to (as event_admin or event_team_member)
       # AND the event visibility must be TRUE
       assigned_event_ids = user.event_assignments.pluck(:event_id)

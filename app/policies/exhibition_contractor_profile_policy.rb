@@ -1,33 +1,17 @@
+# app/policies/exhibition_contractor_profile_policy.rb
 class ExhibitionContractorProfilePolicy < ApplicationPolicy
-  def index?
-    user.org_owner? || user.organizer?
-  end
-
   def show?
-    user.org_owner? || user.organizer? || (user.exhibition_contractor? && record.user_id == user.id)
-  end
-
-  def create?
-    user.org_owner? || user.organizer?
+    # Org owners and organizers can view any profile
+    # Contractors can view their own profile
+    user.org_owner? || user.organizer? || record.user_id == user.id
   end
 
   def update?
-    user.org_owner? || user.organizer? || (user.exhibition_contractor? && record.user_id == user.id)
-  end
-
-  def destroy?
-    user.org_owner? || user.organizer?
-  end
-
-  class Scope < Scope
-    def resolve
-      if user.org_owner? || user.organizer?
-        scope.all
-      elsif user.exhibition_contractor?
-        scope.where(user_id: user.id)
-      else
-        scope.none
-      end
-    end
+    # Org owners can update any profile
+    # Organizers can update profiles of contractors they created
+    # Contractors can update their own profile
+    user.org_owner? ||
+      (user.organizer? && record.user.created_by_id == user.id) ||
+      record.user_id == user.id
   end
 end

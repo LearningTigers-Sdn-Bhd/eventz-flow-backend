@@ -48,6 +48,31 @@ FactoryBot.define do
 			# This creates a generic user who will be assigned the EventTeamMember role in the tests.
 		end
 
+		# --- Role Traits (preferred way to create users with specific roles) ---
+		trait :org_owner do
+			role { :org_owner }
+		end
+
+		trait :organizer do
+			role { :organizer }
+		end
+
+		trait :member do
+			role { :member }
+		end
+
+		trait :vendor do
+			role { :vendor }
+		end
+
+		trait :exhibitor do
+			role { :exhibitor }
+		end
+
+		trait :exhibition_contractor do
+			role { :exhibition_contractor }
+		end
+
 		# Trait for users created by another user (e.g., organizer creating members)
 		trait :created_by_organizer do
 			created_by { association :organizer_user }
