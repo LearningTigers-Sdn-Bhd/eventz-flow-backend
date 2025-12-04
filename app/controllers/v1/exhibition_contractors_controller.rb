@@ -1,7 +1,7 @@
 module V1
   class ExhibitionContractorsController < ApplicationController
     before_action :authenticate_user!
-    before_action :set_exhibition_contractor, only: [:show, :update, :toggle_status, :destroy]
+    before_action :set_exhibition_contractor, only: [:show, :update, :toggle_status, :destroy, :assigned_events]
 
     # GET /v1/exhibition_contractors
     def index
@@ -94,6 +94,22 @@ module V1
       end
     end
 
+    # GET /v1/exhibition_contractors/:id/assigned_events
+    def assigned_events
+      authorize @contractor, :show?, policy_class: ExhibitionContractorPolicy
+
+      profile = @contractor.exhibition_contractor_profile
+      
+      if profile.nil?
+        return render json: [], status: :ok
+      end
+
+      events = Event.joins(:event_exhibition_contractor)
+                    .where(event_exhibition_contractors: { exhibition_contractor_profile_id: profile.id })
+
+      render json: events.map { |event| format_event(event) }, status: :ok
+    end
+
     # DELETE /v1/exhibition_contractors/:id
     def destroy
       authorize @contractor, :destroy?, policy_class: ExhibitionContractorPolicy
@@ -150,6 +166,19 @@ module V1
         contact_phone: profile.contact_phone,
         created_at: profile.created_at.iso8601,
         updated_at: profile.updated_at.iso8601
+      }
+    end
+
+    def format_event(event)
+      {
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        status: event.status,
+        start_date: event.start_date&.iso8601,
+        end_date: event.end_date&.iso8601,
+        created_at: event.created_at.iso8601,
+        updated_at: event.updated_at.iso8601
       }
     end
 

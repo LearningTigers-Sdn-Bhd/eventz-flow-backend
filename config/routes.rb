@@ -233,6 +233,7 @@ Rails.application.routes.draw do
     resources :exhibition_contractors, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
+        get :assigned_events
       end
     end
 
