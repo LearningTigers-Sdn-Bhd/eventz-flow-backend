@@ -23,7 +23,9 @@ class VisitorPolicy < ApplicationPolicy
     # If the event_policy cannot be initialized (e.g., no event is associated yet), fail safe.
     return false unless record.is_a?(Visitor)
     return false unless record.event.present?
-    user.is_event_admin?(record.event)
+
+    # Allow Org Owner, Organizer, or Event Admin
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record.event)
   end
 
   # Staff can view any single visitor for their event.
