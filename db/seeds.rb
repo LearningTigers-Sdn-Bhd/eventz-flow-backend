@@ -6,12 +6,12 @@
 # - Database volume resets/recreations
 # - Manual seed execution
 # - Any future Rails behavior changes (db:prepare automatically running seeds)
-if Rails.env.production?
+if Rails.env.production? || Rails.env.staging?
   puts "=" * 80
-  puts "🚫 ERROR: Seeds are DISABLED in production environment!"
+  puts "🚫 ERROR: Seeds are DISABLED in production and staging environments!"
   puts "   This file contains destructive operations (delete_all) and should"
-  puts "   only run in development/staging environments."
-  puts "   If you need to seed production, do it manually with proper backups."
+  puts "   only run in development environment."
+  puts "   If you need to seed production/staging, do it manually with proper backups."
   puts "=" * 80
   exit(1)
 end
