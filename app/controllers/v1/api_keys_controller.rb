@@ -2,7 +2,7 @@
 module V1
   class ApiKeysController < ApplicationController
 
-    # We rely on Pundit to enforce that only org_owners can perform these actions.
+    # We rely on Pundit to enforce that only org_owners and organizers can perform these actions.
     # The current_user must be authenticated via the JWT before these actions run.
     before_action :set_api_key, only: [:destroy]
 
@@ -14,7 +14,7 @@ module V1
 
       # 2. Render only safe metadata (ID, name, timestamps).
       # Truncating a hash is not helpful or secure.
-      render json: @api_keys.as_json(only: [:id, :name, :last_used_at, :created_at]), status: :ok
+      render json: @api_keys.as_json(only: [:id, :name, :is_active, :last_used_at, :created_at]), status: :ok
     rescue Pundit::NotAuthorizedError
       render json: { error: 'Forbidden' }, status: :forbidden
     end
@@ -23,7 +23,7 @@ module V1
     def create
       # 1. Build the key for the current user (model handles generation and hashing)
       @api_key = current_user.api_keys.build(api_key_params)
-      authorize @api_key # Authorize creation (Policy: user must be org_owner)
+      authorize @api_key # Authorize creation (Policy: user must be org_owner or organizer)
 
       # 2. Save the API key (triggers generation via callback)
       if @api_key.save
@@ -31,6 +31,7 @@ module V1
         render json: {
           id: @api_key.id,
           name: @api_key.name,
+          is_active: @api_key.is_active,
           raw_key: @api_key.raw_key,
           message: "API Key created. SAVE THIS KEY, it will not be shown again."
         }, status: :created
@@ -43,7 +44,7 @@ module V1
 
     # DELETE /v1/api_keys/:id (Revocation)
     def destroy
-      authorize @api_key # Authorize destruction (Policy: user must be org_owner)
+      authorize @api_key # Authorize destruction (Policy: user must be org_owner or organizer)
 
       # Use the model instance method to update is_active: false
       if @api_key.revoke!

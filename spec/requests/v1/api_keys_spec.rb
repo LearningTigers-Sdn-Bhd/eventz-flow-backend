@@ -43,10 +43,11 @@ API_KEY_SCHEMA = {
   properties: {
     id: { type: :integer },
     name: { type: :string, nullable: true },
+    is_active: { type: :boolean },
     last_used_at: { type: :string, format: :date_time, nullable: true },
     created_at: { type: :string, format: :date_time }
   },
-  required: ['id', 'created_at']
+  required: ['id', 'is_active', 'created_at']
 }.freeze
 
 # Schema for API Key creation response (POST /v1/api_keys)
@@ -55,6 +56,7 @@ API_KEY_CREATE_SCHEMA = {
   properties: {
     id: { type: :integer },
     name: { type: :string, nullable: true },
+    is_active: { type: :boolean },
     raw_key: { type: :string, description: 'The raw API key - save this securely, it will not be shown again' },
     message: { type: :string }
   },
@@ -117,18 +119,26 @@ RSpec.describe 'V1::ApiKeys', type: :request do
           first_key = json.first
           expect(first_key).to have_key('name')
           expect(first_key['name']).to eq('Production Key')
+          expect(first_key['is_active']).to be true
         end
       end
 
-      # Forbidden (Organizer - not org_owner)
-      response '403', 'Forbidden (Only org_owner can manage API keys)' do
+      # Success (Organizer)
+      response '200', 'API keys retrieved successfully for organizer' do
         let(:Authorization) { "Bearer #{organizer_token}" }
 
-        schema SIMPLE_ERROR_SCHEMA
+        schema type: :array, items: API_KEY_SCHEMA
 
         run_test! do
           json = JSON.parse(response.body)
-          expect(json['error']).to be_present
+          expect(json).to be_an(Array)
+          
+          # Should include the organizer's API key
+          api_key_ids = json.map { |key| key['id'] }
+          expect(api_key_ids).to include(organizer_api_key.id)
+
+          # Should NOT include org_owner's keys
+          expect(api_key_ids).not_to include(org_owner_api_key.id)
         end
       end
 
@@ -204,6 +214,7 @@ RSpec.describe 'V1::ApiKeys', type: :request do
 
           # Should return the name
           expect(json['name']).to eq('My New API Key')
+          expect(json['is_active']).to be true
 
           # Should have warning message
           expect(json['message']).to include('SAVE THIS KEY')
@@ -256,16 +267,21 @@ RSpec.describe 'V1::ApiKeys', type: :request do
         end
       end
 
-      # Forbidden (Organizer - not org_owner)
-      response '403', 'Forbidden (Only org_owner can create API keys)' do
+      # Success (Organizer)
+      response '201', 'API key created successfully for organizer' do
         let(:Authorization) { "Bearer #{organizer_token}" }
-        let(:api_key_data) { { name: 'Test Key' } }
+        let(:api_key_data) { { name: 'Organizer Key' } }
 
-        schema SIMPLE_ERROR_SCHEMA
+        schema API_KEY_CREATE_SCHEMA
 
-        run_test! do
+        run_test! do |response|
           json = JSON.parse(response.body)
-          expect(json['error']).to be_present
+          expect(json['raw_key']).to be_present
+          expect(json['name']).to eq('Organizer Key')
+          
+          # Verify the key was saved to database and belongs to organizer
+          api_key = ApiKey.find(json['id'])
+          expect(api_key.user_id).to eq(organizer_user.id)
         end
       end
 
@@ -347,14 +363,16 @@ RSpec.describe 'V1::ApiKeys', type: :request do
         end
       end
 
-      # Forbidden (Organizer - not org_owner)
-      response '403', 'Forbidden (Only org_owner can revoke API keys)' do
+      # Success (Organizer deletes their own key)
+      response '204', 'API key revoked successfully for organizer' do
         let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { organizer_api_key.id }
 
-        schema SIMPLE_ERROR_SCHEMA
-
-        run_test!
+        run_test! do
+          # Verify the key was deactivated
+          api_key = ApiKey.find(id)
+          expect(api_key.is_active).to be false
+        end
       end
 
       # Not Found (Member trying to access org_owner's key)

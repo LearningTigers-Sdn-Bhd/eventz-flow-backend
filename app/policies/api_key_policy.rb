@@ -8,21 +8,21 @@ class ApiKeyPolicy < ApplicationPolicy
 
   # Only the user associated with the key can view it (indirectly via index/show scope)
   def show?
-    record.user == user && user.org_owner?
+    record.user == user && user.is_organizer?
   end
 
-  # Only org_owners can create keys
+  # Only org_owners and organizers can create keys
   def create?
-    user.org_owner?
+    user.is_organizer?
   end
 
-  # Only org_owners can manage (index) the keys
+  # Only org_owners and organizers can manage (index) the keys
   def index?
-    user.org_owner?
+    user.is_organizer?
   end
 
-  # Only org_owners can destroy/revoke keys
+  # Only org_owners and organizers can destroy/revoke keys
   def destroy?
-    user.org_owner?
+    user.is_organizer?
   end
 end
