@@ -136,7 +136,10 @@ module V1
       end
 
       if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+        render json: @ticket.as_json(include: { 
+          ticket_type: { only: [:id, :name, :price] },
+          event: { only: [:id, :title] }
+        }), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
