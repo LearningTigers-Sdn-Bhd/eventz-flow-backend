@@ -9,6 +9,15 @@ module V1
       authorize @event, :update?
 
       payload = { event_id: @event.id, organizer_id: current_user.id, exp: 7.days.from_now.to_i }
+
+      # Add group_id to the payload if provided
+      if params[:group_id].present?
+        group = Group.find_by(id: params[:group_id])
+        if group
+          payload[:group_id] = group.id
+        end
+      end
+
       token = Rails.application.message_verifier(:vendor_invite).generate(payload)
 
       invite_url = "#{ENV.fetch('REDIRECT_BASE_URL', 'http://localhost:3001')}/vendor-signup?token=#{token}"
@@ -21,7 +30,8 @@ module V1
           event: {
             id: @event.id,
             title: @event.title
-          }
+          },
+          group_id: payload[:group_id]
         },
         message: 'Invitation link generated successfully'
       )
@@ -52,6 +62,7 @@ module V1
 
       exp = payload[:exp] || payload['exp']
       event_id = payload[:event_id] || payload['event_id']
+      group_id = payload[:group_id] || payload['group_id']
 
       if exp.nil? || exp < Time.current.to_i
         return error_response(
@@ -71,6 +82,13 @@ module V1
       end
 
       organizer_id = payload[:organizer_id] || payload['organizer_id']
+
+      # Get group info if group_id present
+      group_data = nil
+      if group_id.present?
+        group = Group.find_by(id: group_id)
+        group_data = { id: group.id, name: group.name } if group
+      end
 
       # Check if authenticated vendor is already assigned to this event
       is_assigned = false
@@ -96,13 +114,16 @@ module V1
           organizer_id: organizer_id,
           is_authenticated: is_authenticated,
           is_assigned: is_assigned,
+          vendor_type: event.use_ticket? ? 'Exhibitor' : 'Merchant',
+          use_exhibitor_kit: event.use_exhibitor_kit?,
           event: {
             id: event.id,
             title: event.title,
             description: event.description,
             start_date: event.start_date&.iso8601,
             end_date: event.end_date&.iso8601
-          }
+          },
+          group: group_data
         },
         message: 'Token is valid'
       )

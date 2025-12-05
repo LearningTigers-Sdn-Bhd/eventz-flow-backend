@@ -219,6 +219,27 @@ module V1
         raise ActiveRecord::Rollback
       end
 
+      # Create exhibitor kit if event uses it and params provided
+      if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
+        exhibitor_kit = event_vendor.build_exhibitor_kit(exhibitor_kit_params)
+        unless exhibitor_kit.save
+          return error_response(
+            message: 'Validation Error',
+            errors: format_validation_errors(exhibitor_kit),
+            status: :unprocessable_content
+          )
+        end
+      end
+
+      # Add vendor to group if group_id was in the invitation token
+      group_id = payload[:group_id] || payload['group_id']
+      if group_id.present?
+        group = Group.find_by(id: group_id)
+        if group
+          GroupAffiliate.find_or_create_by!(group: group, vendor: @user)
+        end
+      end
+
       tokens = JwtService.generate_tokens(@user)
 
       success_response(
@@ -399,6 +420,27 @@ module V1
     )
 
     if event_vendor.save
+      # Add vendor to group if group_id was in the invitation token
+      group_id = payload[:group_id] || payload['group_id']
+      if group_id.present?
+        group = Group.find_by(id: group_id)
+        if group
+          GroupAffiliate.find_or_create_by!(group: group, vendor: current_user)
+        end
+      end
+
+      # Create exhibitor kit if event uses it and params provided
+      if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
+        exhibitor_kit = event_vendor.build_exhibitor_kit(exhibitor_kit_params)
+        unless exhibitor_kit.save
+          return error_response(
+            message: 'Validation Error',
+            errors: format_validation_errors(exhibitor_kit),
+            status: :unprocessable_content
+          )
+        end
+      end
+
       success_response(
         data: {
           event_vendor: {
@@ -418,7 +460,6 @@ module V1
       )
     end
   end
-
 
   private
 
@@ -463,6 +504,15 @@ module V1
   def invited_event_vendor_params
     return {} unless params[:event_vendor].present?
     params.require(:event_vendor).permit(:redirect_url, :poster_url, :qr_url)
+  end
+
+  def exhibitor_kit_params
+    return {} unless params[:exhibitor_kit].present?
+    params.require(:exhibitor_kit).permit(
+      :booth_number, :booth_type, :name_on_fascia,
+      :company_name, :company_address,
+      :pic_full_name, :pic_contact_number, :pic_email_address
+    )
   end
 end
 end
