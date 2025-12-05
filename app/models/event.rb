@@ -30,7 +30,7 @@ class Event < ApplicationRecord
   validate :end_date_must_be_after_start_date
 
   # --- Enums ---
-  enum :status, { draft: 0, published: 1, cancelled: 2 }
+  enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
 
   # --- Soft Delete Scopes ---
