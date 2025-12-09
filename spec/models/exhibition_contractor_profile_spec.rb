@@ -4,6 +4,7 @@ RSpec.describe ExhibitionContractorProfile, type: :model do
   describe 'Associations' do
     it { is_expected.to belong_to(:user) }
     it { is_expected.to have_many(:event_exhibition_contractors).dependent(:destroy) }
+    it { is_expected.to have_many(:events).through(:event_exhibition_contractors) }
   end
 
   describe 'Validations' do

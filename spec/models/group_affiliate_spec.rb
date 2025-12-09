@@ -8,8 +8,8 @@ RSpec.describe GroupAffiliate, type: :model do
 
   describe 'validations' do
     let(:group) { create(:group) }
-    let(:vendor) { create(:vendor_user) }
-    let(:manager) { create(:organizer_user) }
+    let(:vendor) { create(:user, :vendor) }
+    let(:manager) { create(:user, :organizer) }
     subject { build(:group_affiliate, group: group, vendor: vendor) }
 
     it { should validate_uniqueness_of(:vendor_id).scoped_to(:group_id).with_message('is already asssigned to this group') }

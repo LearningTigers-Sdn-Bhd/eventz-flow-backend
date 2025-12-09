@@ -4,7 +4,7 @@ RSpec.describe EventLocationMember, type: :model do
   # --- Setup ---
   let(:event) { create(:event) }
   let(:event_location) { create(:event_location, event: event) }
-  let(:user) { create(:member_user) }
+  let(:user) { create(:user, :member) }
 
   # =========================================================================
   # ASSOCIATIONS
@@ -43,8 +43,8 @@ RSpec.describe EventLocationMember, type: :model do
       end
 
       it 'allows different users to be assigned to the same location' do
-        user1 = create(:member_user)
-        user2 = create(:member_user)
+        user1 = create(:user, :member)
+        user2 = create(:user, :member)
         
         create(:event_location_member, event_location: event_location, member: user1)
         assignment2 = build(:event_location_member, event_location: event_location, member: user2)
@@ -55,17 +55,17 @@ RSpec.describe EventLocationMember, type: :model do
 
     context 'role validation' do
       it 'allows staff members (org_owner, organizer, member)' do
-        staff_roles = [:org_owner, :organizer_user, :member_user]
-        
+        staff_roles = [:org_owner, :organizer, :member]
+
         staff_roles.each do |role|
-          staff_user = create(role)
+          staff_user = create(:user, role)
           assignment = build(:event_location_member, event_location: event_location, member: staff_user)
-          expect(assignment).to be_valid
+          expect(assignment).to be_valid, -> { "Validation failed for role: #{role}. Errors: #{assignment.errors.full_messages.join(', ')}" }
         end
       end
 
       it 'allows vendor members' do
-        vendor = create(:vendor_user)
+        vendor = create(:user, :vendor)
         assignment = build(:event_location_member, event_location: event_location, member: vendor)
         expect(assignment).to be_valid
       end

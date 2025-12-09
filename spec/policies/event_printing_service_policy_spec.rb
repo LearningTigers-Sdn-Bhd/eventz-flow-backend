@@ -27,7 +27,7 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
   end
 
   context 'for an exhibition contractor assigned to the event' do
-    let(:contractor_user) { create(:user, :exhibition_contractor) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
     let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
     let(:user) { contractor_user }
@@ -37,7 +37,7 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
   end
 
   context 'for an exhibition contractor not assigned to the event' do
-    let(:contractor_user) { create(:user, :exhibition_contractor) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
     let(:user) { contractor_user }
 
@@ -49,8 +49,8 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
   end
 
   describe "scope" do
-    let(:event_printing_service_1) { create(:event_printing_service) }
-    let(:event_printing_service_2) { create(:event_printing_service) }
+    let!(:event_printing_service_1) { create(:event_printing_service) }
+    let!(:event_printing_service_2) { create(:event_printing_service) }
 
     context 'for an admin (org_owner)' do
       let(:user) { create(:user, :org_owner) }
@@ -79,7 +79,7 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
     end
 
     context 'for an exhibition contractor assigned to events' do
-      let(:contractor_user) { create(:user, :exhibition_contractor) }
+      let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
       let(:contractor_event) { create(:event) }
       let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: contractor_event, exhibition_contractor_profile: contractor_profile) }

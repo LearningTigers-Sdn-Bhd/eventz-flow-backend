@@ -130,6 +130,7 @@ module V1
         :visibility,
         :use_ticket,
         :use_exhibitor_kit,
+        :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         labels_data: {} # Allows JSONB hash updates
       )

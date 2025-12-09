@@ -4,7 +4,7 @@ RSpec.describe 'V1::PrintingServices', type: :request do
   let(:user) { create(:user) }
   let(:item_category) { create(:item_category) }
 
-  before { sign_in(user) }
+
 
   path '/v1/printing_services' do
     get('list printing services') do
@@ -13,12 +13,13 @@ RSpec.describe 'V1::PrintingServices', type: :request do
       security [bearerAuth: []]
 
       response(200, 'successful') do
-        let!(:printing_service1) { create(:printing_service, item_category: item_category, user: user) }
-        let!(:printing_service2) { create(:printing_service, item_category: item_category, user: user) }
-
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test! do |response|
+          let!(:printing_service1) { create(:printing_service, item_category: item_category) }
+          let!(:printing_service2) { create(:printing_service, item_category: item_category) }
+          before { get v1_printing_services_path, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
           end
@@ -26,7 +27,11 @@ RSpec.describe 'V1::PrintingServices', type: :request do
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test! do |response|
+          let!(:printing_service1) { create(:printing_service, item_category: item_category) }
+          let!(:printing_service2) { create(:printing_service, item_category: item_category) }
+          before { get v1_printing_services_path, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
           end
@@ -34,18 +39,24 @@ RSpec.describe 'V1::PrintingServices', type: :request do
 
         context 'as an exhibition contractor' do
           let(:user) { create(:user, :exhibition_contractor) }
-          let!(:printing_service3) { create(:printing_service, item_category: item_category, user: user) }
+          let!(:other_printing_service1) { create(:printing_service, item_category: item_category) } # Owned by a different user
+          let!(:other_printing_service2) { create(:printing_service, item_category: item_category) } # Owned by a different user
+          let!(:contractor_printing_service) { create(:printing_service, item_category: item_category, user: user) }
 
-          run_test! do |response|
+          before { get v1_printing_services_path, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(1)
-            expect(data.first['id']).to eq(printing_service3.id)
+            expect(data.first['id']).to eq(contractor_printing_service.id)
           end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test! do |response|
+          before { get v1_printing_services_path, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data).to be_empty
           end
@@ -54,7 +65,10 @@ RSpec.describe 'V1::PrintingServices', type: :request do
 
       response(401, 'unauthorized') do
         let(:Authorization) { nil }
-        run_test!
+        before { get v1_printing_services_path, headers: {} }
+        it 'returns a 401 response' do
+          expect(response).to have_http_status(:unauthorized)
+        end
       end
     end
 
@@ -92,7 +106,9 @@ RSpec.describe 'V1::PrintingServices', type: :request do
       response(201, 'created') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test! do |response|
+          before { post v1_printing_services_path, params: printing_service, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
             data = JSON.parse(response.body)
             expect(data['name']).to eq('New Printing Service')
             expect(data['user_id']).to eq(user.id)
@@ -101,19 +117,28 @@ RSpec.describe 'V1::PrintingServices', type: :request do
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { post v1_printing_services_path, params: printing_service, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
         end
 
         context 'as an exhibition contractor' do
           let(:user) { create(:user, :exhibition_contractor) }
-          run_test!
+          before { post v1_printing_services_path, params: printing_service, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
         end
       end
 
       response(403, 'forbidden') do
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test!
+          before { post v1_printing_services_path, params: printing_service, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -134,19 +159,28 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { get v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { get v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as the exhibition contractor who created the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { user }
-          run_test!
+          before { get v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
       end
 
@@ -154,13 +188,19 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an exhibition contractor who did not create the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { get v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { get v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -188,7 +228,9 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
           let(:service_creator) { create(:user) }
-          run_test! do |response|
+          before { patch v1_printing_service_path(id: id), params: printing_service, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data['name']).to eq('Updated Printing Service Name')
           end
@@ -197,13 +239,19 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { patch v1_printing_service_path(id: id), params: printing_service, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as the exhibition contractor who created the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { user }
-          run_test!
+          before { patch v1_printing_service_path(id: id), params: printing_service, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
       end
 
@@ -211,13 +259,19 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an exhibition contractor who did not create the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { patch v1_printing_service_path(id: id), params: printing_service, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { patch v1_printing_service_path(id: id), params: printing_service, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -231,19 +285,28 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { delete v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { delete v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
 
         context 'as the exhibition contractor who created the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { user }
-          run_test!
+          before { delete v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
       end
 
@@ -251,13 +314,19 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         context 'as an exhibition contractor who did not create the service' do
           let(:user) { create(:user, :exhibition_contractor) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { delete v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           let(:service_creator) { create(:user) }
-          run_test!
+          before { delete v1_printing_service_path(id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end

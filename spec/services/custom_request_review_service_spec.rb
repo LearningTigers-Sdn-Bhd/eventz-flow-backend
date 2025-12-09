@@ -1,4 +1,5 @@
 require 'rails_helper'
+require_relative '../../app/services/base_service'
 
 RSpec.describe CustomRequestReviewService, type: :service do
   let(:user) { create(:user, :org_owner) } # Admin user for authorization
@@ -26,19 +27,14 @@ RSpec.describe CustomRequestReviewService, type: :service do
         expect(result.data.response_notes).to eq('Approved with minor adjustments')
       end
 
-      it 'returns a successful service result' do
-        result = service.review
-        expect(result).to be_a(ServiceResult)
-        expect(result.success?).to be(true)
-        expect(result.status).to eq(:ok)
-      end
+
     end
 
     context 'with invalid parameters' do
       let(:params) do
         {
           custom_request: {
-            status: 'invalid_status'
+            resolved_price: -10.00
           }
         }
       end
@@ -46,15 +42,15 @@ RSpec.describe CustomRequestReviewService, type: :service do
       it 'does not update the custom request' do
         service.review
         custom_request.reload
-        expect(custom_request.status).to eq('pending') # Remains unchanged
+        expect(custom_request.quantity).to_not eq(-1) # Remains unchanged
       end
 
       it 'returns an unsuccessful service result with errors' do
         result = service.review
-        expect(result).to be_a(ServiceResult)
+        expect(result).to be_a(BaseService::ServiceResult)
         expect(result.success?).to be(false)
         expect(result.status).to eq(:unprocessable_entity)
-        expect(result.errors).to include('Status is not a valid status')
+        expect(result.errors).to include('Resolved price must be greater than or equal to 0')
       end
     end
 

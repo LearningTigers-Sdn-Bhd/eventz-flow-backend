@@ -3,7 +3,7 @@
 FactoryBot.define do
   factory :event_vendor do
     association :event
-    association :vendor, factory: :vendor_user
+    association :vendor, factory: [:user, :vendor]
     redirect_url { 'https://example.com/vendor' }
     poster_url { nil }
     type { 'Merchant' } # Default type

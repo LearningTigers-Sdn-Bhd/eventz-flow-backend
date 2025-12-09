@@ -3,10 +3,10 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::Analytics', type: :request do
   # --- Setup Users & Tokens ---
-  let(:org_owner_user) { create(:org_owner) }
-  let(:organizer_user) { create(:organizer_user) }
-  let(:staff_user) { create(:staff_user) }
-  let(:member_user) { create(:member_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:organizer_user) { create(:user, :organizer) }
+  let(:staff_user) { create(:user, :staff_member) }
+  let(:member_user) { create(:user, :member) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
@@ -182,7 +182,7 @@ RSpec.describe 'V1::Analytics', type: :request do
 
     # Additional edge case tests for summary
     context 'Edge cases for summary' do
-      let(:summary_edge_case_user) { create(:org_owner) }
+      let(:summary_edge_case_user) { create(:user, :org_owner) }
       let(:summary_edge_case_token) { JwtService.generate_tokens(summary_edge_case_user)[:access_token] }
 
       # Clear existing events to isolate test data
@@ -195,7 +195,7 @@ RSpec.describe 'V1::Analytics', type: :request do
       end
 
       it 'handles empty summary when user has no events' do
-        isolated_user = create(:org_owner)
+        isolated_user = create(:user, :org_owner)
         isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
 
         get '/v1/metrics/summary', params: {}, headers: {
@@ -303,7 +303,7 @@ RSpec.describe 'V1::Analytics', type: :request do
 
     # Additional edge case tests for events_overview
     context 'Edge cases for events_overview' do
-      let(:edge_case_user) { create(:org_owner) }
+      let(:edge_case_user) { create(:user, :org_owner) }
       let(:edge_case_token) { JwtService.generate_tokens(edge_case_user)[:access_token] }
 
       # Clear existing events to isolate test data
@@ -376,7 +376,7 @@ RSpec.describe 'V1::Analytics', type: :request do
       end
 
       it 'returns empty array for user with no events' do
-        isolated_user = create(:org_owner)
+        isolated_user = create(:user, :org_owner)
         isolated_token = JwtService.generate_tokens(isolated_user)[:access_token]
 
         get '/v1/metrics/events_overview', params: {}, headers: {

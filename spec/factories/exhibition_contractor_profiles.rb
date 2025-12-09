@@ -1,6 +1,6 @@
 FactoryBot.define do
   factory :exhibition_contractor_profile do
-    association :user, factory: [:user, :exhibition_contractor]
+    association :user, :exhibition_contractor, with_profile: false
     company_name { Faker::Company.name }
     contact_person { Faker::Name.name }
     contact_email { Faker::Internet.email }

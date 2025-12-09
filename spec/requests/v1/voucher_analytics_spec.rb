@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "V1::VoucherAnalytics", type: :request do
   let(:event) { create(:event) }
-  let(:user) { create(:organizer_user) }
+  let(:user) { create(:user, :organizer) }
   let(:vendor) { create(:user, role: :vendor) }
   let(:token) { JwtService.generate_tokens(user)[:access_token] }
   let!(:voucher1) { create(:voucher, event: event, vendor: user, total_redemption_available: 10) }
@@ -89,7 +89,7 @@ RSpec.describe "V1::VoucherAnalytics", type: :request do
       end
 
       context "when user is org_owner" do
-        let(:org_owner) { create(:org_owner) }
+        let(:org_owner) { create(:user, :org_owner) }
         let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
 
         it "returns all redemption logs" do
@@ -100,7 +100,7 @@ RSpec.describe "V1::VoucherAnalytics", type: :request do
       end
 
       context "when user is unauthorized member" do
-        let(:member) { create(:member_user) }
+        let(:member) { create(:user, :member) }
         let(:member_token) { JwtService.generate_tokens(member)[:access_token] }
 
         it "returns forbidden status" do

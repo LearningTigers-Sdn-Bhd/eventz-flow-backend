@@ -18,9 +18,9 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   # Setup
   # ============================================================
   let(:event)        { create(:event) }
-  let(:org_owner)    { create(:org_owner) }
-  let(:organizer)      { create(:organizer_user) }
-  let(:member_user)  { create(:member_user) }
+  let(:org_owner)    { create(:user, :org_owner) }
+  let(:organizer)      { create(:user, :organizer) }
+  let(:member_user)  { create(:user, :member) }
 
   # use the real encoder to generate valid tokens
   let(:auth_header_org_owner) { "Bearer #{JwtService.generate_tokens(org_owner)[:access_token]}" }

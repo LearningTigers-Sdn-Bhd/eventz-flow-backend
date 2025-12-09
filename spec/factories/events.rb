@@ -16,8 +16,16 @@ FactoryBot.define do
     # 4. Default visibility
     visibility { true }
 
-    after(:create) do |event|
+    # Optional user association for creating an event
+    transient do
+      user { nil }
+    end
+
+    after(:create) do |event, evaluator|
       create(:event_location, event: event, name: Faker::Address.full_address, scan_limit: 50)
+      if evaluator.user
+        create(:event_assignment, event: event, user: evaluator.user, role: :event_admin)
+      end
     end
   end
 end

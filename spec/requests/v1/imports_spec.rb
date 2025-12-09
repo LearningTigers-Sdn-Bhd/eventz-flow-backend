@@ -3,10 +3,10 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::Imports', type: :request do
   # --- Setup Users & Tokens ---
-  let(:org_owner_user) { create(:org_owner) }
-  let(:organizer_user) { create(:organizer_user) }
-  let(:member_user) { create(:member_user) }
-  let(:staff_user) { create(:staff_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:organizer_user) { create(:user, :organizer) }
+  let(:member_user) { create(:user, :member) }
+  let(:staff_user) { create(:user, :staff_member) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }

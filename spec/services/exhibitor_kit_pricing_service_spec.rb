@@ -1,4 +1,5 @@
 require 'rails_helper'
+require_relative '../../app/services/base_service'
 
 RSpec.describe ExhibitorKitPricingService, type: :service do
   let(:user) { create(:user) }
@@ -17,6 +18,7 @@ RSpec.describe ExhibitorKitPricingService, type: :service do
 
       it 'returns the price of the applicable tier' do
         result = service.resolve_item_price(event_rentable_item.id)
+        expect(result).to be_a(BaseService::ServiceResult)
         expect(result.success?).to be(true)
         expect(result.data).to eq(100.00)
       end
@@ -50,6 +52,7 @@ RSpec.describe ExhibitorKitPricingService, type: :service do
 
       it 'returns the price of the applicable tier' do
         result = service.resolve_printing_price(event_printing_service.id)
+        expect(result).to be_a(BaseService::ServiceResult)
         expect(result.success?).to be(true)
         expect(result.data).to eq(50.00)
       end

@@ -8,9 +8,9 @@ class CustomRequestReviewService < BaseService
     authorize @custom_request, :update? # Assuming Pundit policy is in place for CustomRequest
 
     if @custom_request.update(review_params)
-      ServiceResult.new(success: true, data: @custom_request, status: :ok)
+      BaseService::ServiceResult.new(success: true, data: @custom_request, status: :ok)
     else
-      ServiceResult.new(success: false, errors: @custom_request.errors.full_messages, status: :unprocessable_entity)
+      BaseService::ServiceResult.new(success: false, errors: @custom_request.errors.full_messages, status: :unprocessable_entity)
     end
   end
 

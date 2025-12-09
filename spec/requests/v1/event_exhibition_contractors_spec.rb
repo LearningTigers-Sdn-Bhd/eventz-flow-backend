@@ -13,7 +13,7 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       let!(:assigned_exhibition_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: exhibition_contractor_profile) }
 
       context "with valid authorization" do
-        before { get v1_event_event_exhibition_contractor_path(event), headers: auth_header }
+        before { get v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header }
 
         it "returns a successful response" do
           expect(response).to have_http_status(:ok)
@@ -25,7 +25,7 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       end
 
       context "without authorization" do
-        before { get v1_event_event_exhibition_contractor_path(event) }
+        before { get v1_event_event_exhibition_contractor_path(event_id: event.id) }
 
         it "returns unauthorized" do
           expect(response).to have_http_status(:unauthorized)
@@ -34,7 +34,7 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
     end
 
     context "when no event exhibition contractor is assigned" do
-      before { get v1_event_event_exhibition_contractor_path(event), headers: auth_header }
+      before { get v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header }
 
       it "returns a successful response" do
         expect(response).to have_http_status(:ok)
@@ -59,12 +59,12 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
     context "with valid authorization and valid attributes" do
       it "creates a new event exhibition contractor" do
         expect {
-          post v1_event_event_exhibition_contractor_path(event), params: valid_attributes, headers: auth_header
+          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes, headers: auth_header
         }.to change(EventExhibitionContractor, :count).by(1)
       end
 
       it "returns a created response" do
-        post v1_event_event_exhibition_contractor_path(event), params: valid_attributes, headers: auth_header
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes, headers: auth_header
         expect(response).to have_http_status(:created)
       end
     end
@@ -82,20 +82,20 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       it "does not create a duplicate event exhibition contractor" do
         create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: create(:exhibition_contractor_profile))
         expect {
-          post v1_event_event_exhibition_contractor_path(event), params: invalid_attributes, headers: auth_header
+          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes, headers: auth_header
         }.to_not change(EventExhibitionContractor, :count)
       end
 
       it "returns unprocessable entity" do
         create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: create(:exhibition_contractor_profile))
-        post v1_event_event_exhibition_contractor_path(event), params: invalid_attributes, headers: auth_header
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes, headers: auth_header
         expect(response).to have_http_status(:unprocessable_content)
       end
     end
 
     context "without authorization" do
       it "returns unauthorized" do
-        post v1_event_event_exhibition_contractor_path(event), params: valid_attributes
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes
         expect(response).to have_http_status(:unauthorized)
       end
     end
@@ -107,19 +107,19 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
     context "with valid authorization" do
       it "deletes the event exhibition contractor" do
         expect {
-          delete v1_event_event_exhibition_contractor_path(event), headers: auth_header
+          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         }.to change(EventExhibitionContractor, :count).by(-1)
       end
 
       it "returns no content" do
-        delete v1_event_event_exhibition_contractor_path(event), headers: auth_header
+        delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         expect(response).to have_http_status(:no_content)
       end
     end
 
     context "without authorization" do
       it "returns unauthorized" do
-        delete v1_event_event_exhibition_contractor_path(event)
+        delete v1_event_event_exhibition_contractor_path(event_id: event.id)
         expect(response).to have_http_status(:unauthorized)
       end
     end

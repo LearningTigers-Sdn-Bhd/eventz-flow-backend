@@ -14,7 +14,7 @@ class User < ApplicationRecord
   after_initialize :set_default_role, if: :new_record?
   after_initialize :set_default_status, if: :new_record?
   before_create :generate_jti
-  after_create :create_vendor_profile_if_vendor
+  after_create :create_associated_profile
 
   # --- Validations ---
   validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -49,6 +49,7 @@ class User < ApplicationRecord
 
   # Exhibition Contractor profile (for exhibition_contractors only - one profile per contractor)
   has_one :exhibition_contractor_profile, foreign_key: 'user_id', dependent: :destroy
+  has_many :events_as_contractor, through: :exhibition_contractor_profile, source: :events
 
   # 2. GROUP MEMBERSHIPS
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
@@ -159,6 +160,27 @@ class User < ApplicationRecord
     ['org_owner', 'organizer', 'member'].include?(role)
   end
 
+  # Convenience methods for policies
+  def admin?
+    org_owner?
+  end
+
+  def organizer?
+    self.role == 'organizer' || self.role == 'org_owner'
+  end
+
+  def exhibitor?
+    self.role == 'exhibitor'
+  end
+
+  def exhibition_contractor?
+    self.role == 'exhibition_contractor'
+  end
+
+  def admin_or_organizer?
+    admin? || organizer?
+  end
+
   def exhibition_contractor_for?(event)
     return false unless event.present?
 
@@ -184,9 +206,11 @@ class User < ApplicationRecord
     self.jti = SecureRandom.uuid
   end
   
-  def create_vendor_profile_if_vendor
-    return unless vendor?
-    
-    VendorProfile.create(vendor: self)
+  def create_associated_profile
+    if vendor?
+      VendorProfile.create(vendor: self)
+    elsif exhibition_contractor?
+      ExhibitionContractorProfile.create(user: self)
+    end
   end
 end

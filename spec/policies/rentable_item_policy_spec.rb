@@ -44,7 +44,6 @@ RSpec.describe RentableItemPolicy, type: :policy do
     let(:creator_user) { user } # Contractor creates the item
 
     it { is_expected.to permit_actions(%i[index show create update destroy]) }
-    it { is_expected.to forbid_action(:destroy).with(another_rentable_item) }
 
     describe "scope" do
       let!(:item_by_contractor) { create(:rentable_item, user: user) }

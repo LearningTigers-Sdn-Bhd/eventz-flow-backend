@@ -30,8 +30,8 @@ RSpec.describe 'Vendors Management', type: :request, openapi_spec: 'v1/swagger.y
   # ============================================================
   # Setup
   # ============================================================
-  let(:organizer) { create(:organizer_user) }
-  let(:member) { create(:member_user) }
+  let(:organizer) { create(:user, :organizer) }
+  let(:member) { create(:user, :member) }
   let(:auth_header_organizer) { "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" }
   let(:auth_header_member) { "Bearer #{JwtService.generate_tokens(member)[:access_token]}" }
 

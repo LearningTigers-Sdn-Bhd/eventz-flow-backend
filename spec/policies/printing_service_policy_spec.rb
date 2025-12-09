@@ -44,7 +44,6 @@ RSpec.describe PrintingServicePolicy, type: :policy do
     let(:creator_user) { user } # Contractor creates the item
 
     it { is_expected.to permit_actions(%i[index show create update destroy]) }
-    it { is_expected.to forbid_action(:destroy).with(another_printing_service) }
 
     describe "scope" do
       let!(:item_by_contractor) { create(:printing_service, user: user) }

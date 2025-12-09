@@ -59,9 +59,9 @@ RSpec.describe 'Vendor Invitations', type: :request, openapi_spec: 'v1/swagger.y
   # ============================================================
   # Setup
   # ============================================================
-  let(:organizer) { create(:organizer_user) }
-  let(:other_user) { create(:member_user) }
-  let(:vendor_user) { create(:vendor_user) }
+  let(:organizer) { create(:user, :organizer) }
+  let(:other_user) { create(:user, :member) }
+  let(:vendor_user) { create(:user, :vendor) }
   let(:event) { create(:event, title: 'Test Event 2024') }
 
   let(:auth_header_organizer) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" } }

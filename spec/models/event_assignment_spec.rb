@@ -4,8 +4,8 @@ require 'rails_helper'
 RSpec.describe EventAssignment, type: :model do
   # --- Setup ---
   let(:event) { create(:event) }
-  let(:vendor) { create(:member_user) }
-  let(:admin) { create(:member_user) }
+  let(:vendor) { create(:user, :member) }
+  let(:admin) { create(:user, :member) }
 
   # --- Associations ---
   describe 'Associations' do

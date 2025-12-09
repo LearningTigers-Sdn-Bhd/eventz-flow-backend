@@ -2,11 +2,11 @@ require 'rails_helper'
 
 RSpec.describe VoucherRedemptionLogPolicy, type: :policy do
   let(:event) { create(:event) }
-  let(:vendor) { create(:vendor_user) }
-  let(:other_vendor) { create(:vendor_user) }
-  let(:organizer) { create(:organizer_user) }
-  let(:org_owner) { create(:org_owner) }
-  let(:member) { create(:member_user) }
+  let(:vendor) { create(:user, :vendor) }
+  let(:other_vendor) { create(:user, :vendor) }
+  let(:organizer) { create(:user, :organizer) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:member) { create(:user, :member) }
 
   let(:voucher) { create(:voucher, event: event, vendor: vendor) }
   let(:other_voucher) { create(:voucher, event: event, vendor: other_vendor) }
@@ -104,7 +104,7 @@ RSpec.describe VoucherRedemptionLogPolicy, type: :policy do
     end
 
     context 'when user is event_admin' do
-      let(:event_admin) { create(:member_user) }
+      let(:event_admin) { create(:user, :member) }
 
       before do
         allow(event_admin).to receive(:is_event_admin?).with(event).and_return(true)

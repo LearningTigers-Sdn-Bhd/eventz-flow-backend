@@ -2,7 +2,7 @@ class RentableItem < ApplicationRecord
   belongs_to :item_category
   belongs_to :user
 
-  enum status: { active: 0, inactive: 1 }
+  enum :status, { active: 0, inactive: 1 }
 
   validates :name, presence: true
   validates :unit_of_measure, presence: true

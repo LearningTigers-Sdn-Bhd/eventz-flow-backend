@@ -26,7 +26,7 @@ RSpec.describe ExhibitorKitPrintingPolicy, type: :policy do
   end
 
   context 'for an exhibition contractor assigned to the event' do
-    let(:contractor_user) { create(:user, :exhibition_contractor) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
     let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
     let(:user) { contractor_user }
@@ -36,7 +36,7 @@ RSpec.describe ExhibitorKitPrintingPolicy, type: :policy do
   end
 
   context 'for an exhibition contractor not assigned to the event' do
-    let(:contractor_user) { create(:user, :exhibition_contractor) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
     let(:user) { contractor_user }
 
@@ -77,7 +77,7 @@ RSpec.describe ExhibitorKitPrintingPolicy, type: :policy do
     end
 
     context 'for an exhibition contractor assigned to events' do
-      let(:contractor_user) { create(:user, :exhibition_contractor) }
+      let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
       let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
       let(:user) { contractor_user }

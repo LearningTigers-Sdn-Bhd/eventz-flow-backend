@@ -2,9 +2,9 @@ require 'rails_helper'
 
 RSpec.describe CustomRequestPolicy, type: :policy do
   let(:user) { create(:user) }
-  let(:event) { create(:event) }
+  let!(:event) { create(:event) }
   let(:vendor_user) { create(:user, :vendor) }
-  let(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event, vendor: vendor_user)) }
+  let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event, vendor: vendor_user)) }
   let(:record) { create(:custom_request, exhibitor_kit: exhibitor_kit) }
 
   subject { described_class.new(user, record) }
@@ -25,11 +25,15 @@ RSpec.describe CustomRequestPolicy, type: :policy do
   end
 
   context 'for an exhibition contractor assigned to the event' do
-    let(:contractor_user) { create(:user, :exhibition_contractor) }
-    let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
-    let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
+    let!(:contractor_profile) do
+      profile = create(:exhibition_contractor_profile, user: contractor_user)
+      create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: profile) # Create assignment
+      profile.reload # Reload profile after assignment
+      profile
+    end
     let(:user) { contractor_user }
-
+      
     it { is_expected.to permit_actions(%i[index show]) }
     it { is_expected.to forbid_actions(%i[create update destroy]) }
   end
@@ -76,7 +80,7 @@ RSpec.describe CustomRequestPolicy, type: :policy do
     end
 
     context 'for an exhibition contractor assigned to events' do
-      let(:contractor_user) { create(:user, :exhibition_contractor) }
+      let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
       let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
       let(:user) { contractor_user }

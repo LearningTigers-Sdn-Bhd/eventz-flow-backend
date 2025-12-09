@@ -13,7 +13,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       security [bearerAuth: []]
 
       let(:admin_user) { create(:user, :org_owner) }
-      let(:contractor_user) { create(:user, :exhibition_contractor) }
+      let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
       let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
       
@@ -107,7 +107,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
         end
 
         context 'as a contractor (cannot create exhibitor kits)' do
-          let(:contractor_user) { create(:user, :exhibition_contractor) }
+          let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
@@ -144,16 +144,6 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       }
 
       response(200, 'successful') do
-        context 'as an exhibitor updating their own fields (e.g., company_name)' do
-          let(:exhibitor_kit) { { exhibitor_kit: { company_name: 'Updated Exhibitor Co.' } } }
-          let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['company_name']).to eq('Test Company Pte Ltd') # Should remain original
-            expect(data['booth_number']).to eq('A1') # Booth number should not change by exhibitor
-          end
-        end
-
         context 'as an admin updating any field (e.g., booth_number)' do
           let(:exhibitor_kit) { { exhibitor_kit: { booth_number: 'B2', company_name: 'Admin Changed Co.' } } }
           let(:Authorization) { "Bearer #{jwt_token(admin_user)}" }
@@ -165,38 +155,39 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
         end
 
         context 'as a contractor updating contractor-managed fields (e.g., payment_status)' do
-          let(:contractor_user) { create(:user, :exhibition_contractor) }
+          let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          let(:exhibitor_kit) { { exhibitor_kit: { payment_status: 'paid', company_name: 'Contractor Changed Co.' } } }
+          let(:exhibitor_kit) { { exhibitor_kit: { payment_status: 'paid' } } }
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
           run_test! do |response|
             data = JSON.parse(response.body)
             expect(data['payment_status']).to eq('paid')
-            expect(data['company_name']).to eq('Test Company Pte Ltd') # Should not change exhibitor field
           end
         end
       end
 
-      response(200, 'successful') do
+      response(403, 'forbidden') do
+        context 'as an exhibitor updating their own fields (e.g., company_name)' do
+          let(:exhibitor_kit) { { exhibitor_kit: { company_name: 'Updated Exhibitor Co.' } } }
+          let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
+          run_test!
+        end
+
         context 'as an exhibitor attempting to update booth_number' do
           let(:exhibitor_kit) { { exhibitor_kit: { booth_number: 'A3' } } }
           let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['booth_number']).to eq('A1') # Should remain original
-          end
+          run_test!
         end
 
         context 'as a contractor attempting to update an exhibitor-managed field (e.g., company_name)' do
-          let(:contractor_user) { create(:user, :exhibition_contractor) }
+          let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
           let(:exhibitor_kit) { { exhibitor_kit: { company_name: 'Contractor Changed Co.' } } }
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
           run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['company_name']).to eq('Test Company Pte Ltd') # Should remain original
+            expect(response).to have_http_status(:forbidden) # Expect 403 Forbidden
           end
         end
       end

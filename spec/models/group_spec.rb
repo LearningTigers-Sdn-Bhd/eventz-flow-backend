@@ -13,10 +13,10 @@ RSpec.describe Group, type: :model do
   end
 
   describe 'scopes' do
-    let(:org_owner) { create(:org_owner) }
-    let(:manager) { create(:organizer_user) }
-    let(:member) { create(:member_user) }
-    let(:vendor) { create(:vendor_user) }
+    let(:org_owner) { create(:user, :org_owner) }
+    let(:manager) { create(:user, :organizer) }
+    let(:member) { create(:user, :member) }
+    let(:vendor) { create(:user, :vendor) }
     let(:group1) { create(:group) }
     let(:group2) { create(:group) }
     let(:group3) { create(:group) }
@@ -42,8 +42,12 @@ RSpec.describe Group, type: :model do
     end
 
     describe '.visible_to' do
+      let!(:group1) { create(:group) }
+      let!(:group2) { create(:group) }
+      let!(:group3) { create(:group) }
+
       it 'returns all groups for org_owner' do
-        expect(Group.visible_to(org_owner)).to eq(Group.all)
+        expect(Group.visible_to(org_owner)).to match_array([group1, group2, group3])
       end
 
       it 'returns groups assigned to vendor' do

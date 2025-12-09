@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe EventExhibitionContractorPolicy, type: :policy do
   let(:org_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
-  let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) }
+  let(:exhibition_contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
   let(:member_user) { create(:user, :member) }
 
   let(:event) { create(:event) }

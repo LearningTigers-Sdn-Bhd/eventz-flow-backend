@@ -10,9 +10,9 @@ class ExhibitorKitPricingService < BaseService
     price_tier = event_rentable_item.event_rentable_item_price_tiers.where('start_date <= ? AND (end_date >= ? OR end_date IS NULL)', Time.current, Time.current).first
 
     if price_tier
-      ServiceResult.new(success: true, data: price_tier.price, status: :ok)
+      BaseService::ServiceResult.new(success: true, data: price_tier.price, status: :ok)
     else
-      ServiceResult.new(success: false, errors: 'No price tier found for this item', status: :not_found)
+      BaseService::ServiceResult.new(success: false, errors: 'No price tier found for this item', status: :not_found)
     end
   end
 
@@ -23,9 +23,9 @@ class ExhibitorKitPricingService < BaseService
     price_tier = event_printing_service.event_printing_service_price_tiers.where('start_date <= ? AND (end_date >= ? OR end_date IS NULL)', Time.current, Time.current).first
 
     if price_tier
-      ServiceResult.new(success: true, data: price_tier.price, status: :ok)
+      BaseService::ServiceResult.new(success: true, data: price_tier.price, status: :ok)
     else
-      ServiceResult.new(success: false, errors: 'No price tier found for this printing service', status: :not_found)
+      BaseService::ServiceResult.new(success: false, errors: 'No price tier found for this printing service', status: :not_found)
     end
   end
 end

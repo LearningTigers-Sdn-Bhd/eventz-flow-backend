@@ -17,7 +17,7 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
   end
 
   context 'for an event contractor' do
-    let(:user) { create(:user, :exhibition_contractor) }
+    let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
     let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
 

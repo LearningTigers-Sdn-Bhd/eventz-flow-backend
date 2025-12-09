@@ -25,13 +25,29 @@ class ExhibitorKitService < BaseService
   def update(exhibitor_kit)
     authorize exhibitor_kit, :update?
 
-    permitted = update_params(exhibitor_kit)
+    permitted_data = update_params(exhibitor_kit)
+    permitted_params = permitted_data[:permitted_params]
+    raw_params_keys = permitted_data[:raw_params_keys]
 
-    if exhibitor_kit.update(permitted)
+    # Check for forbidden attributes if the user is not an admin/organizer
+    # Admins/Organizers can update anything, so no need to check their raw_params
+    unless user.is_org_owner_or_organizer? || user.is_event_admin?(exhibitor_kit.event)
+      policy_permitted_keys = policy(exhibitor_kit).permitted_attributes_for_update.map(&:to_s)
+      # Check if any requested params were not in the policy's permitted list
+      unpermitted_attributes = raw_params_keys - policy_permitted_keys
+
+      if unpermitted_attributes.any?
+        raise CustomError::Forbidden.new("You are not authorized to update: #{unpermitted_attributes.join(', ')}")
+      end
+    end
+
+    if exhibitor_kit.update(permitted_params)
       ServiceResult.new(success: true, data: exhibitor_kit, status: :ok)
     else
       ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_entity)
     end
+  rescue CustomError::Forbidden => e
+    ServiceResult.new(success: false, errors: e.message, status: e.status)
   end
 
   private
@@ -42,6 +58,8 @@ class ExhibitorKitService < BaseService
   end
 
   def update_params(exhibitor_kit)
-    params.require(:exhibitor_kit).permit(*policy(exhibitor_kit).permitted_attributes_for_update)
+    raw_params = params.require(:exhibitor_kit)
+    permitted_params = raw_params.permit(*policy(exhibitor_kit).permitted_attributes_for_update)
+    { permitted_params: permitted_params, raw_params_keys: raw_params.keys.map(&:to_s) }
   end
 end

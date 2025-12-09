@@ -6,7 +6,7 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
   let(:rentable_item) { create(:rentable_item) }
   let(:event_rentable_item) { create(:event_rentable_item, event: event, rentable_item: rentable_item) }
 
-  before { sign_in(user) }
+
 
   path '/v1/event_rentable_items/{event_rentable_item_id}/event_rentable_item_prices' do
     parameter name: 'event_rentable_item_id', in: :path, type: :string, description: 'event_rentable_item_id'
@@ -23,7 +23,9 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
 
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test! do |response|
+          before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
           end
@@ -31,20 +33,28 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as event staff for the event' do
           let(:user) { create(:user) }
           let!(:event_assignment) { create(:event_assignment, user: user, event: event, role: :event_admin) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as an exhibition contractor for the event' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          run_test! do |response|
+          before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
           end
@@ -52,7 +62,9 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test! do |response|
+          before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data).to be_empty
           end
@@ -62,7 +74,10 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
       response(401, 'unauthorized') do
         let(:Authorization) { nil }
         let(:event_rentable_item_id) { event_rentable_item.id }
-        run_test!
+        before { get v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), headers: {} }
+        it 'returns a 401 response' do
+          expect(response).to have_http_status(:unauthorized)
+        end
       end
     end
 
@@ -97,32 +112,47 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
       response(201, 'created') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test!
+          before { post v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { post v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
         end
 
         context 'as event staff for the event' do
           let(:user) { create(:user) }
           let!(:event_assignment) { create(:event_assignment, user: user, event: event, role: :event_admin) }
-          run_test!
+          before { post v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
         end
       end
 
       response(403, 'forbidden') do
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          run_test!
+          before { post v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test!
+          before { post v1_event_rentable_item_event_rentable_item_prices_path(event_rentable_item_id: event_rentable_item_id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -144,32 +174,47 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
       response(200, 'successful') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as event staff for the event' do
           let(:user) { create(:user) }
           let!(:event_assignment) { create(:event_assignment, user: user, event: event, role: :event_admin) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as an exhibition contractor for the event' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
       end
 
       response(403, 'forbidden') do
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test!
+          before { get v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -192,32 +237,47 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
       response(200, 'successful') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test!
+          before { patch v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { patch v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
 
         context 'as event staff for the event' do
           let(:user) { create(:user) }
           let!(:event_assignment) { create(:event_assignment, user: user, event: event, role: :event_admin) }
-          run_test!
+          before { patch v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
         end
       end
 
       response(403, 'forbidden') do
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          run_test!
+          before { patch v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test!
+          before { patch v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), params: event_rentable_item_price_tier, headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
@@ -230,32 +290,47 @@ RSpec.describe 'V1::EventRentableItemPrices', type: :request do
       response(204, 'no content') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          run_test!
+          before { delete v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          run_test!
+          before { delete v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
 
         context 'as event staff for the event' do
           let(:user) { create(:user) }
           let!(:event_assignment) { create(:event_assignment, user: user, event: event, role: :event_admin) }
-          run_test!
+          before { delete v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
         end
       end
 
       response(403, 'forbidden') do
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
           let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
           let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          run_test!
+          before { delete v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
 
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
-          run_test!
+          before { delete v1_event_rentable_item_event_rentable_item_price_path(event_rentable_item_id: event_rentable_item_id, id: id), headers: auth_headers(user) }
+          it 'returns a 403 response' do
+            expect(response).to have_http_status(:forbidden)
+          end
         end
       end
     end
