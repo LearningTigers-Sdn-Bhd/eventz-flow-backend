@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe EventVendor, type: :model do
   describe 'STI behavior' do
     let(:event) { create(:event, use_ticket: true) }
-    let(:vendor) { create(:vendor_user) }
+    let(:vendor) { create(:user, :vendor) }
 
     it 'creates Exhibitor when type is set to Exhibitor' do
       exhibitor = EventVendor.create!(
@@ -48,7 +48,7 @@ RSpec.describe EventVendor, type: :model do
   end
 
   describe '.create_for_event' do
-    let(:vendor) { create(:vendor_user) }
+    let(:vendor) { create(:user, :vendor) }
 
     context 'when event.use_ticket is true' do
       let(:event) { create(:event, use_ticket: true) }
@@ -83,7 +83,7 @@ RSpec.describe EventVendor, type: :model do
 
   describe 'validations' do
     let(:event) { create(:event) }
-    let(:vendor) { create(:vendor_user) }
+    let(:vendor) { create(:user, :vendor) }
     subject { build(:merchant, event: event, vendor: vendor, redirect_url: 'https://example.com') }
 
     it { should validate_presence_of(:event_id) }

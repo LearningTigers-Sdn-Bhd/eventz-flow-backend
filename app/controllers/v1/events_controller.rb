@@ -93,7 +93,7 @@ module V1
       if @event.restore
         render json: @event, status: :ok
       else
-        render json: { errors: @event.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -130,6 +130,7 @@ module V1
         :visibility,
         :use_ticket,
         :use_exhibitor_kit,
+        :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         labels_data: {} # Allows JSONB hash updates
       )

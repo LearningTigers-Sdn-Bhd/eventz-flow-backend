@@ -93,10 +93,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
   # ============================================================
   # Setup
   # ============================================================
-  let(:org_owner) { create(:org_owner) }
-  let(:event_admin_user) { create(:member_user) }
-  let(:non_admin_user) { create(:member_user) }
-  let(:vendor_user) { create(:member_user) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:event_admin_user) { create(:user, :member) }
+  let(:non_admin_user) { create(:user, :member) }
+  let(:vendor_user) { create(:user, :member) }
 
   # use the real encoder to generate valid tokens
   let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
@@ -216,7 +216,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
       response '201', 'Vendor created successfully with provided email (organizer creates new vendor)' do
         let(:event) { create(:event, title: 'Tech Conference 2024', use_ticket: false) }
-        let(:event_admin_user) { create(:organizer_user) }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
         let(:body) do
           {
@@ -267,7 +267,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       end
 
       response '201', 'Vendor created with auto-generated email' do
-        let(:event_admin_user) { create(:organizer_user) }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
         let(:body) do
           {
@@ -294,8 +294,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       end
 
       response '422', 'Error when assigning non-vendor user' do
-        let!(:existing_user) { create(:member_user, email: 'existing@example.com', full_name: 'Existing User') }
-        let(:event_admin_user) { create(:organizer_user) }
+        let!(:existing_user) { create(:user, :member, email: 'existing@example.com', full_name: 'Existing User') }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
         let(:body) do
           {
@@ -321,7 +321,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       end
 
       response '201', 'Vendor created with auto-generated email increment when duplicate exists' do
-        let(:event_admin_user) { create(:organizer_user) }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
         let!(:existing_user) do
           create(:user, role: :vendor, email: 'vendor_tech_conference_2024_john@eventzflow.com', full_name: 'Existing User')
@@ -400,7 +400,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       # ============================================================
       context 'when event.use_ticket is false (Merchant)' do
         let!(:event) { create(:event, title: 'Merchant Event', use_ticket: false) }
-        let(:event_admin_user) { create(:organizer_user) }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
 
         response '201', 'Merchant created successfully' do
@@ -431,7 +431,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       # ============================================================
       context 'when event.use_ticket is true (Exhibitor)' do
         let!(:event) { create(:event, title: 'Exhibition Event', use_exhibitor_kit: true) }
-        let(:event_admin_user) { create(:organizer_user) }
+        let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
 
         response '201', 'Exhibitor created successfully with nested exhibitor_kit_attributes' do

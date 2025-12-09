@@ -2,11 +2,11 @@ require 'rails_helper'
 
 RSpec.describe 'V1::TicketTypes API', type: :request do
   # Create test users
-  let!(:admin_user) { create(:org_owner) }
-  let!(:regular_user) { create(:member_user) }
+  let!(:admin_user) { create(:user, :org_owner) }
+  let!(:regular_user) { create(:user, :member) }
 
   # Create a test event with an owner
-  let!(:event_owner) { create(:organizer_user) }
+  let!(:event_owner) { create(:user, :organizer) }
   let!(:test_event) do
     event = create(:event)
     create(:event_assignment, role: :event_admin, event: event, user: event_owner)

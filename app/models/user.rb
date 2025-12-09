@@ -14,7 +14,7 @@ class User < ApplicationRecord
   after_initialize :set_default_role, if: :new_record?
   after_initialize :set_default_status, if: :new_record?
   before_create :generate_jti
-  after_create :create_vendor_profile_if_vendor
+  after_create :create_associated_profile
 
   # --- Validations ---
   validates :email, presence: true, uniqueness: { case_sensitive: false }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -49,6 +49,7 @@ class User < ApplicationRecord
 
   # Exhibition Contractor profile (for exhibition_contractors only - one profile per contractor)
   has_one :exhibition_contractor_profile, foreign_key: 'user_id', dependent: :destroy
+  has_many :events_as_contractor, through: :exhibition_contractor_profile, source: :events
 
   # 2. GROUP MEMBERSHIPS
   has_many :group_memberships, class_name: 'GroupMember', dependent: :destroy
@@ -65,6 +66,10 @@ class User < ApplicationRecord
 
   # 4. PARTICIPATION
   has_many :tickets, dependent: :destroy
+  has_many :rentable_items, dependent: :destroy
+  has_many :printing_services, dependent: :destroy
+  has_many :exhibitor_kit_admin_notes, dependent: :destroy
+
 
   # 5. VOUCHER REDEMPTIONS
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
@@ -155,12 +160,35 @@ class User < ApplicationRecord
     ['org_owner', 'organizer', 'member'].include?(role)
   end
 
+  # Convenience methods for policies
+  def admin?
+    org_owner?
+  end
+
+  def organizer?
+    self.role == 'organizer' || self.role == 'org_owner'
+  end
+
+  def exhibitor?
+    self.role == 'exhibitor'
+  end
+
+  def exhibition_contractor?
+    self.role == 'exhibition_contractor'
+  end
+
+  def admin_or_organizer?
+    admin? || organizer?
+  end
+
   def exhibition_contractor_for?(event)
     return false unless event.present?
 
     exhibition_contractor_profile.present? &&
       exhibition_contractor_profile.event_exhibition_contractors.exists?(event_id: event.id)
   end
+  
+  attr_accessor :skip_profile_creation
 
   private
 
@@ -180,9 +208,13 @@ class User < ApplicationRecord
     self.jti = SecureRandom.uuid
   end
   
-  def create_vendor_profile_if_vendor
-    return unless vendor?
-    
-    VendorProfile.create(vendor: self)
+  def create_associated_profile
+    return if skip_profile_creation
+
+    if vendor?
+      VendorProfile.create(vendor: self) unless vendor_profile.present?
+    elsif exhibition_contractor?
+      ExhibitionContractorProfile.create(user: self) unless exhibition_contractor_profile.present?
+    end
   end
 end

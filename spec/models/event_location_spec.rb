@@ -89,8 +89,8 @@ RSpec.describe EventLocation, type: :model do
     end
 
     it 'can have members assigned' do
-      user1 = create(:member_user)
-      user2 = create(:member_user)
+      user1 = create(:user, :member)
+      user2 = create(:user, :member)
       location = create(:event_location, event: event)
 
       location.event_location_members.create(member: user1)
@@ -101,8 +101,8 @@ RSpec.describe EventLocation, type: :model do
     end
 
     it 'separates staff and vendor members' do
-      staff = create(:member_user)
-      vendor = create(:vendor_user)
+      staff = create(:user, :member)
+      vendor = create(:user, :vendor)
       location = create(:event_location, event: event)
 
       location.event_location_members.create(member: staff)
@@ -137,7 +137,7 @@ RSpec.describe EventLocation, type: :model do
     end
 
     it 'destroys associated event_location_members when destroyed' do
-      user = create(:member_user)
+      user = create(:user, :member)
       location = create(:event_location, event: event)
       location.event_location_members.create(member: user)
 

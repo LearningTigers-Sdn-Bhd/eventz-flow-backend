@@ -115,9 +115,9 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
     required: %w[success message]
   }.freeze
   # These dependencies are required by the Voucher factory
-  let!(:vendor_user) { create(:vendor_user) }
+  let!(:vendor_user) { create(:user, :vendor) }
   let!(:event) { create(:event) }
-  let!(:vendor2) { create(:vendor_user) } # A different vendor for authorization tests
+  let!(:vendor2) { create(:user, :vendor) } # A different vendor for authorization tests
 
   # ======================================================================
   # FIX 2: Mock User Role Methods for Policies

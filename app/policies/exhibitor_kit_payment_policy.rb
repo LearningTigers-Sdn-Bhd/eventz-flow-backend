@@ -1,0 +1,76 @@
+class ExhibitorKitPaymentPolicy < ApplicationPolicy
+  def index?
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.exhibitor_kit.event) || record.exhibitor_kit.event_vendor.vendor_id == user.id
+  end
+
+  def show?
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.exhibitor_kit.event) || record.exhibitor_kit.event_vendor.vendor_id == user.id
+  end
+
+  def create?
+    user.is_org_owner_or_organizer? || (record.present? && user.exhibitor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id)
+  end
+
+  def destroy?
+    user.is_org_owner_or_organizer? || (record.present? && user.exhibitor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id && record.status == 'pending') # Only pending for exhibitor
+  end
+
+  def update?
+    # Exhibitor can update payment_proof_url, external_ref, notes, and status to 'submitted'
+    if record.exhibitor_kit.event_vendor.vendor_id == user.id
+      # Permit these fields only if the status is currently 'pending'
+      # so that an exhibitor cannot resubmit a verified/rejected payment
+      if record.status == 'pending' || record.status == 'submitted'
+        return true
+      end
+    end
+
+    # Organizer/Admin/Contractor (payee) can approve/reject
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.exhibitor_kit.event)
+  end
+
+  def verify?
+    user.is_org_owner_or_organizer? || (user.is_exhibition_contractor? && record.payee == user)
+  end
+
+  class Scope < Scope
+    def resolve
+      if user.org_owner?
+        scope.all
+      elsif user.organizer?
+        # Organizer sees payments for events they have created or are assigned as staff
+        scope.joins(exhibitor_kit: { event_vendor: { event: :event_assignments } }) # Join to event_assignments
+             .where(event_assignments: { user_id: user.id }) # Filter by organizer's event assignments
+      elsif user.is_exhibition_contractor?
+        scope.joins(exhibitor_kit: { event_vendor: { event: :event_exhibition_contractors } })
+             .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
+      elsif user.exhibitor? # Check if user is an exhibitor
+        scope.joins(exhibitor_kit: :event_vendor) # Join through exhibitor_kit to event_vendor
+             .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' }) # Filter event_vendors by user's ID and type 'Exhibitor'
+      else
+        scope.none
+      end
+    end
+  end
+
+  def permitted_attributes_for_update
+    if record.exhibitor_kit.event_vendor.vendor_id == user.id # Exhibitor
+      if record.status == 'pending' || record.status == 'submitted'
+        [:payment_proof_url, :external_ref, :note, :payment_source]
+      else
+        [] # Exhibitor cannot change anything once payment is processed
+      end
+    elsif user.is_org_owner_or_organizer? # Organizer/Admin
+      [:status, :note, :paid_at] # Can change status, add notes, and paid_at
+    elsif user.exhibition_contractor_for?(record.exhibitor_kit.event) # Contractor (if payee)
+      # Contractor can verify/reject payments made to them
+      if record.payee == user
+        [:status, :note, :paid_at]
+      else
+        []
+      end
+    else
+      []
+    end
+  end
+end

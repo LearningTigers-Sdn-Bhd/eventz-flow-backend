@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -25,6 +25,18 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
+  end
+
+  create_table "custom_requests", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.text "description"
+    t.integer "quantity"
+    t.integer "status"
+    t.decimal "resolved_price", precision: 8, scale: 2
+    t.text "response_notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_custom_requests_on_exhibitor_kit_id"
   end
 
   create_table "email_verifications", force: :cascade do |t|
@@ -82,6 +94,46 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.index ["location_details"], name: "index_event_locations_on_location_details", using: :gin
   end
 
+  create_table "event_printing_service_price_tiers", force: :cascade do |t|
+    t.bigint "event_printing_service_id", null: false
+    t.decimal "price", precision: 8, scale: 2
+    t.datetime "start_date"
+    t.datetime "end_date"
+    t.string "label"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_printing_service_id"], name: "idx_on_event_printing_service_id_223ea011a4"
+  end
+
+  create_table "event_printing_services", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "printing_service_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_printing_services_on_event_id"
+    t.index ["printing_service_id"], name: "index_event_printing_services_on_printing_service_id"
+  end
+
+  create_table "event_rentable_item_price_tiers", force: :cascade do |t|
+    t.bigint "event_rentable_item_id", null: false
+    t.decimal "price", precision: 8, scale: 2
+    t.datetime "start_date"
+    t.datetime "end_date"
+    t.string "label"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_rentable_item_id"], name: "idx_on_event_rentable_item_id_8b9d958fd1"
+  end
+
+  create_table "event_rentable_items", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "rentable_item_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_rentable_items_on_event_id"
+    t.index ["rentable_item_id"], name: "index_event_rentable_items_on_rentable_item_id"
+  end
+
   create_table "event_vendors", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.bigint "vendor_id", null: false
@@ -117,6 +169,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.datetime "deleted_at"
     t.string "slug"
     t.boolean "use_exhibitor_kit", default: false, null: false
+    t.boolean "allow_contractor_printing_services", default: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -130,6 +183,61 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_exhibition_contractor_profiles_on_user_id"
+  end
+
+  create_table "exhibitor_kit_admin_notes", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.bigint "user_id", null: false
+    t.text "note"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_kit_admin_notes_on_exhibitor_kit_id"
+    t.index ["user_id"], name: "index_exhibitor_kit_admin_notes_on_user_id"
+  end
+
+  create_table "exhibitor_kit_items", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.bigint "rentable_item_id", null: false
+    t.integer "quantity"
+    t.decimal "agreed_price", precision: 8, scale: 2
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "exhibitor_kit_payment_id"
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_kit_items_on_exhibitor_kit_id"
+    t.index ["exhibitor_kit_payment_id"], name: "index_exhibitor_kit_items_on_exhibitor_kit_payment_id"
+    t.index ["rentable_item_id"], name: "index_exhibitor_kit_items_on_rentable_item_id"
+  end
+
+  create_table "exhibitor_kit_payments", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.bigint "payee_id", null: false
+    t.decimal "amount", precision: 10, scale: 2, default: "0.0"
+    t.integer "status", default: 0
+    t.string "payment_source"
+    t.string "payment_proof_url"
+    t.string "external_ref"
+    t.text "note"
+    t.datetime "paid_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_kit_payments_on_exhibitor_kit_id"
+    t.index ["payee_id"], name: "index_exhibitor_kit_payments_on_payee_id"
+  end
+
+  create_table "exhibitor_kit_printings", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.bigint "printing_service_id", null: false
+    t.integer "quantity"
+    t.decimal "agreed_price", precision: 8, scale: 2
+    t.string "file_reference"
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "exhibitor_kit_payment_id"
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_kit_printings_on_exhibitor_kit_id"
+    t.index ["exhibitor_kit_payment_id"], name: "index_exhibitor_kit_printings_on_exhibitor_kit_payment_id"
+    t.index ["printing_service_id"], name: "index_exhibitor_kit_printings_on_printing_service_id"
   end
 
   create_table "exhibitor_kits", force: :cascade do |t|
@@ -225,6 +333,13 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.index ["name"], name: "index_groups_on_name"
   end
 
+  create_table "item_categories", force: :cascade do |t|
+    t.string "name"
+    t.boolean "active"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "orders", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -239,6 +354,34 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
     t.datetime "updated_at", null: false
     t.index ["expires_at"], name: "index_password_resets_on_expires_at"
     t.index ["user_id"], name: "index_password_resets_on_user_id"
+  end
+
+  create_table "printing_services", force: :cascade do |t|
+    t.string "name"
+    t.text "description"
+    t.string "unit_of_measure"
+    t.decimal "default_price", precision: 8, scale: 2, default: "0.0"
+    t.integer "status"
+    t.bigint "item_category_id", null: false
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["item_category_id"], name: "index_printing_services_on_item_category_id"
+    t.index ["user_id"], name: "index_printing_services_on_user_id"
+  end
+
+  create_table "rentable_items", force: :cascade do |t|
+    t.string "name"
+    t.text "description"
+    t.string "unit_of_measure"
+    t.decimal "default_price", precision: 8, scale: 2, default: "0.0"
+    t.integer "status"
+    t.bigint "item_category_id", null: false
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["item_category_id"], name: "index_rentable_items_on_item_category_id"
+    t.index ["user_id"], name: "index_rentable_items_on_user_id"
   end
 
   create_table "ticket_types", force: :cascade do |t|
@@ -411,6 +554,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
   end
 
   add_foreign_key "api_keys", "users"
+  add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"
@@ -419,10 +563,26 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
+  add_foreign_key "event_printing_service_price_tiers", "event_printing_services"
+  add_foreign_key "event_printing_services", "events"
+  add_foreign_key "event_printing_services", "printing_services"
+  add_foreign_key "event_rentable_item_price_tiers", "event_rentable_items"
+  add_foreign_key "event_rentable_items", "events"
+  add_foreign_key "event_rentable_items", "rentable_items"
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
   add_foreign_key "exhibition_contractor_profiles", "users"
+  add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"
+  add_foreign_key "exhibitor_kit_admin_notes", "users"
+  add_foreign_key "exhibitor_kit_items", "exhibitor_kit_payments"
+  add_foreign_key "exhibitor_kit_items", "exhibitor_kits"
+  add_foreign_key "exhibitor_kit_items", "rentable_items"
+  add_foreign_key "exhibitor_kit_payments", "exhibitor_kits"
+  add_foreign_key "exhibitor_kit_payments", "users", column: "payee_id"
+  add_foreign_key "exhibitor_kit_printings", "exhibitor_kit_payments"
+  add_foreign_key "exhibitor_kit_printings", "exhibitor_kits"
+  add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
   add_foreign_key "export_logs", "events"
@@ -431,6 +591,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_11_27_113326) do
   add_foreign_key "group_members", "groups"
   add_foreign_key "group_members", "users"
   add_foreign_key "password_resets", "users"
+  add_foreign_key "printing_services", "item_categories"
+  add_foreign_key "printing_services", "users"
+  add_foreign_key "rentable_items", "item_categories"
+  add_foreign_key "rentable_items", "users"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"

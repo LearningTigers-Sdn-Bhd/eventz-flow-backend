@@ -4,7 +4,7 @@ require 'rails_helper'
 RSpec::Matchers.define_negated_matcher :not_change, :change
 
 RSpec.describe VoucherRedemptionService, type: :service do
-  let(:vendor_user) { create(:vendor_user) }
+  let(:vendor_user) { create(:user, :vendor) }
   let(:event) { create(:event) }
   let(:user) { create(:user) }
   let(:gross_amount) { 100.00.to_d }

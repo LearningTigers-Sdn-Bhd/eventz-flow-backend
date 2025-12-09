@@ -30,7 +30,7 @@ RSpec.describe 'V1::VoucherRedemptions', type: :request, openapi_spec: 'v1/swagg
     },
     required: %w[success message]
   }.freeze
-  let!(:vendor_user) { create(:vendor_user) }
+  let!(:vendor_user) { create(:user, :vendor) }
   let!(:event) { create(:event) }
   let!(:user) { create(:user) }
   let!(:non_vendor_user) { create(:user) } # Regular user (not vendor)

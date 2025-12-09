@@ -41,9 +41,9 @@ EVENT_INDEX_ITEM_SCHEMA = {
 RSpec.describe 'V1::Events', type: :request do
   # --- Setup Users ---
   # Assuming create(:org_owner), create(:organizer_user), create(:member_user) factories exist
-  let(:org_owner_user) { create(:org_owner) }
-  let(:organizer_user) { create(:organizer_user) }
-  let(:member_user) { create(:member_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:organizer_user) { create(:user, :organizer) }
+  let(:member_user) { create(:user, :member) }
 
   # --- Setup Tokens ---
   # Assuming JsonWebToken.encode exists
@@ -504,7 +504,7 @@ RSpec.describe 'V1::Events', type: :request do
     end
 
     context 'when API key is used' do
-      let!(:organizer_user) { create(:organizer_user) }
+      let!(:organizer_user) { create(:user, :organizer) }
       let!(:api_key) { ApiKey.create_key_for_user(organizer_user) }
 
       it 'bypasses email verification for API key authentication' do

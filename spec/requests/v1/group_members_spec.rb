@@ -22,10 +22,10 @@ GROUP_MEMBER_SCHEMA = {
 }.freeze
 
 RSpec.describe 'V1::GroupMembers', type: :request do
-  let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:organizer_user) }
-  let(:member_user) { create(:member_user) }
-  let(:another_manager) { create(:organizer_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:manager_user) { create(:user, :organizer) }
+  let(:member_user) { create(:user, :member) }
+  let(:another_manager) { create(:user, :organizer) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }

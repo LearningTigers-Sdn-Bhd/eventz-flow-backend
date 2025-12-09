@@ -4,7 +4,7 @@ require 'rails_helper'
 RSpec.describe VendorProfile, type: :model do
   # --- Setup ---
   let(:vendor) { create(:user, role: :vendor) }
-  let(:valid_vendor_profile) { vendor.vendor_profile }
+  let(:valid_vendor_profile) { vendor.reload.vendor_profile }
 
   # --- Associations ---
   describe 'Associations' do
@@ -12,7 +12,7 @@ RSpec.describe VendorProfile, type: :model do
     
     # Note: event_vendors association is scoped by vendor_id
     it 'has many event_vendors scoped to vendor' do
-      profile = vendor.vendor_profile
+      profile = vendor.reload.vendor_profile
       expect(profile.event_vendors).to respond_to(:each)
     end
   end
@@ -35,7 +35,7 @@ RSpec.describe VendorProfile, type: :model do
   describe 'Uniqueness' do
     it 'validates uniqueness of vendor_id' do
       # Profile already created by callback
-      existing_profile = vendor.vendor_profile
+      existing_profile = vendor.reload.vendor_profile
       expect(existing_profile).to be_present
       
       duplicate = build(:vendor_profile, vendor: vendor)
@@ -45,11 +45,11 @@ RSpec.describe VendorProfile, type: :model do
 
     it 'allows different vendors to have profiles' do
       # First vendor profile already created by callback
-      expect(vendor.vendor_profile).to be_present
+      expect(vendor.reload.vendor_profile).to be_present
       
       # Create another vendor - profile will be auto-created
       other_vendor = create(:user, role: :vendor)
-      expect(other_vendor.vendor_profile).to be_present
+      expect(other_vendor.reload.vendor_profile).to be_present
       expect(other_vendor.vendor_profile).to be_valid
     end
   end
@@ -57,7 +57,7 @@ RSpec.describe VendorProfile, type: :model do
   # --- Fields ---
   describe 'Fields' do
     it 'stores vendor business information' do
-      profile = vendor.vendor_profile
+      profile = vendor.reload.vendor_profile
       profile.update!(
         description: 'Test description',
         category: 'Technology',

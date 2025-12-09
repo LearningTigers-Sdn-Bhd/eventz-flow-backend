@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
-  let(:contractor_user) { create(:user, :exhibition_contractor, created_by: org_owner) }
+  let(:contractor_user) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
   let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
 
   describe "GET /v1/exhibition_contractor_profiles/:id" do
@@ -44,7 +44,6 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
     context "without authorization" do
       it "returns unauthorized" do
         get v1_exhibition_contractor_profile_path(contractor_profile)
-
         expect(response).to have_http_status(:unauthorized)
       end
     end
@@ -63,7 +62,7 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
     end
 
     context "as organizer who created the contractor" do
-      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer) }
+      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer, with_profile: false) }
       let!(:profile_by_organizer) { create(:exhibition_contractor_profile, user: contractor_by_organizer) }
 
       it "updates the profile" do

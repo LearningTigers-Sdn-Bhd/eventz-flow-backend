@@ -1,7 +1,7 @@
 require 'swagger_helper'
 
 RSpec.describe 'Password Update', type: :request, openapi_spec: 'v1/swagger.yaml' do
-  let(:user) { create(:member_user, password: 'OldPass123!', password_confirmation: 'OldPass123!') }
+  let(:user) { create(:user, :member, password: 'OldPass123!', password_confirmation: 'OldPass123!') }
   let(:auth_header) { "Bearer #{JwtService.generate_tokens(user)[:access_token]}" }
 
   path '/v1/auth/password' do

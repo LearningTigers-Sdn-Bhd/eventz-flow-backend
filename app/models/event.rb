@@ -17,6 +17,9 @@ class Event < ApplicationRecord
   has_many :visitors, dependent: :destroy
   has_many :vouchers, dependent: :destroy
   has_one :event_exhibition_contractor, dependent: :destroy
+  has_many :event_exhibition_contractors, dependent: :destroy
+  has_many :event_printing_services, dependent: :destroy
+  has_many :event_rentable_items, dependent: :destroy
 
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]

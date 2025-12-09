@@ -64,9 +64,9 @@ API_KEY_CREATE_SCHEMA = {
 }.freeze
 
 RSpec.describe 'V1::ApiKeys', type: :request do
-  let!(:org_owner) { create(:org_owner) }
-  let!(:organizer_user) { create(:organizer_user) }
-  let!(:member_user) { create(:member_user) }
+  let!(:org_owner) { create(:user, :org_owner) }
+  let!(:organizer_user) { create(:user, :organizer) }
+  let!(:member_user) { create(:user, :member) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
   let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
