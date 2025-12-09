@@ -49,7 +49,7 @@ RSpec.describe CustomRequestReviewService, type: :service do
         result = service.review
         expect(result).to be_a(BaseService::ServiceResult)
         expect(result.success?).to be(false)
-        expect(result.status).to eq(:unprocessable_entity)
+        expect(result.status).to eq(:unprocessable_content)
         expect(result.errors).to include('Resolved price must be greater than or equal to 0')
       end
     end

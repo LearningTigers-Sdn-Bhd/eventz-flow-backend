@@ -8,7 +8,8 @@ class EventPrintingServicePolicy < ApplicationPolicy
   end
 
   def create?
-    user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event))
+    user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event)) ||
+    (user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event))
   end
 
   def update?
@@ -16,7 +17,8 @@ class EventPrintingServicePolicy < ApplicationPolicy
   end
 
   def destroy?
-    user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event))
+    user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event)) ||
+    (user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event))
   end
 
   class Scope < Scope

@@ -28,8 +28,9 @@ FactoryBot.define do
 			transient do
 				with_profile { true }
 			end
-			after(:create) do |user, evaluator|
-				create(:exhibition_contractor_profile, user: user) if evaluator.with_profile
+			
+			after(:build) do |user, evaluator|
+				user.skip_profile_creation = true unless evaluator.with_profile
 			end
 		end
 
@@ -79,24 +80,12 @@ FactoryBot.define do
 			role { :org_owner }
 		end
 
-		trait :organizer do
-			role { :organizer }
-		end
-
 		trait :member do
 			role { :member }
 		end
 
 		trait :vendor do
 			role { :vendor }
-		end
-
-		trait :exhibitor do
-			role { :exhibitor }
-		end
-
-		trait :exhibition_contractor do
-			role { :exhibition_contractor }
 		end
 
 		# Trait for users created by another user (e.g., organizer creating members)

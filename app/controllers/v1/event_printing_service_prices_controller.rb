@@ -21,7 +21,7 @@ module V1
       if @event_printing_service_price_tier.save
         render json: @event_printing_service_price_tier, status: :created
       else
-        render json: @event_printing_service_price_tier.errors, status: :unprocessable_entity
+        render json: @event_printing_service_price_tier.errors, status: :unprocessable_content
       end
     end
 
@@ -30,7 +30,7 @@ module V1
       if @event_printing_service_price_tier.update(event_printing_service_price_tier_params)
         render json: @event_printing_service_price_tier
       else
-        render json: @event_printing_service_price_tier.errors, status: :unprocessable_entity
+        render json: @event_printing_service_price_tier.errors, status: :unprocessable_content
       end
     end
 

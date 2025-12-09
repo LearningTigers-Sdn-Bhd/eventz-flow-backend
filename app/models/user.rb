@@ -187,6 +187,8 @@ class User < ApplicationRecord
     exhibition_contractor_profile.present? &&
       exhibition_contractor_profile.event_exhibition_contractors.exists?(event_id: event.id)
   end
+  
+  attr_accessor :skip_profile_creation
 
   private
 
@@ -207,10 +209,12 @@ class User < ApplicationRecord
   end
   
   def create_associated_profile
+    return if skip_profile_creation
+
     if vendor?
-      VendorProfile.create(vendor: self)
+      VendorProfile.create(vendor: self) unless vendor_profile.present?
     elsif exhibition_contractor?
-      ExhibitionContractorProfile.create(user: self)
+      ExhibitionContractorProfile.create(user: self) unless exhibition_contractor_profile.present?
     end
   end
 end

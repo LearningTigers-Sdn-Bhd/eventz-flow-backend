@@ -88,7 +88,7 @@ RSpec.describe 'V1::ItemCategories', type: :request do
         let(:item_category_params) { { item_category: { name: '', active: true } } } # Invalid name
         it 'returns a 422 response' do
           post v1_item_categories_path, params: item_category_params, headers: auth_headers(user)
-          expect(response).to have_http_status(:unprocessable_entity)
+          expect(response).to have_http_status(:unprocessable_content)
         end
       end
     end
@@ -197,7 +197,7 @@ RSpec.describe 'V1::ItemCategories', type: :request do
         let(:item_category_params) { { item_category: { name: '' } } } # Invalid name
         it 'returns a 422 response' do
           patch v1_item_category_path(id: id), params: item_category_params, headers: auth_headers(user)
-          expect(response).to have_http_status(:unprocessable_entity)
+          expect(response).to have_http_status(:unprocessable_content)
         end
       end
     end

@@ -41,13 +41,18 @@ module V1
 
       ActiveRecord::Base.transaction do
         contractor_user.save!
+        contractor_user.reload # Ensure profile created by callback is loaded
 
         profile_params = params.require(:exhibition_contractor).permit(
           exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone]
         )[:exhibition_contractor_profile_attributes]
 
         if profile_params.present?
-          contractor_user.create_exhibition_contractor_profile!(profile_params)
+          if contractor_user.exhibition_contractor_profile.present?
+            contractor_user.exhibition_contractor_profile.update!(profile_params)
+          else
+            contractor_user.create_exhibition_contractor_profile!(profile_params)
+          end
         end
 
         render json: format_contractor(contractor_user), status: :created

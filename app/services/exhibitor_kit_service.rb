@@ -1,8 +1,9 @@
 class ExhibitorKitService < BaseService
-  attr_reader :event
+  attr_reader :event, :user
 
   def initialize(user:, event: nil, params: {})
     super(user, params)
+    @user = user
     @event = event
   end
 
@@ -18,7 +19,7 @@ class ExhibitorKitService < BaseService
     if exhibitor_kit.save
       ServiceResult.new(success: true, data: exhibitor_kit, status: :created)
     else
-      ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_entity)
+      ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_content)
     end
   end
 
@@ -30,11 +31,9 @@ class ExhibitorKitService < BaseService
     raw_params_keys = permitted_data[:raw_params_keys]
 
     # Check for forbidden attributes if the user is not an admin/organizer
-    # Admins/Organizers can update anything, so no need to check their raw_params
     unless user.is_org_owner_or_organizer? || user.is_event_admin?(exhibitor_kit.event)
-      policy_permitted_keys = policy(exhibitor_kit).permitted_attributes_for_update.map(&:to_s)
-      # Check if any requested params were not in the policy's permitted list
-      unpermitted_attributes = raw_params_keys - policy_permitted_keys
+      # Compare the keys from the original request params with the keys that actually passed strong parameters
+      unpermitted_attributes = raw_params_keys - permitted_params.keys.map(&:to_s)
 
       if unpermitted_attributes.any?
         raise CustomError::Forbidden.new("You are not authorized to update: #{unpermitted_attributes.join(', ')}")
@@ -44,7 +43,7 @@ class ExhibitorKitService < BaseService
     if exhibitor_kit.update(permitted_params)
       ServiceResult.new(success: true, data: exhibitor_kit, status: :ok)
     else
-      ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_entity)
+      ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_content)
     end
   rescue CustomError::Forbidden => e
     ServiceResult.new(success: false, errors: e.message, status: e.status)
@@ -59,7 +58,11 @@ class ExhibitorKitService < BaseService
 
   def update_params(exhibitor_kit)
     raw_params = params.require(:exhibitor_kit)
-    permitted_params = raw_params.permit(*policy(exhibitor_kit).permitted_attributes_for_update)
+    permitted_attrs = policy(exhibitor_kit).permitted_attributes_for_update
+
+    # Removed auto-fill logic for debugging strong parameters. Will restore later.
+
+    permitted_params = raw_params.permit(*permitted_attrs)
     { permitted_params: permitted_params, raw_params_keys: raw_params.keys.map(&:to_s) }
   end
 end

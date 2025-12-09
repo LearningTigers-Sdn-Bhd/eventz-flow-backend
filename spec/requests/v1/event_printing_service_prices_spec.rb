@@ -132,19 +132,19 @@ RSpec.describe 'V1::EventPrintingServicePrices', type: :request do
             expect(response).to have_http_status(:created)
           end
         end
+
+        context 'as an exhibition contractor for the event' do # New context
+          let(:user) { create(:user, :exhibition_contractor, with_profile: true) } # Ensure profile exists
+          let!(:contractor_profile) { user.reload.exhibition_contractor_profile } # Use the one created with the user
+          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          before { post v1_event_printing_service_event_printing_service_prices_path(event_printing_service_id: event_printing_service_id), params: event_printing_service_price_tier, headers: auth_headers(user) }
+          it 'returns a 201 response' do
+            expect(response).to have_http_status(:created)
+          end
+        end
       end
 
       response(403, 'forbidden') do
-        context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
-          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          before { post v1_event_printing_service_event_printing_service_prices_path(event_printing_service_id: event_printing_service_id), params: event_printing_service_price_tier, headers: auth_headers(user) }
-          it 'returns a 403 response' do
-            expect(response).to have_http_status(:forbidden)
-          end
-        end
-
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           before { post v1_event_printing_service_event_printing_service_prices_path(event_printing_service_id: event_printing_service_id), params: event_printing_service_price_tier, headers: auth_headers(user) }
@@ -257,19 +257,19 @@ RSpec.describe 'V1::EventPrintingServicePrices', type: :request do
             expect(response).to have_http_status(:ok)
           end
         end
+
+        context 'as an exhibition contractor for the event' do # New context
+          let(:user) { create(:user, :exhibition_contractor, with_profile: true) } # Ensure profile exists
+          let!(:contractor_profile) { user.reload.exhibition_contractor_profile } # Use the one created with the user
+          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          before { patch v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), params: event_printing_service_price_tier, headers: auth_headers(user) }
+          it 'returns a 200 response' do
+            expect(response).to have_http_status(:ok)
+          end
+        end
       end
 
       response(403, 'forbidden') do
-        context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
-          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          before { patch v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), params: event_printing_service_price_tier, headers: auth_headers(user) }
-          it 'returns a 403 response' do
-            expect(response).to have_http_status(:forbidden)
-          end
-        end
-
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           before { patch v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), params: event_printing_service_price_tier, headers: auth_headers(user) }
@@ -310,19 +310,19 @@ RSpec.describe 'V1::EventPrintingServicePrices', type: :request do
             expect(response).to have_http_status(:no_content)
           end
         end
+
+        context 'as an exhibition contractor for the event' do # New context
+          let(:user) { create(:user, :exhibition_contractor, with_profile: true) } # Ensure profile exists
+          let!(:contractor_profile) { user.reload.exhibition_contractor_profile } # Use the one created with the user
+          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          before { delete v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), headers: auth_headers(user) }
+          it 'returns a 204 response' do
+            expect(response).to have_http_status(:no_content)
+          end
+        end
       end
 
       response(403, 'forbidden') do
-        context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
-          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-          before { delete v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), headers: auth_headers(user) }
-          it 'returns a 403 response' do
-            expect(response).to have_http_status(:forbidden)
-          end
-        end
-
         context 'as a regular user' do
           let(:user) { create(:user, :member) }
           before { delete v1_event_printing_service_event_printing_service_price_path(event_printing_service_id: event_printing_service_id, id: id), headers: auth_headers(user) }

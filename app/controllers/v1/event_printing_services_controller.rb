@@ -21,7 +21,7 @@ module V1
       if @event_printing_service.save
         render json: @event_printing_service, status: :created
       else
-        render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -30,7 +30,7 @@ module V1
       if @event_printing_service.update(event_printing_service_params)
         render json: @event_printing_service
       else
-        render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
       end
     end
 

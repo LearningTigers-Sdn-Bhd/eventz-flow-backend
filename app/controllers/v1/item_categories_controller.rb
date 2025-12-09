@@ -21,7 +21,7 @@ module V1
       if @item_category.save
         render json: @item_category, status: :created
       else
-        render json: { errors: @item_category.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @item_category.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -30,7 +30,7 @@ module V1
       if @item_category.update(item_category_params)
         render json: @item_category
       else
-        render json: { errors: @item_category.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @item_category.errors.full_messages }, status: :unprocessable_content
       end
     end
 

@@ -119,7 +119,9 @@ Rails.application.routes.draw do
         resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
       end
 
-      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy]
+      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy] do
+        resources :exhibitor_kit_payments, only: [:index, :show, :update]
+      end
 
 
       # Event Metrics moved outside to avoid impacting event resources

@@ -14,7 +14,7 @@ class EventExhibitionContractorService < BaseService
       event.update(use_exhibitor_kit: true)
       ServiceResult.new(success: true, data: contractor, status: :created)
     else
-      ServiceResult.new(success: false, errors: contractor.errors.full_messages, status: :unprocessable_entity)
+      ServiceResult.new(success: false, errors: contractor.errors.full_messages, status: :unprocessable_content)
     end
   end
 

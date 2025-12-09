@@ -93,7 +93,7 @@ module V1
       if @event.restore
         render json: @event, status: :ok
       else
-        render json: { errors: @event.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
       end
     end
 

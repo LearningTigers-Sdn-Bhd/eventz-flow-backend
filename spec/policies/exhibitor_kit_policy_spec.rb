@@ -4,7 +4,7 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
   subject { described_class.new(user, exhibitor_kit) }
 
   let(:event) { create(:event, use_exhibitor_kit: true) }
-  let(:exhibitor_user) { create(:user, :vendor) }
+  let(:exhibitor_user) { create(:user, :exhibitor) }
   let(:event_vendor) { create(:exhibitor, event: event, vendor: exhibitor_user) }
   let(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: event_vendor) }
 
@@ -17,8 +17,8 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
   end
 
   context 'for an event contractor' do
-    let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
-    let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
+    let(:user) { create(:user, :exhibition_contractor, with_profile: true) } # Ensure profile exists
+    let!(:contractor_profile) { user.reload.exhibition_contractor_profile } # Use the one created with the user
     let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
 
     it { is_expected.to permit_actions(%i[show update]) }

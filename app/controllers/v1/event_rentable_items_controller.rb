@@ -5,8 +5,18 @@ module V1
     before_action :set_event_rentable_item, only: %i[show update destroy]
 
     def index
-      @event_rentable_items = policy_scope(EventRentableItem).where(event_id: @event.id)
-      render json: @event_rentable_items
+      # Apply policy scope and eager load the associated rentable_item
+      @event_rentable_items = policy_scope(EventRentableItem)
+                                .where(event_id: @event.id)
+                                .includes(:rentable_item) # Eager load rentable_item
+
+      render json: @event_rentable_items.as_json(
+        include: {
+          rentable_item: {
+            only: [:id, :name, :description, :unit_of_measure, :default_price, :status]
+          }
+        }
+      )
     end
 
     def show
@@ -21,7 +31,7 @@ module V1
       if @event_rentable_item.save
         render json: @event_rentable_item, status: :created
       else
-        render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -30,7 +40,7 @@ module V1
       if @event_rentable_item.update(event_rentable_item_params)
         render json: @event_rentable_item
       else
-        render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_content
       end
     end
 

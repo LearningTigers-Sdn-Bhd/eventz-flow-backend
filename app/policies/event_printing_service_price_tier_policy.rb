@@ -8,15 +8,18 @@ class EventPrintingServicePriceTierPolicy < ApplicationPolicy
   end
 
   def create?
-    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event))
+    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event)) ||
+    (user.exhibition_contractor? && record&.event_printing_service&.event && user.exhibition_contractor_for?(record.event_printing_service.event))
   end
 
   def update?
-    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event))
+    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event)) ||
+    (user.exhibition_contractor? && record&.event_printing_service&.event && user.exhibition_contractor_for?(record.event_printing_service.event))
   end
 
   def destroy?
-    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event))
+    user.org_owner? || user.organizer? || (record&.event_printing_service&.event && user.is_event_staff?(record.event_printing_service.event)) ||
+    (user.exhibition_contractor? && record&.event_printing_service&.event && user.exhibition_contractor_for?(record.event_printing_service.event))
   end
 
   class Scope < Scope

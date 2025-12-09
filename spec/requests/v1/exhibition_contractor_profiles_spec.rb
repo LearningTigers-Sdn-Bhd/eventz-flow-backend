@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
-  let(:contractor_user) { create(:user, :exhibition_contractor, created_by: org_owner) }
+  let(:contractor_user) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
   let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
 
   describe "GET /v1/exhibition_contractor_profiles/:id" do
@@ -44,52 +44,6 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
     context "without authorization" do
       it "returns unauthorized" do
         get v1_exhibition_contractor_profile_path(contractor_profile)
-
-  describe "POST /v1/exhibition_contractor_profiles" do
-    let(:user_for_profile) { create(:user, :exhibition_contractor, with_profile: false) }
-    let(:valid_attributes) do
-      {
-        exhibition_contractor_profile: {
-          user_id: user_for_profile.id,
-          company_name: "New Company",
-          contact_person: "New Contact",
-          contact_email: "new@example.com",
-          contact_phone: "111-222-3333"
-        }
-      }
-    end
-
-    context "with valid authorization and valid attributes" do
-      it "creates a new exhibition contractor profile" do
-        expect {
-          post v1_exhibition_contractor_profiles_path, params: valid_attributes, headers: auth_header
-        }.to change(ExhibitionContractorProfile, :count).by(1)
-      end
-
-      it "returns a created response" do
-        post v1_exhibition_contractor_profiles_path, params: valid_attributes, headers: auth_header
-        expect(response).to have_http_status(:created)
-      end
-    end
-
-    context "with valid authorization and invalid attributes" do
-      let(:invalid_attributes) { { exhibition_contractor_profile: { company_name: "" } } }
-
-      it "does not create a profile" do
-        expect {
-          post v1_exhibition_contractor_profiles_path, params: invalid_attributes, headers: auth_header
-        }.to_not change(ExhibitionContractorProfile, :count)
-      end
-
-      it "returns unprocessable entity" do
-        post v1_exhibition_contractor_profiles_path, params: invalid_attributes, headers: auth_header
-        expect(response).to have_http_status(:unprocessable_content)
-      end
-    end
-
-    context "without authorization" do
-      it "returns unauthorized" do
-        post v1_exhibition_contractor_profiles_path, params: valid_attributes
         expect(response).to have_http_status(:unauthorized)
       end
     end
@@ -108,7 +62,7 @@ RSpec.describe "V1::ExhibitionContractorProfiles", type: :request do
     end
 
     context "as organizer who created the contractor" do
-      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer) }
+      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer, with_profile: false) }
       let!(:profile_by_organizer) { create(:exhibition_contractor_profile, user: contractor_by_organizer) }
 
       it "updates the profile" do

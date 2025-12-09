@@ -32,8 +32,7 @@ RSpec.describe EventRentableItemPolicy, type: :policy do
     let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
     let(:user) { contractor_user }
 
-    it { is_expected.to permit_actions(%i[index show]) }
-    it { is_expected.to forbid_actions(%i[create update destroy]) }
+    it { is_expected.to permit_actions(%i[index show create update destroy]) } # Changed to permit
   end
 
   context 'for an exhibition contractor not assigned to the event' do
@@ -94,6 +93,20 @@ RSpec.describe EventRentableItemPolicy, type: :policy do
     context 'for other users' do
       it 'returns no event rentable items' do
         expect(Pundit.policy_scope(create(:user), EventRentableItem).to_a).to be_empty
+      end
+    end
+
+    context 'for an exhibitor' do
+      let(:exhibitor_user) { create(:user, :exhibitor) }
+      let(:exhibitor_event) { create(:event) }
+      let(:event_vendor_exhibitor) { create(:exhibitor, event: exhibitor_event, vendor: exhibitor_user) }
+      let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: event_vendor_exhibitor) }
+      let!(:exhibitor_item_active) { create(:event_rentable_item, event: exhibitor_event, rentable_item: create(:rentable_item, status: :active)) }
+      let!(:exhibitor_item_inactive) { create(:event_rentable_item, event: exhibitor_event, rentable_item: create(:rentable_item, status: :inactive)) }
+      let(:user) { exhibitor_user }
+
+      it 'returns only active event rentable items for their assigned events' do
+        expect(Pundit.policy_scope(user, EventRentableItem).to_a).to match_array([exhibitor_item_active])
       end
     end
   end

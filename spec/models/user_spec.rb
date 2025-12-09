@@ -60,7 +60,12 @@ RSpec.describe User, type: :model do
 		let(:organizer_user) { create(:user, :organizer) }
 		let(:member_user) { create(:user, :member) }
 		let(:vendor_user) { create(:user, :vendor) }
-		let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) } # New user for testing
+    context "correctly identifies exhibition contractors" do
+      let(:user) { create(:user, :member) }
+      let(:exhibition_contractor_user) { create(:user, :exhibition_contractor, with_profile: false) } # New user for testing
+      let(:event) { create(:event) }
+      let!(:exhibition_contractor_profile) { create(:exhibition_contractor_profile, user: exhibition_contractor_user) }
+
 
 		it 'correctly identifies a Organization owner' do
 			expect(org_owner_user.org_owner?).to be true
@@ -89,4 +94,5 @@ RSpec.describe User, type: :model do
 			expect(member_user.is_exhibition_contractor?).to be false
 		end
 	end
+end
 end

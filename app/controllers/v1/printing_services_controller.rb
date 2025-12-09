@@ -20,7 +20,7 @@ module V1
       if @printing_service.save
         render json: @printing_service, status: :created
       else
-        render json: @printing_service.errors, status: :unprocessable_entity
+        render json: @printing_service.errors, status: :unprocessable_content
       end
     end
 
@@ -29,7 +29,7 @@ module V1
       if @printing_service.update(printing_service_params)
         render json: @printing_service
       else
-        render json: @printing_service.errors, status: :unprocessable_entity
+        render json: @printing_service.errors, status: :unprocessable_content
       end
     end
 

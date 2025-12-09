@@ -20,7 +20,7 @@ module V1
       if @rentable_item.save
         render json: @rentable_item, status: :created
       else
-        render json: @rentable_item.errors, status: :unprocessable_entity
+        render json: @rentable_item.errors, status: :unprocessable_content
       end
     end
 
@@ -29,7 +29,7 @@ module V1
       if @rentable_item.update(rentable_item_params)
         render json: @rentable_item
       else
-        render json: @rentable_item.errors, status: :unprocessable_entity
+        render json: @rentable_item.errors, status: :unprocessable_content
       end
     end
 

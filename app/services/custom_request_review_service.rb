@@ -10,7 +10,7 @@ class CustomRequestReviewService < BaseService
     if @custom_request.update(review_params)
       BaseService::ServiceResult.new(success: true, data: @custom_request, status: :ok)
     else
-      BaseService::ServiceResult.new(success: false, errors: @custom_request.errors.full_messages, status: :unprocessable_entity)
+      BaseService::ServiceResult.new(success: false, errors: @custom_request.errors.full_messages, status: :unprocessable_content)
     end
   end
 

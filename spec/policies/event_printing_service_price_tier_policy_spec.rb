@@ -33,8 +33,7 @@ RSpec.describe EventPrintingServicePriceTierPolicy, type: :policy do
     let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
     let(:user) { contractor_user }
 
-    it { is_expected.to permit_actions(%i[index show]) }
-    it { is_expected.to forbid_actions(%i[create update destroy]) }
+    it { is_expected.to permit_actions(%i[index show create update destroy]) } # Changed to permit
   end
 
   context 'for an exhibition contractor not assigned to the event' do

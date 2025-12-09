@@ -12,7 +12,13 @@ class V1::ExhibitorKitsController < ApplicationController
 
   def show
     authorize @exhibitor_kit
-    render json: @exhibitor_kit
+    render json: @exhibitor_kit.as_json(
+      include: [
+        { exhibitor_kit_items: { include: :rentable_item } },
+        { exhibitor_kit_printings: { include: :printing_service } },
+        { custom_requests: { only: [:id, :description, :quantity, :status, :resolved_price, :response_notes] } } # Include custom_requests
+      ]
+    )
   end
 
   def create
