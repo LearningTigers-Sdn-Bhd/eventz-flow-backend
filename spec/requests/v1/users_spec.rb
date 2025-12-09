@@ -65,8 +65,8 @@ USER_AUTH_SCHEMA = {
 
 
 RSpec.describe 'V1::Users', type: :request do
-  let!(:org_owner) { create(:org_owner) }
-  let(:member_user) { create(:member_user) }
+  let!(:org_owner) { create(:user, :org_owner) }
+  let(:member_user) { create(:user, :member) }
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- /v1/users (Registration) ---

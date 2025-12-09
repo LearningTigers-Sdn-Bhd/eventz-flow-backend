@@ -12,6 +12,10 @@ module AuthHelpers
   def json_response
     JSON.parse(response.body)
   end
+
+  def sign_in(user)
+    request.headers.merge!(auth_headers(user))
+  end
 end
 
 RSpec.configure do |config|

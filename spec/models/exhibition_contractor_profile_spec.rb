@@ -4,6 +4,7 @@ RSpec.describe ExhibitionContractorProfile, type: :model do
   describe 'Associations' do
     it { is_expected.to belong_to(:user) }
     it { is_expected.to have_many(:event_exhibition_contractors).dependent(:destroy) }
+    it { is_expected.to have_many(:events).through(:event_exhibition_contractors) }
   end
 
   describe 'Validations' do
@@ -15,7 +16,7 @@ RSpec.describe ExhibitionContractorProfile, type: :model do
     it { is_expected.to_not allow_value("invalid-email").for(:contact_email) }
 
     describe 'user role validation' do
-      let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) }
+      let(:exhibition_contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let(:member_user) { create(:user, :member) }
 
       it 'is valid when user has exhibition_contractor role' do

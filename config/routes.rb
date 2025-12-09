@@ -57,6 +57,7 @@ Rails.application.routes.draw do
       end
     end
 
+    resources :item_categories
     # 3. GLOBAL TICKET TYPES (Templates - event_id is null)
     resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
 
@@ -111,7 +112,16 @@ Rails.application.routes.draw do
       # Nested resource for Event Exhibition Contractor
       resource :event_exhibition_contractor, only: [:show, :create, :destroy]
 
-      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy]
+      resources :event_printing_services do
+        resources :event_printing_service_prices, controller: 'event_printing_service_prices'
+      end
+      resources :event_rentable_items do
+        resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
+      end
+
+      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy] do
+        resources :exhibitor_kit_payments, only: [:index, :show, :update]
+      end
 
 
       # Event Metrics moved outside to avoid impacting event resources
@@ -240,5 +250,16 @@ Rails.application.routes.draw do
     # Exhibition Contractor Profiles (profile data only)
     resources :exhibition_contractor_profiles, only: [:show, :update]
 
+    resources :rentable_items
+    resources :printing_services
+
+    # REMOVED conflicting only: [] definitions
+    resources :event_rentable_items, only: [] do
+      resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
+    end
+
+    resources :event_printing_services, only: [] do
+      resources :event_printing_service_prices, controller: 'event_printing_service_prices'
+    end
   end
 end

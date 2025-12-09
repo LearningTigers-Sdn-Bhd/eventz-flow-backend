@@ -3,11 +3,10 @@ require 'rails_helper'
 RSpec.describe ExhibitionContractorProfilePolicy, type: :policy do
   let(:org_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
-  let(:exhibition_contractor_user) { create(:user, :exhibition_contractor) }
   let(:member_user) { create(:user, :member) }
-
+  let(:exhibition_contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
   let(:exhibition_contractor_profile_instance) { create(:exhibition_contractor_profile, user: exhibition_contractor_user) }
-  let(:another_contractor_user) { create(:user, :exhibition_contractor) }
+  let(:another_contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
   let(:another_contractor_profile_instance) { create(:exhibition_contractor_profile, user: another_contractor_user) }
 
   # Test for show?
@@ -42,7 +41,7 @@ RSpec.describe ExhibitionContractorProfilePolicy, type: :policy do
     context "organizer access" do
       let(:creating_organizer) { create(:user, :organizer) }
       let(:other_organizer) { create(:user, :organizer) }
-      let(:contractor_created_by_organizer) { create(:user, :exhibition_contractor, created_by: creating_organizer) }
+      let(:contractor_created_by_organizer) { create(:user, :exhibition_contractor, created_by: creating_organizer, with_profile: false) }
       let(:profile_created_by_organizer) { create(:exhibition_contractor_profile, user: contractor_created_by_organizer) }
 
       it "grants access to organizer who created the contractor" do

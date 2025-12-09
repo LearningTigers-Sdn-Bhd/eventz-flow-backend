@@ -21,9 +21,9 @@ GROUP_AFFILIATE_SCHEMA = {
 }.freeze
 
 RSpec.describe 'V1::GroupAffiliates', type: :request do
-  let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:organizer_user) }
-  let(:vendor_user) { create(:vendor_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:manager_user) { create(:user, :organizer) }
+  let(:vendor_user) { create(:user, :vendor) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:manager_token) { JwtService.generate_tokens(manager_user)[:access_token] }

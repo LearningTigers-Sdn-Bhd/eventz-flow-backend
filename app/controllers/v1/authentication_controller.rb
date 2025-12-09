@@ -276,12 +276,20 @@ module V1
 
     # Verify current password
     unless current_user.authenticate(current_password)
-      return error_response(message: 'Authentication failed', errors: [{ field: 'current_password', message: 'Current password is incorrect' }], status: :unauthorized)
+      return error_response(
+        message: 'Authentication failed',
+        errors: [{ field: 'current_password', message: 'Current password is incorrect' }],
+        status: :unauthorized
+      )
     end
 
     # Ensure new password and confirmation match
     unless new_password == confirm_new_password
-      return error_response(message: 'Validation Error', errors: [{ field: 'confirm_new_password', message: 'Passwords do not match' }], status: :unprocessable_content)
+      return error_response(
+        message: 'Validation Error',
+        errors: [{ field: 'confirm_new_password', message: 'Passwords do not match' }],
+        status: :unprocessable_content
+      )
     end
 
     # Attempt to update the password (leverages has_secure_password validations)

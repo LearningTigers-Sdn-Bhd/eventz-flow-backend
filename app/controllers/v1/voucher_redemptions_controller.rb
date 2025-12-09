@@ -31,7 +31,7 @@ module V1
       else
         error_response(
           message: result.error,
-          status: :unprocessable_entity
+          status: :unprocessable_content
         )
       end
     end

@@ -16,7 +16,7 @@ class V1::ExhibitionContractorProfilesController < ApplicationController
     if @exhibition_contractor_profile.update(exhibition_contractor_profile_params)
       render json: format_profile(@exhibition_contractor_profile), status: :ok
     else
-      render json: { errors: @exhibition_contractor_profile.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: @exhibition_contractor_profile.errors.full_messages }, status: :unprocessable_content
     end
   end
 

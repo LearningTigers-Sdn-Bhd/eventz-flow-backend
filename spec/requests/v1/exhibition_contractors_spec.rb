@@ -6,8 +6,8 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
   let(:member) { create(:user, :member) }
 
   describe "GET /v1/exhibition_contractors" do
-    let!(:contractor1) { create(:user, :exhibition_contractor, created_by: org_owner) }
-    let!(:contractor2) { create(:user, :exhibition_contractor, created_by: organizer) }
+    let!(:contractor1) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
+    let!(:contractor2) { create(:user, :exhibition_contractor, created_by: organizer, with_profile: false) }
 
     before do
       create(:exhibition_contractor_profile, user: contractor1)
@@ -51,7 +51,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
   end
 
   describe "GET /v1/exhibition_contractors/:id" do
-    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner) }
+    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
     let!(:profile) { create(:exhibition_contractor_profile, user: contractor) }
 
     context "as org_owner" do
@@ -180,7 +180,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
   end
 
   describe "PATCH /v1/exhibition_contractors/:id" do
-    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner) }
+    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
     let!(:profile) { create(:exhibition_contractor_profile, user: contractor) }
     let(:update_params) do
       {
@@ -204,7 +204,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
     end
 
     context "as organizer who created the contractor" do
-      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer) }
+      let(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer, with_profile: false) }
       let!(:profile_by_organizer) { create(:exhibition_contractor_profile, user: contractor_by_organizer) }
 
       it "updates the contractor" do
@@ -224,7 +224,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
   end
 
   describe "PATCH /v1/exhibition_contractors/:id/toggle_status" do
-    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner, status: :active) }
+    let(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner, status: :active, with_profile: false) }
 
     context "as org_owner" do
       it "toggles status to inactive" do
@@ -245,7 +245,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
   end
 
   describe "DELETE /v1/exhibition_contractors/:id" do
-    let!(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner) }
+    let!(:contractor) { create(:user, :exhibition_contractor, created_by: org_owner, with_profile: false) }
     let!(:profile) { create(:exhibition_contractor_profile, user: contractor) }
 
     context "as org_owner" do
@@ -259,7 +259,7 @@ RSpec.describe "V1::ExhibitionContractors", type: :request do
     end
 
     context "as organizer who created the contractor" do
-      let!(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer) }
+      let!(:contractor_by_organizer) { create(:user, :exhibition_contractor, created_by: organizer, with_profile: false) }
 
       it "deletes the contractor" do
         expect {

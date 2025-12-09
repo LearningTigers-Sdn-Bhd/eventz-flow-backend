@@ -24,12 +24,12 @@ RSpec.describe EventVendorService, type: :service do
 
 
   describe '.create' do
-    let(:current_user) { create(:organizer_user) }
+    let(:current_user) { create(:user, :organizer) }
     let(:event) { create(:event, use_ticket: true) }
 
     context 'when event.use_ticket is true (Exhibitor)' do
       context 'with vendor_id provided' do
-        let(:vendor) { create(:vendor_user) }
+        let(:vendor) { create(:user, :vendor) }
         let(:params) do
           {
             vendor_id: vendor.id,
@@ -72,7 +72,7 @@ RSpec.describe EventVendorService, type: :service do
       let(:event) { create(:event, use_ticket: false) }
 
       context 'with vendor_id provided' do
-        let(:vendor) { create(:vendor_user) }
+        let(:vendor) { create(:user, :vendor) }
         let(:params) do
           {
             vendor_id: vendor.id,
@@ -110,7 +110,7 @@ RSpec.describe EventVendorService, type: :service do
     end
 
     context 'when user is not an organizer' do
-      let(:non_organizer) { create(:member_user) }
+      let(:non_organizer) { create(:user, :member) }
       let(:params) do
         {
           full_name: 'John Doe',
@@ -152,7 +152,7 @@ RSpec.describe EventVendorService, type: :service do
 
   describe '.assign_existing_vendor' do
     let(:event) { create(:event, use_ticket: true) }
-    let(:vendor) { create(:vendor_user) }
+    let(:vendor) { create(:user, :vendor) }
     let(:params) do
       {
         redirect_url: 'https://example.com'
@@ -196,7 +196,7 @@ RSpec.describe EventVendorService, type: :service do
     end
 
     it 'handles existing vendor user' do
-      existing_vendor = create(:vendor_user, email: 'john@example.com')
+      existing_vendor = create(:user, :vendor, email: 'john@example.com')
 
       result = EventVendorService.create_vendor_user(params, event, 'Merchant')
 

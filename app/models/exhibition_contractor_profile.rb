@@ -1,7 +1,8 @@
 class ExhibitionContractorProfile < ApplicationRecord
   # --- Associations ---
   belongs_to :user
-  has_many :event_exhibition_contractors, dependent: :destroy
+  has_many :event_exhibition_contractors, dependent: :destroy, inverse_of: :exhibition_contractor_profile
+  has_many :events, through: :event_exhibition_contractors
 
   # --- Validations ---
   validates :user_id, uniqueness: { message: 'already has a profile' }

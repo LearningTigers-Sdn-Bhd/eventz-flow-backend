@@ -19,10 +19,10 @@ GROUP_SCHEMA = {
 
 RSpec.describe 'V1::Groups', type: :request do
   # --- Setup Users ---
-  let(:org_owner_user) { create(:org_owner) }
-  let(:manager_user) { create(:organizer_user) }
-  let(:member_user) { create(:member_user) }
-  let(:vendor_user) { create(:vendor_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:manager_user) { create(:user, :organizer) }
+  let(:member_user) { create(:user, :member) }
+  let(:vendor_user) { create(:user, :vendor) }
 
   # --- Setup Tokens ---
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
@@ -83,14 +83,18 @@ RSpec.describe 'V1::Groups', type: :request do
       }
 
       response '201', 'Group created successfully' do
-        let(:Authorization) { "Bearer #{org_owner_token}" }
+        let(:Authorization) { "Bearer #{manager_token}" }
         let(:group) { group_params }
         schema GROUP_SCHEMA
-        run_test!
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          created_group = Group.find(json['id'])
+          expect(created_group.group_members.where(user_id: manager_user.id, has_manager_access: true).exists?).to be true
+        end
       end
 
       response '201', 'Group created with manager' do
-        let(:Authorization) { "Bearer #{org_owner_token}" }
+        let(:Authorization) { "Bearer #{manager_token}" }
         let(:group) do
           {
             group: {
@@ -104,6 +108,10 @@ RSpec.describe 'V1::Groups', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           created_group = Group.find(json['id'])
+          # The current_user (manager_user) is added as manager, and then the manager_id is also added.
+          # If manager_id is the same as current_user, it should only create one GroupMember record.
+          # The current logic will try to create it twice, but the uniqueness validation on GroupMember will prevent the second one.
+          # So we just assert that manager_user is a manager.
           expect(created_group.group_members.where(user_id: manager_user.id, has_manager_access: true).exists?).to be true
         end
       end

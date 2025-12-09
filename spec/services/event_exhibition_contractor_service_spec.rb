@@ -1,10 +1,10 @@
 require 'rails_helper'
 
 RSpec.describe EventExhibitionContractorService, type: :service do
-  let(:event) { create(:event) }
-  let(:organizer) { create(:user, :organizer) }
-  let(:contractor_user) { create(:user, :exhibition_contractor) }
-  let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
+    let(:org_owner) { create(:user, :org_owner) }
+    let(:event) { create(:event) }
+    let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
+    let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
   let(:params) do
     {
       event_exhibition_contractor: {
@@ -13,7 +13,7 @@ RSpec.describe EventExhibitionContractorService, type: :service do
     }
   end
 
-  subject(:service) { described_class.new(user: organizer, event: event, params: ActionController::Parameters.new(params)) }
+  subject(:service) { described_class.new(user: org_owner, event: event, params: ActionController::Parameters.new(params)) }
 
   describe '#create' do
     it 'creates an event exhibition contractor' do

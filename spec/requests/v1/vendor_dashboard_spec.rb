@@ -3,9 +3,9 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::VendorDashboard', type: :request do
   # --- Setup Users & Tokens ---
-  let(:vendor_user) { create(:vendor_user) }
-  let(:other_vendor_user) { create(:vendor_user) }
-  let(:member_user) { create(:member_user) }
+  let(:vendor_user) { create(:user, :vendor) }
+  let(:other_vendor_user) { create(:user, :vendor) }
+  let(:member_user) { create(:user, :member) }
 
   let(:vendor_token) { JwtService.generate_tokens(vendor_user)[:access_token] }
   let(:other_vendor_token) { JwtService.generate_tokens(other_vendor_user)[:access_token] }
@@ -122,7 +122,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
       end
 
       response '200', 'Empty dashboard for vendor with no events' do
-        let(:new_vendor) { create(:vendor_user) }
+        let(:new_vendor) { create(:user, :vendor) }
         let(:new_vendor_token) { JwtService.generate_tokens(new_vendor)[:access_token] }
         let(:Authorization) { "Bearer #{new_vendor_token}" }
 
@@ -188,7 +188,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
 
   describe 'Edge cases' do
     context 'when vendor has vouchers with zero total_redemption_available' do
-      let(:vendor_with_zero_vouchers) { create(:vendor_user) }
+      let(:vendor_with_zero_vouchers) { create(:user, :vendor) }
       let(:zero_voucher_token) { JwtService.generate_tokens(vendor_with_zero_vouchers)[:access_token] }
       let!(:event) { create(:event, status: :published, use_ticket: false) }
       let!(:ev) { create(:event_vendor, event: event, vendor: vendor_with_zero_vouchers) }

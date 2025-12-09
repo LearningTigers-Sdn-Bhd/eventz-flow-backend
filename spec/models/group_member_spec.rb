@@ -8,9 +8,9 @@ RSpec.describe GroupMember, type: :model do
 
   describe 'validations' do
     let(:group) { create(:group) }
-    let(:manager) { create(:organizer_user) }
-    let(:member) { create(:member_user) }
-    let(:org_owner) { create(:org_owner) }
+    let(:manager) { create(:user, :organizer) }
+    let(:member) { create(:user, :member) }
+    let(:org_owner) { create(:user, :org_owner) }
     subject { build(:group_member, group: group, user: manager) }
 
     it { should validate_uniqueness_of(:user_id).scoped_to(:group_id) }
@@ -32,7 +32,7 @@ RSpec.describe GroupMember, type: :model do
     end
 
     it 'rejects vendor users' do
-      vendor = create(:vendor_user)
+      vendor = create(:user, :vendor)
       group_member = build(:group_member, group: group, user: vendor)
       expect(group_member).not_to be_valid
       expect(group_member.errors[:user]).to include('must be an organizer or member')
@@ -41,8 +41,8 @@ RSpec.describe GroupMember, type: :model do
 
   describe 'methods' do
     let(:group) { create(:group) }
-    let(:manager) { create(:organizer_user) }
-    let(:member) { create(:member_user) }
+    let(:manager) { create(:user, :organizer) }
+    let(:member) { create(:user, :member) }
 
     describe '#manager?' do
       it 'returns true when has_manager_access is true' do

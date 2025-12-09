@@ -55,7 +55,7 @@ module V1
         error_response(
           message: 'Validation failed',
           errors: @voucher.errors.full_messages,
-          status: :unprocessable_entity
+          status: :unprocessable_content
         )
       end
       # Pundit::NotAuthorizedError rescue block removed, handled globally
@@ -102,7 +102,7 @@ module V1
         error_response(
           message: 'Validation failed',
           errors: @voucher.errors.full_messages,
-          status: :unprocessable_entity
+          status: :unprocessable_content
         )
       end
     end
