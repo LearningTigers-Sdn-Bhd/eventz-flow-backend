@@ -49,7 +49,7 @@ RSpec.describe 'V1::EventExhibitionContractors', type: :request do
       tags 'Event Exhibition Contractors'
       security [bearerAuth: []]
 
-      response(200, 'successful') do
+      response(204, 'successful') do
         let(:org_owner) { create(:user, :org_owner) }
         let(:Authorization) { "Bearer #{jwt_token(org_owner)}" }
         let(:event) { create(:event) }

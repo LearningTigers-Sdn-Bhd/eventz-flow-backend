@@ -10,7 +10,7 @@ RSpec.describe 'V1::ExhibitionContractorProfiles', type: :request do
       security [bearerAuth: []]
 
       response(200, 'successful') do
-        let(:contractor) { create(:user, :exhibition_contractor, with_profile: true) }
+        let(:contractor) { create(:user, :exhibition_contractor, with_profile: true).reload }
         let(:Authorization) { "Bearer #{jwt_token(contractor)}" }
         let(:id) { contractor.exhibition_contractor_profile.id }
 
@@ -34,7 +34,7 @@ RSpec.describe 'V1::ExhibitionContractorProfiles', type: :request do
       }
 
       response(200, 'successful') do
-        let(:contractor) { create(:user, :exhibition_contractor, with_profile: true) }
+        let(:contractor) { create(:user, :exhibition_contractor, with_profile: true).reload }
         let(:Authorization) { "Bearer #{jwt_token(contractor)}" }
         let(:id) { contractor.exhibition_contractor_profile.id }
         let(:exhibition_contractor_profile) { { company_name: 'Updated Company' } }
