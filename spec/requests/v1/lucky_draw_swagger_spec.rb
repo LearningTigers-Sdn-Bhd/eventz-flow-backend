@@ -3,9 +3,9 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' do
   # --- Setup Users & Tokens ---
-  let(:org_owner_user) { create(:org_owner) }
-  let(:organizer_user) { create(:organizer_user) }
-  let(:staff_user) { create(:staff_user) }
+  let(:org_owner_user) { create(:user, :org_owner) }
+  let(:organizer_user) { create(:user, :organizer) }
+  let(:staff_user) { create(:user, :staff_member) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
   let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
@@ -44,12 +44,19 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
       title: { type: :string, example: 'Grand Lucky Draw' },
       draw_date: { type: :string, format: :date, nullable: true },
       logo: { type: :string, nullable: true },
-      draw_style: { type: :string, enum: ['wheel', 'slot', 'box'], example: 'wheel' },
+      draw_styles: {
+        type: :object,
+        properties: {
+          style: { type: :string, enum: ['wheel', 'slot', 'box'], example: 'wheel' },
+          theme: { type: :string, nullable: true, example: 'wireframe' }
+        }
+      },
+      wrapper_background: { type: :object },
       use_gifts: { type: :boolean, example: false },
       created_at: { type: :string, format: :date_time },
       updated_at: { type: :string, format: :date_time }
     },
-    required: %w[id event_id title draw_style use_gifts]
+    required: %w[id event_id title use_gifts]
   }.freeze
 
   GIFT_WINNER_SCHEMA = {
@@ -218,6 +225,306 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
         let(:id) { session1.id }
 
         run_test!
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/lucky_draw/sessions/{id}/background-manager' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Session ID'
+
+    get 'Gets session background configuration' do
+      tags 'Lucky Draw Sessions'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves the current background configuration (wrapper_background) for a session.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Background configuration retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: false, description: 'Whether to use image background' },
+                         backgroundImgUrl: { type: :string, nullable: true, example: 'lucky_draw_session_backgrounds/bg-20240101_120000-abc123.jpg', description: 'Background image URL path' },
+                         backgroundColor: { type: :string, nullable: true, example: '#ffffff', description: 'Background color (hex or rgb)' }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+
+        before do
+          session1.update(wrapper_background: { useImage: false, backgroundColor: '#ffffff' })
+        end
+
+        run_test!
+      end
+    end
+
+    post 'Updates session background configuration' do
+      tags 'Lucky Draw Sessions'
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Updates the background configuration for a session. When useImage is true, upload a background image file (only required if no existing image is set). When useImage is false, provide a backgroundColor. Existing values are preserved when switching between modes (e.g., backgroundColor is preserved when switching to image mode, and backgroundImgUrl is preserved when switching to color mode).'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :useImage, in: :formData, type: :boolean, required: true, description: 'Whether to use image background (true) or color background (false)'
+      parameter name: :backgroundImage, in: :formData, type: :file, required: false, description: 'Background image file (required when useImage is true and no existing image is set; optional if an existing image already exists)'
+      parameter name: :backgroundColor, in: :formData, type: :string, required: false, description: 'Background color in hex or rgb format (required when useImage is false; optional when useImage is true to preserve existing color)'
+
+      response '200', 'Background updated successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Background updated successfully' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: false },
+                         backgroundImgUrl: { type: :string, nullable: true, example: 'lucky_draw_session_backgrounds/test-image.png' },
+                         backgroundColor: { type: :string, nullable: true, example: '#ff0000' }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { false }
+        let(:backgroundColor) { '#ff0000' }
+
+        run_test!
+      end
+
+      response '200', 'Background updated with image successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Background updated successfully' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: true },
+                         backgroundImgUrl: { type: :string, example: 'lucky_draw_session_backgrounds/bg-20240101_120000-abc123.jpg' },
+                         backgroundColor: { type: :string, nullable: true }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { true }
+        let(:backgroundImage) { fixture_file_upload(Rails.root.join('spec', 'fixtures', 'test_image.png'), 'image/png') }
+
+        before do
+          test_image_path = Rails.root.join('spec', 'fixtures', 'test_image.png')
+          unless File.exist?(test_image_path)
+            FileUtils.mkdir_p(File.dirname(test_image_path))
+            File.binwrite(test_image_path, "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82")
+          end
+        end
+
+        run_test!
+      end
+
+      response '422', 'Validation failed - missing image file when no existing image' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { true }
+
+        before do
+          # Ensure no existing image is set
+          session1.update(wrapper_background: { useImage: false, backgroundColor: '#ffffff' })
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['message']).to include('Image file is required when useImage is true and no existing image is set')
+        end
+      end
+
+      response '200', 'Keep existing image without uploading new file' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Background updated successfully' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: true },
+                         backgroundImgUrl: { type: :string, example: 'lucky_draw_session_backgrounds/existing-image.png' },
+                         backgroundColor: { type: :string, nullable: true, example: '#ffffff' }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { true }
+
+        before do
+          # Set up session with existing image
+          session1.update(wrapper_background: {
+            useImage: true,
+            backgroundImgUrl: "lucky_draw_session_backgrounds/existing-image.png",
+            backgroundColor: '#ffffff'
+          })
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['wrapper_background']['useImage']).to be true
+          expect(data['data']['wrapper_background']['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/existing-image.png')
+          expect(data['data']['wrapper_background']['backgroundColor']).to eq('#ffffff')
+        end
+      end
+
+      response '200', 'Switching from color to image preserves backgroundColor' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Background updated successfully' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: true },
+                         backgroundImgUrl: { type: :string, example: 'lucky_draw_session_backgrounds/bg-20240101_120000-abc123.jpg' },
+                         backgroundColor: { type: :string, nullable: true, example: '#ff0000' }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { true }
+        let(:backgroundImage) { fixture_file_upload(Rails.root.join('spec', 'fixtures', 'test_image.png'), 'image/png') }
+
+        before do
+          # Set up session with color background
+          session1.update(wrapper_background: {
+            useImage: false,
+            backgroundImgUrl: nil,
+            backgroundColor: '#ff0000'
+          })
+          test_image_path = Rails.root.join('spec', 'fixtures', 'test_image.png')
+          unless File.exist?(test_image_path)
+            FileUtils.mkdir_p(File.dirname(test_image_path))
+            File.binwrite(test_image_path, "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82")
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['wrapper_background']['useImage']).to be true
+          expect(data['data']['wrapper_background']['backgroundImgUrl']).to be_present
+          # backgroundColor should be preserved when switching to image mode
+          expect(data['data']['wrapper_background']['backgroundColor']).to eq('#ff0000')
+          session1.reload
+          expect(session1.wrapper_background['useImage']).to be true
+          expect(session1.wrapper_background['backgroundColor']).to eq('#ff0000')
+          expect(session1.wrapper_background['backgroundImgUrl']).to be_present
+        end
+      end
+
+      response '422', 'Validation failed - missing color' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { false }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['message']).to include('Background color is required')
+        end
+      end
+
+      response '200', 'Switching from image to color preserves backgroundImgUrl' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Background updated successfully' },
+                 data: {
+                   type: :object,
+                   properties: {
+                     wrapper_background: {
+                       type: :object,
+                       properties: {
+                         useImage: { type: :boolean, example: false },
+                         backgroundImgUrl: { type: :string, nullable: true, example: 'lucky_draw_session_backgrounds/test-image.png' },
+                         backgroundColor: { type: :string, nullable: true, example: '#00ff00' }
+                       }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { session1.id }
+        let(:useImage) { false }
+        let(:backgroundColor) { '#00ff00' }
+
+        before do
+          # Set up session with image background
+          session1.update(wrapper_background: {
+            useImage: true,
+            backgroundImgUrl: "lucky_draw_session_backgrounds/test-image.png",
+            backgroundColor: nil
+          })
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['wrapper_background']['useImage']).to be false
+          expect(data['data']['wrapper_background']['backgroundColor']).to eq('#00ff00')
+          # backgroundImgUrl should be preserved when switching to color mode
+          expect(data['data']['wrapper_background']['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/test-image.png')
+
+          session1.reload
+          expect(session1.wrapper_background['useImage']).to be false
+          expect(session1.wrapper_background['backgroundColor']).to eq('#00ff00')
+          expect(session1.wrapper_background['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/test-image.png')
+        end
       end
     end
   end

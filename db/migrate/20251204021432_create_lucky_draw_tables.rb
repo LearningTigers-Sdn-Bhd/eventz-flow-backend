@@ -7,6 +7,7 @@ class CreateLuckyDrawTables < ActiveRecord::Migration[8.0]
       t.date :draw_date, null: true
       t.string :logo, null: true
       t.jsonb :draw_styles, default: {}
+      t.jsonb :wrapper_background, default: {}
       t.boolean :use_gifts, default: false, null: false
 
       t.timestamps
@@ -15,6 +16,7 @@ class CreateLuckyDrawTables < ActiveRecord::Migration[8.0]
     add_index :lucky_draw_sessions, :event_id
     add_index :lucky_draw_sessions, :draw_date
     add_index :lucky_draw_sessions, :draw_styles, using: :gin
+    add_index :lucky_draw_sessions, :wrapper_background, using: :gin
 
     # Create gifts table
     create_table :gifts do |t|

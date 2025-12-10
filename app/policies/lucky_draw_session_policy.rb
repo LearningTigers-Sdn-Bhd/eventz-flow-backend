@@ -25,6 +25,11 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
     show?
   end
 
+  # background_manager? - event admins and org admins (same as update)
+  def background_manager?
+    update?
+  end
+
   class Scope < Scope
     def resolve
       if user.is_org_owner? || user.is_organizer?

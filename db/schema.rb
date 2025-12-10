@@ -357,13 +357,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
     t.index ["name"], name: "index_groups_on_name"
   end
 
-  create_table "item_categories", force: :cascade do |t|
-    t.string "name"
-    t.boolean "active"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-  end
-
   create_table "invalid_participants", force: :cascade do |t|
     t.bigint "lucky_draw_session_id", null: false
     t.bigint "ticket_id"
@@ -378,18 +371,27 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "invalid_participants_exactly_one_participant"
   end
 
+  create_table "item_categories", force: :cascade do |t|
+    t.string "name"
+    t.boolean "active"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "lucky_draw_sessions", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "title", null: false
     t.date "draw_date"
     t.string "logo"
     t.jsonb "draw_styles", default: {}
+    t.jsonb "wrapper_background", default: {}
     t.boolean "use_gifts", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
     t.index ["event_id"], name: "index_lucky_draw_sessions_on_event_id"
+    t.index ["wrapper_background"], name: "index_lucky_draw_sessions_on_wrapper_background", using: :gin
   end
 
   create_table "orders", force: :cascade do |t|
