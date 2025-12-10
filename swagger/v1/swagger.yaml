@@ -4319,6 +4319,1337 @@ paths:
           description: no content
         '403':
           description: forbidden
+  "/v1/events/{event_id}/lucky_draw/config":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    get:
+      summary: Gets lucky draw configuration
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Retrieves the lucky draw configuration for an event. Creates default
+        config if not exists. Requires event access permission.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Config retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      draw_style:
+                        type: string
+                        enum:
+                        - wheel
+                        - slot
+                        - box
+                        example: wheel
+                      use_gifts:
+                        type: boolean
+                        example: false
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - draw_style
+                    - use_gifts
+                required:
+                - success
+                - message
+                - data
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Event not found
+    put:
+      summary: Updates lucky draw configuration
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Updates the lucky draw configuration. Requires event admin or org
+        admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Config updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      draw_style:
+                        type: string
+                        enum:
+                        - wheel
+                        - slot
+                        - box
+                        example: wheel
+                      use_gifts:
+                        type: boolean
+                        example: false
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - draw_style
+                    - use_gifts
+                required:
+                - success
+                - message
+                - data
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Forbidden
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Draw style is not included in the list
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                draw_style:
+                  type: string
+                  enum:
+                  - wheel
+                  - slot
+                  - box
+                  example: wheel
+                  description: Draw style type
+                use_gifts:
+                  type: boolean
+                  example: false
+                  description: Whether to use gifts system
+        required: true
+  "/v1/events/{event_id}/lucky_draw/gifts":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    get:
+      summary: Lists gifts for an event
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Retrieves all gifts for an event, ordered by order field. Includes
+        winners for each gift. Requires event access permission.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Gifts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        event_id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: First Prize
+                        order:
+                          type: integer
+                          example: 1
+                        winner_counts:
+                          type: integer
+                          example: 0
+                        winners:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                example: 1
+                              gift_id:
+                                type: integer
+                                example: 1
+                              ticket_id:
+                                type: integer
+                                nullable: true
+                                example: 1
+                              visitor_id:
+                                type: integer
+                                nullable: true
+                                example: 1
+                              drawn_at:
+                                type: string
+                                format: date_time
+                              created_at:
+                                type: string
+                                format: date_time
+                              updated_at:
+                                type: string
+                                format: date_time
+                            required:
+                            - id
+                            - gift_id
+                            - drawn_at
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - event_id
+                      - name
+                      - order
+                      - winner_counts
+                required:
+                - success
+                - message
+                - data
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+    post:
+      summary: Creates a gift
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Creates a new gift for an event. Order is auto-calculated if not
+        provided. Requires event admin or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Gift created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: First Prize
+                      order:
+                        type: integer
+                        example: 1
+                      winner_counts:
+                        type: integer
+                        example: 0
+                      winners:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            gift_id:
+                              type: integer
+                              example: 1
+                            ticket_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            visitor_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            drawn_at:
+                              type: string
+                              format: date_time
+                            created_at:
+                              type: string
+                              format: date_time
+                            updated_at:
+                              type: string
+                              format: date_time
+                          required:
+                          - id
+                          - gift_id
+                          - drawn_at
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - name
+                    - order
+                    - winner_counts
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Name can't be blank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: First Prize
+                  description: Gift name
+                order:
+                  type: integer
+                  example: 1
+                  description: Display order (auto-calculated if not provided)
+              required:
+              - name
+        required: true
+  "/v1/events/{event_id}/lucky_draw/gifts/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Gift ID
+      schema:
+        type: integer
+    get:
+      summary: Gets a specific gift
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Retrieves a specific gift with its winners. Requires event access
+        permission.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Gift retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: First Prize
+                      order:
+                        type: integer
+                        example: 1
+                      winner_counts:
+                        type: integer
+                        example: 0
+                      winners:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            gift_id:
+                              type: integer
+                              example: 1
+                            ticket_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            visitor_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            drawn_at:
+                              type: string
+                              format: date_time
+                            created_at:
+                              type: string
+                              format: date_time
+                            updated_at:
+                              type: string
+                              format: date_time
+                          required:
+                          - id
+                          - gift_id
+                          - drawn_at
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - name
+                    - order
+                    - winner_counts
+                required:
+                - success
+                - message
+                - data
+        '404':
+          description: Gift not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Gift not found
+    put:
+      summary: Updates a gift
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Updates a gift. Requires event admin or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Gift updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: First Prize
+                      order:
+                        type: integer
+                        example: 1
+                      winner_counts:
+                        type: integer
+                        example: 0
+                      winners:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            gift_id:
+                              type: integer
+                              example: 1
+                            ticket_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            visitor_id:
+                              type: integer
+                              nullable: true
+                              example: 1
+                            drawn_at:
+                              type: string
+                              format: date_time
+                            created_at:
+                              type: string
+                              format: date_time
+                            updated_at:
+                              type: string
+                              format: date_time
+                          required:
+                          - id
+                          - gift_id
+                          - drawn_at
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - name
+                    - order
+                    - winner_counts
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Name can't be blank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Updated Gift Name
+                  description: Gift name
+                order:
+                  type: integer
+                  example: 2
+                  description: Display order
+        required: true
+    delete:
+      summary: Deletes a gift
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Deletes a gift and all its winners (cascade delete). Requires event
+        admin or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Gift deleted successfully
+        '404':
+          description: Gift not found
+  "/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: gift_id
+      in: path
+      required: true
+      description: Gift ID
+      schema:
+        type: integer
+    post:
+      summary: Creates a gift winner
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Creates a winner for a gift. Exactly one of ticket_id or visitor_id
+        must be provided. Requires event admin, team member, or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Winner created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      gift_id:
+                        type: integer
+                        example: 1
+                      ticket_id:
+                        type: integer
+                        nullable: true
+                        example: 1
+                      visitor_id:
+                        type: integer
+                        nullable: true
+                        example: 1
+                      drawn_at:
+                        type: string
+                        format: date_time
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - gift_id
+                    - drawn_at
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Exactly one of ticket_id or visitor_id must be present
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                  description: Ticket ID (required if event uses tickets)
+                visitor_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                  description: Visitor ID (required if event uses visitors)
+        required: true
+  "/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners/bulk":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: gift_id
+      in: path
+      required: true
+      description: Gift ID
+      schema:
+        type: integer
+    post:
+      summary: Creates multiple gift winners
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Creates multiple winners for a gift in a single transaction (all-or-nothing).
+        Requires event admin, team member, or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Winners created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        gift_id:
+                          type: integer
+                          example: 1
+                        ticket_id:
+                          type: integer
+                          nullable: true
+                          example: 1
+                        visitor_id:
+                          type: integer
+                          nullable: true
+                          example: 1
+                        drawn_at:
+                          type: string
+                          format: date_time
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - gift_id
+                      - drawn_at
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                winners:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ticket_id:
+                        type: integer
+                        nullable: true
+                        example: 1
+                      visitor_id:
+                        type: integer
+                        nullable: true
+                        example: 1
+                  example:
+                  - visitor_id: 1
+                  - visitor_id: 2
+              required:
+              - winners
+        required: true
+  "/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: gift_id
+      in: path
+      required: true
+      description: Gift ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Winner ID
+      schema:
+        type: integer
+    delete:
+      summary: Deletes a gift winner
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Deletes a winner. Does not delete the associated ticket or visitor.
+        Requires event admin, team member, or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Winner deleted successfully
+        '404':
+          description: Winner not found
+  "/v1/events/{event_id}/lucky_draw/participants":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    get:
+      summary: Lists participants for an event
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Retrieves eligible participants for lucky draw. Respects event
+        ticket/visitor system. Excludes winners and invalid participants by default.
+        Requires event access permission.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      - name: exclude_winners
+        in: query
+        required: false
+        description: 'Exclude participants who have won any gift (default: true)'
+        schema:
+          type: boolean
+      - name: exclude_invalid
+        in: query
+        required: false
+        description: 'Exclude invalid participants (default: true)'
+        schema:
+          type: boolean
+      - name: type
+        in: query
+        required: false
+        enum:
+        - ticket
+        - visitor
+        description: "Filter by participant type (must match event system):\n * `ticket`
+          \n * `visitor` \n "
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Participants retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: John Doe
+                      required:
+                      - id
+                      - name
+                required:
+                - success
+                - message
+                - data
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+  "/v1/events/{event_id}/lucky_draw/invalid_participants":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    get:
+      summary: Lists invalid participants for an event
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Retrieves all invalid participants for an event. Invalid participants
+        are excluded from lucky draw. Requires event access permission.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Invalid participants retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        event_id:
+                          type: integer
+                          example: 1
+                        participant:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            name:
+                              type: string
+                              example: John Doe
+                          required:
+                          - id
+                          - name
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - event_id
+                      - participant
+                required:
+                - success
+                - message
+                - data
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+    post:
+      summary: Creates an invalid participant
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Marks a participant as invalid (excluded from lucky draw). Exactly
+        one of ticket_id or visitor_id must be provided. Requires event admin, team
+        member, or org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Invalid participant created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      event_id:
+                        type: integer
+                        example: 1
+                      participant:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            example: 1
+                          name:
+                            type: string
+                            example: John Doe
+                        required:
+                        - id
+                        - name
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - event_id
+                    - participant
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - Exactly one of ticket_id or visitor_id must be present
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visitor_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                  description: Visitor ID (required if event uses visitors)
+                ticket_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                  description: Ticket ID (required if event uses tickets)
+        required: true
+    delete:
+      summary: Deletes all invalid participants for an event
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Removes all invalid participants for an event. Does not delete
+        the associated tickets or visitors. Requires event admin, team member, or
+        org admin role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: All invalid participants deleted successfully
+        '401':
+          description: Unauthorized
+  "/v1/events/{event_id}/lucky_draw/invalid_participants/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Invalid Participant ID
+      schema:
+        type: integer
+    delete:
+      summary: Deletes an invalid participant
+      tags:
+      - Lucky Draw
+      security:
+      - BearerAuth: []
+      description: Removes a participant from the invalid list. Does not delete the
+        associated ticket or visitor. Requires event admin, team member, or org admin
+        role.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Invalid participant deleted successfully
+        '404':
+          description: Invalid participant not found
   "/v1/events/{event_id}/vendors/{id}/stamp_count":
     parameters:
     - name: event_id
