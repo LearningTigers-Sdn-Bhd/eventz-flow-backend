@@ -1,0 +1,1088 @@
+# lucky_draw_spec.rb
+require 'swagger_helper'
+
+RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' do
+  # --- Setup Users & Tokens ---
+  let(:org_owner_user) { create(:org_owner) }
+  let(:organizer_user) { create(:organizer_user) }
+  let(:staff_user) { create(:staff_user) }
+
+  let(:org_owner_token) { JwtService.generate_tokens(org_owner_user)[:access_token] }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
+  let(:staff_token) { JwtService.generate_tokens(staff_user)[:access_token] }
+
+  # --- Setup Event ---
+  let!(:organizer_event) do
+    event = create(:event, title: 'Organizer Event', payment_status: :paid, use_ticket: false)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+    create(:event_assignment, role: :event_team_member, event: event, user: staff_user)
+    event
+  end
+
+  let!(:ticket_event) do
+    event = create(:event, title: 'Ticket Event', payment_status: :paid, use_ticket: true)
+    EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+    event
+  end
+
+  # --- Setup Test Data ---
+  let!(:visitor1) { create(:visitor, event: organizer_event, full_name: 'Visitor One', email: 'visitor1@example.com') }
+  let!(:visitor2) { create(:visitor, event: organizer_event, full_name: 'Visitor Two', email: 'visitor2@example.com') }
+  let!(:ticket1) { create(:ticket, event: ticket_event, attendee_name: 'Ticket One') }
+  let!(:ticket2) { create(:ticket, event: ticket_event, attendee_name: 'Ticket Two') }
+
+  # ============================================================
+  # Shared Schemas
+  # ============================================================
+  LUCKY_DRAW_CONFIG_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      event_id: { type: :integer, example: 1 },
+      draw_style: { type: :string, enum: ['wheel', 'slot', 'box'], example: 'wheel' },
+      use_gifts: { type: :boolean, example: false },
+      created_at: { type: :string, format: :date_time },
+      updated_at: { type: :string, format: :date_time }
+    },
+    required: %w[id event_id draw_style use_gifts]
+  }.freeze
+
+  GIFT_WINNER_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      gift_id: { type: :integer, example: 1 },
+      ticket_id: { type: :integer, nullable: true, example: 1 },
+      visitor_id: { type: :integer, nullable: true, example: 1 },
+      participant_name: { type: :string, nullable: true, example: 'John Doe', description: 'Name of the participant (from ticket or visitor)' },
+      drawn_at: { type: :string, format: :date_time },
+      created_at: { type: :string, format: :date_time },
+      updated_at: { type: :string, format: :date_time }
+    },
+    required: %w[id gift_id drawn_at]
+  }.freeze
+
+  GIFT_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      event_id: { type: :integer, example: 1 },
+      name: { type: :string, example: 'First Prize' },
+      order: { type: :integer, example: 1 },
+      winner_counts: { type: :integer, example: 3, description: 'Number of winners for this gift (must be > 0)' },
+      winners: {
+        type: :array,
+        items: GIFT_WINNER_SCHEMA
+      },
+      created_at: { type: :string, format: :date_time },
+      updated_at: { type: :string, format: :date_time }
+    },
+    required: %w[id event_id name order winner_counts]
+  }.freeze
+
+  PARTICIPANT_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      name: { type: :string, example: 'John Doe' }
+    },
+    required: %w[id name]
+  }.freeze
+
+  INVALID_PARTICIPANT_SCHEMA = {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      event_id: { type: :integer, example: 1 },
+      participant: PARTICIPANT_SCHEMA,
+      created_at: { type: :string, format: :date_time },
+      updated_at: { type: :string, format: :date_time }
+    },
+    required: %w[id event_id participant]
+  }.freeze
+
+  STANDARD_RESPONSE_SCHEMA = {
+    type: :object,
+    properties: {
+      success: { type: :boolean, example: true },
+      message: { type: :string, example: 'Success' },
+      data: {}
+    },
+    required: %w[success message]
+  }.freeze
+
+  # ============================================================
+  # GET /v1/events/:event_id/lucky_draw/config
+  # PUT /v1/events/:event_id/lucky_draw/config
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/config' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+
+    get 'Gets lucky draw configuration' do
+      tags 'Lucky Draw'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves the lucky draw configuration for an event. Creates default config if not exists. Requires event access permission.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Config retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: LUCKY_DRAW_CONFIG_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to have_key('id')
+          expect(data['data']).to have_key('draw_style')
+          expect(data['data']).to have_key('use_gifts')
+        end
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+
+        run_test!
+      end
+
+      response '404', 'Event not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Event not found' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { 99999 }
+
+        run_test!
+      end
+    end
+
+    put 'Updates lucky draw configuration' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Updates the lucky draw configuration. Requires event admin or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :config, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          draw_style: { type: :string, enum: ['wheel', 'slot', 'box'], example: 'wheel', description: 'Draw style type' },
+          use_gifts: { type: :boolean, example: false, description: 'Whether to use gifts system' }
+        }
+      }
+
+      response '200', 'Config updated successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: LUCKY_DRAW_CONFIG_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:config) { { draw_style: 'slot', use_gifts: true } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['draw_style']).to eq('slot')
+          expect(data['data']['use_gifts']).to be true
+        end
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+        let(:config) { { draw_style: 'wheel' } }
+
+        run_test!
+      end
+
+      response '403', 'Forbidden - insufficient permissions' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Forbidden' }
+               }
+
+        let(:unauthorized_user) { create(:user) }
+        let(:unauthorized_token) { JwtService.generate_tokens(unauthorized_user)[:access_token] }
+        let(:Authorization) { "Bearer #{unauthorized_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:config) { { draw_style: 'wheel' } }
+
+        run_test!
+      end
+
+      response '422', 'Validation failed' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   },
+                   example: [{ field: "draw_style", message: "is not included in the list" }]
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:config) { { draw_style: 'invalid_style' } }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # GET /v1/events/:event_id/lucky_draw/gifts
+  # POST /v1/events/:event_id/lucky_draw/gifts
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/gifts' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+
+    get 'Lists gifts for an event' do
+      tags 'Lucky Draw'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves all gifts for an event, ordered by order field. Includes winners for each gift. Requires event access permission.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Gifts retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :array,
+                   items: GIFT_SCHEMA
+                 }
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+
+        before do
+          create(:gift, event: organizer_event, name: 'Gift One', order: 1, winner_counts: 3)
+          create(:gift, event: organizer_event, name: 'Gift Two', order: 2, winner_counts: 2)
+          # This gift should be filtered out (winner_counts = 0)
+          # Use update_column to bypass validation since we're testing the filter behavior
+          gift_zero = create(:gift, event: organizer_event, name: 'Gift Zero', order: 3, winner_counts: 1)
+          gift_zero.update_column(:winner_counts, 0)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to be_an(Array)
+          expect(data['data'].length).to eq(2) # Should only return gifts with winner_counts > 0
+          expect(data['data'].map { |g| g['name'] }).not_to include('Gift Zero')
+        end
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+
+        run_test!
+      end
+    end
+
+    post 'Creates a gift' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Creates a new gift for an event. Order is auto-calculated if not provided. Requires event admin or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :gift, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          name: { type: :string, example: 'First Prize', description: 'Gift name' },
+          order: { type: :integer, example: 1, description: 'Display order (auto-calculated if not provided)' },
+          winner_counts: { type: :integer, example: 3, description: 'Number of winners for this gift (must be > 0, defaults to 1)' }
+        },
+        required: ['name']
+      }
+
+      response '201', 'Gift created successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: GIFT_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:gift) { { name: 'New Gift' } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['name']).to eq('New Gift')
+          expect(data['data']['winner_counts']).to eq(1) # Default should be 1
+        end
+      end
+
+      response '201', 'Gift created with winner_counts' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: GIFT_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:gift) { { name: 'Gift with Winners', winner_counts: 5 } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['name']).to eq('Gift with Winners')
+          expect(data['data']['winner_counts']).to eq(5)
+        end
+      end
+
+      response '422', 'Validation failed - empty name' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   },
+                   example: [{ field: "name", message: "can't be blank" }]
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:gift) { { name: '' } }
+
+        run_test!
+      end
+
+      response '422', 'Validation failed - winner_counts must be greater than 0' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:gift) { { name: 'Invalid Gift', winner_counts: 0 } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be false
+          expect(data['errors']).to be_an(Array)
+          expect(data['errors'].any? { |e| e.is_a?(Hash) && (e['message']&.include?('Winner counts') || e['message']&.include?('greater than')) }).to be true
+        end
+      end
+    end
+  end
+
+  # ============================================================
+  # GET /v1/events/:event_id/lucky_draw/gifts/:id
+  # PUT /v1/events/:event_id/lucky_draw/gifts/:id
+  # DELETE /v1/events/:event_id/lucky_draw/gifts/:id
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/gifts/{id}' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Gift ID'
+
+    get 'Gets a specific gift' do
+      tags 'Lucky Draw'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves a specific gift with its winners. Requires event access permission.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Gift retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: GIFT_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 3) }
+        let(:id) { gift.id }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['id']).to eq(gift.id)
+          expect(data['data']['name']).to eq('Test Gift')
+        end
+      end
+
+      response '404', 'Gift not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Gift not found' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { 99999 }
+
+        run_test!
+      end
+    end
+
+    put 'Updates a gift' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Updates a gift. Requires event admin or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :gift, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          name: { type: :string, example: 'Updated Gift Name', description: 'Gift name' },
+          order: { type: :integer, example: 2, description: 'Display order' },
+          winner_counts: { type: :integer, example: 5, description: 'Number of winners for this gift (must be > 0)' }
+        }
+      }
+
+      response '200', 'Gift updated successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: GIFT_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift_record) { create(:gift, event: organizer_event, name: 'Original Gift', order: 1, winner_counts: 2) }
+        let(:id) { gift_record.id }
+        let(:gift) { { name: 'Updated Gift' } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['name']).to eq('Updated Gift')
+        end
+      end
+
+      response '422', 'Validation failed - empty name' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   },
+                   example: [{ field: "name", message: "can't be blank" }]
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift_record) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 2) }
+        let(:id) { gift_record.id }
+        let(:gift) { { name: '' } }
+
+        run_test!
+      end
+
+      response '422', 'Validation failed - winner_counts must be greater than 0' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift_record) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 3) }
+        let(:id) { gift_record.id }
+        let(:gift) { { winner_counts: 0 } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be false
+          expect(data['errors']).to be_an(Array)
+          expect(data['errors'].any? { |e| e.is_a?(Hash) && (e['message']&.include?('Winner counts') || e['message']&.include?('greater than')) }).to be true
+        end
+      end
+    end
+
+    delete 'Deletes a gift' do
+      tags 'Lucky Draw'
+      security [{ BearerAuth: [] }]
+      description 'Deletes a gift and all its winners (cascade delete). Requires event admin or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '204', 'Gift deleted successfully' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Gift to Delete', order: 1, winner_counts: 1) }
+        let(:id) { gift.id }
+
+        run_test!
+      end
+
+      response '404', 'Gift not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Gift not found' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { 99999 }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # POST /v1/events/:event_id/lucky_draw/gifts/:gift_id/winners
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'gift_id', in: :path, type: :integer, required: true, description: 'Gift ID'
+
+    post 'Creates a gift winner' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Creates a winner for a gift. Exactly one of ticket_id or visitor_id must be provided. Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :winner, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          ticket_id: { type: :integer, nullable: true, example: 1, description: 'Ticket ID (required if event uses tickets)' },
+          visitor_id: { type: :integer, nullable: true, example: 1, description: 'Visitor ID (required if event uses visitors)' }
+        }
+      }
+
+      response '201', 'Winner created successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: GIFT_WINNER_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 3) }
+        let(:gift_id) { gift.id }
+        let(:winner) { { visitor_id: visitor1.id } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']['visitor_id']).to eq(visitor1.id)
+          expect(data['data']['gift_id']).to eq(gift.id)
+        end
+      end
+
+      response '422', 'Validation failed' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   },
+                   example: [{ field: "base", message: "Exactly one of ticket_id or visitor_id must be present" }]
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 2) }
+        let(:gift_id) { gift.id }
+        let(:winner) { {} }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # POST /v1/events/:event_id/lucky_draw/gifts/:gift_id/winners/bulk
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners/bulk' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'gift_id', in: :path, type: :integer, required: true, description: 'Gift ID'
+
+    post 'Creates multiple gift winners' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Creates multiple winners for a gift in a single transaction (all-or-nothing). Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :bulk_winners, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          winners: {
+            type: :array,
+            items: {
+              type: :object,
+              properties: {
+                ticket_id: { type: :integer, nullable: true, example: 1 },
+                visitor_id: { type: :integer, nullable: true, example: 1 }
+              }
+            },
+            example: [
+              { visitor_id: 1 },
+              { visitor_id: 2 }
+            ]
+          }
+        },
+        required: ['winners']
+      }
+
+      response '201', 'Winners created successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :array,
+                   items: GIFT_WINNER_SCHEMA
+                 }
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 5) }
+        let(:gift_id) { gift.id }
+        let(:bulk_winners) { { winners: [{ visitor_id: visitor1.id }, { visitor_id: visitor2.id }] } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to be_an(Array)
+          expect(data['data'].length).to eq(2)
+        end
+      end
+
+      response '422', 'Validation failed' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: { type: :object }
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 2) }
+        let(:gift_id) { gift.id }
+        let(:bulk_winners) { { winners: [] } }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # DELETE /v1/events/:event_id/lucky_draw/gifts/:gift_id/winners/:id
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/gifts/{gift_id}/winners/{id}' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'gift_id', in: :path, type: :integer, required: true, description: 'Gift ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Winner ID'
+
+    delete 'Deletes a gift winner' do
+      tags 'Lucky Draw'
+      security [{ BearerAuth: [] }]
+      description 'Deletes a winner. Does not delete the associated ticket or visitor. Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '204', 'Winner deleted successfully' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 3) }
+        let(:gift_id) { gift.id }
+        let!(:winner) { create(:gift_winner, gift: gift, visitor: visitor1) }
+        let(:id) { winner.id }
+
+        run_test!
+      end
+
+      response '404', 'Winner not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Winner not found' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:gift) { create(:gift, event: organizer_event, name: 'Test Gift', order: 1, winner_counts: 2) }
+        let(:gift_id) { gift.id }
+        let(:id) { 99999 }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # GET /v1/events/:event_id/lucky_draw/participants
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/participants' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+
+    get 'Lists participants for an event' do
+      tags 'Lucky Draw'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves eligible participants for lucky draw. Respects event ticket/visitor system. Excludes winners and invalid participants by default. Requires event access permission.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :exclude_winners, in: :query, type: :boolean, required: false, description: 'Exclude participants who have won any gift (default: true)'
+      parameter name: :exclude_invalid, in: :query, type: :boolean, required: false, description: 'Exclude invalid participants (default: true)'
+      parameter name: :type, in: :query, type: :string, required: false, enum: ['ticket', 'visitor'], description: 'Filter by participant type (must match event system)'
+
+      response '200', 'Participants retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :array,
+                   items: PARTICIPANT_SCHEMA
+                 }
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to be_an(Array)
+          if data['data'].any?
+            participant = data['data'].first
+            expect(participant).to have_key('id')
+            expect(participant).to have_key('name')
+            expect(participant).not_to have_key('ticket_id')
+            expect(participant).not_to have_key('visitor_id')
+          end
+        end
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # GET /v1/events/:event_id/lucky_draw/invalid_participants
+  # POST /v1/events/:event_id/lucky_draw/invalid_participants
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/invalid_participants' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+
+    get 'Lists invalid participants for an event' do
+      tags 'Lucky Draw'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Retrieves all invalid participants for an event. Invalid participants are excluded from lucky draw. Requires event access permission.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Invalid participants retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: {
+                   type: :array,
+                   items: INVALID_PARTICIPANT_SCHEMA
+                 }
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+
+        before do
+          create(:invalid_participant, event: organizer_event, visitor: visitor1)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to be_an(Array)
+          if data['data'].any?
+            invalid = data['data'].first
+            expect(invalid).to have_key('participant')
+            expect(invalid['participant']).to have_key('id')
+            expect(invalid['participant']).to have_key('name')
+          end
+        end
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+
+        run_test!
+      end
+    end
+
+    post 'Creates an invalid participant' do
+      tags 'Lucky Draw'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Marks a participant as invalid (excluded from lucky draw). Exactly one of ticket_id or visitor_id must be provided. Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+      parameter name: :invalid_participant, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          visitor_id: { type: :integer, nullable: true, example: 1, description: 'Visitor ID (required if event uses visitors)' },
+          ticket_id: { type: :integer, nullable: true, example: 1, description: 'Ticket ID (required if event uses tickets)' }
+        }
+      }
+
+      response '201', 'Invalid participant created successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Success' },
+                 data: INVALID_PARTICIPANT_SCHEMA
+               },
+               required: %w[success message data]
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:invalid_participant) { { visitor_id: visitor2.id } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['success']).to be true
+          expect(data['data']).to have_key('participant')
+        end
+      end
+
+      response '422', 'Validation failed' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: false },
+                 message: { type: :string, example: 'Validation failed' },
+                 errors: {
+                   type: :array,
+                   items: {
+                     type: :object,
+                     properties: {
+                       field: { type: :string },
+                       message: { type: :string }
+                     }
+                   },
+                   example: [{ field: "base", message: "Exactly one of ticket_id or visitor_id must be present" }]
+                 }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:invalid_participant) { {} }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # DELETE /v1/events/:event_id/lucky_draw/invalid_participants/:id
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/invalid_participants/{id}' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Invalid Participant ID'
+
+    delete 'Deletes an invalid participant' do
+      tags 'Lucky Draw'
+      security [{ BearerAuth: [] }]
+      description 'Removes a participant from the invalid list. Does not delete the associated ticket or visitor. Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '204', 'Invalid participant deleted successfully' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let!(:invalid_participant) { create(:invalid_participant, event: organizer_event, visitor: visitor1) }
+        let(:id) { invalid_participant.id }
+
+        run_test!
+      end
+
+      response '404', 'Invalid participant not found' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Invalid participant not found' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+        let(:id) { 99999 }
+
+        run_test!
+      end
+    end
+  end
+
+  # ============================================================
+  # DELETE /v1/events/:event_id/lucky_draw/invalid_participants/destroy_all (destroy_all)
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/invalid_participants/destroy_all' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+
+    delete 'Deletes all invalid participants for an event' do
+      tags 'Lucky Draw'
+      security [{ BearerAuth: [] }]
+      description 'Removes all invalid participants for an event. Does not delete the associated tickets or visitors. Requires event admin, team member, or org admin role.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '204', 'All invalid participants deleted successfully' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:event_id) { organizer_event.id }
+
+        before do
+          create(:invalid_participant, event: organizer_event, visitor: visitor1)
+          create(:invalid_participant, event: organizer_event, visitor: visitor2)
+        end
+
+        run_test!
+      end
+
+      response '401', 'Unauthorized' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string, example: 'Unauthorized' }
+               }
+
+        let(:Authorization) { nil }
+        let(:event_id) { organizer_event.id }
+
+        run_test!
+      end
+    end
+  end
+end
