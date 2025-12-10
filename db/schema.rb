@@ -304,6 +304,30 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
   end
 
+  create_table "gift_winners", force: :cascade do |t|
+    t.bigint "gift_id", null: false
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.datetime "drawn_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["gift_id"], name: "index_gift_winners_on_gift_id"
+    t.index ["ticket_id"], name: "index_gift_winners_on_ticket_id"
+    t.index ["visitor_id"], name: "index_gift_winners_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "gift_winners_exactly_one_participant"
+  end
+
+  create_table "gifts", force: :cascade do |t|
+    t.bigint "lucky_draw_session_id", null: false
+    t.string "name", null: false
+    t.integer "order", default: 0, null: false
+    t.integer "winner_counts", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lucky_draw_session_id", "order"], name: "index_gifts_on_lucky_draw_session_id_and_order"
+    t.index ["lucky_draw_session_id"], name: "index_gifts_on_lucky_draw_session_id"
+  end
+
   create_table "group_affiliates", force: :cascade do |t|
     t.bigint "group_id", null: false
     t.bigint "vendor_id", null: false
@@ -333,11 +357,41 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
     t.index ["name"], name: "index_groups_on_name"
   end
 
+  create_table "invalid_participants", force: :cascade do |t|
+    t.bigint "lucky_draw_session_id", null: false
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lucky_draw_session_id", "ticket_id"], name: "index_invalid_participants_on_session_id_and_ticket_id_unique", unique: true, where: "(ticket_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id", "visitor_id"], name: "index_invalid_participants_on_session_id_and_visitor_id_unique", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id"], name: "index_invalid_participants_on_lucky_draw_session_id"
+    t.index ["ticket_id"], name: "index_invalid_participants_on_ticket_id"
+    t.index ["visitor_id"], name: "index_invalid_participants_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "invalid_participants_exactly_one_participant"
+  end
+
   create_table "item_categories", force: :cascade do |t|
     t.string "name"
     t.boolean "active"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "lucky_draw_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "title", null: false
+    t.date "draw_date"
+    t.string "logo"
+    t.jsonb "draw_styles", default: {}
+    t.jsonb "wrapper_background", default: {}
+    t.boolean "use_gifts", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
+    t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
+    t.index ["event_id"], name: "index_lucky_draw_sessions_on_event_id"
+    t.index ["wrapper_background"], name: "index_lucky_draw_sessions_on_wrapper_background", using: :gin
   end
 
   create_table "orders", force: :cascade do |t|
@@ -586,10 +640,18 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "gift_winners", "gifts"
+  add_foreign_key "gift_winners", "tickets", on_delete: :cascade
+  add_foreign_key "gift_winners", "visitors", on_delete: :cascade
+  add_foreign_key "gifts", "lucky_draw_sessions"
   add_foreign_key "group_affiliates", "groups"
   add_foreign_key "group_affiliates", "users", column: "vendor_id"
   add_foreign_key "group_members", "groups"
   add_foreign_key "group_members", "users"
+  add_foreign_key "invalid_participants", "lucky_draw_sessions"
+  add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
+  add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
+  add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "password_resets", "users"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
