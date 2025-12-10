@@ -293,7 +293,7 @@ paths:
           type: string
       responses:
         '200':
-          description: API keys retrieved successfully
+          description: API keys retrieved successfully for organizer
           content:
             application/json:
               schema:
@@ -306,6 +306,8 @@ paths:
                     name:
                       type: string
                       nullable: true
+                    is_active:
+                      type: boolean
                     last_used_at:
                       type: string
                       format: date_time
@@ -315,6 +317,7 @@ paths:
                       format: date_time
                   required:
                   - id
+                  - is_active
                   - created_at
         '403':
           description: Forbidden (Member cannot access)
@@ -363,7 +366,7 @@ paths:
           type: string
       responses:
         '201':
-          description: API key created successfully without name
+          description: API key created successfully for organizer
           content:
             application/json:
               schema:
@@ -374,6 +377,8 @@ paths:
                   name:
                     type: string
                     nullable: true
+                  is_active:
+                    type: boolean
                   raw_key:
                     type: string
                     description: The raw API key - save this securely, it will not
@@ -463,11 +468,9 @@ paths:
           type: string
       responses:
         '204':
-          description: API key revoked successfully
+          description: API key revoked successfully for organizer
         '404':
           description: Not Found (Member cannot access org_owner key)
-        '403':
-          description: Forbidden (Only org_owner can revoke API keys)
         '401':
           description: Unauthorized (Empty token)
   "/v1/auth/password":
@@ -782,6 +785,52 @@ paths:
                           type: string
                         percentage:
                           type: number
+  "/v1/events/{event_id}/event_exhibition_contractor":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show event_exhibition_contractor
+      tags:
+      - Event Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+    post:
+      summary: assign event_exhibition_contractor
+      tags:
+      - Event Exhibition Contractors
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exhibition_contractor_profile_id:
+                  type: integer
+              required:
+              - exhibition_contractor_profile_id
+    delete:
+      summary: remove event_exhibition_contractor
+      tags:
+      - Event Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
   "/v1/events/{event_id}/event_locations":
     parameters:
     - name: event_id
@@ -1287,6 +1336,374 @@ paths:
           description: Forbidden (Not authorized to delete)
         '404':
           description: Event location not found
+  "/v1/event_printing_services/{event_printing_service_id}/event_printing_service_prices":
+    parameters:
+    - name: event_printing_service_id
+      in: path
+      description: event_printing_service_id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list event printing service prices
+      tags:
+      - Event Printing Service Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create event printing service price
+      tags:
+      - Event Printing Service Prices
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: number
+                  format: float
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+                label:
+                  type: string
+              required:
+              - price
+              - start_date
+              - label
+  "/v1/event_printing_services/{event_printing_service_id}/event_printing_service_prices/{id}":
+    parameters:
+    - name: event_printing_service_id
+      in: path
+      description: event_printing_service_id
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show event printing service price
+      tags:
+      - Event Printing Service Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    patch:
+      summary: update event printing service price
+      tags:
+      - Event Printing Service Prices
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: number
+                  format: float
+                end_date:
+                  type: string
+                  format: date-time
+    delete:
+      summary: delete event printing service price
+      tags:
+      - Event Printing Service Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/event_printing_services":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list event printing services
+      tags:
+      - Event Printing Services
+      security:
+      - api_key: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create event printing service
+      tags:
+      - Event Printing Services
+      security:
+      - api_key: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                printing_service_id:
+                  type: integer
+                  example: 1
+              required:
+              - printing_service_id
+  "/v1/events/{event_id}/event_printing_services/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show event printing service
+      tags:
+      - Event Printing Services
+      security:
+      - api_key: []
+      responses:
+        '200':
+          description: successful
+    delete:
+      summary: delete event printing service
+      tags:
+      - Event Printing Services
+      security:
+      - api_key: []
+      responses:
+        '204':
+          description: no content
+  "/v1/event_rentable_items/{event_rentable_item_id}/event_rentable_item_prices":
+    parameters:
+    - name: event_rentable_item_id
+      in: path
+      description: event_rentable_item_id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list event rentable item prices
+      tags:
+      - Event Rentable Item Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create event rentable item price
+      tags:
+      - Event Rentable Item Prices
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: number
+                  format: float
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+                label:
+                  type: string
+              required:
+              - price
+              - start_date
+              - label
+  "/v1/event_rentable_items/{event_rentable_item_id}/event_rentable_item_prices/{id}":
+    parameters:
+    - name: event_rentable_item_id
+      in: path
+      description: event_rentable_item_id
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show event rentable item price
+      tags:
+      - Event Rentable Item Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    patch:
+      summary: update event rentable item price
+      tags:
+      - Event Rentable Item Prices
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: number
+                  format: float
+                end_date:
+                  type: string
+                  format: date-time
+    delete:
+      summary: delete event rentable item price
+      tags:
+      - Event Rentable Item Prices
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/event_rentable_items":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list event rentable items
+      tags:
+      - Event Rentable Items
+      security:
+      - api_key: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create event rentable item
+      tags:
+      - Event Rentable Items
+      security:
+      - api_key: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rentable_item_id:
+                  type: integer
+                  example: 1
+              required:
+              - rentable_item_id
+  "/v1/events/{event_id}/event_rentable_items/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show event rentable item
+      tags:
+      - Event Rentable Items
+      security:
+      - api_key: []
+      responses:
+        '200':
+          description: successful
+    delete:
+      summary: delete event rentable item
+      tags:
+      - Event Rentable Items
+      security:
+      - api_key: []
+      responses:
+        '204':
+          description: no content
   "/v1/events/{event_id}/staff":
     parameters:
     - name: event_id
@@ -2544,6 +2961,209 @@ paths:
           description: Forbidden (Member user)
         '404':
           description: Event not found
+  "/v1/exhibition_contractor_profiles/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show exhibition_contractor_profile
+      tags:
+      - Exhibition Contractor Profiles
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+    patch:
+      summary: update exhibition_contractor_profile
+      tags:
+      - Exhibition Contractor Profiles
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name:
+                  type: string
+                contact_person:
+                  type: string
+                contact_email:
+                  type: string
+                contact_phone:
+                  type: string
+  "/v1/exhibition_contractors":
+    get:
+      summary: list exhibition_contractors
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create exhibition_contractor
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '422':
+          description: unprocessable entity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                email:
+                  type: string
+                phone:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+                exhibition_contractor_profile_attributes:
+                  type: object
+                  properties:
+                    company_name:
+                      type: string
+                    contact_person:
+                      type: string
+                    contact_email:
+                      type: string
+                    contact_phone:
+                      type: string
+                  required:
+                  - company_name
+                  - contact_person
+                  - contact_email
+                  - contact_phone
+              required:
+              - full_name
+              - email
+              - password
+              - password_confirmation
+  "/v1/exhibition_contractors/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show exhibition_contractor
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+    patch:
+      summary: update exhibition_contractor
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                email:
+                  type: string
+                phone:
+                  type: string
+                exhibition_contractor_profile_attributes:
+                  type: object
+                  properties:
+                    company_name:
+                      type: string
+    delete:
+      summary: delete exhibition_contractor
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+  "/v1/exhibition_contractors/{id}/toggle_status":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: toggle_status exhibition_contractor
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+              required:
+              - status
+  "/v1/exhibition_contractors/{id}/assigned_events":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list assigned events
+      tags:
+      - Exhibition Contractors
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
   "/v1/events/{event_id}/exhibitor_kits":
     parameters:
     - name: event_id
@@ -2638,6 +3258,8 @@ paths:
       responses:
         '200':
           description: successful
+        '403':
+          description: forbidden
       requestBody:
         content:
           application/json:
@@ -3352,6 +3974,351 @@ paths:
               type: file
         required: true
         description: Excel file (.xlsx) with ticket data
+  "/v1/item_categories":
+    get:
+      summary: list item categories
+      tags:
+      - Item Categories
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+        '403':
+          description: forbidden
+    post:
+      summary: create item category
+      tags:
+      - Item Categories
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '401':
+          description: unauthorized
+        '403':
+          description: forbidden
+        '422':
+          description: unprocessable entity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: New Category
+                active:
+                  type: boolean
+                  example: true
+              required:
+              - name
+              - active
+  "/v1/item_categories/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show item category
+      tags:
+      - Item Categories
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+        '403':
+          description: forbidden
+        '404':
+          description: not found
+    patch:
+      summary: update item category
+      tags:
+      - Item Categories
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+        '403':
+          description: forbidden
+        '404':
+          description: not found
+        '422':
+          description: unprocessable entity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Updated Category Name
+                active:
+                  type: boolean
+                  example: false
+    delete:
+      summary: delete item category
+      tags:
+      - Item Categories
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '401':
+          description: unauthorized
+        '403':
+          description: forbidden
+        '404':
+          description: not found
+  "/v1/printing_services":
+    get:
+      summary: list printing services
+      tags:
+      - Printing Services
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create printing service
+      tags:
+      - Printing Services
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                unit_of_measure:
+                  type: string
+                default_price:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+                item_category_id:
+                  type: integer
+              required:
+              - name
+              - unit_of_measure
+              - default_price
+              - status
+              - item_category_id
+  "/v1/printing_services/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show printing service
+      tags:
+      - Printing Services
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    patch:
+      summary: update printing service
+      tags:
+      - Printing Services
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                unit_of_measure:
+                  type: string
+                default_price:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+                item_category_id:
+                  type: integer
+    delete:
+      summary: delete printing service
+      tags:
+      - Printing Services
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '403':
+          description: forbidden
+  "/v1/rentable_items":
+    get:
+      summary: list rentable items
+      tags:
+      - Rentable Items
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create rentable item
+      tags:
+      - Rentable Items
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                unit_of_measure:
+                  type: string
+                default_price:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+                item_category_id:
+                  type: integer
+              required:
+              - name
+              - unit_of_measure
+              - default_price
+              - status
+              - item_category_id
+  "/v1/rentable_items/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: id
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show rentable item
+      tags:
+      - Rentable Items
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    patch:
+      summary: update rentable item
+      tags:
+      - Rentable Items
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                unit_of_measure:
+                  type: string
+                default_price:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+                item_category_id:
+                  type: integer
+    delete:
+      summary: delete rentable item
+      tags:
+      - Rentable Items
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '403':
+          description: forbidden
   "/v1/events/{event_id}/vendors/{id}/stamp_count":
     parameters:
     - name: event_id
