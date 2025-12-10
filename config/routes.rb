@@ -123,6 +123,24 @@ Rails.application.routes.draw do
         resources :exhibitor_kit_payments, only: [:index, :show, :update]
       end
 
+      # Lucky Draw feature
+      namespace :lucky_draw do
+        resources :sessions, controller: 'lucky_draw_sessions' do
+          resources :gifts, only: [:index, :show, :create, :update, :destroy] do
+            resources :winners, only: [:create, :destroy], controller: 'gift_winners' do
+              collection do
+                post :bulk
+              end
+            end
+          end
+          resources :participants, only: [:index], controller: 'lucky_draw_participants'
+          resources :invalid_participants, only: [:index, :create, :destroy] do
+            collection do
+              delete :destroy_all
+            end
+          end
+        end
+      end
 
       # Event Metrics moved outside to avoid impacting event resources
     end
@@ -166,7 +184,7 @@ Rails.application.routes.draw do
       resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
       resources :affiliates, controller: 'group_affiliates', only: [:index, :create, :destroy]
     end
-    
+
     # Vendor profile management (vendor-centric, not group-specific)
     resource :vendor_profile, only: [:show, :update]
 
@@ -183,10 +201,11 @@ Rails.application.routes.draw do
 
     resources :vouchers, only: [:index, :show, :create, :update, :destroy]
     resources :voucher_redemptions, only: [:create]
-    
+
     # Public route for serving voucher images + vendor profile images
     get '/voucher_images/:filename', to: 'vouchers#serve_image', constraints: { filename: /.+/ }
     get '/vendor_images/:filename', to: 'vendor_profiles#serve_image', constraints: { filename: /.+/ }
+    get '/lucky_draw_session_logos/:filename', to: 'v1/lucky_draw/lucky_draw_sessions#serve_logo', constraints: { filename: /.+/ }
 
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do
