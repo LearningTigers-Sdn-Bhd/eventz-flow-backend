@@ -10,7 +10,17 @@ module V1
       authorize @event, :show?
       
       merchants = @event.event_vendors.merchants.includes(:vendor)
-      exhibitors = @event.event_vendors.exhibitors.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members])
+      exhibitors = @event.event_vendors.exhibitors.includes(
+        :vendor, 
+        :exhibitor_kit, 
+        exhibitor_kit: [
+          :exhibitor_team_members, 
+          :exhibitor_kit_items, 
+          :exhibitor_kit_printings,
+          exhibitor_kit_items: :rentable_item,
+          exhibitor_kit_printings: :printing_service
+        ]
+      )
       event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
 
       render json: event_vendors.map { |event_vendor| format_event_vendor(event_vendor) },
@@ -104,7 +114,17 @@ module V1
     def set_event_vendor
       @event_vendor = @event.event_vendors.includes(:vendor).find(params[:id])
       if @event_vendor.is_a?(Exhibitor)
-        @event_vendor = @event.event_vendors.exhibitors.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(params[:id])
+        @event_vendor = @event.event_vendors.exhibitors.includes(
+          :vendor, 
+          :exhibitor_kit, 
+          exhibitor_kit: [
+            :exhibitor_team_members,
+            :exhibitor_kit_items,
+            :exhibitor_kit_printings,
+            exhibitor_kit_items: :rentable_item,
+            exhibitor_kit_printings: :printing_service
+          ]
+        ).find(params[:id])
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event vendor not found.' }, status: :not_found
@@ -189,8 +209,45 @@ module V1
         amount_paid: exhibitor_kit.amount_paid,
         payment_note: exhibitor_kit.payment_note,
         indemnity_link: exhibitor_kit.indemnity_link,
-        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json
+        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json,
+        exhibitor_kit_items: exhibitor_kit.exhibitor_kit_items.map { |item| format_exhibitor_kit_item(item) },
+        exhibitor_kit_printings: exhibitor_kit.exhibitor_kit_printings.map { |printing| format_exhibitor_kit_printing(printing) },
       }
     end
+
+    def format_exhibitor_kit_item(item)
+      {
+        id: item.id,
+        exhibitor_kit_id: item.exhibitor_kit_id,
+        rentable_item_id: item.rentable_item_id,
+        quantity: item.quantity,
+        agreed_price: item.agreed_price,
+        notes: item.notes,
+        rentable_item: item.rentable_item ? {
+          id: item.rentable_item.id,
+          name: item.rentable_item.name,
+          unit_of_measure: item.rentable_item.unit_of_measure,
+          default_price: item.rentable_item.default_price
+        } : nil
+      }
+    end
+    
+    def format_exhibitor_kit_printing(printing)
+      {
+        id: printing.id,
+        exhibitor_kit_id: printing.exhibitor_kit_id,
+        printing_service_id: printing.printing_service_id,
+        quantity: printing.quantity,
+        agreed_price: printing.agreed_price,
+        file_reference: printing.file_reference,
+        notes: printing.notes,
+        printing_service: printing.printing_service ? {
+          id: printing.printing_service.id,
+          name: printing.printing_service.name,
+          unit_of_measure: printing.printing_service.unit_of_measure,
+          default_price: printing.printing_service.default_price
+        } : nil
+      }
+    end    
   end
 end
