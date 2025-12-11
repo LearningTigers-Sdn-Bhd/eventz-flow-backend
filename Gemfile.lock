@@ -191,6 +191,9 @@ GEM
     nokogiri (1.18.10-x86_64-linux-musl)
       racc (~> 1.4)
     ostruct (0.6.3)
+    parallel (1.27.0)
+    parallel_tests (5.5.0)
+      parallel
     pg (1.6.2)
     pg (1.6.2-aarch64-linux)
     pg (1.6.2-aarch64-linux-musl)
@@ -368,6 +371,7 @@ DEPENDENCIES
   groupdate
   jwt
   ostruct
+  parallel_tests
   pg (~> 1.1)
   pry
   puma (>= 5.0)

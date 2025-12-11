@@ -70,6 +70,8 @@ group :development, :test do
   gem "debug", platforms: %i[ mri windows ]
   # Testing Framework
   gem "rspec-rails", "~> 6.0"
+  # Parallel test execution for faster test runs
+  gem "parallel_tests"
   # Test Data Generation
   gem "factory_bot_rails"
   gem "faker"

@@ -17,7 +17,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: eventz_flow_api_test
+          POSTGRES_DB: postgres
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -28,9 +28,13 @@ jobs:
 
     env:
       RAILS_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/eventz_flow_api_test
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGPORT: 5432
       SECRET_KEY_BASE: test_secret_key_base_for_ci
       CI: true
+      PARALLEL_TEST_PROCESSORS: 4
 
     steps:
       - name: Checkout code
@@ -47,13 +51,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpq-dev build-essential
 
-      - name: Setup database
+      - name: Setup parallel test databases
         run: |
-          bundle exec rails db:create
-          bundle exec rails db:schema:load
+          bundle exec rake parallel:create
+          bundle exec rake parallel:load_schema
 
-      - name: Run tests
-        run: bundle exec rspec
+      - name: Run tests in parallel
+        run: bundle exec parallel_rspec spec/ -n $PARALLEL_TEST_PROCESSORS
 
       - name: Generate Swagger documentation
         run: bundle exec rake rswag:specs:swaggerize
