@@ -5,13 +5,15 @@ module V1
     before_action :set_event_printing_service, only: %i[show update destroy]
 
     def index
-      @event_printing_services = policy_scope(EventPrintingService).where(event_id: @event.id)
-      render json: @event_printing_services
+      @event_printing_services = policy_scope(EventPrintingService)
+        .where(event_id: @event.id)
+        .includes(printing_service: :item_category)
+      render json: @event_printing_services, include: { printing_service: { include: :item_category } }
     end
 
     def show
       authorize @event_printing_service
-      render json: @event_printing_service
+      render json: @event_printing_service, include: { printing_service: { include: :item_category } }
     end
 
     def create
@@ -19,7 +21,7 @@ module V1
       authorize @event_printing_service
 
       if @event_printing_service.save
-        render json: @event_printing_service, status: :created
+        render json: @event_printing_service, include: { printing_service: { include: :item_category } }, status: :created
       else
         render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
       end
@@ -28,7 +30,7 @@ module V1
     def update
       authorize @event_printing_service
       if @event_printing_service.update(event_printing_service_params)
-        render json: @event_printing_service
+        render json: @event_printing_service, include: { printing_service: { include: :item_category } }
       else
         render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
       end

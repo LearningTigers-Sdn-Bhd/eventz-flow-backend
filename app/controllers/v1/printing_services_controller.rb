@@ -4,13 +4,13 @@ module V1
     before_action :set_printing_service, only: %i[show update destroy]
 
     def index
-      @printing_services = policy_scope(PrintingService)
-      render json: @printing_services
+      @printing_services = policy_scope(PrintingService).includes(:item_category)
+      render json: @printing_services, include: :item_category
     end
 
     def show
       authorize @printing_service
-      render json: @printing_service
+      render json: @printing_service, include: :item_category
     end
 
     def create
@@ -18,7 +18,7 @@ module V1
       authorize @printing_service
 
       if @printing_service.save
-        render json: @printing_service, status: :created
+        render json: @printing_service, status: :created, include: :item_category
       else
         render json: @printing_service.errors, status: :unprocessable_content
       end
@@ -27,7 +27,7 @@ module V1
     def update
       authorize @printing_service
       if @printing_service.update(printing_service_params)
-        render json: @printing_service
+        render json: @printing_service, include: :item_category
       else
         render json: @printing_service.errors, status: :unprocessable_content
       end

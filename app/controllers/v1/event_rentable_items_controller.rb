@@ -5,15 +5,20 @@ module V1
     before_action :set_event_rentable_item, only: %i[show update destroy]
 
     def index
-      # Apply policy scope and eager load the associated rentable_item
+      # Apply policy scope and eager load the associated rentable_item and item_category
       @event_rentable_items = policy_scope(EventRentableItem)
                                 .where(event_id: @event.id)
-                                .includes(:rentable_item) # Eager load rentable_item
-
+                                .includes(rentable_item: :item_category) # Eager load rentable_item with item_category
+  
       render json: @event_rentable_items.as_json(
         include: {
           rentable_item: {
-            only: [:id, :name, :description, :unit_of_measure, :default_price, :status]
+            only: [:id, :name, :description, :unit_of_measure, :default_price, :status, :item_category_id, :user_id, :created_at, :updated_at],
+            include: {
+              item_category: {
+                only: [:id, :name, :active, :created_at, :updated_at]
+              }
+            }
           }
         }
       )
