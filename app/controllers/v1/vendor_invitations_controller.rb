@@ -8,7 +8,13 @@ module V1
     def generate_link
       authorize @event, :update?
 
-      payload = { event_id: @event.id, organizer_id: current_user.id, exp: 7.days.from_now.to_i }
+      organizer_id = if current_user.role == 'org_owner' && params[:organizer_id].present?
+        params[:organizer_id]
+      else
+        current_user.id
+      end
+
+      payload = { event_id: @event.id, organizer_id: organizer_id, exp: 7.days.from_now.to_i }
 
       # Add group_id to the payload if provided
       if params[:group_id].present?
@@ -31,7 +37,8 @@ module V1
             id: @event.id,
             title: @event.title
           },
-          group_id: payload[:group_id]
+          group_id: payload[:group_id],
+          organizer_id: organizer_id
         },
         message: 'Invitation link generated successfully'
       )
