@@ -198,6 +198,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
     t.string "slug"
     t.boolean "use_exhibitor_kit", default: false, null: false
     t.boolean "allow_contractor_printing_services", default: false
+    t.boolean "use_business_matching", default: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
