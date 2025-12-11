@@ -1,10 +1,18 @@
 class EventPrintingServicePolicy < ApplicationPolicy
   def index?
-    user.org_owner? || user.organizer? || (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || (record&.event && user.is_event_staff?(record.event))
+    user.org_owner? || 
+    user.organizer? || 
+    (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || 
+    (record&.event && user.is_event_staff?(record.event)) ||
+    user.vendor?  # Allow vendors to browse printing services
   end
 
   def show?
-    user.org_owner? || user.organizer? || (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || (record&.event && user.is_event_staff?(record.event))
+    user.org_owner? || 
+    user.organizer? || 
+    (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || 
+    (record&.event && user.is_event_staff?(record.event)) ||
+    user.vendor?  # Allow vendors to view printing service details
   end
 
   def create?
@@ -28,7 +36,13 @@ class EventPrintingServicePolicy < ApplicationPolicy
       elsif user.exhibition_contractor? && user.exhibition_contractor_profile.present?
         scope.joins(event: :event_exhibition_contractors)
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
-      elsif user.is_staff? # Revert to direct event staff check for event-specific resources
+      elsif user.vendor?
+        scope.joins(:printing_service)
+             .joins(event: :event_vendors)
+             .where(printing_services: { status: PrintingService.statuses[:active] })
+             .where(event_vendors: { vendor_id: user.id })
+             .where(events: { use_exhibitor_kit: true })
+      elsif user.is_staff?
         scope.joins(event: :event_assignments)
              .where(event_assignments: { user_id: user.id, role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]] })
       else
