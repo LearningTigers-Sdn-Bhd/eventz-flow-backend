@@ -12,7 +12,7 @@ class CustomRequestPolicy < ApplicationPolicy
   end
 
   def update?
-    (user.admin? || user.organizer?) || owns_event_vendor_assigned_request?
+    (user.admin? || user.organizer?) || owns_event_vendor_assigned_request? || assigned_contractor_access?
   end
 
   def destroy?

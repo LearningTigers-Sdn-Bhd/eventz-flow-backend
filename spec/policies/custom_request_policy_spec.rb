@@ -34,8 +34,8 @@ RSpec.describe CustomRequestPolicy, type: :policy do
     end
     let(:user) { contractor_user }
       
-    it { is_expected.to permit_actions(%i[index show]) }
-    it { is_expected.to forbid_actions(%i[create update destroy]) }
+    it { is_expected.to permit_actions(%i[index show update]) }
+    it { is_expected.to forbid_actions(%i[create destroy]) }
   end
 
     context "for an exhibition contractor not assigned to the event" do
