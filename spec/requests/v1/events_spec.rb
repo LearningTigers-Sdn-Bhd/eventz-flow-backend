@@ -37,6 +37,22 @@ EVENT_INDEX_ITEM_SCHEMA = {
   }
 }.freeze
 
+BUSINESS_MATCHING_EVENT_SCHEMA = {
+  type: :array,
+  items: {
+    type: :object,
+    properties: {
+      id: { type: :integer, example: 1 },
+      title: { type: :string, example: 'Match Session 1' },
+      duration: { type: :integer, example: 30 },
+      location: { type: :string, example: 'Virtual Link' },
+      admin_email: { type: :string, example: 'match_admin@example.com' },
+      admin_wa_number: { type: :string, example: '628123456789' }
+    },
+    required: ['id', 'title', 'duration']
+  }
+}.freeze
+
 
 RSpec.describe 'V1::Events', type: :request do
   # --- Setup Users ---
@@ -471,6 +487,90 @@ RSpec.describe 'V1::Events', type: :request do
         let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { 99999 }
         run_test!
+      end
+    end
+  end
+
+  # =========================================================================
+  # GET /v1/events/{id}/business_matching_events
+  # =========================================================================
+
+  path '/v1/events/{id}/business_matching_events' do
+    parameter name: :id, in: :path, type: :integer, description: 'Event ID'
+
+    get 'Retrieves business matching events for a specific event' do
+      tags 'Events'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+
+      let(:bm_events_response_data) do
+        [
+          { id: 1, title: "Match Session 1", duration: 30, location: "Virtual Link", admin_email: "a1@example.com", admin_wa_number: "111" },
+          { id: 2, title: "Match Session 2", duration: 60, location: "Physical Room", admin_email: "a2@example.com", admin_wa_number: "222" }
+        ]
+      end
+
+      before do
+        allow_any_instance_of(BusinessMatchingService).to receive(:fetch_events).and_return(
+          BusinessMatchingService::ServiceResult.new(success: true, data: bm_events_response_data)
+        )
+      end
+
+      # 1. Success
+      response '200', 'Business matching events found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { event_paid.id }
+
+        before do
+          event_paid.update!(use_business_matching: true)
+        end
+
+        schema BUSINESS_MATCHING_EVENT_SCHEMA
+        run_test!
+      end
+
+      # 2. Forbidden (Member user - Pundit policy)
+      response '403', 'Forbidden (Member user)' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        let(:id) { event_paid.id }
+
+        before do
+          event_paid.update!(use_business_matching: true)
+        end
+        run_test!
+      end
+
+      # 3. Bad Request (Business matching not enabled for event)
+      response '400', 'Business matching not enabled for this event' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { event_paid.id }
+
+        before do
+          event_paid.update!(use_business_matching: false) # Ensure it's false
+        end
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['errors']).to eq('Business matching is not enabled for this event')
+        end
+      end
+
+      # 4. Service Error
+      response '500', 'Service error' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { event_paid.id }
+
+        before do
+          event_paid.update!(use_business_matching: true)
+          allow_any_instance_of(BusinessMatchingService).to receive(:fetch_events).and_return(
+            BusinessMatchingService::ServiceResult.new(success: false, errors: 'Webhook failed', status: 500)
+          )
+        end
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['errors']).to eq('Webhook failed')
+        end
       end
     end
   end

@@ -11,6 +11,9 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 require 'rspec/rails'
 require 'shoulda/matchers'
 require 'pundit/matchers'
+require 'webmock/rspec'
+
+WebMock.disable_net_connect!(allow_localhost: true)
 
 # --- Require support files (helpers, shared contexts, etc.) ---
 Dir[Rails.root.join('spec/support/**/*.rb')].sort.each { |f| require f }

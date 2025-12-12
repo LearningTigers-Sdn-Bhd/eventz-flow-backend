@@ -1,11 +1,10 @@
 module V1
   class EventsController < ApplicationController
-    # Ensure event is found and authorized before show, update, destroy, force_delete, and restore.
-    # We pass 'except: [:index, :create]' to ensure the before_action runs on the correct set of actions.
-    before_action :set_event, only: [:show, :update, :destroy, :force_delete, :restore]
+    # Ensure event is found and authorized before show, update, destroy, force_delete, restore, and business_matching_events.
+    before_action :set_event, except: [:index, :create]
 
     # Authorize the event instance *after* it's set
-    before_action :authorize_event, only: [:show, :update, :destroy, :force_delete, :restore]
+    before_action :authorize_event, except: [:index, :create]
 
     # Authorize the class for index/create (Pundit best practice)
     before_action -> { authorize Event, :index? }, only: [:index]
@@ -94,6 +93,26 @@ module V1
         render json: @event, status: :ok
       else
         render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
+      end
+    end
+
+    # GET /v1/events/:id/business_matching_events
+    def business_matching_events
+      unless @event.use_business_matching
+        return render json: { errors: "Business matching is not enabled for this event" }, status: :bad_request
+      end
+
+      begin
+        service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id, force_refresh: params[:force_refresh] == 'true')
+
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
+        end
+      rescue => e
+        # DEBUGGING: Render the actual error message
+        render json: { error: e.message, backtrace: e.backtrace.first(5) }, status: :internal_server_error
       end
     end
 

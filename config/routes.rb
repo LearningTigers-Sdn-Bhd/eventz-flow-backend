@@ -115,6 +115,9 @@ Rails.application.routes.draw do
       resources :event_printing_services do
         resources :event_printing_service_prices, controller: 'event_printing_service_prices'
       end
+
+      get 'business_matching_events', on: :member # New route for business matching events
+
       resources :event_rentable_items do
         resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
       end
@@ -153,6 +156,14 @@ Rails.application.routes.draw do
       end
 
       # Event Metrics moved outside to avoid impacting event resources
+    end
+
+    # Business Matching Availability
+    namespace :business_matching do
+      post 'receive', to: 'callbacks#receive'
+      scope 'events/:business_matching_event_id' do
+        resources :availability, only: [:index]
+      end
     end
 
     # Visitors stamps

@@ -86,6 +86,8 @@ group :test do
   gem "pundit-matchers"
   # Ensures a clean database slate between tests
   gem "database_cleaner"
+  # For stubbing HTTP requests in tests
+  gem "webmock"
 end
 
 group :development do

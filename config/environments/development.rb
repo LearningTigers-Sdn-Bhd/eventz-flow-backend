@@ -1,6 +1,9 @@
 require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
+  # Allow requests from ngrok tunnels during development
+  config.hosts << "*.ngrok-free.app" # For future ngrok sessions
+
   # Settings specified here will take precedence over those in config/application.rb.
 
   # Make code changes take effect immediately without server restart.

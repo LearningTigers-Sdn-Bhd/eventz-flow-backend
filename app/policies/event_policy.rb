@@ -64,6 +64,10 @@ class EventPolicy < ApplicationPolicy
     destroy?
   end
 
+  def business_matching_events?
+    show?
+  end
+
   # ============================================================
   # Analytics permissions
   # ============================================================
