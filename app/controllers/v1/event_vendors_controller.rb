@@ -17,6 +17,7 @@ module V1
           :exhibitor_team_members, 
           :exhibitor_kit_items, 
           :exhibitor_kit_printings,
+          :custom_requests,
           exhibitor_kit_items: :rentable_item,
           exhibitor_kit_printings: :printing_service
         ]
@@ -212,6 +213,7 @@ module V1
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json,
         exhibitor_kit_items: exhibitor_kit.exhibitor_kit_items.map { |item| format_exhibitor_kit_item(item) },
         exhibitor_kit_printings: exhibitor_kit.exhibitor_kit_printings.map { |printing| format_exhibitor_kit_printing(printing) },
+        custom_requests: exhibitor_kit.custom_requests.as_json(only: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :created_at, :updated_at])
       }
     end
 
