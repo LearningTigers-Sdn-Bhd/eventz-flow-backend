@@ -28,7 +28,8 @@ class EventPolicy < ApplicationPolicy
       user.is_organizer? ||
       user.is_event_admin?(record) ||
       user.is_event_team_member?(record) ||
-      user.is_event_vendor?(record)
+      user.is_event_vendor?(record) ||
+      user.exhibition_contractor_for?(record)
     )
   end
 
