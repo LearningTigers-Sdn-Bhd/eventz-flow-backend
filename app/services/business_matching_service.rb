@@ -8,14 +8,14 @@ class BusinessMatchingService < BaseService
 
   def fetch_events(event_id, force_refresh: false)
     cache_key = "business_matching_events_#{event_id}"
-    pending_key = "business_matching_events_pending_#{event_id}"
+    pending_key = "business_matching_events_pending_#{event_id}" # Still useful for initial async request
 
     unless force_refresh
       cached_data = Rails.cache.read(cache_key)
       return BaseService::ServiceResult.new(success: true, data: cached_data) if cached_data.present?
 
-      # Prevent infinite loops: if we recently triggered a fetch, wait for the callback.
       if Rails.cache.read(pending_key)
+        Rails.logger.info "Fetch Events request pending, returning empty data."
         return BaseService::ServiceResult.new(success: true, data: [])
       end
     end
@@ -27,23 +27,111 @@ class BusinessMatchingService < BaseService
       user_name: user.full_name,
       user_id: user.id
     }
-    Rails.logger.info "BusinessMatching Request Payload: #{payload.inspect}"
+    Rails.logger.info "BusinessMatching Request Payload (Fetch Events): #{payload.inspect}"
     response = _send_request(payload)
     
     if response.success?
       if response.data.is_a?(Hash) && response.data["accepted"] == true
         # Async response. Mark as pending to avoid loop and return empty array.
         Rails.cache.write(pending_key, true, expires_in: 2.minutes)
-        BaseService::ServiceResult.new(success: true, data: [])
+        Rails.logger.info "Fetch Events request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: [])
+      elsif response.data.is_a?(Array)
+         # Direct array response
+         events = _transform_events(response.data, event_id)
+         Rails.cache.write(cache_key, events, expires_in: 1.hour)
+         Rails.cache.delete(pending_key) # Data received, no longer pending
+         Rails.logger.info "Fetch Events synchronous response received and cached."
+         return BaseService::ServiceResult.new(success: true, data: events)
       elsif response.data.is_a?(Hash) && (response.data["output"].is_a?(Array) || response.data["data"].is_a?(Array) || response.data["results"].is_a?(Array))
         # Synchronous response
         raw_events = response.data["output"] || response.data["data"] || response.data["results"]
-        events = _transform_events(raw_events)
+        events = _transform_events(raw_events, event_id)
         Rails.cache.write(cache_key, events, expires_in: 1.hour)
-        BaseService::ServiceResult.new(success: true, data: events)
+        Rails.cache.delete(pending_key) # Data received, no longer pending
+        Rails.logger.info "Fetch Events synchronous response received and cached."
+        return BaseService::ServiceResult.new(success: true, data: events)
       else
-        # Fallback or unexpected
-        BaseService::ServiceResult.new(success: true, data: [])
+        # Fallback or unexpected synchronous response
+        Rails.logger.warn "Fetch Events: Unexpected data format from 3rd party for synchronous response."
+        return BaseService::ServiceResult.new(success: true, data: [])
+      end
+    else
+      response # Propagate error from _send_request
+    end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  def fetch_availability(bm_event_id, event_id)
+    cache_key = "business_matching_availability_#{event_id}_#{bm_event_id}"
+    cached_data = Rails.cache.read(cache_key)
+
+    if cached_data.present?
+      Rails.logger.info "Serving cached availability data for event #{event_id} (BM ID: #{bm_event_id})"
+      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    end
+
+    # If not in cache, request from 3rd party (data will come asynchronously via receive)
+    payload = {
+      action: "Fetch Available Date",
+      bm_event_id: bm_event_id,
+      event_id: event_id,
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
+    }
+    response = _send_request(payload)
+
+    if response.success?
+      # If the 3rd party acknowledges the request, we return empty data and wait for callback
+      # The callback will populate the cache.
+      # We assume 'accepted: true' means "data will be sent via callback".
+      if response.data.is_a?(Hash) && response.data["accepted"] == true
+        Rails.logger.info "Fetch Available Date request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: { dates: [] })
+      else
+        # Process synchronous response if 3rd party sends it immediately
+        raw_data = if response.data.is_a?(Hash)
+                     response.data["output"] || response.data["data"] || response.data
+                   else
+                     response.data
+                   end
+        
+        if raw_data.is_a?(Array)
+            dates = raw_data.map do |item|
+                {
+                    day: item["day"],
+                    date: item["date"],
+                    slots: item["slots"].to_i
+                }
+            end
+            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
+            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
+        elsif raw_data.is_a?(Hash) && raw_data["dates"].is_a?(Array)
+            dates = raw_data["dates"].map do |item|
+                {
+                    day: item["day"],
+                    date: item["date"],
+                    slots: item["slots"].to_i
+                }
+            end
+            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
+            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
+        elsif raw_data.is_a?(Hash) && raw_data["date"].is_a?(Array)
+            dates = raw_data["date"].map do |item|
+                {
+                    day: item["day"],
+                    date: item["date"],
+                    slots: item["slots"].to_i
+                }
+            end
+            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
+            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
+        else
+            Rails.logger.warn "Fetch Available Date: Unexpected data format from 3rd party for synchronous response."
+            return BaseService::ServiceResult.new(success: true, data: { dates: [] })
+        end
       end
     else
       response
@@ -52,32 +140,98 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
-  def fetch_availability(bm_event_id)
+  def fetch_detailed_slots(bm_event_id, date, event_id)
+    cache_key = "business_matching_detailed_slots_#{event_id}_#{bm_event_id}_#{date.parameterize}" # Use date in key
+    cached_data = Rails.cache.read(cache_key)
+
+    if cached_data.present?
+      Rails.logger.info "Serving cached detailed slots data for event #{event_id} (BM ID: #{bm_event_id}) on #{date}"
+      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    end
+
+    # If not in cache, request from 3rd party (data will come asynchronously via receive)
     payload = {
-      action: "Fetch Available Date",
-      bm_event_id: bm_event_id
+      action: "Fetch Available Slots",
+      bm_event_id: bm_event_id,
+      event_id: event_id,      
+      date: date,
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
     }
     response = _send_request(payload)
 
     if response.success?
       if response.data.is_a?(Hash) && response.data["accepted"] == true
-         BaseService::ServiceResult.new(success: true, data: { dates: [] })
+        Rails.logger.info "Fetch Detailed Slots request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: { slots: [] }) # Return empty array for async
       else
-         # Transform availability if needed
-         raw_data = response.data["output"] || response.data["data"] || response.data
-         # Expected format: { dates: [...] }
-         if raw_data.is_a?(Array)
-            dates = raw_data.map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            BaseService::ServiceResult.new(success: true, data: { dates: dates })
-         else
-            BaseService::ServiceResult.new(success: true, data: raw_data)
-         end
+        raw_data = if response.data.is_a?(Hash)
+                     response.data["output"] || response.data["data"] || response.data
+                   else
+                     response.data
+                   end
+
+        if raw_data.is_a?(Array)
+          Rails.cache.write(cache_key, { slots: raw_data }, expires_in: 1.hour) # Cache immediate response
+          return BaseService::ServiceResult.new(success: true, data: { slots: raw_data })
+        elsif raw_data.is_a?(Hash) && raw_data["slots"].is_a?(Array)
+          Rails.cache.write(cache_key, { slots: raw_data["slots"] }, expires_in: 1.hour) # Cache immediate response
+          return BaseService::ServiceResult.new(success: true, data: { slots: raw_data["slots"] })
+        else
+          Rails.logger.warn "Fetch Detailed Slots: Unexpected data format from 3rd party for synchronous response."
+          return BaseService::ServiceResult.new(success: true, data: { slots: [] })
+        end
+      end
+    else
+      response
+    end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  def fetch_bookings(bm_event_id, event_id)
+    cache_key = "business_matching_bookings_#{event_id}_#{bm_event_id}"
+    cached_data = Rails.cache.read(cache_key)
+
+    if cached_data.present?
+      Rails.logger.info "Serving cached bookings data for event #{event_id} (BM ID: #{bm_event_id})"
+      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    end
+
+    payload = {
+      action: "Search in Bookings",
+      bm_event_id: bm_event_id,
+      event_id: event_id,
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
+    }
+    response = _send_request(payload)
+
+    if response.success?
+      if response.data.is_a?(Hash) && response.data["accepted"] == true
+        Rails.logger.info "Search in Bookings request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
+      else
+        raw_data = if response.data.is_a?(Hash)
+                     response.data["output"] || response.data["data"] || response.data
+                   else
+                     response.data
+                   end
+
+        if raw_data.is_a?(Array)
+          bookings = _transform_bookings(raw_data)
+          Rails.cache.write(cache_key, { bookings: bookings }, expires_in: 1.hour)
+          return BaseService::ServiceResult.new(success: true, data: { bookings: bookings })
+        elsif raw_data.is_a?(Hash) && raw_data["bookings"].is_a?(Array)
+          bookings = _transform_bookings(raw_data["bookings"])
+          Rails.cache.write(cache_key, { bookings: bookings }, expires_in: 1.hour)
+          return BaseService::ServiceResult.new(success: true, data: { bookings: bookings })
+        else
+          Rails.logger.warn "Search in Bookings: Unexpected data format from 3rd party for synchronous response."
+          return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
+        end
       end
     else
       response
@@ -88,15 +242,40 @@ class BusinessMatchingService < BaseService
 
   private
 
-  def _transform_events(raw_events)
+  def _transform_events(raw_events, event_id)
     raw_events.map do |event_data|
       {
         id: event_data["id"] || event_data["_id"],
+        event_id: event_id, # Use event_id instead of internal_event_id
         title: event_data["title"],
         duration: event_data["slotDuration"],
         location: event_data["locationLink"],
         admin_email: event_data["adminEmail"],
         admin_wa_number: event_data["adminWaNumber"]
+      }
+    end
+  end
+
+  def _transform_bookings(raw_bookings)
+    raw_bookings.map do |booking|
+      {
+        id: booking["_id"] || booking["id"],
+        name: booking["name"],
+        email: booking["email"],
+        phone: booking["phone"],
+        booking_date: booking["bookingDate"],
+        booking_time: booking["bookingTime"],
+        duration: booking["bookingDuration"],
+        status: booking["status"],
+        event_title: booking["eventTitle"],
+        location: booking["eventLocationLink"],
+        cancel_link: booking["cancelBookingLink"],
+        reschedule_link: booking["resheduleBookingLink"],
+        meeting_approval_link: booking["meetingApprovalLink"],
+        payment_status: booking["paymentStatus"],
+        created_at: booking["createdAt"],
+        host_comment: booking["note"], # Added
+        potential_deal_value: booking["detail5"] # Added
       }
     end
   end

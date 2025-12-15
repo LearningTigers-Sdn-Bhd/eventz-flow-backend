@@ -163,6 +163,8 @@ Rails.application.routes.draw do
       post 'receive', to: 'callbacks#receive'
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
+        get 'availability/:date/slots', to: 'availability#show_slots'
+        resources :bookings, only: [:index]
       end
     end
 
