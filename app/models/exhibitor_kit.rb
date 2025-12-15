@@ -27,4 +27,44 @@ class ExhibitorKit < ApplicationRecord
   validates :pic_contact_number, presence: true
   validates :pic_email_address, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+
+  # --- Team Member Limit Methods ---
+
+  # Get the team member limit from the event's setting
+  def team_member_limit
+    event&.exhibitor_team_member_limit&.team_member_limit
+  end
+
+  # Get the extra fee per team member from the event's setting
+  def extra_team_member_fee
+    event&.exhibitor_team_member_limit&.extra_team_member_fee || 0
+  end
+
+  # Check if a limit is configured for this event
+  def has_team_member_limit?
+    team_member_limit.present? && team_member_limit > 0
+  end
+
+  # Count of team members for this exhibitor kit
+  def team_member_count
+    exhibitor_team_members.count
+  end
+
+  # Calculate excess team members beyond the limit
+  # Returns 0 if no limit is set or if within limit
+  def excess_team_member_count
+    return 0 unless has_team_member_limit?
+
+    [team_member_count - team_member_limit, 0].max
+  end
+
+  # Check if this exhibitor has exceeded the team member limit
+  def exceeds_team_member_limit?
+    excess_team_member_count > 0
+  end
+
+  # Calculate the total extra charges for excess team members
+  def extra_team_member_charges
+    excess_team_member_count * extra_team_member_fee
+  end
 end

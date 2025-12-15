@@ -123,6 +123,9 @@ Rails.application.routes.draw do
         resources :exhibitor_kit_payments, only: [:index, :show, :update]
       end
 
+      # Exhibitor team member limit settings (singular - one per event)
+      resource :exhibitor_team_member_limit, only: [:show, :create, :update, :destroy]
+
       # Lucky Draw feature
       namespace :lucky_draw do
         resources :sessions, controller: 'lucky_draw_sessions' do

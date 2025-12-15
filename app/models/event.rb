@@ -21,6 +21,7 @@ class Event < ApplicationRecord
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
+  has_one :exhibitor_team_member_limit, dependent: :destroy
 
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]

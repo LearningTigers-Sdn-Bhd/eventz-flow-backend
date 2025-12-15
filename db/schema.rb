@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_15_025212) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -284,6 +284,15 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_exhibitor_owners_on_name"
+  end
+
+  create_table "exhibitor_team_member_limits", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.integer "team_member_limit"
+    t.decimal "extra_team_member_fee", precision: 10, scale: 2, default: "0.0"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_exhibitor_team_member_limits_on_event_id", unique: true
   end
 
   create_table "exhibitor_team_members", force: :cascade do |t|
@@ -638,6 +647,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_05_060559) do
   add_foreign_key "exhibitor_kit_printings", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
+  add_foreign_key "exhibitor_team_member_limits", "events"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
   add_foreign_key "export_logs", "events"
   add_foreign_key "gift_winners", "gifts"

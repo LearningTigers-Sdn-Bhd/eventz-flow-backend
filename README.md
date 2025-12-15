@@ -220,26 +220,6 @@ docs/                   # Additional documentation
 
 ---
 
-## 🔐 Environment Variables
-
-Create a `.env` file in the root directory:
-
-```bash
-# Database
-DATABASE_URL=postgresql://username:password@localhost:5432/eventz_flow_api_development
-
-# Email (Resend)
-RESEND_API_KEY=your_resend_api_key
-
-# JWT
-JWT_SECRET_KEY=your_jwt_secret
-
-# Redis (Sidekiq)
-REDIS_URL=redis://localhost:6379/0
-```
-
----
-
 ## 📞 Support
 
 For questions or issues, please check the documentation in the `docs/` folder or contact the development team.
