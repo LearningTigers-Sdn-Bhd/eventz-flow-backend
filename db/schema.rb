@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_15_025212) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_15_061101) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -254,17 +254,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_15_025212) do
     t.string "pic_full_name"
     t.string "pic_contact_number"
     t.string "pic_email_address"
-    t.integer "extra_crew_count", default: 0
     t.text "special_requirements"
     t.string "digital_brochure_link"
     t.string "qr_code_url"
-    t.string "contractor_company_name"
-    t.string "contractor_pic_name"
-    t.string "contractor_pic_contact"
-    t.string "stand_design_file_url"
-    t.json "furniture_requests"
-    t.json "electrical_requests"
-    t.json "printing_orders"
     t.boolean "indemnity_signed", default: false
     t.string "indemnity_document_url"
     t.datetime "created_at", null: false

@@ -42,10 +42,9 @@ class ExhibitorKitPolicy < ApplicationPolicy
     [
       :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required, :side_wall_right_required,
       :name_on_fascia, :fascia_upgrade_required, :company_name, :company_address, :pic_full_name,
-      :pic_contact_number, :pic_email_address, :extra_crew_count, :special_requirements,
-      :digital_brochure_link, :qr_code_url, :is_raw_space, :contractor_company_name,
-      :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url, :furniture_requests,
-      :electrical_requests, :printing_orders, :indemnity_signed, :indemnity_document_url,
+      :pic_contact_number, :pic_email_address, :special_requirements,
+      :digital_brochure_link, :qr_code_url, :is_raw_space,
+      :indemnity_signed, :indemnity_document_url,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
       { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
       { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
@@ -71,10 +70,9 @@ class ExhibitorKitPolicy < ApplicationPolicy
     [
       :booth_dimensions, :side_wall_left_required, :side_wall_right_required,
       :name_on_fascia, :fascia_upgrade_required, :company_address, :pic_full_name,
-      :pic_contact_number, :pic_email_address, :extra_crew_count, :special_requirements,
-      :digital_brochure_link, :is_raw_space, :contractor_company_name,
-      :contractor_pic_name, :contractor_pic_contact, :stand_design_file_url, :furniture_requests,
-      :electrical_requests, :printing_orders, :indemnity_signed, :indemnity_document_url,
+      :pic_contact_number, :pic_email_address, :special_requirements,
+      :digital_brochure_link, :is_raw_space,
+      :indemnity_signed, :indemnity_document_url,
       :payment_proof_url, # Added for exhibitors to upload proof
       { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
       { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },

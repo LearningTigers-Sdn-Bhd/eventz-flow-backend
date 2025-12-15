@@ -40,21 +40,13 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       pic_full_name: { type: :string, example: 'PIC Name' },
       pic_contact_number: { type: :string, example: '+1234567890' },
       pic_email_address: { type: :string, example: 'pic@example.com' },
-      extra_crew_count: { type: :integer, example: 0 },
       special_requirements: { type: :string, nullable: true, example: 'Extra power outlets' },
       digital_brochure_link: { type: :string, nullable: true, example: 'http://brochure.com' },
-      contractor_company_name: { type: :string, nullable: true },
-      contractor_pic_name: { type: :string, nullable: true },
-      contractor_pic_contact: { type: :string, nullable: true },
-      stand_design_file_url: { type: :string, nullable: true },
-      furniture_requests: { type: :object, nullable: true },
-      electrical_requests: { type: :object, nullable: true },
-      printing_orders: { type: :object, nullable: true },
       indemnity_signed: { type: :boolean, example: false },
       indemnity_document_url: { type: :string, nullable: true },
       exhibitor_team_members: { type: :array, items: EXHIBITOR_TEAM_MEMBER_SCHEMA, nullable: true }
     },
-    required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address extra_crew_count is_raw_space indemnity_signed]
+    required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address is_raw_space indemnity_signed]
   }.freeze
 
   VENDOR_RESPONSE_SCHEMA = {

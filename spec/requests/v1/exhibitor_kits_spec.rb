@@ -62,8 +62,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
           company_address: { type: :string },
           pic_full_name: { type: :string },
           pic_contact_number: { type: :string },
-          pic_email_address: { type: :string },
-          extra_crew_count: { type: :integer }
+          pic_email_address: { type: :string }
         },
         required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address]
       }
