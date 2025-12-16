@@ -64,4 +64,59 @@ RSpec.describe BusinessMatchingService do
       end
     end
   end
+
+  describe '#create_booking' do
+    let(:booking_params) do
+      {
+        name: "New User",
+        email: "new@example.com",
+        phone: "1234567890",
+        note: "Test note",
+        date: "12 December 2025",
+        time: "10:00 AM"
+      }
+    end
+
+    it 'sends create booking request' do
+      stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
+        .with(
+          body: hash_including(
+            action: "Create Booking",
+            bm_event_id: bm_event_id,
+            name: "New User"
+          )
+        )
+        .to_return(status: 200, body: { success: true }.to_json)
+
+      result = service.create_booking(bm_event_id, event_id, booking_params)
+      expect(result.success?).to be true
+    end
+  end
+
+  describe '#update_booking' do
+    let(:booking_id) { "booking_123" }
+    let(:update_params) do
+      {
+        host_comment: "Updated comment",
+        potential_deal_value: "5000",
+        attendance: "Present"
+      }
+    end
+
+    it 'sends update booking request' do
+      stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
+        .with(
+          body: hash_including(
+            action: "Update Booking",
+            bm_event_id: bm_event_id,
+            booking_id: booking_id,
+            detail2: "Updated comment"
+          )
+        )
+        .to_return(status: 200, body: { success: true }.to_json)
+
+      result = service.update_booking(bm_event_id, event_id, booking_id, update_params)
+      expect(result.success?).to be true
+    end
+  end
 end

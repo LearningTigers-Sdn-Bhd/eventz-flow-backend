@@ -199,6 +199,9 @@ class BusinessMatchingService < BaseService
       return BaseService::ServiceResult.new(success: true, data: cached_data)
     end
 
+    event = Event.find_by(id: event_id)
+    year = event&.start_date&.year || Time.current.year
+
     payload = {
       action: "Search in Bookings",
       bm_event_id: bm_event_id,
@@ -221,17 +224,94 @@ class BusinessMatchingService < BaseService
                    end
 
         if raw_data.is_a?(Array)
-          bookings = _transform_bookings(raw_data)
+          bookings = _transform_bookings(raw_data, year)
           Rails.cache.write(cache_key, { bookings: bookings }, expires_in: 1.hour)
           return BaseService::ServiceResult.new(success: true, data: { bookings: bookings })
         elsif raw_data.is_a?(Hash) && raw_data["bookings"].is_a?(Array)
-          bookings = _transform_bookings(raw_data["bookings"])
+          bookings = _transform_bookings(raw_data["bookings"], year)
           Rails.cache.write(cache_key, { bookings: bookings }, expires_in: 1.hour)
           return BaseService::ServiceResult.new(success: true, data: { bookings: bookings })
         else
           Rails.logger.warn "Search in Bookings: Unexpected data format from 3rd party for synchronous response."
           return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
         end
+      end
+    else
+      response
+    end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  def create_booking(bm_event_id, event_id, booking_params)
+    payload = {
+      action: "Create Booking",
+      bm_event_id: bm_event_id,
+      event_id: event_id,
+      name: booking_params[:name],
+      email: booking_params[:email],
+      phone: booking_params[:phone],
+      note: booking_params[:note],
+      date: booking_params[:date],
+      time: booking_params[:time],
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
+    }
+    Rails.logger.info "BusinessMatching Request Payload (Create Booking): #{payload.inspect}"
+    response = _send_request(payload)
+
+    if response.success?
+        if response.data.is_a?(Hash) && response.data["accepted"] == true
+            Rails.logger.info "Create Booking request accepted, waiting for async callback."
+            return BaseService::ServiceResult.new(success: true, data: { message: "Booking creation queued" })
+        else
+            Rails.logger.info "Create Booking synchronous response received."
+            return BaseService::ServiceResult.new(success: true, data: response.data)
+        end
+    else
+      response
+    end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  def update_booking(bm_event_id, event_id, booking_id, booking_params)
+    event = Event.find_by(id: event_id)
+    year = event&.start_date&.year || Time.current.year
+    
+    date_param = booking_params[:booking_date]
+    date_with_year = _format_date_with_year(date_param, year)
+
+    payload = {
+      action: "Update Booking",
+      bm_event_id: bm_event_id,
+      event_id: event_id,
+      booking_id: booking_id,
+      name: booking_params[:name],
+      email: booking_params[:email],
+      phone: booking_params[:phone],
+      date: date_with_year,
+      time: booking_params[:booking_time],
+      status: booking_params[:status],
+      payment_status: booking_params[:payment_status],
+      detail1: booking_params[:attendance],
+      detail2: booking_params[:host_comment],
+      detail3: booking_params[:potential_deal_value],
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
+    }
+    Rails.logger.info "BusinessMatching Request Payload (Update Booking): #{payload.inspect}"
+    response = _send_request(payload)
+
+    if response.success?
+      if response.data.is_a?(Hash) && response.data["accepted"] == true
+        Rails.logger.info "Update Booking request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: { message: "Booking update queued" })
+      else
+        Rails.logger.info "Update Booking synchronous response received."
+        return BaseService::ServiceResult.new(success: true, data: response.data)
       end
     else
       response
@@ -256,14 +336,14 @@ class BusinessMatchingService < BaseService
     end
   end
 
-  def _transform_bookings(raw_bookings)
+  def _transform_bookings(raw_bookings, year = Time.current.year)
     raw_bookings.map do |booking|
       {
         id: booking["_id"] || booking["id"],
         name: booking["name"],
         email: booking["email"],
         phone: booking["phone"],
-        booking_date: booking["bookingDate"],
+        booking_date: _format_date_with_year(booking["bookingDate"], year),
         booking_time: booking["bookingTime"],
         duration: booking["bookingDuration"],
         status: booking["status"],
@@ -274,10 +354,17 @@ class BusinessMatchingService < BaseService
         meeting_approval_link: booking["meetingApprovalLink"],
         payment_status: booking["paymentStatus"],
         created_at: booking["createdAt"],
-        host_comment: booking["note"], # Added
-        potential_deal_value: booking["detail5"] # Added
+        attendance: booking["detail1"],
+        host_comment: booking["detail2"],
+        potential_deal_value: booking["detail3"]
       }
     end
+  end
+
+  def _format_date_with_year(date_str, year)
+    return date_str if date_str.blank?
+    return date_str if date_str.match?(/\d{4}/) # Already has year
+    "#{date_str} #{year}"
   end
 
   def _send_request(payload)

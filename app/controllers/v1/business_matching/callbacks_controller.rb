@@ -101,13 +101,23 @@ module V1
              
              Rails.logger.info "Caching Business Matching BOOKINGS data for event #{event_id} (BM ID: #{bm_event_id}): #{bookings_data.size} items"
              
+             event = Event.find_by(id: event_id)
+             year = event&.start_date&.year || Time.current.year
+
              formatted_bookings = bookings_data.map do |booking|
+                booking_date_str = booking["bookingDate"]
+                formatted_date = if booking_date_str.present? && !booking_date_str.match?(/\d{4}/)
+                                   "#{booking_date_str} #{year}"
+                                 else
+                                   booking_date_str
+                                 end
+
                 {
                     id: booking["_id"] || booking["id"],
                     name: booking["name"],
                     email: booking["email"],
                     phone: booking["phone"],
-                    booking_date: booking["bookingDate"],
+                    booking_date: formatted_date,
                     booking_time: booking["bookingTime"],
                     duration: booking["bookingDuration"],
                     status: booking["status"],
@@ -117,7 +127,10 @@ module V1
                     reschedule_link: booking["resheduleBookingLink"],
                     meeting_approval_link: booking["meetingApprovalLink"],
                     payment_status: booking["paymentStatus"],
-                    created_at: booking["createdAt"]
+                    created_at: booking["createdAt"],
+                    attendance: booking["detail1"],
+                    host_comment: booking["detail2"],
+                    potential_deal_value: booking["detail3"]
                 }
              end
 

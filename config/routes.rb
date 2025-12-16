@@ -164,7 +164,7 @@ Rails.application.routes.draw do
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'
-        resources :bookings, only: [:index]
+        resources :bookings, only: [:index, :create, :update]
       end
     end
 
