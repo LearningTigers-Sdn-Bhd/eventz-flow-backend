@@ -10,6 +10,11 @@ class BusinessMatchingService < BaseService
     cache_key = "business_matching_events_#{event_id}"
     pending_key = "business_matching_events_pending_#{event_id}" # Still useful for initial async request
 
+    if force_refresh
+      Rails.logger.info "Force refresh requested. Clearing all business matching cache for event #{event_id}"
+      Rails.cache.delete_matched("business_matching_*_#{event_id}*")
+    end
+
     unless force_refresh
       cached_data = Rails.cache.read(cache_key)
       return BaseService::ServiceResult.new(success: true, data: cached_data) if cached_data.present?
@@ -63,11 +68,14 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
-  def fetch_availability(bm_event_id, event_id)
+  def fetch_availability(bm_event_id, event_id, force_refresh: false)
     cache_key = "business_matching_availability_#{event_id}_#{bm_event_id}"
+    
+    Rails.cache.delete(cache_key) if force_refresh
+
     cached_data = Rails.cache.read(cache_key)
 
-    if cached_data.present?
+    if !force_refresh && cached_data.present?
       Rails.logger.info "Serving cached availability data for event #{event_id} (BM ID: #{bm_event_id})"
       return BaseService::ServiceResult.new(success: true, data: cached_data)
     end
@@ -140,11 +148,14 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
-  def fetch_detailed_slots(bm_event_id, date, event_id)
+  def fetch_detailed_slots(bm_event_id, date, event_id, force_refresh: false)
     cache_key = "business_matching_detailed_slots_#{event_id}_#{bm_event_id}_#{date.parameterize}" # Use date in key
+    
+    Rails.cache.delete(cache_key) if force_refresh
+
     cached_data = Rails.cache.read(cache_key)
 
-    if cached_data.present?
+    if !force_refresh && cached_data.present?
       Rails.logger.info "Serving cached detailed slots data for event #{event_id} (BM ID: #{bm_event_id}) on #{date}"
       return BaseService::ServiceResult.new(success: true, data: cached_data)
     end
@@ -190,11 +201,14 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
-  def fetch_bookings(bm_event_id, event_id)
+  def fetch_bookings(bm_event_id, event_id, force_refresh: false)
     cache_key = "business_matching_bookings_#{event_id}_#{bm_event_id}"
+    
+    Rails.cache.delete(cache_key) if force_refresh
+
     cached_data = Rails.cache.read(cache_key)
 
-    if cached_data.present?
+    if !force_refresh && cached_data.present?
       Rails.logger.info "Serving cached bookings data for event #{event_id} (BM ID: #{bm_event_id})"
       return BaseService::ServiceResult.new(success: true, data: cached_data)
     end
@@ -312,6 +326,40 @@ class BusinessMatchingService < BaseService
       else
         Rails.logger.info "Update Booking synchronous response received."
         return BaseService::ServiceResult.new(success: true, data: response.data)
+      end
+    else
+      response
+    end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  def fetch_single_booking(bm_event_id, event_id, booking_id)
+    event = Event.find_by(id: event_id)
+    year = event&.start_date&.year || Time.current.year
+
+    payload = {
+      action: "Fetch a Booking",
+      bm_event_id: bm_event_id,
+      event_id: event_id,
+      booking_id: booking_id,
+      user_email: user.email,
+      user_name: user.full_name,
+      user_id: user.id
+    }
+    Rails.logger.info "BusinessMatching Request Payload (Fetch a Booking): #{payload.inspect}"
+    response = _send_request(payload)
+
+    if response.success?
+      if response.data.is_a?(Hash) && response.data["accepted"] == true
+        Rails.logger.info "Fetch a Booking request accepted, waiting for async callback."
+        return BaseService::ServiceResult.new(success: true, data: { message: "Fetch a Booking queued" })
+      elsif response.data.is_a?(Hash)
+        transformed_booking = _transform_bookings([response.data], year).first
+        return BaseService::ServiceResult.new(success: true, data: transformed_booking)
+      else
+        Rails.logger.warn "Fetch a Booking: Unexpected data format from 3rd party for synchronous response."
+        return BaseService::ServiceResult.new(success: false, errors: "Unexpected data format", status: :internal_server_error)
       end
     else
       response

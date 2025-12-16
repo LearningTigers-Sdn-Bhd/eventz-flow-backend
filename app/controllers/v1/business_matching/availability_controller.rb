@@ -5,7 +5,8 @@ module V1
       def index
         service_result = BusinessMatchingService.new(current_user).fetch_availability(
           params[:business_matching_event_id],
-          params[:event_id] # Pass event_id
+          params[:event_id], # Pass event_id
+          force_refresh: params[:force_refresh] == 'true'
         )
 
         if service_result.success?
@@ -20,7 +21,8 @@ module V1
         service_result = BusinessMatchingService.new(current_user).fetch_detailed_slots(
           params[:business_matching_event_id],
           params[:date],
-          params[:event_id] # Pass event_id
+          params[:event_id], # Pass event_id
+          force_refresh: params[:force_refresh] == 'true'
         )
 
         if service_result.success?
