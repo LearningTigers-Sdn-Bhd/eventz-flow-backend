@@ -209,12 +209,6 @@ Rails.application.routes.draw do
     resources :vouchers, only: [:index, :show, :create, :update, :destroy]
     resources :voucher_redemptions, only: [:create]
 
-    # Public route for serving voucher images + vendor profile images
-    get '/voucher_images/:filename', to: 'vouchers#serve_image', constraints: { filename: /.+/ }
-    get '/vendor_images/:filename', to: 'vendor_profiles#serve_image', constraints: { filename: /.+/ }
-    get '/lucky_draw_session_logos/:filename', to: 'lucky_draw/lucky_draw_sessions#serve_logo', constraints: { filename: /.+/ }
-    get '/lucky_draw_session_backgrounds/:filename', to: 'lucky_draw/lucky_draw_sessions#serve_background', constraints: { filename: /.+/ }
-
     # 7. GLOBAL METRICS (replaces analytics)
     scope :metrics do
       # Optimized bulk endpoints (works for all roles)

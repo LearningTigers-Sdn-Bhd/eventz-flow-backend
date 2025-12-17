@@ -4091,7 +4091,7 @@ paths:
                           type: string
                           format: date
                           nullable: true
-                        logo:
+                        logo_url:
                           type: string
                           nullable: true
                         draw_styles:
@@ -4322,7 +4322,7 @@ paths:
                           backgroundImgUrl:
                             type: string
                             nullable: true
-                            example: lucky_draw_session_backgrounds/test-image.png
+                            example: http://localhost/rails/active_storage/...
                           backgroundColor:
                             type: string
                             nullable: true
@@ -6095,7 +6095,7 @@ paths:
                     type: integer
                   vendor_id:
                     type: integer
-                  image_path:
+                  image_url:
                     type: string
                     nullable: true
                   description:
@@ -6161,7 +6161,7 @@ paths:
                     type: integer
                   vendor_id:
                     type: integer
-                  image_path:
+                  image_url:
                     type: string
                     nullable: true
                   description:
@@ -6217,10 +6217,14 @@ paths:
                 vendor_profile:
                   type: object
                   properties:
-                    image_path:
-                      type: string
+                    image:
+                      type: file
                       nullable: true
-                      example: "/images/vendor.jpg"
+                      description: Vendor profile image
+                    remove_image:
+                      type: boolean
+                      nullable: true
+                      description: Set to true to remove image
                     description:
                       type: string
                       nullable: true
@@ -6274,7 +6278,7 @@ paths:
                     type: integer
                   vendor_id:
                     type: integer
-                  image_path:
+                  image_url:
                     type: string
                     nullable: true
                   description:
@@ -6345,7 +6349,7 @@ paths:
                     type: integer
                   vendor_id:
                     type: integer
-                  image_path:
+                  image_url:
                     type: string
                     nullable: true
                   description:
@@ -6404,9 +6408,14 @@ paths:
                 vendor_profile:
                   type: object
                   properties:
-                    image_path:
-                      type: string
+                    image:
+                      type: file
                       nullable: true
+                      description: Vendor profile image
+                    remove_image:
+                      type: boolean
+                      nullable: true
+                      description: Set to true to remove image
                     description:
                       type: string
                       nullable: true
@@ -6896,7 +6905,7 @@ paths:
                         voucher_value:
                           type: string
                           example: '20.00'
-                        image_path:
+                        image_url:
                           type: string
                           nullable: true
                           example: https://example.com/images/voucher.jpg

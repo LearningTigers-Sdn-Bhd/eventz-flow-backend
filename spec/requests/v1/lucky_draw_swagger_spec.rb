@@ -43,7 +43,7 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
       event_id: { type: :integer, example: 1 },
       title: { type: :string, example: 'Grand Lucky Draw' },
       draw_date: { type: :string, format: :date, nullable: true },
-      logo: { type: :string, nullable: true },
+      logo_url: { type: :string, nullable: true },
       draw_styles: {
         type: :object,
         properties: {
@@ -380,7 +380,7 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
                        type: :object,
                        properties: {
                          useImage: { type: :boolean, example: true },
-                         backgroundImgUrl: { type: :string, example: 'lucky_draw_session_backgrounds/existing-image.png' },
+                         backgroundImgUrl: { type: :string, example: 'http://localhost/rails/active_storage/...' },
                          backgroundColor: { type: :string, nullable: true, example: '#ffffff' }
                        }
                      }
@@ -394,10 +394,15 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
         let(:useImage) { true }
 
         before do
-          # Set up session with existing image
+          # Set up session with existing image using Active Storage
+          test_image_path = Rails.root.join('spec', 'fixtures', 'test_image.png')
+          unless File.exist?(test_image_path)
+            FileUtils.mkdir_p(File.dirname(test_image_path))
+            File.binwrite(test_image_path, "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82")
+          end
+          session1.background_image.attach(io: File.open(test_image_path), filename: 'existing-image.png', content_type: 'image/png')
           session1.update(wrapper_background: {
             useImage: true,
-            backgroundImgUrl: "lucky_draw_session_backgrounds/existing-image.png",
             backgroundColor: '#ffffff'
           })
         end
@@ -406,7 +411,8 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
           data = JSON.parse(response.body)
           expect(data['success']).to be true
           expect(data['data']['wrapper_background']['useImage']).to be true
-          expect(data['data']['wrapper_background']['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/existing-image.png')
+          # backgroundImgUrl is now a full Active Storage URL - just check presence
+          expect(data['data']['wrapper_background']['backgroundImgUrl']).to be_present
           expect(data['data']['wrapper_background']['backgroundColor']).to eq('#ffffff')
         end
       end
@@ -461,7 +467,8 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
           session1.reload
           expect(session1.wrapper_background['useImage']).to be true
           expect(session1.wrapper_background['backgroundColor']).to eq('#ff0000')
-          expect(session1.wrapper_background['backgroundImgUrl']).to be_present
+          # With Active Storage, check attachment instead of JSONB field
+          expect(session1.background_image.attached?).to be true
         end
       end
 
@@ -489,7 +496,7 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
                        type: :object,
                        properties: {
                          useImage: { type: :boolean, example: false },
-                         backgroundImgUrl: { type: :string, nullable: true, example: 'lucky_draw_session_backgrounds/test-image.png' },
+                         backgroundImgUrl: { type: :string, nullable: true, example: 'http://localhost/rails/active_storage/...' },
                          backgroundColor: { type: :string, nullable: true, example: '#00ff00' }
                        }
                      }
@@ -504,10 +511,15 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
         let(:backgroundColor) { '#00ff00' }
 
         before do
-          # Set up session with image background
+          # Set up session with image background using Active Storage
+          test_image_path = Rails.root.join('spec', 'fixtures', 'test_image.png')
+          unless File.exist?(test_image_path)
+            FileUtils.mkdir_p(File.dirname(test_image_path))
+            File.binwrite(test_image_path, "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82")
+          end
+          session1.background_image.attach(io: File.open(test_image_path), filename: 'test-image.png', content_type: 'image/png')
           session1.update(wrapper_background: {
             useImage: true,
-            backgroundImgUrl: "lucky_draw_session_backgrounds/test-image.png",
             backgroundColor: nil
           })
         end
@@ -517,13 +529,14 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
           expect(data['success']).to be true
           expect(data['data']['wrapper_background']['useImage']).to be false
           expect(data['data']['wrapper_background']['backgroundColor']).to eq('#00ff00')
-          # backgroundImgUrl should be preserved when switching to color mode
-          expect(data['data']['wrapper_background']['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/test-image.png')
+          # backgroundImgUrl should be preserved when switching to color mode (Active Storage URL)
+          expect(data['data']['wrapper_background']['backgroundImgUrl']).to be_present
 
           session1.reload
           expect(session1.wrapper_background['useImage']).to be false
           expect(session1.wrapper_background['backgroundColor']).to eq('#00ff00')
-          expect(session1.wrapper_background['backgroundImgUrl']).to eq('lucky_draw_session_backgrounds/test-image.png')
+          # Background image should still be attached
+          expect(session1.background_image.attached?).to be true
         end
       end
     end

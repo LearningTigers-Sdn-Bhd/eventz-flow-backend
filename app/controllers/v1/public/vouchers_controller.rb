@@ -26,7 +26,7 @@ module V1
         @vouchers = event.vouchers.active.includes(:vendor)
 
         success_response(
-          data: @vouchers.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } })
+          data: @vouchers.map { |v| format_voucher(v) }
         )
       rescue ActiveRecord::RecordNotFound
         error_response(message: 'Event not found', status: :not_found)
@@ -46,10 +46,18 @@ module V1
         end
 
         success_response(
-          data: @voucher.as_json(include: { vendor: { only: [:id, :full_name, :email, :phone] } })
+          data: format_voucher(@voucher)
         )
       rescue ActiveRecord::RecordNotFound
         error_response(message: 'Voucher not found', status: :not_found)
+      end
+
+      private
+
+      def format_voucher(voucher)
+        voucher.as_json(
+          include: { vendor: { only: [:id, :full_name, :email, :phone] } }
+        ).merge(image_url: voucher.image.attached? ? url_for(voucher.image) : nil)
       end
     end
   end

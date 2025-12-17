@@ -32,7 +32,18 @@ FactoryBot.define do
       is_unlimited { true }
       total_redemption_available { nil }
     end
-    
+
+    # Active Storage image - use trait when image is needed
+    trait :with_image do
+      after(:build) do |voucher|
+        voucher.image.attach(
+          io: StringIO.new('fake image data'),
+          filename: 'voucher_image.jpg',
+          content_type: 'image/jpeg'
+        )
+      end
+    end
+
     voucher_type { :fixed_amount }
     voucher_value { "9.99" }
   end
