@@ -15,6 +15,8 @@ class LuckyDrawSession < ApplicationRecord
   validates :event_id, presence: true
   validates :title, presence: true
   validate :validate_draw_styles_structure
+  validate :acceptable_logo
+  validate :acceptable_background_image
 
   # --- Scopes ---
   scope :ordered, -> { order(draw_date: :asc, created_at: :asc) }
@@ -29,6 +31,30 @@ class LuckyDrawSession < ApplicationRecord
   end
 
   private
+
+  def acceptable_logo
+    return unless logo.attached?
+
+    unless logo.blob.content_type.in?(%w[image/jpeg image/png image/gif image/webp])
+      errors.add(:logo, 'must be a JPEG, PNG, GIF, or WebP')
+    end
+
+    if logo.blob.byte_size > 5.megabytes
+      errors.add(:logo, 'is too large (max 5MB)')
+    end
+  end
+
+  def acceptable_background_image
+    return unless background_image.attached?
+
+    unless background_image.blob.content_type.in?(%w[image/jpeg image/png image/gif image/webp])
+      errors.add(:background_image, 'must be a JPEG, PNG, GIF, or WebP')
+    end
+
+    if background_image.blob.byte_size > 10.megabytes
+      errors.add(:background_image, 'is too large (max 10MB)')
+    end
+  end
 
   def validate_draw_styles_structure
     return if draw_styles.blank?
