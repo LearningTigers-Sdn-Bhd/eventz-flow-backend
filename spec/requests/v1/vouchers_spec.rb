@@ -25,7 +25,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
       max_redemptions_per_user: { type: :integer, nullable: true, example: 5 },
       voucher_type: { type: :string, enum: ['fixed_amount', 'percentage', 'free_item'], example: 'percentage' },
       voucher_value: { type: :string, example: '20.00' },
-      image_path: { type: :string, nullable: true, example: 'https://example.com/images/voucher.jpg' },
+      image_url: { type: :string, nullable: true, example: 'https://example.com/images/voucher.jpg' },
       created_at: { type: :string, format: :date_time },
       updated_at: { type: :string, format: :date_time }
     },
