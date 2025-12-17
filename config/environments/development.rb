@@ -71,6 +71,12 @@ Rails.application.configure do
   # Highlight code that enqueued background job in logs.
   config.active_job.verbose_enqueue_logs = true
 
+  # Use async adapter in development to avoid requiring Redis/Sidekiq.
+  # Remove/Comment the code to use Redis/Sidekiq back in development environment.
+  # This processes jobs in-memory using a thread pool.
+  # Note: Jobs will be lost if the server restarts mid-processing.
+  config.active_job.queue_adapter = :async
+
   # Raises error for missing translations.
   # config.i18n.raise_on_missing_translations = true
 
