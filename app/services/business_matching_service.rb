@@ -368,6 +368,41 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
+  def fetch_all_bookings(event_id)
+    # 1. Fetch all BM events for this system event
+    Rails.logger.info "FetchAllBookings: Fetching events for event_id: #{event_id}"
+    events_result = fetch_events(event_id)
+    
+    unless events_result.success?
+      Rails.logger.error "FetchAllBookings: Failed to fetch events. #{events_result.errors}"
+      return events_result 
+    end
+
+    all_bookings = []
+    bm_events = events_result.data
+    Rails.logger.info "FetchAllBookings: Found #{bm_events.size} BM events."
+
+    # 2. Iterate and fetch bookings for each
+    bm_events.each do |bm_event|
+      Rails.logger.info "FetchAllBookings: Fetching bookings for BM Event #{bm_event[:id]} (#{bm_event[:title]})"
+      bookings_result = fetch_bookings(bm_event[:id], event_id)
+      
+      if bookings_result.success?
+        bookings = bookings_result.data[:bookings]
+        Rails.logger.info "FetchAllBookings: Found #{bookings.size} bookings for #{bm_event[:title]}"
+        
+        # Enforce event title from the BM event if missing in bookings
+        bookings.each { |b| b[:event_title] ||= bm_event[:title] }
+        all_bookings.concat(bookings)
+      else
+        Rails.logger.error "FetchAllBookings: Failed to fetch bookings for BM Event #{bm_event[:id]}: #{bookings_result.errors}"
+      end
+    end
+
+    Rails.logger.info "FetchAllBookings: Total bookings collected: #{all_bookings.size}"
+    BaseService::ServiceResult.new(success: true, data: { bookings: all_bookings })
+  end
+
   private
 
   def _transform_events(raw_events, event_id)
@@ -404,7 +439,7 @@ class BusinessMatchingService < BaseService
         created_at: booking["createdAt"],
         attendance: booking["detail1"],
         host_comment: booking["detail2"],
-        potential_deal_value: booking["detail3"]
+        potential_deal_value: (booking["detail3"].to_f rescue 0.0)
       }
     end
   end

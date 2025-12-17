@@ -161,10 +161,15 @@ Rails.application.routes.draw do
     # Business Matching Availability
     namespace :business_matching do
       post 'receive', to: 'callbacks#receive'
+      get 'events/:event_id/report', to: 'bookings#generate_report'
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'
-        resources :bookings, only: [:index, :create, :update]
+        resources :bookings, only: [:index, :create, :update] do
+            collection do
+                get :generate_report
+            end
+        end
       end
     end
 

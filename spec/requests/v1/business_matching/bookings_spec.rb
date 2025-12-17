@@ -8,7 +8,7 @@ RSpec.describe 'V1::BusinessMatching::Bookings', type: :request do
 
   before do
     allow_any_instance_of(BusinessMatchingService).to receive(:fetch_bookings)
-      .with(business_matching_event_id, event_id)
+      .with(business_matching_event_id, event_id, force_refresh: false)
       .and_return(
         BaseService::ServiceResult.new(success: true, data: { bookings: [] })
       )
