@@ -1,10 +1,7 @@
 module V1
   module LuckyDraw
     class LuckyDrawSessionsController < ApplicationController
-      skip_before_action :authenticate_user!, only: [:serve_logo, :serve_background]
-      skip_before_action :require_verified_email!, only: [:serve_logo, :serve_background]
-
-      before_action :set_event, except: [:serve_logo, :serve_background]
+      before_action :set_event
       before_action :set_session, only: [:show, :update, :destroy, :background_manager]
 
       # GET /v1/events/:event_id/lucky_draw/sessions
@@ -33,9 +30,9 @@ module V1
         @session = @event.lucky_draw_sessions.build(session_params)
         authorize @session
 
+        # Handle logo upload via Active Storage
         if params[:logo].present?
-          logo_path = store_session_logo(params[:logo])
-          @session.logo = logo_path if logo_path
+          @session.logo.attach(params[:logo])
         end
 
         if @session.save
@@ -57,15 +54,11 @@ module V1
       def update
         authorize @session
 
+        # Handle logo removal
         if params[:remove_logo] == 'true' || params[:remove_logo] == true
-          if @session.logo.present?
-             old_path = Rails.root.join('storage', @session.logo)
-             File.delete(old_path) if File.exist?(old_path)
-          end
-          @session.logo = nil
+          @session.logo.purge if @session.logo.attached?
         elsif params[:logo].present?
-          logo_path = store_session_logo(params[:logo])
-          @session.logo = logo_path if logo_path
+          @session.logo.attach(params[:logo])
         end
 
         if @session.update(session_params)
@@ -97,10 +90,10 @@ module V1
         authorize @session
 
         if request.get?
-          # GET request - return current wrapper_background
+          # GET request - return current wrapper_background with full URL
           return success_response(
             data: {
-              wrapper_background: @session.wrapper_background || {}
+              wrapper_background: format_wrapper_background(@session)
             },
             message: 'Success'
           )
@@ -112,41 +105,27 @@ module V1
         # Preserve existing values from current wrapper_background
         current_bg = @session.wrapper_background || {}
         existing_background_color = current_bg['backgroundColor']
-        existing_background_img_url = current_bg['backgroundImgUrl']
 
         if use_image
           # When useImage is true, either:
           # 1. A new image file is uploaded (params[:backgroundImage].present?)
-          # 2. Or an existing image already exists (existing_background_img_url.present?)
-          # Only require a new file if there's no existing image
-          unless params[:backgroundImage].present? || existing_background_img_url.present?
+          # 2. Or an existing image already exists
+          unless params[:backgroundImage].present? || @session.background_image.attached?
             return error_response(
               message: 'Image file is required when useImage is true and no existing image is set',
               status: :unprocessable_content
             )
           end
 
-          # If a new image is uploaded, store it
-          # Otherwise, keep the existing image URL
-          image_path = if params[:backgroundImage].present?
-            stored_path = store_session_background(params[:backgroundImage])
-            unless stored_path
-              return error_response(
-                message: 'Failed to store background image',
-                status: :unprocessable_content
-              )
-            end
-            stored_path
-          else
-            existing_background_img_url
+          # If a new image is uploaded, attach it via Active Storage
+          if params[:backgroundImage].present?
+            @session.background_image.attach(params[:backgroundImage])
           end
 
-          # Update wrapper_background: useImage true, backgroundImgUrl set, preserve backgroundColor
-          # Use provided backgroundColor if present (from form), otherwise use existing from database
+          # Update wrapper_background: useImage true, preserve backgroundColor
           preserved_background_color = params[:backgroundColor].present? ? params[:backgroundColor] : existing_background_color
           new_bg = {
             'useImage' => true,
-            'backgroundImgUrl' => image_path,
             'backgroundColor' => preserved_background_color
           }
         else
@@ -158,18 +137,17 @@ module V1
             )
           end
 
-          # Update wrapper_background: useImage false, backgroundColor set, preserve backgroundImgUrl
+          # Update wrapper_background: useImage false, backgroundColor set
           new_bg = {
             'useImage' => false,
-            'backgroundColor' => params[:backgroundColor],
-            'backgroundImgUrl' => existing_background_img_url
+            'backgroundColor' => params[:backgroundColor]
           }
         end
 
         if @session.update(wrapper_background: new_bg)
           success_response(
             data: {
-              wrapper_background: @session.wrapper_background
+              wrapper_background: format_wrapper_background(@session)
             },
             message: 'Background updated successfully'
           )
@@ -179,40 +157,6 @@ module V1
             errors: format_validation_errors(@session),
             status: :unprocessable_content
           )
-        end
-      end
-
-      # GET /lucky_draw_session_logos/:filename
-      def serve_logo
-        filename = params[:filename]
-        # Security check
-        if filename.include?('..') || filename.include?('/') || filename.include?('\\')
-          return head :bad_request
-        end
-
-        path = Rails.root.join('storage', 'lucky_draw_session_logos', filename)
-
-        if File.exist?(path)
-          send_file path, disposition: 'inline'
-        else
-          head :not_found
-        end
-      end
-
-      # GET /lucky_draw_session_backgrounds/:filename
-      def serve_background
-        filename = params[:filename]
-        # Security check
-        if filename.include?('..') || filename.include?('/') || filename.include?('\\')
-          return head :bad_request
-        end
-
-        path = Rails.root.join('storage', 'lucky_draw_session_backgrounds', filename)
-
-        if File.exist?(path)
-          send_file path, disposition: 'inline'
-        else
-          head :not_found
         end
       end
 
@@ -236,51 +180,22 @@ module V1
           event_id: session.event_id,
           title: session.title,
           draw_date: session.draw_date&.iso8601,
-          logo: session.logo,
+          logo_url: session.logo.attached? ? url_for(session.logo) : nil,
           draw_styles: session.draw_styles || {},
-          wrapper_background: session.wrapper_background || {},
+          wrapper_background: format_wrapper_background(session),
           use_gifts: session.use_gifts,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }
       end
 
-      def store_session_logo(uploaded_file)
-        images_dir = Rails.root.join('storage', 'lucky_draw_session_logos')
-        FileUtils.mkdir_p(images_dir)
-
-        timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-        extension = File.extname(uploaded_file.original_filename)
-        filename = "session-#{timestamp}-#{SecureRandom.hex(4)}#{extension}"
-        file_path = images_dir.join(filename)
-
-        File.open(file_path, 'wb') do |file|
-          file.write(uploaded_file.read)
-        end
-
-        "lucky_draw_session_logos/#{filename}"
-      rescue StandardError => e
-        Rails.logger.error "Failed to store session logo: #{e.message}"
-        nil
-      end
-
-      def store_session_background(uploaded_file)
-        images_dir = Rails.root.join('storage', 'lucky_draw_session_backgrounds')
-        FileUtils.mkdir_p(images_dir)
-
-        timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-        extension = File.extname(uploaded_file.original_filename)
-        filename = "bg-#{timestamp}-#{SecureRandom.hex(4)}#{extension}"
-        file_path = images_dir.join(filename)
-
-        File.open(file_path, 'wb') do |file|
-          file.write(uploaded_file.read)
-        end
-
-        "lucky_draw_session_backgrounds/#{filename}"
-      rescue StandardError => e
-        Rails.logger.error "Failed to store session background: #{e.message}"
-        nil
+      def format_wrapper_background(session)
+        bg = session.wrapper_background || {}
+        {
+          'useImage' => bg['useImage'] || false,
+          'backgroundImgUrl' => session.background_image.attached? ? url_for(session.background_image) : nil,
+          'backgroundColor' => bg['backgroundColor']
+        }
       end
     end
   end

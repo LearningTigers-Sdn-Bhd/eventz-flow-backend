@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_17_104939) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -411,7 +411,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_17_104939) do
     t.bigint "event_id", null: false
     t.string "title", null: false
     t.date "draw_date"
-    t.string "logo"
     t.jsonb "draw_styles", default: {}
     t.jsonb "wrapper_background", default: {}
     t.boolean "use_gifts", default: false, null: false

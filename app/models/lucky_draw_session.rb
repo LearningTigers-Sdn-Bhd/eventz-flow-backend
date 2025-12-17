@@ -4,6 +4,10 @@ class LuckyDrawSession < ApplicationRecord
   has_many :gifts, dependent: :destroy
   has_many :invalid_participants, dependent: :destroy
 
+  # --- Active Storage ---
+  has_one_attached :logo, dependent: :purge_later
+  has_one_attached :background_image, dependent: :purge_later
+
   # --- JSONB Attribute ---
   # draw_styles structure: { style: "wheel|slot|box", theme: "wireframe|colorful|cartoon" }
 
