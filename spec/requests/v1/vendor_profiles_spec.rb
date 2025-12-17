@@ -32,7 +32,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
                properties: {
                  id: { type: :integer },
                  vendor_id: { type: :integer },
-                 image_path: { type: :string, nullable: true },
+                 image_url: { type: :string, nullable: true },
                  description: { type: :string, nullable: true },
                  category: { type: :string, nullable: true },
                  person_in_charge: { type: :string, nullable: true },
@@ -85,7 +85,8 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
           vendor_profile: {
             type: :object,
             properties: {
-              image_path: { type: :string, nullable: true, example: '/images/vendor.jpg' },
+              image: { type: :file, nullable: true, description: 'Vendor profile image' },
+              remove_image: { type: :boolean, nullable: true, description: 'Set to true to remove image' },
               description: { type: :string, nullable: true, example: 'Vendor description' },
               category: { type: :string, nullable: true, example: 'Technology' },
               person_in_charge: { type: :string, nullable: true, example: 'John Doe' },
@@ -102,7 +103,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
                properties: {
                  id: { type: :integer },
                  vendor_id: { type: :integer },
-                 image_path: { type: :string, nullable: true },
+                 image_url: { type: :string, nullable: true },
                  description: { type: :string, nullable: true },
                  category: { type: :string, nullable: true },
                  person_in_charge: { type: :string, nullable: true },
@@ -181,7 +182,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
                properties: {
                  id: { type: :integer },
                  vendor_id: { type: :integer },
-                 image_path: { type: :string, nullable: true },
+                 image_url: { type: :string, nullable: true },
                  description: { type: :string, nullable: true },
                  category: { type: :string, nullable: true },
                  person_in_charge: { type: :string, nullable: true },
@@ -253,7 +254,8 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
           vendor_profile: {
             type: :object,
             properties: {
-              image_path: { type: :string, nullable: true },
+              image: { type: :file, nullable: true, description: 'Vendor profile image' },
+              remove_image: { type: :boolean, nullable: true, description: 'Set to true to remove image' },
               description: { type: :string, nullable: true },
               category: { type: :string, nullable: true },
               person_in_charge: { type: :string, nullable: true },
@@ -270,7 +272,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
                properties: {
                  id: { type: :integer },
                  vendor_id: { type: :integer },
-                 image_path: { type: :string, nullable: true },
+                 image_url: { type: :string, nullable: true },
                  description: { type: :string, nullable: true },
                  category: { type: :string, nullable: true },
                  person_in_charge: { type: :string, nullable: true },

@@ -63,16 +63,29 @@ RSpec.describe VendorProfile, type: :model do
         category: 'Technology',
         person_in_charge: 'Jane Doe',
         address: '456 Test St',
-        notes: 'Test notes',
-        image_path: '/path/to/image.jpg'
+        notes: 'Test notes'
       )
-      
+
       expect(profile.description).to eq('Test description')
       expect(profile.category).to eq('Technology')
       expect(profile.person_in_charge).to eq('Jane Doe')
       expect(profile.address).to eq('456 Test St')
       expect(profile.notes).to eq('Test notes')
-      expect(profile.image_path).to eq('/path/to/image.jpg')
+    end
+  end
+
+  # --- Active Storage ---
+  describe 'Active Storage' do
+    it { is_expected.to have_one_attached(:image) }
+
+    it 'can attach an image' do
+      profile = vendor.reload.vendor_profile
+      profile.image.attach(
+        io: StringIO.new('fake image data'),
+        filename: 'test.jpg',
+        content_type: 'image/jpeg'
+      )
+      expect(profile.image).to be_attached
     end
   end
 end

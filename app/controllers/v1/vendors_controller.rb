@@ -41,16 +41,18 @@ module V1
       if vendor_user.save
         # Update vendor profile if attributes provided
         if params[:vendor][:vendor_profile_attributes].present? && vendor_user.vendor_profile
-          handle_vendor_profile_image_upload(nil)
           profile_params = params.require(:vendor).permit(vendor_profile_attributes: [
-            :image_path, :description, :category, :person_in_charge, :address, :notes
+            :description, :category, :person_in_charge, :address, :notes
           ])[:vendor_profile_attributes]
           vendor_user.vendor_profile.update(profile_params)
+
+          # Handle image upload via Active Storage
+          handle_profile_image_attachment(vendor_user.vendor_profile)
         end
-        
+
         render json: format_vendor(vendor_user), status: :created
       else
-        render json: { error: 'Validation Error', errors: vendor_user.errors.full_messages }, 
+        render json: { error: 'Validation Error', errors: vendor_user.errors.full_messages },
                status: :unprocessable_content
       end
     end
@@ -58,14 +60,15 @@ module V1
     # PUT/PATCH /v1/vendors/:id
     def update
       authorize @vendor, :update?, policy_class: VendorPolicy
-      
-      # Handle vendor profile image if present
-      if params[:vendor][:vendor_profile_attributes].present?
-        handle_vendor_profile_image_upload(@vendor)
-      end
 
       if @vendor.update(vendor_update_params)
-        render json: format_vendor(@vendor), status: :ok
+        # Handle vendor profile image via Active Storage AFTER update
+        # This ensures the profile exists and is saved before attaching
+        if params[:vendor][:vendor_profile_attributes].present?
+          handle_profile_image_attachment(@vendor.vendor_profile)
+        end
+
+        render json: format_vendor(@vendor.reload), status: :ok
       else
         render json: { error: 'Validation failed', errors: @vendor.errors.full_messages },
                status: :unprocessable_content
@@ -100,47 +103,22 @@ module V1
 
     private
 
-    # Handle image upload for vendor profile nested attributes
-    # @param vendor [User, nil] The vendor user (pass nil for create, vendor instance for update)
-    def handle_vendor_profile_image_upload(vendor = nil)
+    # Handle image upload and removal via Active Storage for vendor profile
+    def handle_profile_image_attachment(profile)
+      return unless profile
+
+      # New image upload
       uploaded_image = params.dig(:vendor, :vendor_profile_attributes, :image)
-      
       if uploaded_image.present? && uploaded_image.respond_to?(:read)
-        image_path = store_vendor_image(uploaded_image, vendor)
-        if image_path
-          params[:vendor][:vendor_profile_attributes][:image_path] = image_path
-          params[:vendor][:vendor_profile_attributes].delete(:image)
-        end
-      elsif vendor && params.dig(:vendor, :vendor_profile_attributes, :image_path) == ""
-        # Explicitly handle empty string as removal request (only on update)
-        params[:vendor][:vendor_profile_attributes][:image_path] = nil
-      end
-    end
-
-    # Store uploaded vendor image to filesystem
-    # @param uploaded_file [ActionDispatch::Http::UploadedFile] The uploaded image file
-    # @param vendor [User, nil] The vendor user (pass nil for create to skip old image deletion)
-    # @return [String, nil] The file path relative to storage root, or nil if storage failed
-    def store_vendor_image(uploaded_file, vendor = nil)
-      images_dir = Rails.root.join('storage', 'vendor_images')
-      FileUtils.mkdir_p(images_dir)
-
-      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-      extension = File.extname(uploaded_file.original_filename)
-      filename = "vendor-#{timestamp}-#{SecureRandom.hex(4)}#{extension}"
-      file_path = images_dir.join(filename)
-
-      # Delete old image only on update (when vendor exists)
-      if vendor&.vendor_profile&.image_path.present?
-        old_image_path = Rails.root.join('storage', vendor.vendor_profile.image_path)
-        File.delete(old_image_path) if File.exist?(old_image_path)
+        profile.image.attach(uploaded_image)
+        return
       end
 
-      File.open(file_path, 'wb') { |file| file.write(uploaded_file.read) }
-      "vendor_images/#{filename}"
-    rescue StandardError => e
-      Rails.logger.error "Failed to store vendor image: #{e.message}"
-      nil
+      # Image removal (accepts boolean true, string "true", or "1")
+      remove_flag = params.dig(:vendor, :vendor_profile_attributes, :remove_image)
+      if ActiveModel::Type::Boolean.new.cast(remove_flag)
+        profile.image.purge_later if profile.image.attached?
+      end
     end
 
     def set_vendor
@@ -150,34 +128,30 @@ module V1
     end
 
     def vendor_update_params
-      permitted = params.require(:vendor).permit(
-        :full_name,
-        :email,
-        :phone
-      )
+      # Build the list of permitted params dynamically
+      permitted_params = [:full_name, :email, :phone]
 
-      # Only include password fields if password is provided
+      # Include password fields if password is provided
       if params[:vendor][:password].present?
-        permitted.merge!(
-          params.require(:vendor).permit(:password, :password_confirmation)
-        )
+        permitted_params.push(:password, :password_confirmation)
       end
 
       # Include vendor_profile attributes if provided
+      # Note: :image and :remove_image are handled separately via Active Storage
       if params[:vendor][:vendor_profile_attributes].present?
-        permitted.merge!(
-          params.require(:vendor).permit(vendor_profile_attributes: [
-            :image_path,
+        permitted_params << {
+          vendor_profile_attributes: [
+            :id,
             :description,
             :category,
             :person_in_charge,
             :address,
             :notes
-          ])
-        )
+          ]
+        }
       end
 
-      permitted
+      params.require(:vendor).permit(permitted_params)
     end
 
     def format_vendor(vendor)
@@ -200,7 +174,7 @@ module V1
       {
         id: vendor_profile.id,
         vendor_id: vendor_profile.vendor_id,
-        image_path: vendor_profile.image_path,
+        image_url: vendor_profile.image.attached? ? url_for(vendor_profile.image) : nil,
         description: vendor_profile.description,
         category: vendor_profile.category,
         person_in_charge: vendor_profile.person_in_charge,
