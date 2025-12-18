@@ -4,7 +4,7 @@ RSpec.describe ExhibitorKitPaymentPolicy, type: :policy do
   let(:admin) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
   let(:exhibition_contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-  let(:exhibitor_user) { create(:user, :exhibitor) }
+  let(:exhibitor_user) { create(:user, :vendor) }
   let(:other_user) { create(:user) }
 
   let(:event) { create(:event, user: organizer) } # Organizer creates the event
@@ -58,7 +58,6 @@ RSpec.describe ExhibitorKitPaymentPolicy, type: :policy do
 
       it { should permit_action(:index) }
       it { should permit_action(:show) }
-
       it { should permit_action(:create) }
 
       it 'permits update for their own pending payments' do
@@ -80,6 +79,7 @@ RSpec.describe ExhibitorKitPaymentPolicy, type: :policy do
         pending_payment = create(:exhibitor_kit_payment, status: :pending, exhibitor_kit: exhibitor_kit, payee: organizer)
         expect(ExhibitorKitPaymentPolicy.new(exhibitor_user, pending_payment)).to permit_action(:destroy)
       end
+
       it { should_not permit_action(:verify) }
     end
 
@@ -127,7 +127,7 @@ RSpec.describe ExhibitorKitPaymentPolicy, type: :policy do
     end
 
     it 'Exhibitor sees their own payments' do
-      isolated_exhibitor_user = create(:user, :exhibitor)
+      isolated_exhibitor_user = create(:user, :vendor)
       isolated_event = create(:event, user: create(:user, :organizer))
       isolated_exhibitor = create(:exhibitor, event: isolated_event, vendor: isolated_exhibitor_user)
       isolated_exhibitor_kit = create(:exhibitor_kit, event_vendor: isolated_exhibitor)

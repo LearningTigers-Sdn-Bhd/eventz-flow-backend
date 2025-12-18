@@ -22,7 +22,15 @@ module V1
 
     def update
       authorize @exhibitor_kit_payment
-      if @exhibitor_kit_payment.update(exhibitor_kit_payment_params)
+
+      update_params = exhibitor_kit_payment_params
+
+      # Auto-set status to 'submitted' when exhibitor provides payment proof
+      if is_exhibitor? && update_params[:payment_proof_url].present?
+        update_params = update_params.merge(status: 'submitted')
+      end
+
+      if @exhibitor_kit_payment.update(update_params)
         render json: @exhibitor_kit_payment
       else
         render json: { errors: @exhibitor_kit_payment.errors.full_messages }, status: :unprocessable_content
@@ -30,6 +38,10 @@ module V1
     end
 
     private
+
+    def is_exhibitor?
+      @exhibitor_kit.event_vendor.vendor_id == current_user.id
+    end
 
     def set_exhibitor_kit
       @exhibitor_kit = ExhibitorKit.find(params[:exhibitor_kit_id])
@@ -40,7 +52,8 @@ module V1
     end
 
     def exhibitor_kit_payment_params
-      params.require(:exhibitor_kit_payment).permit(:amount, :status, :payment_source, :payment_proof_url, :external_ref, :note, :paid_at)
+      permitted = policy(@exhibitor_kit_payment).permitted_attributes_for_update
+      params.require(:exhibitor_kit_payment).permit(*permitted)
     end
   end
 end
