@@ -8,19 +8,19 @@ class ExhibitorKitPaymentPolicy < ApplicationPolicy
   end
 
   def create?
-    user.is_org_owner_or_organizer? || (record.present? && user.exhibitor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id)
+    user.is_org_owner_or_organizer? || (record.present? && user.vendor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id)
   end
 
   def destroy?
-    user.is_org_owner_or_organizer? || (record.present? && user.exhibitor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id && record.status == 'pending') # Only pending for exhibitor
+    user.is_org_owner_or_organizer? || (record.present? && user.vendor? && record.exhibitor_kit && record.exhibitor_kit.event_vendor.vendor_id == user.id && record.status == 'pending') # Only pending for exhibitor
   end
 
   def update?
     # Exhibitor can update payment_proof_url, external_ref, notes, and status to 'submitted'
     if record.exhibitor_kit.event_vendor.vendor_id == user.id
-      # Permit these fields only if the status is currently 'pending'
-      # so that an exhibitor cannot resubmit a verified/rejected payment
-      if record.status == 'pending' || record.status == 'submitted'
+      # Permit these fields only if the status is currently 'pending', 'submitted', or 'rejected'
+      # so that an exhibitor can submit or resubmit payment proof
+      if record.status == 'pending' || record.status == 'submitted' || record.status == 'rejected'
         return true
       end
     end
@@ -44,7 +44,7 @@ class ExhibitorKitPaymentPolicy < ApplicationPolicy
       elsif user.is_exhibition_contractor?
         scope.joins(exhibitor_kit: { event_vendor: { event: :event_exhibition_contractors } })
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
-      elsif user.exhibitor? # Check if user is an exhibitor
+      elsif user.vendor? # Check if user is a vendor (vendors become exhibitors when assigned to events)
         scope.joins(exhibitor_kit: :event_vendor) # Join through exhibitor_kit to event_vendor
              .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' }) # Filter event_vendors by user's ID and type 'Exhibitor'
       else
@@ -54,11 +54,11 @@ class ExhibitorKitPaymentPolicy < ApplicationPolicy
   end
 
   def permitted_attributes_for_update
-    if record.exhibitor_kit.event_vendor.vendor_id == user.id # Exhibitor
-      if record.status == 'pending' || record.status == 'submitted'
+    if record.exhibitor_kit.event_vendor.vendor_id == user.id # Exhibitor (vendor)
+      if record.status == 'pending' || record.status == 'submitted' || record.status == 'rejected'
         [:payment_proof_url, :external_ref, :note, :payment_source]
       else
-        [] # Exhibitor cannot change anything once payment is processed
+        [] # Exhibitor cannot change anything once payment is verified
       end
     elsif user.is_org_owner_or_organizer? # Organizer/Admin
       [:status, :note, :paid_at] # Can change status, add notes, and paid_at

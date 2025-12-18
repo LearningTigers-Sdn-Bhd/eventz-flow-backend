@@ -1,8 +1,8 @@
 class V1::ExhibitorKitsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update]
+  before_action :set_exhibitor_kit, only: %i[show update submit_order]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -40,6 +40,19 @@ class V1::ExhibitorKitsController < ApplicationController
       render json: result.data, status: result.status
     else
       render json: { errors: result.errors }, status: result.status
+    end
+  end
+
+  def submit_order
+    authorize @exhibitor_kit, :update?
+
+    service = ExhibitorKitSubmissionService.new(user: current_user, exhibitor_kit: @exhibitor_kit)
+    result = service.call
+
+    if result.success?
+      success_response(data: result.data, message: 'Order submitted successfully', status: :created)
+    else
+      error_response(message: 'Failed to submit order', errors: Array(result.errors), status: result.status)
     end
   end
 

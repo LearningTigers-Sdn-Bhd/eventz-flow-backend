@@ -120,6 +120,9 @@ Rails.application.routes.draw do
       end
 
       resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy] do
+        member do
+          post :submit_order
+        end
         resources :exhibitor_kit_payments, only: [:index, :show, :update]
       end
 
