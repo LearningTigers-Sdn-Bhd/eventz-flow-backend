@@ -5,7 +5,8 @@ class EventAssignment < ApplicationRecord
   # Roles for this specific event
   enum :role, { 
     event_admin: 'event_admin', 
-    event_team_member: 'event_team_member' 
+    event_team_member: 'event_team_member',
+    business_host: 'business_host'
   }
 
   # An event assignment is unique by the user and the event

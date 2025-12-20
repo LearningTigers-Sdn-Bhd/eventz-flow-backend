@@ -9,7 +9,51 @@ module Authenticable
       before_action :require_verified_email!
     end
 
+    class_methods do
+      def skip_default_authentication(options = {})
+        skip_before_action :authenticate_user!, options
+      end
+    end
+
     private
+
+    # Authenticate user only if token/key is provided
+    def authenticate_user_if_token_present
+      header = request.headers['Authorization']
+      return unless header # Allow anonymous access ONLY if no header is present
+
+      @authenticated_via_api_key = false
+
+      # Try JWT first
+      if header.start_with?('Bearer ')
+        token = header.split(' ').last
+        begin
+          payload = JwtService.decode(token)
+          @current_user = User.find_by(id: payload[:user_id], jti: payload[:jti])
+          return if @current_user.present?
+        rescue CustomError::Unauthorized => e
+           if e.message.include?('expired')
+            render_token_expired(e)
+            return
+           end
+           # If decode fails, fall through to API key check? 
+           # Usually Bearer means JWT. If JWT fails, we should probably fail here.
+           # But existing logic falls through. Let's keep it consistent.
+        end
+      end
+
+      # Try API Key (if not Bearer or if Bearer failed/was ignored)
+      if header.length > 30 && !header.include?(' ')
+        @current_user = ApiKey.authenticate_by_key(header)
+        if @current_user.present?
+          @authenticated_via_api_key = true
+          return
+        end
+      end
+
+      # If header was present but authentication failed
+      render_unauthorized
+    end
 
     # Track if user was authenticated via API key
     attr_reader :authenticated_via_api_key

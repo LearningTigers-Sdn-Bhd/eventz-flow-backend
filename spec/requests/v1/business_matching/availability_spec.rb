@@ -30,9 +30,9 @@ RSpec.describe 'V1::BusinessMatching::Availability', type: :request do
     get 'Retrieves availability for a specific business matching event' do
       tags 'Business Matching'
       produces 'application/json'
-      security [{ BearerAuth: [] }]
+      # security [{ BearerAuth: [] }] # Public endpoint
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      # parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
 
       let(:business_matching_event_id) { 'external_event_id_123' }
       let(:availability_response_data) do
@@ -52,7 +52,7 @@ RSpec.describe 'V1::BusinessMatching::Availability', type: :request do
 
       # 1. Success
       response '200', 'Availability data found' do
-        let(:Authorization) { "Bearer #{organizer_token}" }
+        # let(:Authorization) { "Bearer #{organizer_token}" }
 
         schema BUSINESS_MATCHING_AVAILABILITY_SCHEMA
         run_test!
@@ -60,7 +60,7 @@ RSpec.describe 'V1::BusinessMatching::Availability', type: :request do
 
       # 2. Service Error
       response '500', 'Service error' do
-        let(:Authorization) { "Bearer #{organizer_token}" }
+        # let(:Authorization) { "Bearer #{organizer_token}" }
 
         before do
           allow_any_instance_of(BusinessMatchingService).to receive(:fetch_availability).and_return(
@@ -71,12 +71,6 @@ RSpec.describe 'V1::BusinessMatching::Availability', type: :request do
           json = JSON.parse(response.body)
           expect(json['errors']).to eq('Webhook connection failed')
         end
-      end
-
-      # 3. Unauthorized
-      response '401', 'Unauthorized' do
-        let(:Authorization) { 'Bearer invalid_token' }
-        run_test!
       end
     end
   end

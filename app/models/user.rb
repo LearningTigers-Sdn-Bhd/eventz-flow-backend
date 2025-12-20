@@ -38,6 +38,8 @@ class User < ApplicationRecord
   # 1. EVENT STAFFING (Unified Event Assignment Model)
   has_many :event_assignments, dependent: :destroy
   has_many :assigned_events, through: :event_assignments, source: :event
+  
+  has_many :business_host_assignments, dependent: :destroy # Added association
 
   # Event vendor assignments (for exhibitors/merchants)
   has_many :event_vendor_assignments, class_name: 'EventVendor', foreign_key: 'vendor_id', dependent: :destroy
@@ -125,6 +127,11 @@ class User < ApplicationRecord
     return false unless event.present?
 
     event_vendor_assignments.exists?(event_id: event.id)
+  end
+
+  def is_business_host?(event)
+    return false unless event.present?
+    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_host])
   end
 
   # --- Group Role Helper Methods ---

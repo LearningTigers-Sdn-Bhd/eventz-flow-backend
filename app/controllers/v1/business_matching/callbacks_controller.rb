@@ -27,20 +27,12 @@ module V1
              event_details_data = callback_data[:data]
              Rails.logger.info "Caching Business Matching EVENT DETAILS data for event #{event_id}: #{event_details_data.size} items"
 
-             # Transform the event details data to match frontend's BusinessMatchingEvent interface
-             formatted_events = event_details_data.map do |event_data|
-                {
-                  id: event_data["id"] || event_data["_id"],
-                  event_id: event_id, # Our internal event ID
-                  title: event_data["title"],
-                  duration: event_data["slotDuration"],
-                  location: event_data["locationLink"],
-                  admin_email: event_data["adminEmail"],
-                  admin_wa_number: event_data["adminWaNumber"]
-                }
-             end
+             # Use BusinessMatchingService to transform and include hosts
+             service = BusinessMatchingService.new(nil)
+             formatted_events = service.transform_events(event_details_data, event_id)
+             
              Rails.cache.write("business_matching_events_#{event_id}", formatted_events, expires_in: 1.hour)
-             Rails.logger.info "Cached Event Details Data: #{Rails.cache.read("business_matching_events_#{event_id}").inspect}"
+             Rails.logger.info "Cached Event Details Data with hosts"
 
         # --- Handling Detailed Slots Callback (Specific Date) ---
         # If the payload contains specific time slots (e.g., contains 'slot' singular key)

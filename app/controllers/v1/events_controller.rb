@@ -1,16 +1,20 @@
 module V1
   class EventsController < ApplicationController
-    # Ensure event is found and authorized before show, update, destroy, force_delete, restore, and business_matching_events.
-    before_action :set_event, except: [:index, :create]
+    # Skip default authentication for the public `show` action, but try to authenticate if a token is present.
+    skip_default_authentication only: [:show]
+    prepend_before_action :authenticate_user_if_token_present, only: [:show]
 
     # Authorize the event instance *after* it's set
-    before_action :authorize_event, except: [:index, :create]
+    before_action :set_event, except: [:index, :create]
+    before_action :authorize_event, except: [:index, :create, :business_matching_events, :show]
+
+    # Special authorization for the show action, as it can be public
+    before_action -> { authorize @event, :show? if @event }, only: [:show]
 
     # Authorize the class for index/create (Pundit best practice)
     before_action -> { authorize Event, :index? }, only: [:index]
     before_action -> { authorize Event, :create? }, only: [:create]
-
-
+    
     # GET /v1/events
     # Query params:
     #   - archived=true: Show only archived (soft-deleted) events
@@ -102,11 +106,22 @@ module V1
         return render json: { errors: "Business matching is not enabled for this event" }, status: :bad_request
       end
 
+      authorize @event, :business_matching_events?
+
       begin
         service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id, force_refresh: params[:force_refresh] == 'true')
 
         if service_result.success?
-          render json: service_result.data, status: :ok
+          data = service_result.data
+
+          # Data Filtering for Business Hosts
+          # If user is a host but NOT an admin/organizer, filter to their assigned sessions
+          if current_user.is_business_host?(@event) && !current_user.is_org_owner_or_organizer?
+            assigned_bm_ids = current_user.business_host_assignments.where(event_id: @event.id).pluck(:business_matching_event_id)
+            data = data.select { |session| assigned_bm_ids.include?(session[:id].to_s) }
+          end
+
+          render json: data, status: :ok
         else
           render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
         end

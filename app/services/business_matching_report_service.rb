@@ -5,10 +5,15 @@ class BusinessMatchingReportService
   end
 
   def generate_xlsx
+    Rails.logger.info "DEBUG REPORT: Bookings count: #{@bookings.count}"
+    Rails.logger.info "DEBUG REPORT: First 5 bookings: #{@bookings.first(5).inspect}"
+
     p = Axlsx::Package.new
     wb = p.workbook
 
     grouped_bookings = @bookings.group_by { |b| b[:event_title] || "General" }
+
+    Rails.logger.info "DEBUG REPORT: Grouped bookings keys: #{grouped_bookings.keys.inspect}"
 
     grouped_bookings.each_with_index do |(group_title, bookings), index|
       # Sheet name limited to 31 chars
@@ -26,7 +31,9 @@ class BusinessMatchingReportService
       end
     end
 
-    p.to_stream.read
+    xlsx_data = p.to_stream.read
+    Rails.logger.info "DEBUG REPORT: Generated XLSX data length: #{xlsx_data.length} bytes"
+    xlsx_data
   end
 
   private

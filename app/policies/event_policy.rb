@@ -29,7 +29,8 @@ class EventPolicy < ApplicationPolicy
       user.is_event_admin?(record) ||
       user.is_event_team_member?(record) ||
       user.is_event_vendor?(record) ||
-      user.exhibition_contractor_for?(record)
+      user.exhibition_contractor_for?(record) ||
+      user.is_business_host?(record)
     )
   end
 
@@ -65,7 +66,15 @@ class EventPolicy < ApplicationPolicy
   end
 
   def business_matching_events?
-    show?
+    return false unless record.use_business_matching
+
+    # Allow if user is staff/organizer
+    return true if user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) || user.is_event_team_member?(record)
+
+    # Allow if user is a business host
+    return true if user.is_business_host?(record)
+
+    false
   end
 
   # ============================================================
@@ -104,6 +113,11 @@ class EventPolicy < ApplicationPolicy
     user.is_event_admin?(record) ||
     user.exhibition_contractor_for?(record) ||
     user.is_event_vendor?(record)
+  end
+
+  def manage_business_hosts?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_event_admin?(record)
   end
 
   # ============================================================
