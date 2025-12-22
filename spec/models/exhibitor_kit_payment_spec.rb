@@ -21,7 +21,11 @@ RSpec.describe ExhibitorKitPayment, type: :model do
     context 'when status is submitted' do
       subject { FactoryBot.build(:exhibitor_kit_payment, status: :submitted, payment_source: :manual_bank_in) }
       it { should validate_presence_of(:payment_source) }
-      it { should validate_presence_of(:payment_proof_url) }
+      it 'validates presence of payment_proof' do
+        subject.payment_proof.detach
+        expect(subject).not_to be_valid
+        expect(subject.errors[:payment_proof]).to include("can't be blank")
+      end
     end
 
     context 'when payment_source is payment_gateway' do

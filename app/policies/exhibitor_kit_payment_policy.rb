@@ -56,7 +56,7 @@ class ExhibitorKitPaymentPolicy < ApplicationPolicy
   def permitted_attributes_for_update
     if record.exhibitor_kit.event_vendor.vendor_id == user.id # Exhibitor (vendor)
       if record.status == 'pending' || record.status == 'submitted' || record.status == 'rejected'
-        [:payment_proof_url, :external_ref, :note, :payment_source]
+        [:payment_proof, :external_ref, :note, :payment_source]
       else
         [] # Exhibitor cannot change anything once payment is verified
       end

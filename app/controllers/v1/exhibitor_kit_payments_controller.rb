@@ -7,17 +7,13 @@ module V1
     def index
       @exhibitor_kit_payments = policy_scope(@exhibitor_kit.exhibitor_kit_payments)
                                 .includes(:exhibitor_kit_items, :exhibitor_kit_printings) # Eager load associations
-      render json: @exhibitor_kit_payments.as_json(
-        include: [
-          { exhibitor_kit_items: { include: :rentable_item } },
-          { exhibitor_kit_printings: { include: :printing_service } }
-        ]
-      )
+
+      render json: @exhibitor_kit_payments.map { |payment| format_payment(payment) }, status: :ok
     end
 
     def show
       authorize @exhibitor_kit_payment
-      render json: @exhibitor_kit_payment
+      render json: format_payment(@exhibitor_kit_payment), status: :ok
     end
 
     def update
@@ -26,18 +22,28 @@ module V1
       update_params = exhibitor_kit_payment_params
 
       # Auto-set status to 'submitted' when exhibitor provides payment proof
-      if is_exhibitor? && update_params[:payment_proof_url].present?
+      if is_exhibitor? && (update_params[:payment_proof].present? || update_params[:payment_proof_url].present?)
         update_params = update_params.merge(status: 'submitted')
       end
 
       if @exhibitor_kit_payment.update(update_params)
-        render json: @exhibitor_kit_payment
+        render json: format_payment(@exhibitor_kit_payment), status: :ok
       else
-        render json: { errors: @exhibitor_kit_payment.errors.full_messages }, status: :unprocessable_content
+        render json: { error: 'Validation failed', errors: @exhibitor_kit_payment.errors.full_messages },
+               status: :unprocessable_content
       end
     end
 
     private
+
+    def format_payment(payment)
+      payment.as_json(
+        include: [
+          { exhibitor_kit_items: { include: :rentable_item } },
+          { exhibitor_kit_printings: { include: :printing_service } }
+        ]
+      ).merge(payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : payment[:payment_proof_url])
+    end
 
     def is_exhibitor?
       @exhibitor_kit.event_vendor.vendor_id == current_user.id

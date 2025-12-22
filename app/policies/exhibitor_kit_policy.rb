@@ -73,7 +73,6 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
-      :payment_proof_url, # Added for exhibitors to upload proof
       { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
       { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
       { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
