@@ -407,7 +407,7 @@ class BusinessMatchingService < BaseService
                 
                 if force_refresh # Only wait if force_refresh is true (for reports)
                     Rails.logger.info "FORCE REFRESH: Polling cache for bookings data for BM ID: #{bm_event_id}"
-                    max_attempts = 10 # Check for 10 seconds
+                    max_attempts = 60 # Check for 60 seconds
                     attempts = 0
                     
                     loop do
@@ -421,8 +421,8 @@ class BusinessMatchingService < BaseService
                         break if attempts >= max_attempts
                         sleep 1 # Wait 1 second before next attempt
                     end
-                    Rails.logger.warn "FORCE REFRESH: Bookings data not found in cache after timeout for BM ID: #{bm_event_id}"
-                    return BaseService::ServiceResult.new(success: false, errors: "Bookings data not available after timeout", status: :service_unavailable)
+                    Rails.logger.warn "FORCE REFRESH: Bookings data not found in cache after timeout for BM ID: #{bm_event_id}. Returning empty list to avoid blocking report."
+                    return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
                 else
                     return BaseService::ServiceResult.new(success: true, data: { bookings: [] }) # For normal async flow
                 end

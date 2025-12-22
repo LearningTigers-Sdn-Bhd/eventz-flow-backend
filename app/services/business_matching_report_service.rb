@@ -16,6 +16,8 @@ class BusinessMatchingReportService
     Rails.logger.info "DEBUG REPORT: Grouped bookings keys: #{grouped_bookings.keys.inspect}"
 
     grouped_bookings.each_with_index do |(group_title, bookings), index|
+      next if bookings.empty?
+
       # Sheet name limited to 31 chars
       sheet_name = group_title.to_s.gsub(/[^0-9a-zA-Z \-_]/, '').truncate(31)
       sheet_name = "Sheet#{index + 1}" if sheet_name.blank?

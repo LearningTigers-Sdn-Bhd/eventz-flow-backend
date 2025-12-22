@@ -136,6 +136,7 @@ module V1
         end
 
         unless service_error_occurred
+          request.format = :xlsx unless params[:format]
           report_service = BusinessMatchingReportService.new(all_bookings, "Business Matching Report")
 
           respond_to do |format|
