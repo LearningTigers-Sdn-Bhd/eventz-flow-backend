@@ -8,20 +8,9 @@ module V1
       # Apply policy scope and eager load the associated rentable_item and item_category
       @event_rentable_items = policy_scope(EventRentableItem)
                                 .where(event_id: @event.id)
-                                .includes(rentable_item: :item_category) # Eager load rentable_item with item_category
-  
-      render json: @event_rentable_items.as_json(
-        include: {
-          rentable_item: {
-            only: [:id, :name, :description, :unit_of_measure, :default_price, :status, :item_category_id, :user_id, :created_at, :updated_at],
-            include: {
-              item_category: {
-                only: [:id, :name, :active, :created_at, :updated_at]
-              }
-            }
-          }
-        }
-      )
+                                .includes(rentable_item: [:item_category, :image_attachment, :image_blob])
+
+      render json: @event_rentable_items.map { |eri| format_event_rentable_item(eri) }
     end
 
     def show
@@ -67,6 +56,18 @@ module V1
 
     def event_rentable_item_params
       params.require(:event_rentable_item).permit(:rentable_item_id)
+    end
+
+    def format_event_rentable_item(eri)
+      eri.as_json(include: { event_rentable_item_price_tiers: {} }).merge(
+        rentable_item: eri.rentable_item ? format_rentable_item(eri.rentable_item) : nil
+      )
+    end
+
+    def format_rentable_item(item)
+      item.as_json(include: :item_category).merge(
+        image_url: item.image.attached? ? url_for(item.image) : nil
+      )
     end
   end
 end

@@ -18,8 +18,8 @@ module V1
           :exhibitor_kit_items, 
           :exhibitor_kit_printings,
           :custom_requests,
-          exhibitor_kit_items: :rentable_item,
-          exhibitor_kit_printings: :printing_service
+          exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
+          exhibitor_kit_printings: { printing_service: { image_attachment: :blob } }
         ]
       )
       event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
@@ -122,8 +122,8 @@ module V1
             :exhibitor_team_members,
             :exhibitor_kit_items,
             :exhibitor_kit_printings,
-            exhibitor_kit_items: :rentable_item,
-            exhibitor_kit_printings: :printing_service
+            exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
+            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } }
           ]
         ).find(params[:id])
       end
@@ -225,7 +225,8 @@ module V1
           id: item.rentable_item.id,
           name: item.rentable_item.name,
           unit_of_measure: item.rentable_item.unit_of_measure,
-          default_price: item.rentable_item.default_price
+          default_price: item.rentable_item.default_price,
+          image_url: item.rentable_item.image.attached? ? url_for(item.rentable_item.image) : nil
         } : nil
       }
     end
@@ -243,7 +244,8 @@ module V1
           id: printing.printing_service.id,
           name: printing.printing_service.name,
           unit_of_measure: printing.printing_service.unit_of_measure,
-          default_price: printing.printing_service.default_price
+          default_price: printing.printing_service.default_price,
+          image_url: printing.printing_service.image.attached? ? url_for(printing.printing_service.image) : nil
         } : nil
       }
     end    

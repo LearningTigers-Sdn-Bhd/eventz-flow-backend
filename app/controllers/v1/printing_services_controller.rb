@@ -5,12 +5,12 @@ module V1
 
     def index
       @printing_services = policy_scope(PrintingService).includes(:item_category)
-      render json: @printing_services, include: :item_category
+      render json: @printing_services.map { |service| format_printing_service(service) }
     end
 
     def show
       authorize @printing_service
-      render json: @printing_service, include: :item_category
+      render json: format_printing_service(@printing_service)
     end
 
     def create
@@ -18,7 +18,7 @@ module V1
       authorize @printing_service
 
       if @printing_service.save
-        render json: @printing_service, status: :created, include: :item_category
+        render json: format_printing_service(@printing_service), status: :created
       else
         render json: @printing_service.errors, status: :unprocessable_content
       end
@@ -26,8 +26,9 @@ module V1
 
     def update
       authorize @printing_service
+      handle_image_removal
       if @printing_service.update(printing_service_params)
-        render json: @printing_service, include: :item_category
+        render json: format_printing_service(@printing_service)
       else
         render json: @printing_service.errors, status: :unprocessable_content
       end
@@ -46,7 +47,19 @@ module V1
     end
 
     def printing_service_params
-      params.require(:printing_service).permit(:name, :description, :unit_of_measure, :default_price, :status, :item_category_id)
+      params.require(:printing_service).permit(:name, :description, :unit_of_measure, :default_price, :status, :item_category_id, :image)
+    end
+
+    def handle_image_removal
+      if ActiveModel::Type::Boolean.new.cast(params[:remove_image])
+        @printing_service.image.purge_later if @printing_service.image.attached?
+      end
+    end
+
+    def format_printing_service(service)
+      service.as_json(include: :item_category).merge(
+        image_url: service.image.attached? ? url_for(service.image) : nil
+      )
     end
   end
 end

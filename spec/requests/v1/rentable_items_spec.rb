@@ -18,10 +18,11 @@ RSpec.describe 'V1::RentableItems', type: :request do
           let!(:rentable_item1) { create(:rentable_item, item_category: item_category) }
           let!(:rentable_item2) { create(:rentable_item, item_category: item_category) }
           before { get v1_rentable_items_path, headers: auth_headers(user) }
-          it 'returns a 200 response' do
+          it 'returns a 200 response with image_url' do
             expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
+            expect(data.first).to have_key('image_url')
           end
         end
 

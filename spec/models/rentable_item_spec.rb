@@ -22,4 +22,39 @@ RSpec.describe RentableItem, type: :model do
     it { is_expected.to belong_to(:item_category) }
     it { is_expected.to belong_to(:user) }
   end
+
+  describe 'Active Storage' do
+    subject { create(:rentable_item) }
+
+    it { is_expected.to have_one_attached(:image) }
+
+    it 'can attach an image' do
+      subject.image.attach(
+        io: StringIO.new('fake image data'),
+        filename: 'test.jpg',
+        content_type: 'image/jpeg'
+      )
+      expect(subject.image).to be_attached
+    end
+
+    it 'validates image content type' do
+      subject.image.attach(
+        io: StringIO.new('fake data'),
+        filename: 'test.txt',
+        content_type: 'text/plain'
+      )
+      expect(subject).not_to be_valid
+      expect(subject.errors[:image]).to include('must be a JPEG, PNG, GIF, or WebP')
+    end
+
+    it 'validates image size' do
+      subject.image.attach(
+        io: StringIO.new('x' * 6.megabytes),
+        filename: 'large.jpg',
+        content_type: 'image/jpeg'
+      )
+      expect(subject).not_to be_valid
+      expect(subject.errors[:image]).to include('is too large (max 5MB)')
+    end
+  end
 end

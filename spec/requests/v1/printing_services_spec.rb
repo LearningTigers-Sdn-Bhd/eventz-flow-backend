@@ -18,10 +18,11 @@ RSpec.describe 'V1::PrintingServices', type: :request do
           let!(:printing_service1) { create(:printing_service, item_category: item_category) }
           let!(:printing_service2) { create(:printing_service, item_category: item_category) }
           before { get v1_printing_services_path, headers: auth_headers(user) }
-          it 'returns a 200 response' do
+          it 'returns a 200 response with image_url' do
             expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data.count).to eq(2)
+            expect(data.first).to have_key('image_url')
           end
         end
 

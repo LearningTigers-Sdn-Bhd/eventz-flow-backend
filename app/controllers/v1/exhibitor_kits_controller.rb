@@ -12,13 +12,7 @@ class V1::ExhibitorKitsController < ApplicationController
 
   def show
     authorize @exhibitor_kit
-    render json: @exhibitor_kit.as_json(
-      include: [
-        { exhibitor_kit_items: { include: :rentable_item } },
-        { exhibitor_kit_printings: { include: :printing_service } },
-        { custom_requests: { only: [:id, :description, :quantity, :status, :resolved_price, :response_notes] } } # Include custom_requests
-      ]
-    )
+    render json: format_exhibitor_kit(@exhibitor_kit)
   end
 
   def create
@@ -71,5 +65,40 @@ class V1::ExhibitorKitsController < ApplicationController
     return if @event.use_exhibitor_kit?
 
     render json: { error: 'Exhibitor kits are not enabled for this event' }, status: :forbidden
+  end
+
+  def format_exhibitor_kit(kit)
+    kit.as_json(
+      include: [
+        { custom_requests: { only: [:id, :description, :quantity, :status, :resolved_price, :response_notes] } }
+      ]
+    ).merge(
+      exhibitor_kit_items: kit.exhibitor_kit_items.map { |item| format_kit_item(item) },
+      exhibitor_kit_printings: kit.exhibitor_kit_printings.map { |printing| format_kit_printing(printing) }
+    )
+  end
+
+  def format_kit_item(item)
+    item.as_json.merge(
+      rentable_item: item.rentable_item ? format_rentable_item(item.rentable_item) : nil
+    )
+  end
+
+  def format_kit_printing(printing)
+    printing.as_json.merge(
+      printing_service: printing.printing_service ? format_printing_service(printing.printing_service) : nil
+    )
+  end
+
+  def format_rentable_item(item)
+    item.as_json.merge(
+      image_url: item.image.attached? ? url_for(item.image) : nil
+    )
+  end
+
+  def format_printing_service(service)
+    service.as_json.merge(
+      image_url: service.image.attached? ? url_for(service.image) : nil
+    )
   end
 end

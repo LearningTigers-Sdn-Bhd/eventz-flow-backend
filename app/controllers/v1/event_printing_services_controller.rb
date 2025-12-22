@@ -7,8 +7,9 @@ module V1
     def index
       @event_printing_services = policy_scope(EventPrintingService)
         .where(event_id: @event.id)
-        .includes(printing_service: :item_category)
-      render json: @event_printing_services, include: { printing_service: { include: :item_category } }
+        .includes(printing_service: [:item_category, :image_attachment, :image_blob])
+
+      render json: @event_printing_services.map { |eps| format_event_printing_service(eps) }
     end
 
     def show
@@ -54,6 +55,18 @@ module V1
 
     def event_printing_service_params
       params.require(:event_printing_service).permit(:printing_service_id)
+    end
+
+    def format_event_printing_service(eps)
+      eps.as_json(include: { event_printing_service_price_tiers: {} }).merge(
+        printing_service: eps.printing_service ? format_printing_service(eps.printing_service) : nil
+      )
+    end
+
+    def format_printing_service(service)
+      service.as_json(include: :item_category).merge(
+        image_url: service.image.attached? ? url_for(service.image) : nil
+      )
     end
   end
 end

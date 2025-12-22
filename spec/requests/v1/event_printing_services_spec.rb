@@ -24,6 +24,8 @@ RSpec.describe 'V1::EventPrintingServices', type: :request do
           expect(response).to have_http_status(:ok)
           data = JSON.parse(response.body)
           expect(data.first['id']).to eq(event_printing_service.id)
+          expect(data.first).to have_key('printing_service')
+          expect(data.first['printing_service']).to have_key('image_url')
         end
       end
 

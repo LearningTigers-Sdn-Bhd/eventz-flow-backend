@@ -24,6 +24,8 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
           expect(response).to have_http_status(:ok)
           data = JSON.parse(response.body)
           expect(data.first['id']).to eq(event_rentable_item.id)
+          expect(data.first).to have_key('rentable_item')
+          expect(data.first['rentable_item']).to have_key('image_url')
         end
       end
 
