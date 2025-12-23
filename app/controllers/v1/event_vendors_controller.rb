@@ -11,15 +11,17 @@ module V1
       
       merchants = @event.event_vendors.merchants.includes(:vendor)
       exhibitors = @event.event_vendors.exhibitors.includes(
-        :vendor, 
-        :exhibitor_kit, 
+        :vendor,
+        :exhibitor_kit,
         exhibitor_kit: [
-          :exhibitor_team_members, 
-          :exhibitor_kit_items, 
+          :exhibitor_team_members,
+          :exhibitor_kit_items,
           :exhibitor_kit_printings,
           :custom_requests,
+          :exhibitor_team_member_payments,
           exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
-          exhibitor_kit_printings: { printing_service: { image_attachment: :blob } }
+          exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
+          exhibitor_team_member_payments: { payment_proof_attachment: :blob }
         ]
       )
       event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
@@ -116,14 +118,16 @@ module V1
       @event_vendor = @event.event_vendors.includes(:vendor).find(params[:id])
       if @event_vendor.is_a?(Exhibitor)
         @event_vendor = @event.event_vendors.exhibitors.includes(
-          :vendor, 
-          :exhibitor_kit, 
+          :vendor,
+          :exhibitor_kit,
           exhibitor_kit: [
             :exhibitor_team_members,
             :exhibitor_kit_items,
             :exhibitor_kit_printings,
+            :exhibitor_team_member_payments,
             exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
-            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } }
+            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
+            exhibitor_team_member_payments: { payment_proof_attachment: :blob }
           ]
         ).find(params[:id])
       end
@@ -204,12 +208,15 @@ module V1
         team_member_count: exhibitor_kit.team_member_count,
         team_member_limit: exhibitor_kit.team_member_limit,
         excess_team_member_count: exhibitor_kit.excess_team_member_count,
-        exceeds_team_member_limit: exhibitor_kit.exceeds_team_member_limit?,
+        paid_extra_member_count: exhibitor_kit.paid_extra_member_count,
+        unpaid_excess_team_member_count: exhibitor_kit.unpaid_excess_team_member_count,
+        has_unpaid_excess_team_members: exhibitor_kit.has_unpaid_excess_team_members?,
         extra_team_member_fee: exhibitor_kit.extra_team_member_fee,
         extra_team_member_charges: exhibitor_kit.extra_team_member_charges,
         exhibitor_kit_items: exhibitor_kit.exhibitor_kit_items.map { |item| format_exhibitor_kit_item(item) },
         exhibitor_kit_printings: exhibitor_kit.exhibitor_kit_printings.map { |printing| format_exhibitor_kit_printing(printing) },
-        custom_requests: exhibitor_kit.custom_requests.as_json(only: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :created_at, :updated_at])
+        custom_requests: exhibitor_kit.custom_requests.as_json(only: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :created_at, :updated_at]),
+        exhibitor_team_member_payments: exhibitor_kit.exhibitor_team_member_payments.map { |payment| format_exhibitor_team_member_payment(payment) }
       }
     end
 
@@ -247,6 +254,25 @@ module V1
           default_price: printing.printing_service.default_price,
           image_url: printing.printing_service.image.attached? ? url_for(printing.printing_service.image) : nil
         } : nil
+      }
+    end
+
+    def format_exhibitor_team_member_payment(payment)
+      {
+        id: payment.id,
+        exhibitor_kit_id: payment.exhibitor_kit_id,
+        payee_id: payment.payee_id,
+        extra_member_count: payment.extra_member_count,
+        fee_per_member: payment.fee_per_member,
+        amount: payment.amount,
+        status: payment.status,
+        payment_source: payment.payment_source,
+        payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : nil,
+        external_ref: payment.external_ref,
+        note: payment.note,
+        paid_at: payment.paid_at,
+        created_at: payment.created_at,
+        updated_at: payment.updated_at
       }
     end    
   end

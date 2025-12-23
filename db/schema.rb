@@ -326,6 +326,23 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_23_024147) do
     t.index ["event_id"], name: "index_exhibitor_team_member_limits_on_event_id", unique: true
   end
 
+  create_table "exhibitor_team_member_payments", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.bigint "payee_id"
+    t.integer "extra_member_count", null: false
+    t.decimal "fee_per_member", precision: 10, scale: 2, null: false
+    t.decimal "amount", precision: 10, scale: 2, default: "0.0"
+    t.integer "status", default: 0
+    t.string "payment_source"
+    t.string "external_ref"
+    t.text "note"
+    t.datetime "paid_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_member_payments_on_exhibitor_kit_id"
+    t.index ["payee_id"], name: "index_exhibitor_team_member_payments_on_payee_id"
+  end
+
   create_table "exhibitor_team_members", force: :cascade do |t|
     t.bigint "exhibitor_kit_id", null: false
     t.string "full_name"
@@ -681,6 +698,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_23_024147) do
   add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_team_member_limits", "events"
+  add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"
+  add_foreign_key "exhibitor_team_member_payments", "users", column: "payee_id"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
   add_foreign_key "export_logs", "events"
   add_foreign_key "gift_winners", "gifts"

@@ -77,8 +77,8 @@ RSpec.describe ExhibitorKit, type: :model do
           expect(exhibitor_kit.excess_team_member_count).to eq(0)
         end
 
-        it 'returns false for exceeds_team_member_limit?' do
-          expect(exhibitor_kit.exceeds_team_member_limit?).to be false
+        it 'returns false for has_unpaid_excess_team_members?' do
+          expect(exhibitor_kit.has_unpaid_excess_team_members?).to be false
         end
 
         it 'returns 0 for extra_team_member_charges' do
@@ -98,8 +98,8 @@ RSpec.describe ExhibitorKit, type: :model do
           expect(exhibitor_kit.excess_team_member_count).to eq(2)
         end
 
-        it 'returns true for exceeds_team_member_limit?' do
-          expect(exhibitor_kit.exceeds_team_member_limit?).to be true
+        it 'returns true for has_unpaid_excess_team_members?' do
+          expect(exhibitor_kit.has_unpaid_excess_team_members?).to be true
         end
 
         it 'calculates extra charges correctly' do

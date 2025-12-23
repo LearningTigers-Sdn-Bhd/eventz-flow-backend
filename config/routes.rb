@@ -137,6 +137,7 @@ Rails.application.routes.draw do
           post :submit_order
         end
         resources :exhibitor_kit_payments, only: [:index, :show, :update]
+        resources :exhibitor_team_member_payments, only: [:index, :show, :create, :update]
       end
 
       # Exhibitor team member limit settings (singular - one per event)
