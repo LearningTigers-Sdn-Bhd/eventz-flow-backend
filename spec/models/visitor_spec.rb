@@ -52,4 +52,17 @@ RSpec.describe Visitor, type: :model do
       expect(visitor.public_id).to match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)
     end
   end
+
+  # --- Custom Fields ---
+  describe 'custom_fields_data' do
+    it 'can accept and save custom_fields_data' do
+      visitor = build(:visitor, event: event, custom_fields_data: { "t-shirt" => "L", "meal" => "vegan" })
+      expect(visitor.custom_fields_data).to eq({ "t-shirt" => "L", "meal" => "vegan" })
+      
+      visitor.save!
+      visitor.reload
+      
+      expect(visitor.custom_fields_data).to eq({ "t-shirt" => "L", "meal" => "vegan" })
+    end
+  end
 end

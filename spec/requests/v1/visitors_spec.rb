@@ -31,7 +31,8 @@ RSpec.describe 'V1::Visitors', type: :request do
         email: 'new.visitor@example.com',
         phone: '1234567890',
         gender: 'male',
-        age: 30
+        age: 30,
+        custom_fields_data: { 'Role' => 'Speaker', 'Company' => 'Acme Inc' }
       }
     }
   end
@@ -81,7 +82,8 @@ RSpec.describe 'V1::Visitors', type: :request do
               email: { type: :string },
               phone: { type: :string },
               gender: { type: :string },
-              age: { type: :integer }
+              age: { type: :integer },
+              custom_fields_data: { type: :object }
             },
             required: ['full_name']
           }
@@ -97,6 +99,7 @@ RSpec.describe 'V1::Visitors', type: :request do
           data = JSON.parse(response.body)
           expect(data['full_name']).to eq('New Visitor')
           expect(data['public_id']).to be_present
+          expect(data['custom_fields_data']).to include('Role' => 'Speaker')
         end
       end
 
@@ -156,7 +159,8 @@ RSpec.describe 'V1::Visitors', type: :request do
             properties: {
               full_name: { type: :string },
               email: { type: :string },
-              phone: { type: :string }
+              phone: { type: :string },
+              custom_fields_data: { type: :object }
             }
           }
         }

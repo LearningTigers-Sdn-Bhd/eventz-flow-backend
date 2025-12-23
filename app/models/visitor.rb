@@ -97,7 +97,8 @@ class Visitor < ApplicationRecord
         email: self.email,
         phone: self.phone,
         gender: self.gender,
-        age: self.age
+        age: self.age,
+        custom_fields: self.custom_fields_data
       },
 
       event: {
@@ -114,7 +115,8 @@ class Visitor < ApplicationRecord
 
       payload[:event].merge!(
         start_date: self.event.start_date&.iso8601,
-        end_date: self.event.end_date&.iso8601
+        end_date: self.event.end_date&.iso8601,
+        custom_labels: self.event.labels_data
       )
     else
       # Add changes for updates

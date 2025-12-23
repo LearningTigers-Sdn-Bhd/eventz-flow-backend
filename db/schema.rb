@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_18_063227) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_23_024147) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -579,6 +579,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_18_063227) do
     t.string "email"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "custom_fields_data", default: {}
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
   end
