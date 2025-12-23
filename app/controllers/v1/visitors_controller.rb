@@ -100,7 +100,8 @@ module V1
         :email,
         :phone,
         :gender,
-        :age
+        :age,
+        custom_fields_data: {}
       ]
 
       params.require(:visitor).permit(*allowed_params)

@@ -513,6 +513,102 @@ paths:
               - current_password
               - new_password
               - confirm_new_password
+  "/v1/business_matching/events/{business_matching_event_id}/availability":
+    parameters:
+    - name: business_matching_event_id
+      in: path
+      description: ID of the business matching event from the 3rd party system
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Retrieves availability for a specific business matching event
+      tags:
+      - Business Matching
+      responses:
+        '200':
+          description: Availability data found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:
+                          type: string
+                          example: Friday
+                        date:
+                          type: string
+                          example: 12 December 2025
+                        slots:
+                          type: integer
+                          example: 16
+                      required:
+                      - day
+                      - date
+                      - slots
+                required:
+                - dates
+        '500':
+          description: Service error
+  "/v1/business_matching/events/{business_matching_event_id}/bookings":
+    parameters:
+    - name: business_matching_event_id
+      in: path
+      description: Business Matching Event ID
+      required: true
+      schema:
+        type: string
+    - name: event_id
+      in: query
+      required: true
+      description: Internal Event ID
+      schema:
+        type: string
+    get:
+      summary: Retrieves bookings for a specific business matching event
+      tags:
+      - Business Matching
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Bookings retrieved
+        '401':
+          description: Unauthorized
+  "/v1/business_matching/receive":
+    post:
+      summary: Receives data from external workflow
+      tags:
+      - Business Matching
+      parameters: []
+      responses:
+        '200':
+          description: Data received and broadcasted
+        '422':
+          description: Missing event_id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                data:
+                  type: object
+              required:
+              - event_id
   "/v1/events/{event_id}/metrics/total_tickets":
     get:
       summary: Get total tickets count for an event
@@ -2913,6 +3009,65 @@ paths:
           description: Forbidden (Member user)
         '404':
           description: Event not found
+  "/v1/events/{id}/business_matching_events":
+    parameters:
+    - name: id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Retrieves business matching events for a specific event
+      tags:
+      - Events
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT or Raw API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Business matching events found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    title:
+                      type: string
+                      example: Match Session 1
+                    duration:
+                      type: integer
+                      example: 30
+                    location:
+                      type: string
+                      example: Virtual Link
+                    admin_email:
+                      type: string
+                      example: match_admin@example.com
+                    admin_wa_number:
+                      type: string
+                      example: '628123456789'
+                  required:
+                  - id
+                  - title
+                  - duration
+        '403':
+          description: Forbidden (Member user)
+        '400':
+          description: Business matching not enabled for this event
+        '500':
+          description: Service error
   "/v1/exhibition_contractor_profiles/{id}":
     parameters:
     - name: id
@@ -6592,6 +6747,8 @@ paths:
                       type: string
                     age:
                       type: integer
+                    custom_fields_data:
+                      type: object
                   required:
                   - full_name
   "/v1/events/{event_id}/visitors/{id}":
@@ -6655,6 +6812,8 @@ paths:
                       type: string
                     phone:
                       type: string
+                    custom_fields_data:
+                      type: object
     delete:
       summary: Deletes a visitor
       tags:
