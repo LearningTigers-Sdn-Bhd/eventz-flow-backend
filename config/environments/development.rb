@@ -1,6 +1,9 @@
 require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
+  # Allow requests from ngrok tunnels during development
+  config.hosts << "*.ngrok-free.app" # For future ngrok sessions
+  config.hosts << "local-backend.eventzflow.com" # For local development
   # Settings specified here will take precedence over those in config/application.rb.
 
   # Make code changes take effect immediately without server restart.
@@ -40,7 +43,7 @@ Rails.application.configure do
 
   # Use file delivery for development (or configure SMTP if needed)
   # config.action_mailer.delivery_method = :file
-  config.action_mailer.delivery_method = :resend
+  config.action_mailer.delivery_method = :letter_opener_web
 
   # config.action_mailer.file_settings = { location: Rails.root.join('tmp', 'mail') }
 

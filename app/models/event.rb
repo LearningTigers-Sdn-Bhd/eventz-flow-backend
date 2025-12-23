@@ -6,6 +6,8 @@ class Event < ApplicationRecord
   # Unified event staff assignment
   has_many :event_assignments, dependent: :destroy
   has_many :staff, through: :event_assignments, source: :user
+  
+  has_many :business_host_assignments, dependent: :destroy # Added association
 
   # Core Event Resources
   has_many :event_locations, dependent: :destroy, inverse_of: :event

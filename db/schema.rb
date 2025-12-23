@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_18_063227) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -53,6 +53,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
+  end
+
+  create_table "business_host_assignments", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "event_id", null: false
+    t.string "business_matching_event_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_business_host_assignments_on_event_id"
+    t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -198,6 +208,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
     t.string "slug"
     t.boolean "use_exhibitor_kit", default: false, null: false
     t.boolean "allow_contractor_printing_services", default: false
+    t.boolean "use_business_matching", default: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -636,6 +647,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_17_104940) do
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "api_keys", "users"
+  add_foreign_key "business_host_assignments", "events"
+  add_foreign_key "business_host_assignments", "users"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"

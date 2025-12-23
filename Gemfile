@@ -86,10 +86,13 @@ group :test do
   gem "pundit-matchers"
   # Ensures a clean database slate between tests
   gem "database_cleaner"
+  # For stubbing HTTP requests in tests
+  gem "webmock"
 end
 
 group :development do
   # Speed up commands on slow machines / big apps [https://github.com/rails/spring]
   # gem "spring"
+  gem 'letter_opener_web'
 end
 gem "sidekiq-cron", "~> 2.3"

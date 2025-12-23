@@ -58,10 +58,14 @@ module V1
     end
 
     def authorize_staff_view!
-      # Allow Org Owner, Organizer (global roles), OR Event Staff (event_admin/event_team_member) to VIEW
+      # Allow Org Owner, Organizer (global roles), OR Event Staff (event_admin/event_team_member/business_host) to VIEW
       is_event_staff = @event.event_assignments.exists?(
         user_id: current_user.id,
-        role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
+        role: [
+          EventAssignment.roles[:event_admin],
+          EventAssignment.roles[:event_team_member],
+          EventAssignment.roles[:business_host]
+        ]
       )
 
       unless current_user.is_org_owner_or_organizer? || is_event_staff

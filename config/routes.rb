@@ -1,6 +1,12 @@
 # config/routes.rb
 
 Rails.application.routes.draw do
+  # Mount LetterOpenerWeb for email preview in development
+  if Rails.env.development?
+    require 'letter_opener_web' # Explicitly require the gem
+    mount LetterOpenerWeb::Engine, at: "/letter_opener"
+  end
+
   # Rswag Documentation Endpoints
   if defined?(Rswag)
     mount Rswag::Ui::Engine => '/api-docs'
@@ -16,9 +22,13 @@ Rails.application.routes.draw do
     # Public endpoints (No authentication required)
     namespace :public do
       # Public event info - accessible without login (limited fields)
-      resources :events, only: [:show]
+      resources :events, only: [:show] do
+        get :business_matching_events, on: :member
+      end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: [:index, :show]
+      # Public booking details
+      resources :bookings, only: [:show]
     end
 
     # Authentication endpoints
@@ -115,6 +125,9 @@ Rails.application.routes.draw do
       resources :event_printing_services do
         resources :event_printing_service_prices, controller: 'event_printing_service_prices'
       end
+
+      get 'business_matching_events', on: :member # New route for business matching events
+
       resources :event_rentable_items do
         resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
       end
@@ -153,6 +166,34 @@ Rails.application.routes.draw do
       end
 
       # Event Metrics moved outside to avoid impacting event resources
+    end
+
+    # Business Matching Availability
+    namespace :business_matching do
+      post 'receive', to: 'callbacks#receive'
+      post 'events/:event_id/report', to: 'bookings#generate_report'
+      
+      # Public booking creation route (authenticated users)
+      post 'events/:event_id/bookings/public', to: 'bookings#public_create'
+      
+      scope 'events/:business_matching_event_id' do
+        resources :availability, only: [:index]
+        get 'availability/:date/slots', to: 'availability#show_slots'
+        resources :bookings, only: [:index, :create, :update] do
+            collection do
+                get :generate_report
+            end
+        end
+      end
+
+      scope 'events/:event_id' do
+        resources :hosts, only: [:index] do
+          get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
+          post 'join', to: 'hosts#join', on: :collection
+          post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
+          delete 'remove', to: 'hosts#remove', on: :collection
+        end
+      end
     end
 
     # Visitors stamps
