@@ -214,6 +214,7 @@ Rails.application.routes.draw do
 
     # 5a. IMPORTS
     post 'imports/tickets', to: 'imports#tickets'   # POST /v1/imports/tickets
+    post 'imports/visitors', to: 'imports#visitors' # POST /v1/imports/visitors
 
     # 5b. TICKET EXPORTS (separate resource for export management)
     resources :ticket_exports, only: [:index, :show, :create], path: 'tickets/exports' do

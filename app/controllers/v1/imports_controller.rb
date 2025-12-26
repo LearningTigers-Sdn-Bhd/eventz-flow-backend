@@ -2,12 +2,21 @@ module V1
   class ImportsController < ApplicationController
     # POST /v1/imports/tickets
     def tickets
-      # Authorization: User must be authenticated
+      import_resource(TicketExcelService, 'Ticket')
+    end
+
+    # POST /v1/imports/visitors
+    def visitors
+      import_resource(VisitorExcelService, 'Visitor')
+    end
+
+    private
+
+    def import_resource(service_class, resource_name)
       unless current_user
         return render json: { error: 'Unauthorized' }, status: :unauthorized
       end
 
-      # Validate file upload
       unless params[:file].present?
         return render json: { error: 'No file provided' }, status: :unprocessable_content
       end
@@ -16,12 +25,10 @@ module V1
         dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
         full = ActiveModel::Type::Boolean.new.cast(params[:full])
         no_label = ActiveModel::Type::Boolean.new.cast(params[:no_label])
-        results = TicketExcelService.import(params[:file], dry_run: dry_run, full: full, no_label: no_label)
+        results = service_class.import(params[:file], dry_run: dry_run, full: full, no_label: no_label)
 
-        # Calculate total
         total = results[:created][:count] + (results[:updated][:count] || 0) + results[:skipped][:count]
 
-        # Transform response to match new structure
         response_data = {
           total: total,
           created: {
@@ -38,7 +45,6 @@ module V1
           }
         }
 
-        # Add optional fields if present
         if results[:updated][:count] > 0
           response_data[:updated] = {
             count: results[:updated][:count],
@@ -59,7 +65,7 @@ module V1
           status: :ok
         )
       rescue StandardError => e
-        Rails.logger.error "Ticket import error: #{e.message}"
+        Rails.logger.error "#{resource_name} import error: #{e.message}"
         Rails.logger.error e.backtrace.join("\n")
         error_response(
           message: 'Import failed',
@@ -68,5 +74,6 @@ module V1
         )
       end
     end
+
   end
 end
