@@ -18,16 +18,17 @@ module V1
       render json: @event_rentable_item
     end
 
-    def create
-      @event_rentable_item = @event.event_rentable_items.new(event_rentable_item_params)
-      authorize @event_rentable_item
-
-      if @event_rentable_item.save
-        render json: @event_rentable_item, status: :created
-      else
-        render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_content
-      end
-    end
+    # NOTE: Create action disabled - items are now auto-linked when contractor is assigned to event
+    # def create
+    #   @event_rentable_item = @event.event_rentable_items.new(event_rentable_item_params)
+    #   authorize @event_rentable_item
+    #
+    #   if @event_rentable_item.save
+    #     render json: @event_rentable_item, status: :created
+    #   else
+    #     render json: { errors: @event_rentable_item.errors.full_messages }, status: :unprocessable_content
+    #   end
+    # end
 
     def update
       authorize @event_rentable_item

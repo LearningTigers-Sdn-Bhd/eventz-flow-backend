@@ -36,33 +36,6 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
         end
       end
     end
-
-    post('create event rentable item') do
-      tags 'Event Rentable Items'
-      consumes 'application/json'
-      produces 'application/json'
-      security [api_key: []]
-      parameter name: :event_rentable_item, in: :body, schema: {
-        type: :object,
-        properties: {
-          rentable_item_id: { type: :integer, example: 1 }
-        },
-        required: %w[rentable_item_id]
-      }
-
-      let(:new_rentable_item) { create(:rentable_item) }
-      let(:event_rentable_item_params) { { event_rentable_item: { rentable_item_id: new_rentable_item.id } } }
-
-      response(201, 'created') do
-        before { post v1_event_event_rentable_items_path(event_id: event_id), params: event_rentable_item_params, headers: auth_header }
-
-        it 'creates a new event rentable item' do
-          expect(response).to have_http_status(:created)
-          data = JSON.parse(response.body)
-          expect(data['rentable_item_id']).to eq(new_rentable_item.id)
-        end
-      end
-    end
   end
 
   path '/v1/events/{event_id}/event_rentable_items/{id}' do

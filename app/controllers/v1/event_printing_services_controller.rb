@@ -17,16 +17,17 @@ module V1
       render json: @event_printing_service, include: { printing_service: { include: :item_category } }
     end
 
-    def create
-      @event_printing_service = @event.event_printing_services.new(event_printing_service_params)
-      authorize @event_printing_service
-
-      if @event_printing_service.save
-        render json: @event_printing_service, include: { printing_service: { include: :item_category } }, status: :created
-      else
-        render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
-      end
-    end
+    # NOTE: Create action disabled - services are now auto-linked when contractor is assigned to event
+    # def create
+    #   @event_printing_service = @event.event_printing_services.new(event_printing_service_params)
+    #   authorize @event_printing_service
+    #
+    #   if @event_printing_service.save
+    #     render json: @event_printing_service, include: { printing_service: { include: :item_category } }, status: :created
+    #   else
+    #     render json: { errors: @event_printing_service.errors.full_messages }, status: :unprocessable_content
+    #   end
+    # end
 
     def update
       authorize @event_printing_service

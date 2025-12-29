@@ -18,6 +18,7 @@ module V1
       authorize @printing_service
 
       if @printing_service.save
+        link_to_assigned_events(@printing_service)
         render json: format_printing_service(@printing_service), status: :created
       else
         render json: @printing_service.errors, status: :unprocessable_content
@@ -60,6 +61,14 @@ module V1
       service.as_json(include: :item_category).merge(
         image_url: service.image.attached? ? url_for(service.image) : nil
       )
+    end
+
+    def link_to_assigned_events(printing_service)
+      return unless current_user.exhibition_contractor_profile.present?
+
+      current_user.exhibition_contractor_profile.events.find_each do |event|
+        EventPrintingService.find_or_create_by(event: event, printing_service: printing_service)
+      end
     end
   end
 end

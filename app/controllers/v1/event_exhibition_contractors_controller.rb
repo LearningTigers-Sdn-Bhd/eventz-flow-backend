@@ -27,6 +27,19 @@ class V1::EventExhibitionContractorsController < ApplicationController
     @event_exhibition_contractor = @event.event_exhibition_contractor
     if @event_exhibition_contractor.present?
       authorize @event_exhibition_contractor
+
+      # Check for existing transactions before allowing deletion
+      transactions = find_contractor_transactions(@event_exhibition_contractor)
+      if transactions[:has_transactions]
+        return render json: {
+          error: 'Contractor has existing transactions',
+          message: 'Cannot remove contractor because exhibitors have already made transactions for their items or services.',
+          code: 'HAS_TRANSACTIONS',
+          details: transactions[:details]
+        }, status: :unprocessable_entity
+      end
+
+      unlink_contractor_items_from_event(@event_exhibition_contractor)
       @event.update(use_exhibitor_kit: false)
       @event_exhibition_contractor.destroy
       head :no_content
@@ -41,5 +54,39 @@ class V1::EventExhibitionContractorsController < ApplicationController
     @event = Event.with_deleted.friendly.find(params[:event_id])
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
+  end
+
+  def unlink_contractor_items_from_event(contractor)
+    contractor_user = contractor.exhibition_contractor_profile.user
+
+    rentable_item_ids = contractor_user.rentable_items.pluck(:id)
+    EventRentableItem.where(event: @event, rentable_item_id: rentable_item_ids).destroy_all
+
+    printing_service_ids = contractor_user.printing_services.pluck(:id)
+    EventPrintingService.where(event: @event, printing_service_id: printing_service_ids).destroy_all
+  end
+
+  def find_contractor_transactions(contractor)
+    contractor_user = contractor.exhibition_contractor_profile.user
+
+    rentable_item_ids = contractor_user.rentable_items.pluck(:id)
+    printing_service_ids = contractor_user.printing_services.pluck(:id)
+
+    # Find exhibitor kits for this event that have transactions with contractor's items
+    exhibitor_kits = ExhibitorKit.joins(:event_vendor)
+                                  .where(event_vendor: { event_id: @event.id })
+
+    kit_items_count = ExhibitorKitItem.where(exhibitor_kit: exhibitor_kits, rentable_item_id: rentable_item_ids).count
+    kit_printings_count = ExhibitorKitPrinting.where(exhibitor_kit: exhibitor_kits, printing_service_id: printing_service_ids).count
+
+    has_transactions = kit_items_count > 0 || kit_printings_count > 0
+
+    {
+      has_transactions: has_transactions,
+      details: {
+        rentable_items_in_use: kit_items_count,
+        printing_services_in_use: kit_printings_count
+      }
+    }
   end
 end

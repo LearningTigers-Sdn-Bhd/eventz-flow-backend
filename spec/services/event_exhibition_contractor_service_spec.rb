@@ -41,5 +41,55 @@ RSpec.describe EventExhibitionContractorService, type: :service do
         expect { service.create }.to raise_error(Pundit::NotAuthorizedError)
       end
     end
+
+    context 'when contractor has rentable items' do
+      let!(:rentable_item1) { create(:rentable_item, user: contractor_user) }
+      let!(:rentable_item2) { create(:rentable_item, user: contractor_user) }
+
+      it 'auto-links all rentable items to the event' do
+        expect { service.create }.to change(EventRentableItem, :count).by(2)
+      end
+
+      it 'links the correct items to the event' do
+        service.create
+        linked_item_ids = EventRentableItem.where(event: event).pluck(:rentable_item_id)
+        expect(linked_item_ids).to contain_exactly(rentable_item1.id, rentable_item2.id)
+      end
+    end
+
+    context 'when contractor has printing services' do
+      let!(:printing_service1) { create(:printing_service, user: contractor_user) }
+      let!(:printing_service2) { create(:printing_service, user: contractor_user) }
+
+      it 'auto-links all printing services to the event' do
+        expect { service.create }.to change(EventPrintingService, :count).by(2)
+      end
+
+      it 'links the correct services to the event' do
+        service.create
+        linked_service_ids = EventPrintingService.where(event: event).pluck(:printing_service_id)
+        expect(linked_service_ids).to contain_exactly(printing_service1.id, printing_service2.id)
+      end
+    end
+
+    context 'when contractor has both rentable items and printing services' do
+      let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
+      let!(:printing_service) { create(:printing_service, user: contractor_user) }
+
+      it 'auto-links all items and services to the event' do
+        expect { service.create }
+          .to change(EventRentableItem, :count).by(1)
+          .and change(EventPrintingService, :count).by(1)
+      end
+    end
+
+    context 'when contractor has no items or services' do
+      it 'creates contractor without linking any items' do
+        expect { service.create }
+          .to change(EventExhibitionContractor, :count).by(1)
+          .and change(EventRentableItem, :count).by(0)
+          .and change(EventPrintingService, :count).by(0)
+      end
+    end
   end
 end

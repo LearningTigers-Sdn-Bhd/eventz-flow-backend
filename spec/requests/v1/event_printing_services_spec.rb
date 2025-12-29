@@ -36,33 +36,6 @@ RSpec.describe 'V1::EventPrintingServices', type: :request do
         end
       end
     end
-
-    post('create event printing service') do
-      tags 'Event Printing Services'
-      consumes 'application/json'
-      produces 'application/json'
-      security [api_key: []]
-      parameter name: :event_printing_service, in: :body, schema: {
-        type: :object,
-        properties: {
-          printing_service_id: { type: :integer, example: 1 }
-        },
-        required: %w[printing_service_id]
-      }
-
-      let(:new_printing_service) { create(:printing_service) }
-      let(:event_printing_service_params) { { event_printing_service: { printing_service_id: new_printing_service.id } } }
-
-      response(201, 'created') do
-        before { post v1_event_event_printing_services_path(event_id: event_id), params: event_printing_service_params, headers: auth_header }
-
-        it 'creates a new event printing service' do
-          expect(response).to have_http_status(:created)
-          data = JSON.parse(response.body)
-          expect(data['printing_service_id']).to eq(new_printing_service.id)
-        end
-      end
-    end
   end
 
   path '/v1/events/{event_id}/event_printing_services/{id}' do

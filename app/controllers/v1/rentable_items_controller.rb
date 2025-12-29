@@ -18,6 +18,7 @@ module V1
       authorize @rentable_item
 
       if @rentable_item.save
+        link_to_assigned_events(@rentable_item)
         render json: format_rentable_item(@rentable_item), status: :created
       else
         render json: @rentable_item.errors, status: :unprocessable_content
@@ -60,6 +61,14 @@ module V1
       item.as_json(include: :item_category).merge(
         image_url: item.image.attached? ? url_for(item.image) : nil
       )
+    end
+
+    def link_to_assigned_events(rentable_item)
+      return unless current_user.exhibition_contractor_profile.present?
+
+      current_user.exhibition_contractor_profile.events.find_each do |event|
+        EventRentableItem.find_or_create_by(event: event, rentable_item: rentable_item)
+      end
     end
   end
 end

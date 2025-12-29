@@ -39,6 +39,9 @@ module V1
       authorize vendor_user, :create?, policy_class: VendorPolicy
 
       if vendor_user.save
+        # Reload to get the auto-created vendor_profile from after_create callback
+        vendor_user.reload
+
         # Update vendor profile if attributes provided
         if params[:vendor][:vendor_profile_attributes].present? && vendor_user.vendor_profile
           profile_params = params.require(:vendor).permit(vendor_profile_attributes: [
