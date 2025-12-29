@@ -58,6 +58,7 @@ RSpec.describe EventExhibitionContractorService, type: :service do
     end
 
     context 'when contractor has printing services' do
+      let(:event) { create(:event, allow_contractor_printing_services: true) }
       let!(:printing_service1) { create(:printing_service, user: contractor_user) }
       let!(:printing_service2) { create(:printing_service, user: contractor_user) }
 
@@ -73,6 +74,7 @@ RSpec.describe EventExhibitionContractorService, type: :service do
     end
 
     context 'when contractor has both rentable items and printing services' do
+      let(:event) { create(:event, allow_contractor_printing_services: true) }
       let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
       let!(:printing_service) { create(:printing_service, user: contractor_user) }
 
@@ -89,6 +91,30 @@ RSpec.describe EventExhibitionContractorService, type: :service do
           .to change(EventExhibitionContractor, :count).by(1)
           .and change(EventRentableItem, :count).by(0)
           .and change(EventPrintingService, :count).by(0)
+      end
+    end
+
+    context 'when allow_contractor_printing_services is false' do
+      let(:event) { create(:event, allow_contractor_printing_services: false) }
+      let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
+      let!(:printing_service) { create(:printing_service, user: contractor_user) }
+
+      it 'links rentable items but not printing services' do
+        expect { service.create }
+          .to change(EventRentableItem, :count).by(1)
+          .and change(EventPrintingService, :count).by(0)
+      end
+    end
+
+    context 'when allow_contractor_printing_services is true' do
+      let(:event) { create(:event, allow_contractor_printing_services: true) }
+      let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
+      let!(:printing_service) { create(:printing_service, user: contractor_user) }
+
+      it 'links both rentable items and printing services' do
+        expect { service.create }
+          .to change(EventRentableItem, :count).by(1)
+          .and change(EventPrintingService, :count).by(1)
       end
     end
   end

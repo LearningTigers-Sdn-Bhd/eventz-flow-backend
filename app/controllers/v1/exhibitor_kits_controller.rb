@@ -68,13 +68,28 @@ class V1::ExhibitorKitsController < ApplicationController
   end
 
   def format_exhibitor_kit(kit)
+    # Filter items and printings for contractors
+    items = kit.exhibitor_kit_items
+    printings = kit.exhibitor_kit_printings
+
+    if current_user.is_exhibition_contractor?
+      # Contractors only see items where rentable_item belongs to them
+      items = items.select { |item| item.rentable_item&.user_id == current_user.id }
+      # Contractors only see printings if event allows contractor printing services and printing service belongs to them
+      if @event.allow_contractor_printing_services?
+        printings = printings.select { |printing| printing.printing_service&.user_id == current_user.id }
+      else
+        printings = []
+      end
+    end
+
     kit.as_json(
       include: [
         { custom_requests: { only: [:id, :description, :quantity, :status, :resolved_price, :response_notes] } }
       ]
     ).merge(
-      exhibitor_kit_items: kit.exhibitor_kit_items.map { |item| format_kit_item(item) },
-      exhibitor_kit_printings: kit.exhibitor_kit_printings.map { |printing| format_kit_printing(printing) }
+      exhibitor_kit_items: items.map { |item| format_kit_item(item) },
+      exhibitor_kit_printings: printings.map { |printing| format_kit_printing(printing) }
     )
   end
 

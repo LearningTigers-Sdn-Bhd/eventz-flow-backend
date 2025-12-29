@@ -14,11 +14,11 @@ RSpec.describe PrintingServicePolicy, type: :policy do
     it { is_expected.to permit_actions(%i[index show create update destroy]) }
 
     describe "scope" do
-      let!(:item1) { create(:printing_service) }
-      let!(:item2) { create(:printing_service) }
+      let!(:item_by_org_owner) { create(:printing_service, user: user) }
+      let!(:item_by_other_user) { create(:printing_service) }
 
-      it "returns all printing services" do
-        expect(Pundit.policy_scope(user, PrintingService).to_a).to match_array([item1, item2])
+      it "returns only printing services owned by the org_owner" do
+        expect(Pundit.policy_scope(user, PrintingService).to_a).to match_array([item_by_org_owner])
       end
     end
   end
@@ -30,11 +30,11 @@ RSpec.describe PrintingServicePolicy, type: :policy do
     it { is_expected.to permit_actions(%i[index show create update destroy]) }
 
     describe "scope" do
-      let!(:item1) { create(:printing_service) }
-      let!(:item2) { create(:printing_service) }
+      let!(:item_by_organizer) { create(:printing_service, user: user) }
+      let!(:item_by_other_user) { create(:printing_service) }
 
-      it "returns all printing services" do
-        expect(Pundit.policy_scope(user, PrintingService).to_a).to match_array([item1, item2])
+      it "returns only printing services owned by the organizer" do
+        expect(Pundit.policy_scope(user, PrintingService).to_a).to match_array([item_by_organizer])
       end
     end
   end

@@ -6,7 +6,7 @@ module V1
 
     def index
       @exhibitor_kit_payments = policy_scope(@exhibitor_kit.exhibitor_kit_payments)
-                                .includes(:exhibitor_kit_items, :exhibitor_kit_printings) # Eager load associations
+                                .includes(:payee, :exhibitor_kit_items, :exhibitor_kit_printings) # Eager load associations
 
       render json: @exhibitor_kit_payments.map { |payment| format_payment(payment) }, status: :ok
     end
@@ -42,7 +42,10 @@ module V1
           { exhibitor_kit_items: { include: :rentable_item } },
           { exhibitor_kit_printings: { include: :printing_service } }
         ]
-      ).merge(payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : payment[:payment_proof_url])
+      ).merge(
+        payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : payment[:payment_proof_url],
+        payee_name: payment.payee.full_name
+      )
     end
 
     def is_exhibitor?

@@ -1,6 +1,6 @@
 FactoryBot.define do
   factory :exhibitor_kit do
-    association :event_vendor, factory: :exhibitor
+    event_vendor { association :exhibitor }
 
     booth_number { 'A123' }
     booth_type { :shell_scheme }

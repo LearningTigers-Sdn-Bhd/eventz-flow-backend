@@ -15,8 +15,8 @@ RSpec.describe 'V1::PrintingServices', type: :request do
       response(200, 'successful') do
         context 'as an admin' do
           let(:user) { create(:user, :org_owner) }
-          let!(:printing_service1) { create(:printing_service, item_category: item_category) }
-          let!(:printing_service2) { create(:printing_service, item_category: item_category) }
+          let!(:printing_service1) { create(:printing_service, item_category: item_category, user: user) }
+          let!(:printing_service2) { create(:printing_service, item_category: item_category, user: user) }
           before { get v1_printing_services_path, headers: auth_headers(user) }
           it 'returns a 200 response with image_url' do
             expect(response).to have_http_status(:ok)
@@ -28,8 +28,8 @@ RSpec.describe 'V1::PrintingServices', type: :request do
 
         context 'as an organizer' do
           let(:user) { create(:user, :organizer) }
-          let!(:printing_service1) { create(:printing_service, item_category: item_category) }
-          let!(:printing_service2) { create(:printing_service, item_category: item_category) }
+          let!(:printing_service1) { create(:printing_service, item_category: item_category, user: user) }
+          let!(:printing_service2) { create(:printing_service, item_category: item_category, user: user) }
           before { get v1_printing_services_path, headers: auth_headers(user) }
           it 'returns a 200 response' do
             expect(response).to have_http_status(:ok)

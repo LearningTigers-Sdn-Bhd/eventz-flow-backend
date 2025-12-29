@@ -66,9 +66,12 @@ module V1
     def link_to_assigned_events(printing_service)
       return unless current_user.exhibition_contractor_profile.present?
 
-      current_user.exhibition_contractor_profile.events.find_each do |event|
-        EventPrintingService.find_or_create_by(event: event, printing_service: printing_service)
-      end
+      # Only link to events that allow contractor printing services
+      current_user.exhibition_contractor_profile.events
+        .where(allow_contractor_printing_services: true)
+        .find_each do |event|
+          EventPrintingService.find_or_create_by(event: event, printing_service: printing_service)
+        end
     end
   end
 end

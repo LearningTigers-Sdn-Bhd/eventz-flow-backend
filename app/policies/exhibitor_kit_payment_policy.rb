@@ -39,14 +39,17 @@ class ExhibitorKitPaymentPolicy < ApplicationPolicy
         scope.all
       elsif user.organizer?
         # Organizer sees payments for events they have created or are assigned as staff
-        scope.joins(exhibitor_kit: { event_vendor: { event: :event_assignments } }) # Join to event_assignments
-             .where(event_assignments: { user_id: user.id }) # Filter by organizer's event assignments
+        scope.joins(exhibitor_kit: { event_vendor: { event: :event_assignments } })
+             .where(event_assignments: { user_id: user.id })
       elsif user.is_exhibition_contractor?
+        # Contractor only sees payments where they are the payee (for their items/services)
         scope.joins(exhibitor_kit: { event_vendor: { event: :event_exhibition_contractors } })
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
-      elsif user.vendor? # Check if user is a vendor (vendors become exhibitors when assigned to events)
-        scope.joins(exhibitor_kit: :event_vendor) # Join through exhibitor_kit to event_vendor
-             .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' }) # Filter event_vendors by user's ID and type 'Exhibitor'
+             .where(payee_id: user.id)
+      elsif user.vendor?
+        # Exhibitor sees payments for their exhibitor kits
+        scope.joins(exhibitor_kit: :event_vendor)
+             .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' })
       else
         scope.none
       end

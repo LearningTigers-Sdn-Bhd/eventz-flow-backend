@@ -66,8 +66,15 @@ module V1
 
     # PATCH/PUT /v1/events/:id
     def update
+      # Track if flag is being toggled ON
+      flag_toggled_on = !@event.allow_contractor_printing_services &&
+                        ActiveModel::Type::Boolean.new.cast(event_params[:allow_contractor_printing_services])
+
       # @event is set and authorized by before_actions
       if @event.update(event_params)
+        # Auto-link contractor printing services if flag was toggled ON
+        ContractorPrintingServiceLinker.new(event: @event).link_if_needed if flag_toggled_on
+
         render json: @event, status: :ok
       else
         render json: { errors: @event.errors.full_messages }, status: :unprocessable_content

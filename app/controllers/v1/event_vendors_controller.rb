@@ -181,6 +181,21 @@ module V1
     end
 
     def format_exhibitor_kit(exhibitor_kit)
+      # Filter items and printings for contractors
+      items = exhibitor_kit.exhibitor_kit_items
+      printings = exhibitor_kit.exhibitor_kit_printings
+
+      if current_user.is_exhibition_contractor?
+        # Contractors only see items where rentable_item belongs to them
+        items = items.select { |item| item.rentable_item&.user_id == current_user.id }
+        # Contractors only see printings if event allows contractor printing services and printing service belongs to them
+        if @event.allow_contractor_printing_services?
+          printings = printings.select { |printing| printing.printing_service&.user_id == current_user.id }
+        else
+          printings = []
+        end
+      end
+
       {
         id: exhibitor_kit.id,
         event_vendor_id: exhibitor_kit.event_vendor_id,
@@ -213,8 +228,8 @@ module V1
         has_unpaid_excess_team_members: exhibitor_kit.has_unpaid_excess_team_members?,
         extra_team_member_fee: exhibitor_kit.extra_team_member_fee,
         extra_team_member_charges: exhibitor_kit.extra_team_member_charges,
-        exhibitor_kit_items: exhibitor_kit.exhibitor_kit_items.map { |item| format_exhibitor_kit_item(item) },
-        exhibitor_kit_printings: exhibitor_kit.exhibitor_kit_printings.map { |printing| format_exhibitor_kit_printing(printing) },
+        exhibitor_kit_items: items.map { |item| format_exhibitor_kit_item(item) },
+        exhibitor_kit_printings: printings.map { |printing| format_exhibitor_kit_printing(printing) },
         custom_requests: exhibitor_kit.custom_requests.as_json(only: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :created_at, :updated_at]),
         exhibitor_team_member_payments: exhibitor_kit.exhibitor_team_member_payments.map { |payment| format_exhibitor_team_member_payment(payment) }
       }

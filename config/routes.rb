@@ -122,9 +122,7 @@ Rails.application.routes.draw do
       # Nested resource for Event Exhibition Contractor
       resource :event_exhibition_contractor, only: [:show, :create, :destroy]
 
-      # NOTE: Create action disabled - services are now auto-linked when contractor is assigned to event
-      # resources :event_printing_services do
-      resources :event_printing_services, only: [:index, :show, :update, :destroy] do
+      resources :event_printing_services, only: [:index, :show, :create, :update, :destroy] do
         resources :event_printing_service_prices, controller: 'event_printing_service_prices'
       end
 

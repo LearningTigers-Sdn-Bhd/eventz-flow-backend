@@ -27,8 +27,11 @@ class CustomError < StandardError
 	end
 
 	class UnprocessableEntity < CustomError
+		attr_reader :errors
+
 		def initialize(message = 'Unprocessable entity. The request was well-formed but was unable to be followed due to semantic errors.', errors=nil)
-			super('Unprocessable Entity', 422, message, errors)
+			super('Unprocessable Entity', 422, message)
+			@errors = errors
 		end
 	end
 end

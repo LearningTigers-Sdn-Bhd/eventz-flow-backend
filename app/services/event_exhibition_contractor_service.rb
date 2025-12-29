@@ -30,12 +30,16 @@ class EventExhibitionContractorService < BaseService
   def link_contractor_items_to_event(contractor)
     contractor_user = contractor.exhibition_contractor_profile.user
 
+    # Always link rentable items
     contractor_user.rentable_items.find_each do |item|
       EventRentableItem.find_or_create_by!(event: event, rentable_item: item)
     end
 
-    contractor_user.printing_services.find_each do |service|
-      EventPrintingService.find_or_create_by!(event: event, printing_service: service)
+    # Only link printing services if allowed by event setting
+    if event.allow_contractor_printing_services
+      contractor_user.printing_services.find_each do |service|
+        EventPrintingService.find_or_create_by!(event: event, printing_service: service)
+      end
     end
   end
 end

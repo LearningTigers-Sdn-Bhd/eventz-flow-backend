@@ -10,11 +10,8 @@ class ExhibitorKitSubmissionService < BaseService
     validate_submission!
 
     ActiveRecord::Base.transaction do
-      payment = create_payment
-      link_items_to_payment(payment)
-      link_printings_to_payment(payment)
-
-      ServiceResult.new(success: true, data: payment, status: :created)
+      payments = create_payments_by_owner
+      ServiceResult.new(success: true, data: payments, status: :created)
     end
   rescue CustomError::UnprocessableEntity => e
     ServiceResult.new(success: false, errors: e.message, status: :unprocessable_content)
@@ -25,50 +22,68 @@ class ExhibitorKitSubmissionService < BaseService
   private
 
   def validate_submission!
-    unless contractor_user.present?
-      raise CustomError::UnprocessableEntity.new("No contractor assigned to this event")
-    end
-
-    if unpaid_items.empty? && unpaid_printings.empty?
+    if unpaid_items_with_owner.empty? && unpaid_printings_with_owner.empty?
       raise CustomError::UnprocessableEntity.new("No unpaid items or printings to submit")
     end
   end
 
-  def create_payment
-    ExhibitorKitPayment.create!(
+  def create_payments_by_owner
+    payments = []
+
+    # Group items by owner with eager loading
+    items_by_owner = unpaid_items_with_owner.group_by { |i| i.rentable_item.user_id }
+    services_by_owner = unpaid_printings_with_owner.group_by { |p| p.printing_service.user_id }
+
+    # Get all unique owners
+    owner_ids = (items_by_owner.keys + services_by_owner.keys).compact.uniq
+
+    owner_ids.each do |owner_id|
+      owner_items = items_by_owner[owner_id] || []
+      owner_services = services_by_owner[owner_id] || []
+
+      payment = create_payment_for_owner(owner_id, owner_items, owner_services)
+      payments << payment
+    end
+
+    payments
+  end
+
+  def create_payment_for_owner(owner_id, items, services)
+    total = calculate_total(items, services)
+
+    payment = ExhibitorKitPayment.create!(
       exhibitor_kit: exhibitor_kit,
-      payee: contractor_user,
-      amount: calculate_total_amount,
+      payee_id: owner_id,
+      amount: total,
       status: :pending
     )
+
+    # Batch update - efficient
+    ExhibitorKitItem.where(id: items.map(&:id)).update_all(exhibitor_kit_payment_id: payment.id) if items.any?
+    ExhibitorKitPrinting.where(id: services.map(&:id)).update_all(exhibitor_kit_payment_id: payment.id) if services.any?
+
+    payment
   end
 
-  def link_items_to_payment(payment)
-    unpaid_items.update_all(exhibitor_kit_payment_id: payment.id)
+  def calculate_total(items, services)
+    items_total = items.sum { |i| i.quantity * i.agreed_price }
+    services_total = services.sum { |s| s.quantity * s.agreed_price }
+    items_total + services_total
   end
 
-  def link_printings_to_payment(payment)
-    unpaid_printings.update_all(exhibitor_kit_payment_id: payment.id)
+  def unpaid_items_with_owner
+    @unpaid_items_with_owner ||= exhibitor_kit
+      .exhibitor_kit_items
+      .includes(:rentable_item)
+      .where(exhibitor_kit_payment_id: nil)
+      .where.not(rentable_items: { id: nil })
   end
 
-  def calculate_total_amount
-    items_total = unpaid_items.sum("quantity * agreed_price")
-    printings_total = unpaid_printings.sum("quantity * agreed_price")
-    items_total + printings_total
-  end
-
-  def unpaid_items
-    @unpaid_items ||= exhibitor_kit.exhibitor_kit_items.where(exhibitor_kit_payment_id: nil)
-  end
-
-  def unpaid_printings
-    @unpaid_printings ||= exhibitor_kit.exhibitor_kit_printings.where(exhibitor_kit_payment_id: nil)
-  end
-
-  def contractor_user
-    @contractor_user ||= exhibitor_kit.event
-                                      &.event_exhibition_contractor
-                                      &.exhibition_contractor_profile
-                                      &.user
+  def unpaid_printings_with_owner
+    @unpaid_printings_with_owner ||= exhibitor_kit
+      .exhibitor_kit_printings
+      .includes(:printing_service)
+      .where(exhibitor_kit_payment_id: nil)
+      .where.not(printing_services: { id: nil })
   end
 end

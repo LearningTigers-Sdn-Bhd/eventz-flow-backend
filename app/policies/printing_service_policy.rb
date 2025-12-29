@@ -22,7 +22,8 @@ class PrintingServicePolicy < ApplicationPolicy
   class Scope < Scope
     def resolve
       if user.org_owner? || user.organizer?
-        scope.all
+        # Org staff only see their own printing services in the catalog
+        scope.where(user_id: user.id)
       elsif user.exhibition_contractor?
         scope.where(user_id: user.id)
       else

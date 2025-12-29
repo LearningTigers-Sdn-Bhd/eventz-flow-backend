@@ -66,10 +66,10 @@ RSpec.describe ExhibitorKitPrintingPolicy, type: :policy do
     let!(:event_printing_service_for_owner) { create(:event_printing_service, event: base_event, printing_service: printing_service_for_owner) }
     let!(:exhibitor_kit_printing_owner) { create(:exhibitor_kit_printing, exhibitor_kit: exhibitor_kit_for_owner, printing_service: printing_service_for_owner) }
 
-    let(:contractor_event_for_scope) { create(:event) } # Create a specific event for contractor scope
-          let!(:event_contractor_assignment_for_scope) { create(:event_exhibition_contractor, event: contractor_event_for_scope, exhibition_contractor_profile: contractor_assigned_user.reload.exhibition_contractor_profile) }
-      let(:exhibitor_kit_for_contractor_event) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: contractor_event_for_scope, vendor: create(:user, :exhibitor))) }
-    let(:printing_service_for_contractor) { create(:printing_service, status: :active) }
+    let(:contractor_event_for_scope) { create(:event, allow_contractor_printing_services: true) } # Create a specific event for contractor scope with printing enabled
+    let!(:event_contractor_assignment_for_scope) { create(:event_exhibition_contractor, event: contractor_event_for_scope, exhibition_contractor_profile: contractor_assigned_user.reload.exhibition_contractor_profile) }
+    let(:exhibitor_kit_for_contractor_event) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: contractor_event_for_scope, vendor: create(:user, :exhibitor))) }
+    let(:printing_service_for_contractor) { create(:printing_service, status: :active, user: contractor_assigned_user) } # Printing service belongs to contractor
     let!(:event_printing_service_for_contractor) { create(:event_printing_service, event: contractor_event_for_scope, printing_service: printing_service_for_contractor) }
     let!(:exhibitor_kit_printing_contractor_event) { create(:exhibitor_kit_printing, exhibitor_kit: exhibitor_kit_for_contractor_event, printing_service: printing_service_for_contractor) }
 

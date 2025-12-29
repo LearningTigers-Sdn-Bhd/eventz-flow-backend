@@ -16,8 +16,16 @@ class EventPrintingServicePolicy < ApplicationPolicy
   end
 
   def create?
-    user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event)) ||
-    (user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event))
+    # Org owner can only link services when contractor printing is disabled
+    if user.org_owner?
+      record&.event && !record.event.allow_contractor_printing_services
+    elsif user.organizer? || (record&.event && user.is_event_staff?(record.event))
+      true
+    elsif user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event)
+      true
+    else
+      false
+    end
   end
 
   def update?
