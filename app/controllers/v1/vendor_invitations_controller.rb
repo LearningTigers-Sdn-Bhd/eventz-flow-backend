@@ -114,6 +114,15 @@ module V1
         end
       end
 
+      # Get exhibitor guidelines PDF URL if event uses exhibitor kit
+      guidelines_pdf_url = nil
+      if event.use_exhibitor_kit? && event.event_exhibition_contractor.present?
+        profile = event.event_exhibition_contractor.exhibition_contractor_profile
+        if profile&.guidelines_pdf&.attached?
+          guidelines_pdf_url = url_for(profile.guidelines_pdf)
+        end
+      end
+
       success_response(
         data: {
           valid: true,
@@ -123,6 +132,7 @@ module V1
           is_assigned: is_assigned,
           vendor_type: event.use_ticket? ? 'Exhibitor' : 'Merchant',
           use_exhibitor_kit: event.use_exhibitor_kit?,
+          guidelines_pdf_url: guidelines_pdf_url,
           event: {
             id: event.id,
             title: event.title,

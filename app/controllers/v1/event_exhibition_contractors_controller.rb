@@ -6,7 +6,7 @@ class V1::EventExhibitionContractorsController < ApplicationController
     @event_exhibition_contractor = @event.event_exhibition_contractor
     if @event_exhibition_contractor.present?
       authorize @event_exhibition_contractor
-      render json: @event_exhibition_contractor, status: :ok
+      render json: format_response(@event_exhibition_contractor), status: :ok
     else
       render json: { message: "No exhibition contractor assigned to this event" }, status: :ok
     end
@@ -86,6 +86,36 @@ class V1::EventExhibitionContractorsController < ApplicationController
       details: {
         rentable_items_in_use: kit_items_count,
         printing_services_in_use: kit_printings_count
+      }
+    }
+  end
+
+  def format_response(event_exhibition_contractor)
+    profile = event_exhibition_contractor.exhibition_contractor_profile
+    user = profile.user
+
+    {
+      id: event_exhibition_contractor.id,
+      event_id: event_exhibition_contractor.event_id,
+      exhibition_contractor_profile_id: event_exhibition_contractor.exhibition_contractor_profile_id,
+      created_at: event_exhibition_contractor.created_at,
+      updated_at: event_exhibition_contractor.updated_at,
+      exhibition_contractor_profile: {
+        id: profile.id,
+        user_id: profile.user_id,
+        contact_person: profile.contact_person,
+        contact_email: profile.contact_email,
+        contact_phone: profile.contact_phone,
+        guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
+        guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
+        created_at: profile.created_at,
+        updated_at: profile.updated_at
+      },
+      contractor: {
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone
       }
     }
   end

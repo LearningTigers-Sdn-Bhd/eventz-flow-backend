@@ -72,7 +72,7 @@ module V1
         profile_params = params.dig(:exhibition_contractor, :exhibition_contractor_profile_attributes)
         if profile_params.present? && @contractor.exhibition_contractor_profile
           @contractor.exhibition_contractor_profile.update!(profile_params.permit(
-            :company_name, :contact_person, :contact_email, :contact_phone
+            :company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf
           ))
         end
 
@@ -169,6 +169,8 @@ module V1
         contact_person: profile.contact_person,
         contact_email: profile.contact_email,
         contact_phone: profile.contact_phone,
+        guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
+        guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
         created_at: profile.created_at.iso8601,
         updated_at: profile.updated_at.iso8601
       }

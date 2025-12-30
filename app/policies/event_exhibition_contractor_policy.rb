@@ -4,7 +4,7 @@ class EventExhibitionContractorPolicy < ApplicationPolicy
   end
 
   def show?
-    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event)
+    user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event) || user.is_event_vendor?(record.event)
   end
 
   def create?
