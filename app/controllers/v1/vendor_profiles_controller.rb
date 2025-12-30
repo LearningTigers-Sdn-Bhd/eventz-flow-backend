@@ -51,7 +51,8 @@ module V1
         :category,
         :person_in_charge,
         :address,
-        :notes
+        :notes,
+        :company_profile
       )
     end
 
@@ -74,7 +75,7 @@ module V1
 
     def format_vendor_profile(profile)
       profile.as_json(
-        only: [:id, :vendor_id, :description, :category, :person_in_charge, :address, :notes, :created_at, :updated_at],
+        only: [:id, :vendor_id, :description, :category, :person_in_charge, :address, :notes, :company_profile, :created_at, :updated_at],
         methods: [],
         include: {
           vendor: { only: [:id, :full_name, :email, :phone, :created_by_id] }

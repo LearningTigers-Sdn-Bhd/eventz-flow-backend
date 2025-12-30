@@ -116,11 +116,20 @@ module V1
 
       # Get exhibitor guidelines PDF URL if event uses exhibitor kit
       guidelines_pdf_url = nil
+      team_member_limit = nil
       if event.use_exhibitor_kit? && event.event_exhibition_contractor.present?
         profile = event.event_exhibition_contractor.exhibition_contractor_profile
         if profile&.guidelines_pdf&.attached?
           guidelines_pdf_url = url_for(profile.guidelines_pdf)
         end
+      end
+
+      # Get team member limit if configured
+      team_member_limit = nil
+      extra_team_member_fee = nil
+      if event.use_exhibitor_kit? && event.exhibitor_team_member_limit.present?
+        team_member_limit = event.exhibitor_team_member_limit.team_member_limit
+        extra_team_member_fee = event.exhibitor_team_member_limit.extra_team_member_fee
       end
 
       success_response(
@@ -133,6 +142,8 @@ module V1
           vendor_type: event.use_ticket? ? 'Exhibitor' : 'Merchant',
           use_exhibitor_kit: event.use_exhibitor_kit?,
           guidelines_pdf_url: guidelines_pdf_url,
+          team_member_limit: team_member_limit,
+          extra_team_member_fee: extra_team_member_fee,
           event: {
             id: event.id,
             title: event.title,

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_23_024147) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_30_060213) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -573,6 +573,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_23_024147) do
     t.string "person_in_charge"
     t.text "address"
     t.text "notes"
+    t.text "company_profile"
     t.index ["vendor_id"], name: "index_vendor_profiles_on_vendor_id", unique: true
   end
 

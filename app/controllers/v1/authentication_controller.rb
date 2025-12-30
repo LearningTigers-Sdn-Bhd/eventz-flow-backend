@@ -506,7 +506,7 @@ module V1
 
   def invited_vendor_profile_params
     return {} unless params[:vendor_profile].present?
-    params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes)
+    params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes, :company_profile)
   end
 
   def invited_event_vendor_params
@@ -519,7 +519,8 @@ module V1
     params.require(:exhibitor_kit).permit(
       :booth_number, :booth_type, :name_on_fascia,
       :company_name, :company_address,
-      :pic_full_name, :pic_contact_number, :pic_email_address
+      :pic_full_name, :pic_contact_number, :pic_email_address,
+      exhibitor_team_members_attributes: [:full_name]
     )
   end
 end
