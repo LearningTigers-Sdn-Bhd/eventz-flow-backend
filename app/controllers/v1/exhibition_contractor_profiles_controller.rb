@@ -29,7 +29,7 @@ class V1::ExhibitionContractorProfilesController < ApplicationController
   end
 
   def exhibition_contractor_profile_params
-    params.require(:exhibition_contractor_profile).permit(:company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf)
+    params.require(:exhibition_contractor_profile).permit(:company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf, :allow_printing_services)
   end
 
   def format_profile(profile)
@@ -40,6 +40,7 @@ class V1::ExhibitionContractorProfilesController < ApplicationController
       contact_person: profile.contact_person,
       contact_email: profile.contact_email,
       contact_phone: profile.contact_phone,
+      allow_printing_services: profile.allow_printing_services,
       guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
       guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
       created_at: profile.created_at.iso8601,

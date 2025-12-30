@@ -22,8 +22,15 @@ module V1
     # POST /v1/exhibition_contractors
     def create
       contractor_params = params.require(:exhibition_contractor).permit(
-        :full_name, :email, :phone, :password, :password_confirmation
+        :full_name, :email, :phone, :password, :password_confirmation, :created_by_id
       )
+
+      # Allow org_owner to specify created_by_id, otherwise use current_user
+      assigned_created_by_id = if current_user.org_owner? && contractor_params[:created_by_id].present?
+        contractor_params[:created_by_id]
+      else
+        current_user.id
+      end
 
       contractor_user = User.new(
         full_name: contractor_params[:full_name],
@@ -34,7 +41,7 @@ module V1
         role: :exhibition_contractor,
         status: :active,
         email_verified_at: Time.current,
-        created_by_id: current_user.id
+        created_by_id: assigned_created_by_id
       )
 
       authorize contractor_user, :create?, policy_class: ExhibitionContractorPolicy
@@ -44,7 +51,7 @@ module V1
         contractor_user.reload # Ensure profile created by callback is loaded
 
         profile_params = params.require(:exhibition_contractor).permit(
-          exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone]
+          exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone, :allow_printing_services]
         )[:exhibition_contractor_profile_attributes]
 
         if profile_params.present?
@@ -72,7 +79,7 @@ module V1
         profile_params = params.dig(:exhibition_contractor, :exhibition_contractor_profile_attributes)
         if profile_params.present? && @contractor.exhibition_contractor_profile
           @contractor.exhibition_contractor_profile.update!(profile_params.permit(
-            :company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf
+            :company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf, :allow_printing_services
           ))
         end
 
@@ -142,6 +149,13 @@ module V1
         )
       end
 
+      # Allow org_owner to update created_by_id
+      if current_user.org_owner? && params[:exhibition_contractor][:created_by_id].present?
+        permitted.merge!(
+          params.require(:exhibition_contractor).permit(:created_by_id)
+        )
+      end
+
       permitted
     end
 
@@ -157,6 +171,7 @@ module V1
         status: contractor.status,
         created_at: contractor.created_at.iso8601,
         updated_at: contractor.updated_at.iso8601,
+        created_by_id: contractor.created_by_id,
         exhibition_contractor_profile: profile ? format_profile(profile) : nil
       }
     end
@@ -169,6 +184,7 @@ module V1
         contact_person: profile.contact_person,
         contact_email: profile.contact_email,
         contact_phone: profile.contact_phone,
+        allow_printing_services: profile.allow_printing_services,
         guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
         guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
         created_at: profile.created_at.iso8601,
