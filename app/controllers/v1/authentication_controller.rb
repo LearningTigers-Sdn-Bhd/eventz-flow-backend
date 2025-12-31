@@ -213,22 +213,16 @@ module V1
 
       # Create event vendor with optional attributes
       event_vendor_attrs = invited_event_vendor_params || {}
+
+      # Include exhibitor_kit as nested attributes if event uses it (required for Exhibitor in production)
+      if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
+        event_vendor_attrs[:exhibitor_kit_attributes] = exhibitor_kit_params.to_h
+      end
+
       event_vendor = EventVendor.create_for_event(event, @user, event_vendor_attrs)
 
       unless event_vendor.persisted?
         raise ActiveRecord::Rollback
-      end
-
-      # Create exhibitor kit if event uses it and params provided
-      if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
-        exhibitor_kit = event_vendor.build_exhibitor_kit(exhibitor_kit_params)
-        unless exhibitor_kit.save
-          return error_response(
-            message: 'Validation Error',
-            errors: format_validation_errors(exhibitor_kit),
-            status: :unprocessable_content
-          )
-        end
       end
 
       # Add vendor to group if group_id was in the invitation token
@@ -419,13 +413,21 @@ module V1
 
     # Create EventVendor record (type based on event settings)
     vendor_type = (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
-    event_vendor = EventVendor.new(
+
+    event_vendor_attrs = {
       event: event,
       vendor: current_user,
       type: vendor_type,
       redirect_url: params.dig(:event_vendor, :redirect_url),
       poster_url: params.dig(:event_vendor, :poster_url)
-    )
+    }
+
+    # Include exhibitor_kit as nested attributes if event uses it (required for Exhibitor in production)
+    if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
+      event_vendor_attrs[:exhibitor_kit_attributes] = exhibitor_kit_params.to_h
+    end
+
+    event_vendor = EventVendor.new(event_vendor_attrs)
 
     if event_vendor.save
       # Add vendor to group if group_id was in the invitation token
@@ -434,18 +436,6 @@ module V1
         group = Group.find_by(id: group_id)
         if group
           GroupAffiliate.find_or_create_by!(group: group, vendor: current_user)
-        end
-      end
-
-      # Create exhibitor kit if event uses it and params provided
-      if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
-        exhibitor_kit = event_vendor.build_exhibitor_kit(exhibitor_kit_params)
-        unless exhibitor_kit.save
-          return error_response(
-            message: 'Validation Error',
-            errors: format_validation_errors(exhibitor_kit),
-            status: :unprocessable_content
-          )
         end
       end
 
