@@ -15,7 +15,7 @@ class EventVendor < ApplicationRecord
 
   # --- Class Methods ---
   def self.create_for_event(event, vendor, attributes = {})
-    type = event.use_ticket? ? 'Exhibitor' : 'Merchant'
+    type = (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
     create!(attributes.merge(event: event, vendor: vendor, type: type))
   end
 

@@ -418,7 +418,7 @@ module V1
     end
 
     # Create EventVendor record (type based on event settings)
-    vendor_type = event.use_ticket? ? 'Exhibitor' : 'Merchant'
+    vendor_type = (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
     event_vendor = EventVendor.new(
       event: event,
       vendor: current_user,

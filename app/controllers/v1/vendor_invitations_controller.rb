@@ -139,7 +139,7 @@ module V1
           organizer_id: organizer_id,
           is_authenticated: is_authenticated,
           is_assigned: is_assigned,
-          vendor_type: event.use_ticket? ? 'Exhibitor' : 'Merchant',
+          vendor_type: (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant',
           use_exhibitor_kit: event.use_exhibitor_kit?,
           guidelines_pdf_url: guidelines_pdf_url,
           team_member_limit: team_member_limit,
