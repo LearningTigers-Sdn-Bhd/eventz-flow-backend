@@ -106,6 +106,7 @@ class V1::EventExhibitionContractorsController < ApplicationController
         contact_person: profile.contact_person,
         contact_email: profile.contact_email,
         contact_phone: profile.contact_phone,
+        standard_package_info: profile.standard_package_info,
         guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
         guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
         created_at: profile.created_at,

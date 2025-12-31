@@ -51,7 +51,7 @@ module V1
         contractor_user.reload # Ensure profile created by callback is loaded
 
         profile_params = params.require(:exhibition_contractor).permit(
-          exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone, :allow_printing_services]
+          exhibition_contractor_profile_attributes: [:company_name, :contact_person, :contact_email, :contact_phone, :allow_printing_services, :standard_package_info]
         )[:exhibition_contractor_profile_attributes]
 
         if profile_params.present?
@@ -79,7 +79,7 @@ module V1
         profile_params = params.dig(:exhibition_contractor, :exhibition_contractor_profile_attributes)
         if profile_params.present? && @contractor.exhibition_contractor_profile
           @contractor.exhibition_contractor_profile.update!(profile_params.permit(
-            :company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf, :allow_printing_services
+            :company_name, :contact_person, :contact_email, :contact_phone, :guidelines_pdf, :allow_printing_services, :standard_package_info
           ))
         end
 
@@ -185,6 +185,7 @@ module V1
         contact_email: profile.contact_email,
         contact_phone: profile.contact_phone,
         allow_printing_services: profile.allow_printing_services,
+        standard_package_info: profile.standard_package_info,
         guidelines_pdf_url: profile.guidelines_pdf.attached? ? url_for(profile.guidelines_pdf) : nil,
         guidelines_pdf_filename: profile.guidelines_pdf.attached? ? profile.guidelines_pdf.filename.to_s : nil,
         created_at: profile.created_at.iso8601,
