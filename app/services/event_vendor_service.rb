@@ -43,12 +43,12 @@ class EventVendorService
     end
   end
 
-  # Determine vendor type based on event.use_ticket
+  # Determine vendor type based on event.use_ticket or use_exhibitor_kit
   #
   # @param event [Event] The event
   # @return [String] 'Exhibitor' or 'Merchant'
   def self.determine_vendor_type(event)
-    event.use_ticket? ? 'Exhibitor' : 'Merchant'
+    (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
   end
 
 
