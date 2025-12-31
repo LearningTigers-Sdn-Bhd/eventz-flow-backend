@@ -6,7 +6,7 @@ module V1
 
     # Authorize the event instance *after* it's set
     before_action :set_event, except: [:index, :create]
-    before_action :authorize_event, except: [:index, :create, :business_matching_events, :show]
+    before_action :authorize_event, except: [:index, :create, :business_matching_events, :show, :organizer_payment_detail]
 
     # Special authorization for the show action, as it can be public
     before_action -> { authorize @event, :show? if @event }, only: [:show]
@@ -138,6 +138,23 @@ module V1
       end
     end
 
+    # GET /v1/events/:id/organizer_payment_detail
+    def organizer_payment_detail
+      authorize @event, :show?
+
+      payment_detail = find_organizer_payment_detail(@event)
+
+      if payment_detail
+        render json: {
+          bank_name: payment_detail.bank_name,
+          account_number: payment_detail.account_number,
+          account_name: payment_detail.account_name
+        }, status: :ok
+      else
+        render json: nil, status: :ok
+      end
+    end
+
     private
 
     # DRY principle: Find the event and handle 404
@@ -176,6 +193,18 @@ module V1
         :use_business_matching,
         labels_data: {} # Allows JSONB hash updates
       )
+    end
+
+    def find_organizer_payment_detail(event)
+      # Find organizer (by global role) assigned to this event who has payment details
+      organizer = event.event_assignments
+                       .joins(:user)
+                       .where(users: { role: :organizer })
+                       .joins(user: :payment_detail)
+                       .includes(user: :payment_detail)
+                       .first
+
+      organizer&.user&.payment_detail
     end
   end
 end

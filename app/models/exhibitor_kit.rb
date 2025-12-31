@@ -64,9 +64,14 @@ class ExhibitorKit < ApplicationRecord
     exhibitor_team_member_payments.verified.sum(:extra_member_count)
   end
 
-  # Unpaid excess count (what vendor still owes)
+  # Count of extra members with payments in progress (pending or submitted)
+  def in_progress_extra_member_count
+    exhibitor_team_member_payments.where(status: [:pending, :submitted]).sum(:extra_member_count)
+  end
+
+  # Unpaid excess count (excludes members with verified or in-progress payments)
   def unpaid_excess_team_member_count
-    [excess_team_member_count - paid_extra_member_count, 0].max
+    [excess_team_member_count - paid_extra_member_count - in_progress_extra_member_count, 0].max
   end
 
   # Check if vendor has unpaid excess team members

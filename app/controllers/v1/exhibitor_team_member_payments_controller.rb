@@ -64,13 +64,29 @@ module V1
     private
 
     def format_payment(payment)
+      event = payment.exhibitor_kit.event_vendor.event
+      organizer_payment_detail = find_organizer_payment_detail(event)
+
       payment.as_json(
         include: [:payee]
       ).merge(
         payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : nil,
         exhibitor_kit_id: payment.exhibitor_kit_id,
-        event_id: payment.exhibitor_kit.event_vendor.event_id
+        event_id: payment.exhibitor_kit.event_vendor.event_id,
+        payee_payment_detail: organizer_payment_detail&.as_json(only: [:bank_name, :account_number, :account_name])
       )
+    end
+
+    def find_organizer_payment_detail(event)
+      # Find organizer (by global role) assigned to this event who has payment details
+      organizer = event.event_assignments
+                       .joins(:user)
+                       .where(users: { role: :organizer })
+                       .joins(user: :payment_detail)
+                       .includes(user: :payment_detail)
+                       .first
+
+      organizer&.user&.payment_detail
     end
 
     def is_vendor?

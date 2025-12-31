@@ -71,6 +71,7 @@ class User < ApplicationRecord
   has_many :rentable_items, dependent: :destroy
   has_many :printing_services, dependent: :destroy
   has_many :exhibitor_kit_admin_notes, dependent: :destroy
+  has_one :payment_detail, dependent: :destroy
 
 
   # 5. VOUCHER REDEMPTIONS

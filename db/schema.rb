@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_30_072724) do
+ActiveRecord::Schema[8.0].define(version: 2025_12_31_001335) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -467,6 +467,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_30_072724) do
     t.index ["user_id"], name: "index_password_resets_on_user_id"
   end
 
+  create_table "payment_details", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "bank_name", null: false
+    t.string "account_number", null: false
+    t.string "account_name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
+  end
+
   create_table "printing_services", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -717,6 +727,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_30_072724) do
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "password_resets", "users"
+  add_foreign_key "payment_details", "users"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
   add_foreign_key "rentable_items", "item_categories"

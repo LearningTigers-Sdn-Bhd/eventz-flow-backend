@@ -127,6 +127,7 @@ Rails.application.routes.draw do
       end
 
       get 'business_matching_events', on: :member # New route for business matching events
+      get 'organizer_payment_detail', on: :member # Get organizer's bank details for payment
 
       # NOTE: Create action disabled - items are now auto-linked when contractor is assigned to event
       # resources :event_rentable_items do
@@ -242,6 +243,11 @@ Rails.application.routes.draw do
 
     # Vendor profile management (vendor-centric, not group-specific)
     resource :vendor_profile, only: [:show, :update]
+
+    # Payment details (bank account info for payees)
+    resource :payment_detail, only: [:show, :create, :update, :destroy] do
+      get :me, on: :collection
+    end
 
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
