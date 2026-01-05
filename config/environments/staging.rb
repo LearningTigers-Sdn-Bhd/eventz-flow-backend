@@ -80,6 +80,14 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
+  # Allow Action Cable access from staging domains
+  config.action_cable.allowed_request_origins = [
+    "https://staging.eventzflow.com",
+    "https://staging-frontend.eventzflow.com",
+    "http://staging.eventzflow.com",
+    /https:\/\/staging.*\.eventzflow\.com/
+  ]
+
   # Enable DNS rebinding protection and other `Host` header attacks.
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
