@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_12_31_024700) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -209,6 +209,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_12_31_024700) do
     t.boolean "use_exhibitor_kit", default: false, null: false
     t.boolean "allow_contractor_printing_services", default: false
     t.boolean "use_business_matching", default: false
+    t.string "business_matching_webhook_url"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end

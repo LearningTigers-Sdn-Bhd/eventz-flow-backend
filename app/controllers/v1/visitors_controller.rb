@@ -94,6 +94,16 @@ module V1
 
     # Strong parameters using Rails 8/modern syntax:
     def visitor_params
+      # Pre-process custom_fields_data if it's a string (fixing common client/tooling issues)
+      if params.dig(:visitor, :custom_fields_data).is_a?(String)
+        begin
+          json_data = JSON.parse(params[:visitor][:custom_fields_data])
+          params[:visitor][:custom_fields_data] = json_data if json_data.is_a?(Hash)
+        rescue JSON::ParserError
+          # If parsing fails, leave it as is; strictly permitted params will filter it out.
+        end
+      end
+
       # Fields allowed for creation and general visitor updates.
       allowed_params = [
         :full_name,

@@ -191,6 +191,7 @@ module V1
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
+        :business_matching_webhook_url,
         labels_data: {} # Allows JSONB hash updates
       )
     end

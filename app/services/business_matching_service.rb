@@ -13,7 +13,8 @@ class BusinessMatchingService < BaseService
 
     if force_refresh
       Rails.logger.info "Force refresh requested. Clearing all business matching cache for event #{event_id}"
-      Rails.cache.delete_matched("business_matching_*_#{event_id}*")
+      # Use Regex for delete_matched as string is interpreted as Regex in MemoryStore/Redis
+      Rails.cache.delete_matched(/business_matching_.*_#{event_id}.*/)
     end
 
     unless force_refresh
@@ -870,14 +871,33 @@ class BusinessMatchingService < BaseService
   end
 
   def _send_request(payload)
-    uri = URI.parse(WEBHOOK_URL)
+    event_id = payload[:event_id]
+    event = Event.find_by(id: event_id) if event_id
+
+    webhook_url = event&.business_matching_webhook_url.presence || WEBHOOK_URL
+
+    # Determine dynamic receive URL
+    base_url = ENV['API_HOST_URL'].presence
+    base_url ||= if Rails.env.production?
+                   "https://api.eventzflow.com"
+                 elsif Rails.env.staging?
+                   "https://staging-api.eventzflow.com"
+                 else
+                   "https://local-backend.eventzflow.com"
+                 end
+
+    receive_url = "#{base_url}/v1/business_matching/receive"
+    payload[:receive_url] = receive_url
+
+    uri = URI.parse(webhook_url)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true if uri.scheme == 'https'
     # Bypass SSL verification to avoid "unable to get certificate CRL" error
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
     http.read_timeout = 30
 
-    request = Net::HTTP::Post.new(uri.path, { 'Content-Type' => 'application/json' })
+    # Use request_uri to handle cases where path is empty (it defaults to "/")
+    request = Net::HTTP::Post.new(uri.request_uri, { 'Content-Type' => 'application/json' })
     request.body = payload.to_json
 
     response = http.request(request)
