@@ -348,6 +348,58 @@ Rails.application.routes.draw do
       resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
     end
 
+    # --- RESOURCES CMS ---
+    scope 'resources' do
+      # /v1/resources/permissions
+      resources :permissions, controller: 'resources_permissions', except: [:new, :edit], as: 'resources_permissions'
+
+      # /v1/resources/topics
+      resources :topics, controller: 'resources_topics', except: [:new, :edit], as: 'resources_topics' do
+        member do
+          post :restore
+          delete :force_destroy
+        end
+      end
+
+      # /v1/resources/categories
+      resources :categories, controller: 'resources_categories', except: [:new, :edit], as: 'resources_categories' do
+        member do
+          post :restore
+          delete :force_destroy
+        end
+      end
+
+      # /v1/resources/media_types
+      resources :media_types, controller: 'resources_media_types', except: [:new, :edit], as: 'resources_media_types' do
+        member do
+          post :restore
+          delete :force_destroy
+        end
+      end
+
+      # /v1/resources/leads
+      resources :leads, controller: 'resources_leads', only: [:index, :show, :create], as: 'resources_leads' do
+        get :metrics, on: :collection
+      end
+
+      # /v1/resources/permission_context/:id
+      resources :permission_context, only: [:show], controller: 'permission_context'
+    end
+
+    # This is separate to avoid nesting under /resources
+    # /v1/resources
+    resources :resources, controller: 'resources', except: [:new, :edit] do
+      collection do
+        get :public, action: :index_public
+      end
+      member do
+        get :public, action: :show_public
+        post :restore
+        delete :force_destroy
+        patch :approval
+      end
+    end
+
     resources :event_printing_services, only: [] do
       resources :event_printing_service_prices, controller: 'event_printing_service_prices'
     end
