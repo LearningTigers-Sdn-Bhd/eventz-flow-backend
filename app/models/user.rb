@@ -82,6 +82,20 @@ class User < ApplicationRecord
   has_many :api_keys, dependent: :destroy
   has_many :email_verifications, dependent: :destroy
 
+  # 7. RESOURCES
+  has_one :resource_write_permission, dependent: :destroy
+  has_many :resources, foreign_key: 'user_id', dependent: :destroy
+
+  # --- Resource-Specific Role Helper Methods ---
+
+  def can_write_resources?
+    resource_write_permission.present?
+  end
+
+  def is_official_writer?
+    resource_write_permission&.is_official?
+  end
+
   # --- Global Role Helper Methods (FIXED LOGIC) ---
 
   # Ensures Org Owner is included as a Organizer

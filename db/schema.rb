@@ -641,6 +641,82 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "resource_categories", force: :cascade do |t|
+    t.string "name"
+    t.text "description"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_categories_on_deleted_at"
+  end
+
+  create_table "resource_leads", force: :cascade do |t|
+    t.string "email"
+    t.string "name"
+    t.string "phone"
+    t.string "company_name"
+    t.string "state"
+    t.string "country"
+    t.string "job_title"
+    t.string "ip_address"
+    t.datetime "accessed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "resource_media_types", force: :cascade do |t|
+    t.string "name"
+    t.text "description"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_media_types_on_deleted_at"
+  end
+
+  create_table "resource_topics", force: :cascade do |t|
+    t.string "name"
+    t.text "description"
+    t.string "logo"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_topics_on_deleted_at"
+  end
+
+  create_table "resource_write_permissions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.boolean "is_official", default: false
+    t.integer "status", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_resource_write_permissions_on_user_id", unique: true
+  end
+
+  create_table "resources", force: :cascade do |t|
+    t.string "title"
+    t.text "article"
+    t.string "slug", null: false
+    t.string "meta_description"
+    t.bigint "user_id", null: false
+    t.bigint "resource_topic_id", null: false
+    t.bigint "resource_category_id", null: false
+    t.bigint "resource_media_type_id", null: false
+    t.integer "status", default: 0
+    t.datetime "published_at"
+    t.datetime "deleted_at"
+    t.integer "view_counts", default: 0
+    t.boolean "is_gated", default: false
+    t.boolean "is_official", default: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resources_on_deleted_at"
+    t.index ["resource_category_id"], name: "index_resources_on_resource_category_id"
+    t.index ["resource_media_type_id"], name: "index_resources_on_resource_media_type_id"
+    t.index ["resource_topic_id"], name: "index_resources_on_resource_topic_id"
+    t.index ["slug"], name: "index_resources_on_slug", unique: true
+    t.index ["user_id"], name: "index_resources_on_user_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false

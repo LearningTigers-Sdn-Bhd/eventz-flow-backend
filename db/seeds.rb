@@ -273,6 +273,47 @@ all_events.each_with_index do |event, i|
   end
 end
 
+puts "\n--- 5. Generating Resource CMS Data ---"
+
+# A. Resource Topics
+topics = ["Event Management", "AI at work", "Business Matching", "Project Planning"]
+topics.each do |topic_name|
+  ResourceTopic.find_or_create_by!(name: topic_name)
+end
+puts "Created #{ResourceTopic.count} Resource Topics."
+
+# B. Resource Categories
+categories = ["Corporate", "Wedding", "Exhibition", "Celebration"]
+categories.each do |category_name|
+  ResourceCategory.find_or_create_by!(name: category_name)
+end
+puts "Created #{ResourceCategory.count} Resource Categories."
+
+# C. Resource Media Types
+media_types = ["Audiobook", "eBook", "Article", "Report", "Webinar", "Video"]
+media_types.each do |media_type_name|
+  ResourceMediaType.find_or_create_by!(name: media_type_name)
+end
+puts "Created #{ResourceMediaType.count} Resource Media Types."
+
+# D. Grant write permission to the main organizer and superadmin
+organizer_to_grant = User.find_by(email: 'organizer_1@example.com')
+if organizer_to_grant
+  ResourceWritePermission.find_or_create_by!(user: organizer_to_grant) do |permission|
+    permission.is_official = true
+  end
+  puts "Granted resource writing permission to #{organizer_to_grant.email}."
+end
+
+superadmin_to_grant = User.find_by(email: 's@s.com')
+if superadmin_to_grant
+  ResourceWritePermission.find_or_create_by!(user: superadmin_to_grant) do |permission|
+    permission.is_official = true
+  end
+  puts "Granted resource writing permission to #{superadmin_to_grant.email}."
+end
+
+
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"
 puts "  Total Users: #{User.count}"
@@ -282,6 +323,10 @@ puts "  Total Tickets: #{Ticket.count}"
 puts "  Total Event Assignments: #{EventAssignment.count}"
 puts "  Total Event Locations: #{EventLocation.count}"
 puts "  Total Event Location Members: #{EventLocationMember.count}"
+puts "  Total Resource Topics: #{ResourceTopic.count}"
+puts "  Total Resource Categories: #{ResourceCategory.count}"
+puts "  Total Resource Media Types: #{ResourceMediaType.count}"
+puts "  Total Resource Write Permissions: #{ResourceWritePermission.count}"
 puts "\nLogin Credentials:"
 puts "  Superadmin (Org Owner): s@s.com / 12345678"
 puts "  Organizer 1: organizer_1@example.com / 12345678"
