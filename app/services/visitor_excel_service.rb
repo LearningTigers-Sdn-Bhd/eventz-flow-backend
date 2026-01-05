@@ -246,38 +246,39 @@ class VisitorExcelService
     nil
   end
 
-  # Process an existing visitor (update if more complete)
+  # Process an existing visitor (update if more complete or has changes)
   def self.process_existing_visitor(existing, attrs, event, results, dry_run, full)
     existing_score = visitor_completeness_score(existing)
     new_score = row_completeness_score(attrs)
+    changed_fields = detect_changes(existing, attrs)
+    merged_custom = merge_custom_fields(existing.custom_fields_data, attrs[:custom_fields_data], event.labels_data)
+    custom_fields_changed = merged_custom != (existing.custom_fields_data || {})
 
-    if new_score > existing_score
-      changed_fields = detect_changes(existing, attrs)
-
+    # Update if: more complete data OR same completeness but has actual changes
+    if new_score > existing_score || (new_score == existing_score && changed_fields.any?)
       unless dry_run
         update_attrs = {
+          full_name: attrs[:full_name],
           email: attrs[:email].presence || existing.email,
           phone: attrs[:phone].presence || existing.phone,
           gender: attrs[:gender].presence || existing.gender,
           age: attrs[:age].presence || existing.age,
-          custom_fields_data: merge_custom_fields(existing.custom_fields_data, attrs[:custom_fields_data], event.labels_data)
+          custom_fields_data: merged_custom
         }
         existing.update!(update_attrs)
       end
 
       results[:updated][:count] += 1
       results[:updated][:data] << build_record_data(existing, attrs, full, changed_fields)
+    elsif custom_fields_changed
+      # Less complete but custom_fields changed - only update custom_fields
+      existing.update!(custom_fields_data: merged_custom) unless dry_run
+      results[:updated][:count] += 1
+      results[:updated][:data] << build_record_data(existing, attrs, full, ['custom_fields_data'])
     else
-      # Check if only custom_fields changed
-      merged_custom = merge_custom_fields(existing.custom_fields_data, attrs[:custom_fields_data], event.labels_data)
-      if merged_custom != (existing.custom_fields_data || {})
-        existing.update!(custom_fields_data: merged_custom) unless dry_run
-        results[:updated][:count] += 1
-        results[:updated][:data] << build_record_data(existing, attrs, full, ['custom_fields_data'])
-      else
-        results[:skipped][:count] += 1
-        results[:skipped][:data] << build_record_data(existing, attrs, full) if full
-      end
+      # No changes at all - skip
+      results[:skipped][:count] += 1
+      results[:skipped][:data] << build_record_data(existing, attrs, full) if full
     end
   end
 
@@ -315,6 +316,7 @@ class VisitorExcelService
   # Detect what fields changed
   def self.detect_changes(existing, attrs)
     changes = []
+    changes << 'full_name' if attrs[:full_name].present? && attrs[:full_name] != existing.full_name
     changes << 'email' if attrs[:email].present? && attrs[:email] != existing.email
     changes << 'phone' if attrs[:phone].present? && attrs[:phone] != existing.phone
     changes << 'gender' if attrs[:gender].present? && attrs[:gender] != existing.gender
