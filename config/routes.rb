@@ -316,6 +316,9 @@ Rails.application.routes.draw do
 
     # Exhibition Contractors (user accounts with exhibition_contractor role)
     resources :exhibition_contractors, only: [:index, :show, :create, :update, :destroy] do
+      collection do
+        get :available
+      end
       member do
         patch :toggle_status
         get :assigned_events

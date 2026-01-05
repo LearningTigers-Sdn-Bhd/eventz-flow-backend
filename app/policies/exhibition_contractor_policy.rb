@@ -6,6 +6,10 @@ class ExhibitionContractorPolicy < UserPolicy
     user.organizer? || user.org_owner?
   end
 
+  def available?
+    user.organizer? || user.org_owner?
+  end
+
   def show?
     user.org_owner? || user.organizer? || record == user
   end

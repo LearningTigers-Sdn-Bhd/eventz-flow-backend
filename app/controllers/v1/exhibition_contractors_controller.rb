@@ -12,6 +12,16 @@ module V1
       render json: contractors.map { |contractor| format_contractor(contractor) }, status: :ok
     end
 
+    # GET /v1/exhibition_contractors/available
+    # Returns all active contractors for assignment to events (bypasses created_by scope)
+    def available
+      authorize User.new(role: :exhibition_contractor), :available?, policy_class: ExhibitionContractorPolicy
+
+      contractors = User.where(role: :exhibition_contractor, status: :active)
+
+      render json: contractors.map { |contractor| format_contractor(contractor) }, status: :ok
+    end
+
     # GET /v1/exhibition_contractors/:id
     def show
       authorize @contractor, :show?, policy_class: ExhibitionContractorPolicy
