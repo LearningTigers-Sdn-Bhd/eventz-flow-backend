@@ -5050,6 +5050,2420 @@ paths:
           description: no content
         '403':
           description: forbidden
+  "/v1/resources/categories":
+    get:
+      summary: list resource categories
+      tags:
+      - Resources CMS - Categories
+      description: 'Public: List all available resource categories (non-deleted only)'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: Corporate Events
+                        description:
+                          type: string
+                          nullable: true
+                          example: Business and corporate event management resources
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - name
+    post:
+      summary: create resource category
+      tags:
+      - Resources CMS - Categories
+      security:
+      - bearerAuth: []
+      description: 'Admin or Writer: Create a new resource category'
+      parameters: []
+      responses:
+        '201':
+          description: created - writer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Corporate Events
+                      description:
+                        type: string
+                        nullable: true
+                        example: Business and corporate event management resources
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - visitor without write permission
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '422':
+          description: unprocessable entity - validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: Wedding Planning
+                    description:
+                      type: string
+                      nullable: true
+                      example: Wedding event planning and management resources
+                  required:
+                  - name
+              required:
+              - category
+  "/v1/resources/categories/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Category ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show resource category
+      tags:
+      - Resources CMS - Categories
+      description: 'Public: Get details of a specific resource category'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Corporate Events
+                      description:
+                        type: string
+                        nullable: true
+                        example: Business and corporate event management resources
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '404':
+          description: not found - invalid id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource category not found
+    put:
+      summary: update resource category
+      tags:
+      - Resources CMS - Categories
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Update a resource category'
+      parameters: []
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Corporate Events
+                      description:
+                        type: string
+                        nullable: true
+                        example: Business and corporate event management resources
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - visitor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource category not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: Updated Category Name
+                    description:
+                      type: string
+                      nullable: true
+                      example: Updated description
+    delete:
+      summary: delete resource category
+      tags:
+      - Resources CMS - Categories
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Soft delete a resource category'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - visitor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource category not found
+  "/v1/resources/categories/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      description: Category ID
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: restore resource category
+      tags:
+      - Resources CMS - Categories
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Restore a soft-deleted resource category'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Corporate Events
+                      description:
+                        type: string
+                        nullable: true
+                        example: Business and corporate event management resources
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - writer cannot restore
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found - already restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource category not found
+  "/v1/resources/categories/{id}/force_destroy":
+    parameters:
+    - name: id
+      in: path
+      description: Category ID
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: force destroy resource category
+      tags:
+      - Resources CMS - Categories
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Permanently delete a resource category'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - writer cannot force destroy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource category not found
+  "/v1/resources/leads":
+    get:
+      summary: list resource leads
+      tags:
+      - Resources CMS - Leads
+      security:
+      - bearerAuth: []
+      description: 'Admin only: List all resource leads with contact information'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        email:
+                          type: string
+                          format: email
+                          example: john.doe@company.com
+                        name:
+                          type: string
+                          example: John Doe
+                        phone:
+                          type: string
+                          nullable: true
+                          example: "+1234567890"
+                        company_name:
+                          type: string
+                          nullable: true
+                          example: Acme Corporation
+                        state:
+                          type: string
+                          nullable: true
+                          example: California
+                        country:
+                          type: string
+                          nullable: true
+                          example: United States
+                        job_title:
+                          type: string
+                          nullable: true
+                          example: Event Manager
+                        ip_address:
+                          type: string
+                          nullable: true
+                          example: 192.168.1.1
+                        accessed_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - email
+                      - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+    post:
+      summary: create resource lead
+      tags:
+      - Resources CMS - Leads
+      description: 'Public: Submit lead information for gated content access'
+      parameters: []
+      responses:
+        '201':
+          description: created - public access
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      email:
+                        type: string
+                        format: email
+                        example: john.doe@company.com
+                      name:
+                        type: string
+                        example: John Doe
+                      phone:
+                        type: string
+                        nullable: true
+                        example: "+1234567890"
+                      company_name:
+                        type: string
+                        nullable: true
+                        example: Acme Corporation
+                      state:
+                        type: string
+                        nullable: true
+                        example: California
+                      country:
+                        type: string
+                        nullable: true
+                        example: United States
+                      job_title:
+                        type: string
+                        nullable: true
+                        example: Event Manager
+                      ip_address:
+                        type: string
+                        nullable: true
+                        example: 192.168.1.1
+                      accessed_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - email
+                    - name
+        '422':
+          description: unprocessable entity - validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lead:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                      example: user@company.com
+                    name:
+                      type: string
+                      example: Jane Smith
+                    phone:
+                      type: string
+                      nullable: true
+                      example: "+1234567890"
+                    company_name:
+                      type: string
+                      nullable: true
+                      example: Tech Corp
+                    state:
+                      type: string
+                      nullable: true
+                      example: New York
+                    country:
+                      type: string
+                      nullable: true
+                      example: United States
+                    job_title:
+                      type: string
+                      nullable: true
+                      example: Marketing Director
+                  required:
+                  - email
+                  - name
+              required:
+              - lead
+  "/v1/resources/leads/metrics":
+    get:
+      summary: resource leads metrics
+      tags:
+      - Resources CMS - Leads
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Get analytics and metrics for lead generation'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total_leads:
+                        type: integer
+                        example: 150
+                      leads_this_month:
+                        type: integer
+                        example: 25
+                      leads_this_week:
+                        type: integer
+                        example: 8
+                      top_countries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            country:
+                              type: string
+                              example: United States
+                            count:
+                              type: integer
+                              example: 75
+                      top_companies:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            company_name:
+                              type: string
+                              example: Acme Corporation
+                            count:
+                              type: integer
+                              example: 5
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+  "/v1/resources/leads/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Lead ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show resource lead
+      tags:
+      - Resources CMS - Leads
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Get details of a specific resource lead'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      email:
+                        type: string
+                        format: email
+                        example: john.doe@company.com
+                      name:
+                        type: string
+                        example: John Doe
+                      phone:
+                        type: string
+                        nullable: true
+                        example: "+1234567890"
+                      company_name:
+                        type: string
+                        nullable: true
+                        example: Acme Corporation
+                      state:
+                        type: string
+                        nullable: true
+                        example: California
+                      country:
+                        type: string
+                        nullable: true
+                        example: United States
+                      job_title:
+                        type: string
+                        nullable: true
+                        example: Event Manager
+                      ip_address:
+                        type: string
+                        nullable: true
+                        example: 192.168.1.1
+                      accessed_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - email
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource lead not found
+  "/v1/resources/media_types":
+    get:
+      summary: list resource media types
+      tags:
+      - Resources CMS - Media Types
+      description: 'Public: List all available resource media types (non-deleted only)'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: Article
+                        description:
+                          type: string
+                          nullable: true
+                          example: Written articles and blog posts
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - name
+    post:
+      summary: create resource media type
+      tags:
+      - Resources CMS - Media Types
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Create a new resource media type'
+      parameters: []
+      responses:
+        '201':
+          description: created - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Article
+                      description:
+                        type: string
+                        nullable: true
+                        example: Written articles and blog posts
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '422':
+          description: unprocessable entity - validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_type:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: Webinar
+                    description:
+                      type: string
+                      nullable: true
+                      example: Live or recorded webinar sessions
+                  required:
+                  - name
+              required:
+              - media_type
+  "/v1/resources/media_types/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Media Type ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show resource media type
+      tags:
+      - Resources CMS - Media Types
+      description: 'Public: Get details of a specific resource media type'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Article
+                      description:
+                        type: string
+                        nullable: true
+                        example: Written articles and blog posts
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '404':
+          description: not found - invalid id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource media type not found
+    put:
+      summary: update resource media type
+      tags:
+      - Resources CMS - Media Types
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Update a resource media type'
+      parameters: []
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Article
+                      description:
+                        type: string
+                        nullable: true
+                        example: Written articles and blog posts
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource media type not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_type:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: Updated Media Type Name
+                    description:
+                      type: string
+                      nullable: true
+                      example: Updated description
+    delete:
+      summary: delete resource media type
+      tags:
+      - Resources CMS - Media Types
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Soft delete a resource media type'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource media type not found
+  "/v1/resources/media_types/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      description: Media Type ID
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: restore resource media type
+      tags:
+      - Resources CMS - Media Types
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Restore a soft-deleted resource media type'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Article
+                      description:
+                        type: string
+                        nullable: true
+                        example: Written articles and blog posts
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found - already restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource media type not found
+  "/v1/resources/media_types/{id}/force_destroy":
+    parameters:
+    - name: id
+      in: path
+      description: Media Type ID
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: force destroy resource media type
+      tags:
+      - Resources CMS - Media Types
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Permanently delete a resource media type'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource media type not found
+  "/v1/resources/permissions":
+    get:
+      summary: list resource write permissions
+      tags:
+      - Resources CMS - Permissions
+      security:
+      - bearerAuth: []
+      description: 'Admin only: List all user write permissions for resources'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        user_id:
+                          type: integer
+                          example: 123
+                        is_official:
+                          type: boolean
+                          example: false
+                        status:
+                          type: string
+                          enum:
+                          - base
+                          - partnership
+                          example: base
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - user_id
+                      - is_official
+                      - status
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+    post:
+      summary: create resource write permission
+      tags:
+      - Resources CMS - Permissions
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Grant write permission to a user'
+      parameters: []
+      responses:
+        '201':
+          description: created - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      user_id:
+                        type: integer
+                        example: 123
+                      is_official:
+                        type: boolean
+                        example: false
+                      status:
+                        type: string
+                        enum:
+                        - base
+                        - partnership
+                        example: base
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - user_id
+                    - is_official
+                    - status
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '422':
+          description: unprocessable entity - validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission:
+                  type: object
+                  properties:
+                    user_id:
+                      type: integer
+                      example: 456
+                    is_official:
+                      type: boolean
+                      example: false
+                    status:
+                      type: string
+                      enum:
+                      - base
+                      - partnership
+                      example: base
+                  required:
+                  - user_id
+              required:
+              - permission
+  "/v1/resources/permissions/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Permission ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show resource write permission
+      tags:
+      - Resources CMS - Permissions
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Get details of a specific write permission'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      user_id:
+                        type: integer
+                        example: 123
+                      is_official:
+                        type: boolean
+                        example: false
+                      status:
+                        type: string
+                        enum:
+                        - base
+                        - partnership
+                        example: base
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - user_id
+                    - is_official
+                    - status
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource write permission not found
+    put:
+      summary: update resource write permission
+      tags:
+      - Resources CMS - Permissions
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Update a user write permission'
+      parameters: []
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      user_id:
+                        type: integer
+                        example: 123
+                      is_official:
+                        type: boolean
+                        example: false
+                      status:
+                        type: string
+                        enum:
+                        - base
+                        - partnership
+                        example: base
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - user_id
+                    - is_official
+                    - status
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource write permission not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission:
+                  type: object
+                  properties:
+                    is_official:
+                      type: boolean
+                      example: true
+                    status:
+                      type: string
+                      enum:
+                      - base
+                      - partnership
+                      example: partnership
+    delete:
+      summary: delete resource write permission
+      tags:
+      - Resources CMS - Permissions
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Revoke write permission from a user'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource write permission not found
+  "/v1/resources/public":
+    get:
+      summary: list resources public
+      tags:
+      - Resources CMS
+      security: []
+      responses:
+        '200':
+          description: successful for visitor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        article:
+                          type: string
+                        slug:
+                          type: string
+                        meta_description:
+                          type: string
+                        status:
+                          type: string
+                        is_gated:
+                          type: boolean
+                        is_official:
+                          type: boolean
+                        view_counts:
+                          type: integer
+                        published_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        resource_topic_id:
+                          type: integer
+                        resource_category_id:
+                          type: integer
+                        resource_media_type_id:
+                          type: integer
+                        user_id:
+                          type: integer
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+  "/v1/resources/{id}/public":
+    parameters:
+    - name: id
+      in: path
+      description: ID or Slug
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show resource public
+      tags:
+      - Resources CMS
+      security: []
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      title:
+                        type: string
+                      article:
+                        type: string
+                      slug:
+                        type: string
+                      meta_description:
+                        type: string
+                      status:
+                        type: string
+                      is_gated:
+                        type: boolean
+                      is_official:
+                        type: boolean
+                      view_counts:
+                        type: integer
+                      published_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      resource_topic_id:
+                        type: integer
+                      resource_category_id:
+                        type: integer
+                      resource_media_type_id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+        '404':
+          description: not found
+  "/v1/resources":
+    get:
+      summary: list resources authenticated
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful for writer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        article:
+                          type: string
+                        slug:
+                          type: string
+                        meta_description:
+                          type: string
+                        status:
+                          type: string
+                        is_gated:
+                          type: boolean
+                        is_official:
+                          type: boolean
+                        view_counts:
+                          type: integer
+                        published_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        resource_topic_id:
+                          type: integer
+                        resource_category_id:
+                          type: integer
+                        resource_media_type_id:
+                          type: integer
+                        user_id:
+                          type: integer
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+    post:
+      summary: create resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: resource created
+        '403':
+          description: unauthorized user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource:
+                  type: object
+                  required:
+                  - title
+                  - article
+                  - resource_topic_id
+                  - resource_category_id
+                  - resource_media_type_id
+                  properties:
+                    title:
+                      type: string
+                    article:
+                      type: string
+                    meta_description:
+                      type: string
+                    resource_topic_id:
+                      type: integer
+                    resource_category_id:
+                      type: integer
+                    resource_media_type_id:
+                      type: integer
+                    status:
+                      type: string
+                      enum:
+                      - draft
+                      - published
+                    is_gated:
+                      type: boolean
+  "/v1/resources/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: ID or Slug
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show resource authenticated
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      title:
+                        type: string
+                      article:
+                        type: string
+                      slug:
+                        type: string
+                      meta_description:
+                        type: string
+                      status:
+                        type: string
+                      is_gated:
+                        type: boolean
+                      is_official:
+                        type: boolean
+                      view_counts:
+                        type: integer
+                      published_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      resource_topic_id:
+                        type: integer
+                      resource_category_id:
+                        type: integer
+                      resource_media_type_id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+        '404':
+          description: not found
+    put:
+      summary: update resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: updated
+        '403':
+          description: unauthorized update (not owner)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                    article:
+                      type: string
+                    status:
+                      type: string
+                    is_gated:
+                      type: boolean
+    delete:
+      summary: soft delete resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: soft deleted
+  "/v1/resources/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: restore resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: restored
+        '403':
+          description: unauthorized
+  "/v1/resources/{id}/force_destroy":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    delete:
+      summary: force destroy resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: permanently deleted
+        '403':
+          description: unauthorized (writer cannot force destroy)
+  "/v1/resources/{id}/approval":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: approve/publish resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: status updated
+        '403':
+          description: unauthorized (writer cannot approve own)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource:
+                  type: object
+                  required:
+                  - status
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - published
+                      - draft
+  "/v1/resources/topics":
+    get:
+      summary: list resource topics
+      tags:
+      - Resources CMS - Topics
+      description: 'Public: List all available resource topics (non-deleted only)'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: Event Management
+                        description:
+                          type: string
+                          nullable: true
+                          example: Best practices for event planning and management
+                        logo:
+                          type: string
+                          nullable: true
+                          example: https://example.com/logos/event-management.png
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                      required:
+                      - id
+                      - name
+    post:
+      summary: create resource topic
+      tags:
+      - Resources CMS - Topics
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Create a new resource topic'
+      parameters: []
+      responses:
+        '201':
+          description: created - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Event Management
+                      description:
+                        type: string
+                        nullable: true
+                        example: Best practices for event planning and management
+                      logo:
+                        type: string
+                        nullable: true
+                        example: https://example.com/logos/event-management.png
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '422':
+          description: unprocessable entity - validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Validation failed
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                topic:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: AI in Events
+                    description:
+                      type: string
+                      nullable: true
+                      example: Artificial intelligence applications in event management
+                    logo:
+                      type: string
+                      nullable: true
+                      example: https://example.com/logos/ai-events.png
+                  required:
+                  - name
+              required:
+              - topic
+  "/v1/resources/topics/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Topic ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show resource topic
+      tags:
+      - Resources CMS - Topics
+      description: 'Public: Get details of a specific resource topic'
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Event Management
+                      description:
+                        type: string
+                        nullable: true
+                        example: Best practices for event planning and management
+                      logo:
+                        type: string
+                        nullable: true
+                        example: https://example.com/logos/event-management.png
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '404':
+          description: not found - invalid id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource topic not found
+    put:
+      summary: update resource topic
+      tags:
+      - Resources CMS - Topics
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Update a resource topic'
+      parameters: []
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Event Management
+                      description:
+                        type: string
+                        nullable: true
+                        example: Best practices for event planning and management
+                      logo:
+                        type: string
+                        nullable: true
+                        example: https://example.com/logos/event-management.png
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource topic not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                topic:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: Updated Topic Name
+                    description:
+                      type: string
+                      nullable: true
+                      example: Updated description
+                    logo:
+                      type: string
+                      nullable: true
+                      example: https://example.com/logos/updated.png
+    delete:
+      summary: delete resource topic
+      tags:
+      - Resources CMS - Topics
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Soft delete a resource topic'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource topic not found
+  "/v1/resources/topics/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      description: Topic ID
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: restore resource topic
+      tags:
+      - Resources CMS - Topics
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Restore a soft-deleted resource topic'
+      responses:
+        '200':
+          description: successful - admin only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: Event Management
+                      description:
+                        type: string
+                        nullable: true
+                        example: Best practices for event planning and management
+                      logo:
+                        type: string
+                        nullable: true
+                        example: https://example.com/logos/event-management.png
+                      created_at:
+                        type: string
+                        format: date_time
+                      updated_at:
+                        type: string
+                        format: date_time
+                    required:
+                    - id
+                    - name
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found - already restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource topic not found
+  "/v1/resources/topics/{id}/force_destroy":
+    parameters:
+    - name: id
+      in: path
+      description: Topic ID
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: force destroy resource topic
+      tags:
+      - Resources CMS - Topics
+      security:
+      - bearerAuth: []
+      description: 'Admin only: Permanently delete a resource topic'
+      responses:
+        '200':
+          description: successful - admin only
+        '403':
+          description: forbidden - non-admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Access denied
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource topic not found
   "/v1/events/{event_id}/vendors/{id}/stamp_count":
     parameters:
     - name: event_id
