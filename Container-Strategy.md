@@ -93,7 +93,7 @@ stop_grace_period: 30s
 ### What are Zombie Processes?
 
 Zombie processes are terminated processes that haven't been reaped by their parent. They accumulate when:
-- Parent process doesn't call `wait()` 
+- Parent process doesn't call `wait()`
 - Child exits before parent reads its exit status
 - Process tree isn't properly managed
 
@@ -245,7 +245,7 @@ docker exec -it <container> ps aux
 - [ ] Health checks pass consistently
 - [ ] No connection pool leaks after restarts
 
-## References
+## References Sources
 
 - [Tini GitHub](https://github.com/krallin/tini)
 - [Dockerfile Best Practices](https://docs.docker.com/develop/develop-images/dockerfile_best-practices/)
