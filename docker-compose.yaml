@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-rails-env: &rails-env
   RAILS_ENV: production
   RAILS_SERVE_STATIC_FILES: "1"
@@ -39,6 +37,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
     networks:
       - coolify
 
@@ -60,6 +60,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
     networks:
       - coolify
 
@@ -68,7 +70,7 @@ services:
     environment:
       <<: *db-env
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      - pg-data:/var/lib/postgresql
     ports:
       - "5434:5432"
     healthcheck:
