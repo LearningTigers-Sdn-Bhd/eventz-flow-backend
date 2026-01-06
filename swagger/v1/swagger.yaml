@@ -1563,27 +1563,6 @@ paths:
           description: successful
         '401':
           description: unauthorized
-    post:
-      summary: create event printing service
-      tags:
-      - Event Printing Services
-      security:
-      - api_key: []
-      parameters: []
-      responses:
-        '201':
-          description: created
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                printing_service_id:
-                  type: integer
-                  example: 1
-              required:
-              - printing_service_id
   "/v1/events/{event_id}/event_printing_services/{id}":
     parameters:
     - name: event_id
@@ -1747,27 +1726,6 @@ paths:
           description: successful
         '401':
           description: unauthorized
-    post:
-      summary: create event rentable item
-      tags:
-      - Event Rentable Items
-      security:
-      - api_key: []
-      parameters: []
-      responses:
-        '201':
-          description: created
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                rentable_item_id:
-                  type: integer
-                  example: 1
-              required:
-              - rentable_item_id
   "/v1/events/{event_id}/event_rentable_items/{id}":
     parameters:
     - name: event_id
@@ -3382,6 +3340,115 @@ paths:
                   - sponsored
                 company_name:
                   type: string
+  "/v1/events/{event_id}/exhibitor_kits/{exhibitor_kit_id}/exhibitor_team_member_payments":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    - name: exhibitor_kit_id
+      in: path
+      description: ID of the exhibitor kit
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list exhibitor_team_member_payments
+      tags:
+      - Exhibitor Team Member Payments
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+    post:
+      summary: create exhibitor_team_member_payment
+      tags:
+      - Exhibitor Team Member Payments
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '422':
+          description: unprocessable entity
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+  "/v1/events/{event_id}/exhibitor_kits/{exhibitor_kit_id}/exhibitor_team_member_payments/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    - name: exhibitor_kit_id
+      in: path
+      description: ID of the exhibitor kit
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: ID of the payment
+      required: true
+      schema:
+        type: string
+    get:
+      summary: show exhibitor_team_member_payment
+      tags:
+      - Exhibitor Team Member Payments
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    patch:
+      summary: update exhibitor_team_member_payment
+      tags:
+      - Exhibitor Team Member Payments
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exhibitor_team_member_payment:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - pending
+                      - submitted
+                      - verified
+                      - rejected
+                    note:
+                      type: string
+                    paid_at:
+                      type: string
+                      format: date-time
   "/v1/groups/{group_id}/affiliates":
     parameters:
     - name: group_id
@@ -4079,162 +4146,6 @@ paths:
               type: file
         required: true
         description: Excel file (.xlsx) with ticket data
-  "/v1/imports/visitors":
-    post:
-      summary: Import visitors from Excel file
-      tags:
-      - Imports
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        schema:
-          type: string
-      - name: dry_run
-        in: query
-        required: false
-        description: If true, validate and report without writing changes
-        schema:
-          type: boolean
-      - name: full
-        in: query
-        required: false
-        description: If true, include full record data in response
-        schema:
-          type: boolean
-      - name: no_label
-        in: query
-        required: false
-        description: When true, use sequential Label N keys; when false, use header
-          names as keys
-        schema:
-          type: boolean
-      responses:
-        '200':
-          description: Visitors imported successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                        description: Total number of visitors processed
-                      created:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of visitors created
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of created visitor data
-                      updated:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of visitors updated
-                          data:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                model:
-                                  type: string
-                                id:
-                                  type: string
-                                changed_fields:
-                                  type: array
-                                  items:
-                                    type: string
-                                  description: Array of field names that changed
-                            description: Array of updated visitor data
-                        description: Present only when visitors were updated
-                      skipped:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of visitors skipped
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of skipped visitor data
-                      duplicates_in_file:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of duplicate rows collapsed within
-                              the file
-                          data:
-                            type: array
-                            items:
-                              type: object
-                            description: Array of duplicate visitor data
-                        description: Present only when duplicates were found in the
-                          file
-                      errors:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                            description: Number of errors encountered
-                          data:
-                            type: array
-                            items:
-                              type: string
-                            description: Array of error messages
-                    required:
-                    - total
-                    - created
-                    - skipped
-                    - errors
-        '401':
-          description: Unauthorized - Missing or invalid token
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-        '422':
-          description: Unprocessable Entity - No file provided or import failed
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: file
-        required: true
-        description: Excel file (.xlsx) with visitor data. Columns - Full Name (required),
-          Email, Phone, Gender, Age, Event Title (required), Custom Labels...
   "/v1/item_categories":
     get:
       summary: list item categories
@@ -4911,6 +4822,103 @@ paths:
                   type: integer
                   nullable: true
         required: true
+  "/v1/payment_detail/me":
+    get:
+      summary: get current user payment details
+      tags:
+      - Payment Details
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '404':
+          description: not found
+        '401':
+          description: unauthorized
+  "/v1/payment_detail":
+    post:
+      summary: create payment details
+      tags:
+      - Payment Details
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+        '403':
+          description: forbidden
+        '422':
+          description: unprocessable entity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_detail:
+                  type: object
+                  required:
+                  - bank_name
+                  - account_number
+                  - account_name
+                  properties:
+                    bank_name:
+                      type: string
+                    account_number:
+                      type: string
+                    account_name:
+                      type: string
+    get:
+      summary: show payment details
+      tags:
+      - Payment Details
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '404':
+          description: not found
+    patch:
+      summary: update payment details
+      tags:
+      - Payment Details
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '404':
+          description: not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_detail:
+                  type: object
+                  properties:
+                    bank_name:
+                      type: string
+                    account_number:
+                      type: string
+                    account_name:
+                      type: string
+    delete:
+      summary: delete payment details
+      tags:
+      - Payment Details
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: no content
+        '404':
+          description: not found
   "/v1/printing_services":
     get:
       summary: list printing services
@@ -5027,6 +5035,30 @@ paths:
           description: no content
         '403':
           description: forbidden
+  "/v1/events/{event_id}/received_payments":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    get:
+      summary: list received payments for current user
+      tags:
+      - Received Payments
+      description: Returns all ExhibitorKitPayments where the current user is the
+        payee. Works for contractors (for their rentable items) and org_owners (for
+        their printing services).
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '401':
+          description: unauthorized
+        '404':
+          description: not found
   "/v1/rentable_items":
     get:
       summary: list rentable items
@@ -6842,6 +6874,95 @@ paths:
               required:
               - vendor
         required: true
+  "/v1/imports/visitors":
+    post:
+      summary: Import visitors from Excel file
+      tags:
+      - Imports
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: dry_run
+        in: query
+        required: false
+        description: If true, validate and report without writing changes
+        schema:
+          type: boolean
+      - name: full
+        in: query
+        required: false
+        description: If true, include full record data in response
+        schema:
+          type: boolean
+      - name: no_label
+        in: query
+        required: false
+        description: When true, use sequential Label N keys; when false, use header
+          names as keys
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Visitors imported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      created:
+                        type: object
+                      updated:
+                        type: object
+                      skipped:
+                        type: object
+                      duplicates_in_file:
+                        type: object
+                      errors:
+                        type: object
+                    required:
+                    - total
+                    - created
+                    - skipped
+                    - errors
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '422':
+          description: Unprocessable Entity - No file provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: Excel file (.xlsx) with visitor data
   "/v1/events/{event_id}/visitors":
     parameters:
     - name: event_id
