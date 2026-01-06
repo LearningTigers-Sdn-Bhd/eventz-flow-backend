@@ -194,7 +194,7 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
 
       it "returns unprocessable entity with HAS_TRANSACTIONS code" do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json_body['code']).to eq('HAS_TRANSACTIONS')
       end
 

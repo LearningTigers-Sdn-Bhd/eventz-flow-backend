@@ -109,12 +109,5 @@ RSpec.describe EventVendor, type: :model do
     it 'has many exhibitor_team_members through exhibitor_kit' do
       expect(exhibitor).to have_many(:exhibitor_team_members).through(:exhibitor_kit)
     end
-
-    it 'validates presence of exhibitor_kit on creation in production' do
-      pending 'This validation is conditional to Rails.env.production?'
-      exhibitor_without_kit = build(:exhibitor, event: event, vendor: vendor_user, exhibitor_kit: nil)
-      expect(exhibitor_without_kit).not_to be_valid
-      expect(exhibitor_without_kit.errors[:exhibitor_kit]).to include("must exist")
-    end
   end
 end
