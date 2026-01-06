@@ -2,7 +2,15 @@
 
 # If running the rails server then create or migrate existing database
 if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
-  ./bin/rails db:prepare
+  # Check if schema_migrations table exists using raw SQL
+  TABLE_EXISTS=$(./bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('schema_migrations')" 2>/dev/null || echo "false")
+  if [ "$TABLE_EXISTS" = "true" ]; then
+    echo "Tables exist, running migrations..."
+    ./bin/rails db:migrate
+  else
+    echo "Database not initialized, loading schema..."
+    ./bin/rails db:create db:schema:load
+  fi
 fi
 
 exec "${@}"
