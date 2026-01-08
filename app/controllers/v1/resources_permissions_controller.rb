@@ -5,8 +5,9 @@ class V1::ResourcesPermissionsController < ApplicationController
   # GET /v1/resources/permissions
   def index
     authorize ResourceWritePermission
-    @permissions = ResourceWritePermission.all
-    success_response(data: @permissions)
+    scope = ResourceWritePermission.includes(:user).all
+    @pagy, @permissions = pagy(scope, limit: pagination_params[:per_page])
+    success_response(data: @permissions.as_json(include: :user), pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/permissions/:id

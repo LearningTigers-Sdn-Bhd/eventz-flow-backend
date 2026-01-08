@@ -326,6 +326,9 @@ Rails.application.routes.draw do
     # 8. API KEYS MANAGEMENT
     resources :api_keys, only: [:index, :create, :destroy]
 
+    # 9. GENERIC UPLOADS
+    resources :uploads, only: [:create]
+
     # Exhibition Contractors (user accounts with exhibition_contractor role)
     resources :exhibition_contractors, only: [:index, :show, :create, :update, :destroy] do
       collection do
@@ -391,10 +394,13 @@ Rails.application.routes.draw do
     resources :resources, controller: 'resources', except: [:new, :edit] do
       collection do
         get :public, action: :index_public
+        get :approval_index
+        get :owner, action: :index_owner
       end
       member do
         get :public, action: :show_public
         post :restore
+        post :duplicate
         delete :force_destroy
         patch :approval
       end

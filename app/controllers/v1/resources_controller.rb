@@ -1,46 +1,90 @@
-# app/controllers/v1/resources_controller.rb
 class V1::ResourcesController < ApplicationController
+  include ResourceFormatter
+
   skip_before_action :authenticate_user!, only: [:index_public, :show_public]
-  before_action :set_resource, only: [:show, :show_public, :update, :destroy, :approval]
+  before_action :set_resource, only: [:show, :show_public, :update, :destroy, :approval, :duplicate]
   before_action :set_unscoped_resource, only: [:restore, :force_destroy]
+  before_action :ensure_not_published, only: [:update, :destroy]
 
   # GET /v1/resources (Authenticated - Admin/Writer)
   def index
     authorize Resource
-    if current_user&.is_org_owner?
-      @resources = Resource.unscoped.all
-    elsif current_user&.can_write_resources?
-      published_ids = Resource.unscoped.where(status: :published).pluck(:id)
-      own_ids = Resource.unscoped.where(user: current_user).pluck(:id)
-      all_ids = (published_ids + own_ids).uniq
-      
-      @resources = Resource.unscoped.where(id: all_ids)
+    
+    if params[:status] == 'archived'
+      resources_scope = Resource.unscoped.where(user: current_user).where.not(deleted_at: nil)
     else
-      # Fallback for authenticated members who are not writers (though policy might block them)
-      @resources = Resource.where(status: :published)
+      # Standard Index: For writers (and owners in 'writer mode') to see their own content + published content
+      if current_user&.can_write_resources? || current_user&.is_org_owner?
+        resources_scope = Resource.accessible_by_writer(current_user)
+      else
+        # Fallback for authenticated members who are not writers
+        resources_scope = Resource.public_feed
+      end
+
+      resources_scope = resources_scope.where(status: params[:status]) if params[:status].present?
     end
-    success_response(data: @resources.order(published_at: :desc, created_at: :desc))
+
+    @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
+
+    # Index for writers/admin managing content: No author object needed per instruction, no summary
+    formatted_resources = @resources.map { |r| format_resource(r, include_article: false, include_author: false) }
+    success_response(data: formatted_resources, pagination: pagy_metadata(@pagy))
+  end
+
+  # GET /v1/resources/owner (Authenticated - Org Owner Only)
+  def index_owner
+    authorize Resource, :index_owner?
+    
+    if params[:status] == 'archived'
+      resources_scope = Resource.unscoped.where.not(deleted_at: nil)
+    else
+      resources_scope = Resource.admin_dashboard_view
+      resources_scope = resources_scope.where(status: params[:status]) if params[:status].present?
+    end
+
+    @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
+
+    # Owner Index: Includes author (to see who wrote what), no summary, no article
+    formatted_resources = @resources.map { |r| format_resource(r, include_article: false, include_author: true) }
+    success_response(data: formatted_resources, pagination: pagy_metadata(@pagy))
+  end
+
+  # GET /v1/resources/approval_index (Authenticated - Admin Only)
+  def approval_index
+    authorize Resource, :approval?
+    
+    resources_scope = Resource.pending_review_queue
+    @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
+
+    formatted_resources = @resources.map do |resource|
+      format_approval_resource(resource)
+    end
+
+    success_response(data: formatted_resources, pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/public (Unauthenticated)
   def index_public
-    # No policy check needed for public endpoint, or use a PublicPolicy
-    @resources = Resource.where(status: :published).order(published_at: :desc, created_at: :desc)
-    success_response(data: @resources)
+    resources_scope = Resource.public_feed
+    @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
+    
+    # Public index: Includes author, no summary
+    formatted_resources = @resources.map { |r| format_resource(r, include_article: false, include_author: true) }
+    success_response(data: formatted_resources, pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/:id (Authenticated)
   def show
     authorize @resource
-    success_response(data: @resource)
+    # Show: Full details including article, author
+    success_response(data: format_resource(@resource, include_article: true, include_author: true))
   end
 
   # GET /v1/resources/:id/public (Unauthenticated)
   def show_public
-    # No policy check needed, but ensure we only show published unless logic dictates otherwise
-    # Assuming public endpoint only shows published resources
     if @resource.published? || @resource.is_official
-       success_response(data: @resource)
+       # Public Show: Full details including article, author
+       success_response(data: format_resource(@resource, include_article: true, include_author: true))
     else
        error_response(message: 'Resource not found or not visible', status: :not_found)
     end
@@ -54,7 +98,7 @@ class V1::ResourcesController < ApplicationController
     @resource.is_official = current_user.is_official_writer? || current_user.is_org_owner?
 
     if @resource.save
-      success_response(data: @resource, status: :created)
+      success_response(data: format_resource(@resource, include_article: true, include_author: true), status: :created)
     else
       error_response(errors: format_validation_errors(@resource))
     end
@@ -64,7 +108,7 @@ class V1::ResourcesController < ApplicationController
   def update
     authorize @resource
     if @resource.update(resource_params)
-      success_response(data: @resource)
+      success_response(data: format_resource(@resource, include_article: true, include_author: true))
     else
       error_response(errors: format_validation_errors(@resource))
     end
@@ -84,7 +128,7 @@ class V1::ResourcesController < ApplicationController
       return error_response(message: 'Resource not found', status: :not_found)
     end
     @resource.restore
-    success_response(data: @resource, message: 'Resource restored successfully')
+    success_response(data: format_resource(@resource, include_article: false, include_author: false), message: 'Resource restored successfully')
   end
 
   # DELETE /v1/resources/:id/force_destroy
@@ -98,16 +142,65 @@ class V1::ResourcesController < ApplicationController
   def approval
     authorize @resource
     
-    status = params.require(:resource).permit(:status)[:status]
-    if ['published', 'draft'].include?(status)
-      @resource.update(status: status, published_at: (status == 'published' ? Time.current : nil))
-      success_response(data: @resource, message: "Resource status updated to '#{status}'")
+    resource_params = params.fetch(:resource, {})
+    status = resource_params[:status]
+    rejection_reason = resource_params[:rejection_reason]
+
+    if ['published', 'draft', 'rejected'].include?(status)
+      update_params = { status: status }
+      update_params[:published_at] = (status == 'published' ? Time.current : nil)
+      update_params[:rejection_reason] = rejection_reason if status == 'rejected'
+
+      if @resource.update(update_params)
+        success_response(data: format_resource(@resource, include_article: true, include_author: true), message: "Resource status updated to '#{status}'")
+      else
+        error_response(errors: format_validation_errors(@resource))
+      end
     else
-      error_response(message: "Invalid status provided. Must be 'published' or 'draft'.")
+      error_response(message: "Invalid status provided. Must be 'published', 'draft', or 'rejected'.")
+    end
+  end
+
+  # POST /v1/resources/:id/duplicate
+  def duplicate
+    authorize @resource, :create?
+
+    new_resource = @resource.dup
+    new_resource.title = "Copy of #{@resource.title}"
+    new_resource.status = 'draft'
+    new_resource.user = current_user
+    new_resource.is_official = current_user.is_official_writer? || current_user.is_org_owner?
+    new_resource.published_at = nil
+    new_resource.created_at = nil
+    new_resource.updated_at = nil
+    new_resource.deleted_at = nil
+    
+    # Generate unique slug
+    base_slug = new_resource.title.parameterize
+    new_slug = base_slug
+    counter = 1
+    
+    while Resource.exists?(slug: new_slug)
+      counter += 1
+      new_slug = "#{base_slug}-#{counter}"
+    end
+    
+    new_resource.slug = new_slug
+
+    if new_resource.save
+      success_response(data: format_resource(new_resource, include_article: true, include_author: true), status: :created)
+    else
+      error_response(errors: format_validation_errors(new_resource))
     end
   end
 
   private
+
+  def ensure_not_published
+    if @resource.published?
+      error_response(message: 'Published resources cannot be modified or deleted. Please unpublish or archive first.', status: :forbidden)
+    end
+  end
 
   def set_resource
     @resource = Resource.find_by(slug: params[:id]) || Resource.find(params[:id])
@@ -121,7 +214,7 @@ class V1::ResourcesController < ApplicationController
     params.require(:resource).permit(
       :title, :article, :slug, :meta_description,
       :resource_topic_id, :resource_category_id, :resource_media_type_id,
-      :status, :is_gated
+      :status, :is_gated, :rejection_reason
     )
   end
 end

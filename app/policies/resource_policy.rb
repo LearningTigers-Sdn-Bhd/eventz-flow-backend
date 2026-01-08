@@ -36,4 +36,12 @@ class ResourcePolicy < ApplicationPolicy
   def approval?
     user&.is_org_owner?
   end
+
+  def approval_index?
+    approval?
+  end
+
+  def index_owner?
+    user&.is_org_owner?
+  end
 end

@@ -1,11 +1,11 @@
 # app/controllers/v1/permission_context_controller.rb
 class V1::PermissionContextController < ApplicationController
-  
+
   # GET /v1/resources/permission_context/:id
   def show
     # The :id param is the user_id
     target_user = User.find(params[:id])
-    
+
     # We are authorizing the action of viewing this context, not a specific record.
     # The policy simply checks if the current_user is present (authenticated).
     authorize target_user, policy_class: PermissionContextPolicy
@@ -15,11 +15,13 @@ class V1::PermissionContextController < ApplicationController
     if permission
       response_data = {
         has_writer_permission: true,
+        is_official: permission.is_official,
         updated_at: permission.updated_at
       }
     else
       response_data = {
         has_writer_permission: false,
+        is_official: false,
         updated_at: nil
       }
     end

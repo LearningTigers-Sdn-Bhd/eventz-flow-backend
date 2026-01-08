@@ -5,20 +5,68 @@ RESOURCE_SCHEMA = {
   properties: {
     id: { type: :integer },
     title: { type: :string },
-    article: { type: :string },
     slug: { type: :string },
-    meta_description: { type: :string },
-    status: { type: :string },
+    meta_description: { type: :string, nullable: true },
+    status: { type: :string, enum: %w[draft pending_review published rejected archived] },
     is_gated: { type: :boolean },
     is_official: { type: :boolean },
+    rejection_reason: { type: :string, nullable: true },
     view_counts: { type: :integer },
     published_at: { type: :string, format: :date_time, nullable: true },
-    resource_topic_id: { type: :integer },
-    resource_category_id: { type: :integer },
-    resource_media_type_id: { type: :integer },
-    user_id: { type: :integer },
     created_at: { type: :string, format: :date_time },
-    updated_at: { type: :string, format: :date_time }
+    updated_at: { type: :string, format: :date_time },
+    deleted_at: { type: :string, format: :date_time, nullable: true },
+    cover_image_url: { type: :string, nullable: true },
+    topic: { 
+      type: :object, 
+      nullable: true,
+      properties: {
+        id: { type: :integer },
+        name: { type: :string }
+      }
+    },
+    category: { 
+      type: :object, 
+      nullable: true,
+      properties: {
+        id: { type: :integer },
+        name: { type: :string }
+      }
+    },
+    media_type: { 
+      type: :object, 
+      nullable: true,
+      properties: {
+        id: { type: :integer },
+        name: { type: :string }
+      }
+    },
+    article: { type: :string },
+    author: {
+      type: :object,
+      nullable: true,
+      properties: {
+        id: { type: :integer },
+        full_name: { type: :string },
+        email: { type: :string }
+      }
+    }
+  }
+}.freeze
+
+PAGINATION_SCHEMA = {
+  type: :object,
+  properties: {
+    current_page: { type: :integer },
+    total_pages: { type: :integer },
+    total_count: { type: :integer },
+    per_page: { type: :integer },
+    prev_page: { type: :integer, nullable: true },
+    next_page: { type: :integer, nullable: true },
+    first_page: { type: :integer },
+    last_page: { type: :integer },
+    from: { type: :integer },
+    to: { type: :integer }
   }
 }.freeze
 
@@ -42,6 +90,8 @@ RSpec.describe "V1::Resources", type: :request do
       tags 'Resources CMS'
       produces 'application/json'
       security [] # No auth required
+      parameter name: :page, in: :query, type: :integer, description: 'Page number', required: false
+      parameter name: :per_page, in: :query, type: :integer, description: 'Items per page', required: false
 
       response(200, 'successful for visitor') do
         schema type: :object,
@@ -49,19 +99,21 @@ RSpec.describe "V1::Resources", type: :request do
                  data: {
                    type: :array,
                    items: RESOURCE_SCHEMA
-                 }
+                 },
+                 pagination: PAGINATION_SCHEMA
                }
         
         before do
-          create(:resource, status: :published)
+          create_list(:resource, 5, status: :published)
           create(:resource, status: :draft)
         end
 
         run_test! do |response|
-          data = JSON.parse(response.body)['data']
+          json = JSON.parse(response.body)
+          data = json['data']
           # Visitors should only see published resources
-          expect(data.any? { |r| r['status'] == 'published' }).to be true
-          expect(data.any? { |r| r['status'] == 'draft' }).to be false
+          expect(data.all? { |r| r['status'] == 'published' }).to be true
+          expect(json).to have_key('pagination')
         end
       end
     end
@@ -97,15 +149,21 @@ RSpec.describe "V1::Resources", type: :request do
       tags 'Resources CMS'
       produces 'application/json'
       security [bearerAuth: []]
+      parameter name: :page, in: :query, type: :integer, description: 'Page number', required: false
+      parameter name: :per_page, in: :query, type: :integer, description: 'Items per page', required: false
 
       response(200, 'successful for writer') do
         let(:Authorization) { auth_headers(writer)['Authorization'] }
+        let(:page) { 1 }
+        let(:per_page) { 10 }
+
         schema type: :object,
                properties: {
                  data: {
                    type: :array,
                    items: RESOURCE_SCHEMA
-                 }
+                 },
+                 pagination: PAGINATION_SCHEMA
                }
 
         before do
@@ -115,9 +173,13 @@ RSpec.describe "V1::Resources", type: :request do
         end
 
         run_test! do |response|
-          data = JSON.parse(response.body)['data']
+          json = JSON.parse(response.body)
+          data = json['data']
+          pagination = json['pagination']
+          
           # Writer should see the published one AND their own draft
           expect(data.size).to be >= 2
+          expect(pagination['current_page']).to eq(1)
         end
       end
     end
@@ -141,7 +203,7 @@ RSpec.describe "V1::Resources", type: :request do
               resource_topic_id: { type: :integer },
               resource_category_id: { type: :integer },
               resource_media_type_id: { type: :integer },
-              status: { type: :string, enum: %w[draft published] },
+              status: { type: :string, enum: %w[draft pending_review published rejected] },
               is_gated: { type: :boolean }
             }
           }
@@ -165,7 +227,7 @@ RSpec.describe "V1::Resources", type: :request do
         run_test! do |response|
           data = JSON.parse(response.body)['data']
           expect(data['title']).to eq("New Article")
-          expect(data['user_id']).to eq(writer.id)
+          expect(data['author']['id']).to eq(writer.id)
         end
       end
 
@@ -177,10 +239,64 @@ RSpec.describe "V1::Resources", type: :request do
     end
   end
 
+  path '/v1/resources/owner' do
+    get('list all resources (owner only)') do
+      tags 'Resources CMS'
+      produces 'application/json'
+      security [bearerAuth: []]
+      parameter name: :page, in: :query, type: :integer, required: false
+      parameter name: :per_page, in: :query, type: :integer, required: false
+
+      response(200, 'successful for owner') do
+        let(:Authorization) { auth_headers(org_owner)['Authorization'] }
+        schema type: :object,
+               properties: {
+                 data: { type: :array, items: RESOURCE_SCHEMA },
+                 pagination: PAGINATION_SCHEMA
+               }
+        
+        before { create_list(:resource, 3) }
+        run_test!
+      end
+
+      response(403, 'forbidden for non-owner') do
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/resources/approval_index' do
+    get('list resources pending approval') do
+      tags 'Resources CMS'
+      produces 'application/json'
+      security [bearerAuth: []]
+      parameter name: :page, in: :query, type: :integer, required: false
+      parameter name: :per_page, in: :query, type: :integer, required: false
+
+      response(200, 'successful for admin') do
+        let(:Authorization) { auth_headers(org_owner)['Authorization'] }
+        schema type: :object,
+               properties: {
+                 data: { type: :array, items: RESOURCE_SCHEMA },
+                 pagination: PAGINATION_SCHEMA
+               }
+        
+        before { create_list(:resource, 2, status: :pending_review) }
+        run_test!
+      end
+
+      response(403, 'forbidden for writer') do
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+        run_test!
+      end
+    end
+  end
+
   path '/v1/resources/{id}' do
     parameter name: :id, in: :path, type: :string, description: 'ID or Slug'
 
-    let(:resource_item) { create(:resource, user: writer, status: :published, resource_topic: resource_topic, resource_category: resource_category, resource_media_type: resource_media_type) }
+    let(:resource_item) { create(:resource, user: writer, status: :draft, resource_topic: resource_topic, resource_category: resource_category, resource_media_type: resource_media_type) }
     let(:id) { resource_item.id }
 
     get('show resource authenticated') do
@@ -328,13 +444,14 @@ RSpec.describe "V1::Resources", type: :request do
             type: :object,
             required: [:status],
             properties: {
-              status: { type: :string, enum: %w[published draft] }
+              status: { type: :string, enum: %w[published draft rejected] },
+              rejection_reason: { type: :string }
             }
           }
         }
       }
 
-      response(200, 'status updated') do
+      response(200, 'status updated (published)') do
         let(:Authorization) { auth_headers(org_owner)['Authorization'] }
         let(:resource_params) { { resource: { status: 'published' } } }
 
@@ -345,12 +462,46 @@ RSpec.describe "V1::Resources", type: :request do
         end
       end
 
+      response(200, 'status updated (rejected)') do
+        let(:Authorization) { auth_headers(org_owner)['Authorization'] }
+        let(:resource_params) { { resource: { status: 'rejected', rejection_reason: 'Too short' } } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)['data']
+          expect(data['status']).to eq('rejected')
+          expect(data['rejection_reason']).to eq('Too short')
+        end
+      end
+
       response(403, 'unauthorized (writer cannot approve own)') do
         # Assuming only admins can approve? 
         # Plan says: "force_destroy, approval -> Admin only."
         let(:Authorization) { auth_headers(writer)['Authorization'] }
         let(:resource_params) { { resource: { status: 'published' } } }
         run_test!
+      end
+    end
+  end
+
+  path '/v1/resources/{id}/duplicate' do
+    parameter name: :id, in: :path, type: :string
+
+    let(:resource_item) { create(:resource, user: writer) }
+    let(:id) { resource_item.id }
+
+    post('duplicate resource') do
+      tags 'Resources CMS'
+      produces 'application/json'
+      security [bearerAuth: []]
+
+      response(201, 'resource duplicated') do
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)['data']
+          expect(data['title']).to start_with('Copy of')
+          expect(data['status']).to eq('draft')
+        end
       end
     end
   end

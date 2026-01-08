@@ -7,8 +7,18 @@ class V1::ResourcesTopicsController < ApplicationController
   # GET /v1/resources/topics
   def index
     authorize ResourceTopic
-    @topics = ResourceTopic.all
-    success_response(data: @topics)
+    filter = params.permit(:filter)[:filter]
+    scope = case filter
+            when 'archived'
+              ResourceTopic.unscoped.where.not(deleted_at: nil)
+            when 'all'
+              ResourceTopic.unscoped
+            else
+              ResourceTopic.all
+            end
+
+    @pagy, @topics = pagy(scope, limit: pagination_params[:per_page])
+    success_response(data: @topics, pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/topics/:id

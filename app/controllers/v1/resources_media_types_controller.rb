@@ -7,8 +7,18 @@ class V1::ResourcesMediaTypesController < ApplicationController
   # GET /v1/resources/media_types
   def index
     authorize ResourceMediaType
-    @media_types = ResourceMediaType.all
-    success_response(data: @media_types)
+    filter = params.permit(:filter)[:filter]
+    scope = case filter
+            when 'archived'
+              ResourceMediaType.unscoped.where.not(deleted_at: nil)
+            when 'all'
+              ResourceMediaType.unscoped
+            else
+              ResourceMediaType.all
+            end
+
+    @pagy, @media_types = pagy(scope, limit: pagination_params[:per_page])
+    success_response(data: @media_types, pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/media_types/:id

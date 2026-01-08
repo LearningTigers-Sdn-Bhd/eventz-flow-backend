@@ -7,8 +7,18 @@ class V1::ResourcesCategoriesController < ApplicationController
   # GET /v1/resources/categories
   def index
     authorize ResourceCategory
-    @categories = ResourceCategory.all
-    success_response(data: @categories)
+    filter = params.permit(:filter)[:filter]
+    scope = case filter
+            when 'archived'
+              ResourceCategory.unscoped.where.not(deleted_at: nil)
+            when 'all'
+              ResourceCategory.unscoped
+            else
+              ResourceCategory.all
+            end
+    
+    @pagy, @categories = pagy(scope, limit: pagination_params[:per_page])
+    success_response(data: @categories, pagination: pagy_metadata(@pagy))
   end
 
   # GET /v1/resources/categories/:id
