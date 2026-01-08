@@ -53,6 +53,7 @@ class CreateResourceFeatureTables < ActiveRecord::Migration[7.0]
       t.integer :view_counts, default: 0
       t.boolean :is_gated, default: false
       t.boolean :is_official, default: false
+      t.text :rejection_reason
       t.timestamps
     end
     add_index :resources, :slug, unique: true

@@ -33,6 +33,11 @@ puts "Cleaning up existing records..."
 # Use delete_all to bypass callbacks and foreign key constraints
 # This is more efficient and avoids foreign key issues
 ActiveRecord::Base.connection.disable_referential_integrity do
+  Resource.delete_all
+  ResourceTopic.delete_all
+  ResourceCategory.delete_all
+  ResourceMediaType.delete_all
+  ResourceWritePermission.delete_all
   Ticket.delete_all
   EventLocationMember.delete_all
   EventAssignment.delete_all
@@ -313,6 +318,8 @@ if superadmin_to_grant
   puts "Granted resource writing permission to #{superadmin_to_grant.email}."
 end
 
+# --- 6. IMPORT EXTERNAL SEEDS ---
+load Rails.root.join('db', 'seeds', 'resources.rb')
 
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"

@@ -707,6 +707,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.integer "view_counts", default: 0
     t.boolean "is_gated", default: false
     t.boolean "is_official", default: false
+    t.text "rejection_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["deleted_at"], name: "index_resources_on_deleted_at"
