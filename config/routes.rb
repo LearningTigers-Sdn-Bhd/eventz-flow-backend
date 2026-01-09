@@ -255,6 +255,9 @@ Rails.application.routes.draw do
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
 
+    # Contractor dashboard
+    get 'contractor/dashboard', to: 'contractor_dashboard#index'
+
     resources :vendors, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
