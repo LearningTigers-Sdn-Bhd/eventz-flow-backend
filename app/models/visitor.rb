@@ -1,4 +1,6 @@
 class Visitor < ApplicationRecord
+  include TimeSeriesAnalytics
+
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create

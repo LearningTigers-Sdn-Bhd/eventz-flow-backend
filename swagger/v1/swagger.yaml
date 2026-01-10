@@ -184,99 +184,6 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Total sales amount in cents across all events
-  "/v1/metrics/weekly_registered":
-    get:
-      summary: Get weekly registered tickets data across all accessible events
-      tags:
-      - Global Analytics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly registered tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyRegisteredTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                          description: Date in YYYY-MM-DD format
-                        count:
-                          type: integer
-                          description: Number of tickets registered on this date
-  "/v1/metrics/weekly_scanned":
-    get:
-      summary: Get weekly scanned tickets data across all accessible events
-      tags:
-      - Global Analytics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyScannedTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                          description: Date in YYYY-MM-DD format
-                        count:
-                          type: integer
-                          description: Number of tickets scanned on this date
-  "/v1/metrics/weekly_sales_amount":
-    get:
-      summary: Get weekly sales amount data across all accessible events
-      tags:
-      - Global Analytics
-      parameters:
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly sales amount retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklySalesAmount:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                          description: Date in YYYY-MM-DD format
-                        count:
-                          type: integer
-                          description: Sales amount in cents for this date
   "/v1/api_keys":
     get:
       summary: Lists all API keys for the authenticated user
@@ -722,112 +629,6 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Amount in cents
-  "/v1/events/{event_id}/metrics/weekly_registered":
-    get:
-      summary: Get weekly registered tickets data for an event
-      tags:
-      - Event Analytics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly registered tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyRegisteredTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/events/{event_id}/metrics/weekly_scanned":
-    get:
-      summary: Get weekly scanned tickets data for an event
-      tags:
-      - Event Analytics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly scanned tickets retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklyScannedTickets:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-  "/v1/events/{event_id}/metrics/weekly_sales_amount":
-    get:
-      summary: Get weekly sales amount data for an event
-      tags:
-      - Event Analytics
-      parameters:
-      - name: event_id
-        in: path
-        description: Event ID
-        required: true
-        schema:
-          type: integer
-      - name: Authorization
-        in: header
-        description: Bearer token
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Weekly sales amount retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  weeklySalesAmount:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        date:
-                          type: string
-                          format: date
-                        count:
-                          type: integer
-                          description: Amount in cents
   "/v1/events/{event_id}/metrics/mall_live_feed":
     get:
       summary: Get live feed dashboard data
@@ -881,6 +682,80 @@ paths:
                           type: string
                         percentage:
                           type: number
+  "/v1/events/{event_id}/metrics/time_series":
+    get:
+      summary: Get flexible time-series analytics data
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      - name: metric
+        in: query
+        required: true
+        description: 'Metric to retrieve: tickets, scans, revenue, visitors, stamps,
+          redemptions, redemption_value'
+        schema:
+          type: string
+      - name: group_by
+        in: query
+        required: false
+        description: 'Time grouping: hour, day, week, month (auto-detected if not
+          provided)'
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        required: false
+        description: Start date (YYYY-MM-DD), defaults to event start_date
+        schema:
+          type: string
+      - name: end_date
+        in: query
+        required: false
+        description: End date (YYYY-MM-DD), defaults to event end_date
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Auto-detects group_by based on event duration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metric:
+                    type: string
+                  group_by:
+                    type: string
+                  start_date:
+                    type: string
+                    format: date
+                  end_date:
+                    type: string
+                    format: date
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        period:
+                          type: string
+                        value:
+                          type: integer
+        '400':
+          description: Invalid metric parameter
+        '403':
+          description: Forbidden - insufficient permissions
   "/v1/events/{event_id}/event_exhibition_contractor":
     parameters:
     - name: event_id
