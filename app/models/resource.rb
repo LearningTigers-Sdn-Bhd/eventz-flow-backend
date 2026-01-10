@@ -5,6 +5,7 @@ class Resource < ApplicationRecord
   belongs_to :resource_category
   belongs_to :resource_media_type, foreign_key: 'resource_media_type_id'
 
+  has_one_attached :header_img
 
   validates :title, presence: true
   validates :slug, presence: true, uniqueness: true

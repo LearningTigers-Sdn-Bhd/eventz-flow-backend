@@ -21,6 +21,7 @@ module ResourceFormatter
         updated_at: resource.updated_at,
         deleted_at: resource.deleted_at,
         cover_image_url: resource.respond_to?(:cover_image_url) ? resource.cover_image_url : nil,
+        header_img_url: resource.header_img.attached? ? url_for(resource.header_img) : nil,
         
         topic: resource.resource_topic ? {
           id: resource.resource_topic.id,

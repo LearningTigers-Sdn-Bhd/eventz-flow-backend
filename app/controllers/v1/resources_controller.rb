@@ -214,7 +214,7 @@ class V1::ResourcesController < ApplicationController
     params.require(:resource).permit(
       :title, :article, :slug, :meta_description,
       :resource_topic_id, :resource_category_id, :resource_media_type_id,
-      :status, :is_gated, :rejection_reason
+      :status, :is_gated, :rejection_reason, :header_img
     )
   end
 end
