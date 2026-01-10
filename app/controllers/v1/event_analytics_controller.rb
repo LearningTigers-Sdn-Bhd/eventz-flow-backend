@@ -1,55 +1,33 @@
 module V1
   class EventAnalyticsController < ApplicationController
     before_action :authenticate_user!
-    before_action :set_deprecation_headers_for_legacy_paths
     before_action :set_event_and_authorize
 
-    # GET /v1/events/:event_id/analytics/total_tickets
+    # GET /v1/events/:event_id/metrics/total_tickets
     def total_tickets
       count = scoped_active_tickets.count
       render json: { totalTickets: count }, status: :ok
     end
 
-    # GET /v1/events/:event_id/analytics/total_scanned_tickets
+    # GET /v1/events/:event_id/metrics/total_scanned_tickets
     def total_scanned_tickets
       count = @event.tickets.checked_in.count
       render json: { totalScannedTickets: count }, status: :ok
     end
 
-    # GET /v1/events/:event_id/analytics/total_unscanned_tickets
+    # GET /v1/events/:event_id/metrics/total_unscanned_tickets
     def total_unscanned_tickets
       count = @event.tickets.unscanned.count
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
-    # GET /v1/events/:event_id/analytics/total_amount_price
+    # GET /v1/events/:event_id/metrics/total_amount_price
     def total_amount_price
       amount_cents = scoped_active_tickets.total_revenue_cents
       render json: { totalAmountPrice: amount_cents.to_i }, status: :ok
     end
 
-    # GET /v1/events/:event_id/analytics/weekly_registered_tickets
-    def weekly_registered_tickets
-      range = seven_day_range
-      data = scoped_active_tickets.weekly_series(:created_at, range)
-      render json: { weeklyRegisteredTickets: data }, status: :ok
-    end
-
-    # GET /v1/events/:event_id/analytics/weekly_scanned_tickets
-    def weekly_scanned_tickets
-      range = seven_day_range
-      data = @event.tickets.checked_in.weekly_series(:check_in_at, range)
-      render json: { weeklyScannedTickets: data }, status: :ok
-    end
-
-    # GET /v1/events/:event_id/analytics/weekly_sales_amount
-    def weekly_sales_amount
-      range = seven_day_range
-      data = scoped_active_tickets.weekly_revenue_series(range)
-      render json: { weeklySalesAmount: data }, status: :ok
-    end
-
-    # GET /v1/events/:event_id/analytics/mall_live_feed
+    # GET /v1/events/:event_id/metrics/mall_live_feed
     def mall_live_feed
       render json: {
         shoppers_registered_today: count_shoppers_today,
@@ -62,30 +40,42 @@ module V1
       }, status: :ok
     end
 
-    private
+    # GET /v1/events/:event_id/metrics/time_series
+    # Flexible time-series analytics with hourly, daily, weekly, monthly grouping.
+    #
+    # Query params:
+    #   metric: tickets | scans | revenue | visitors | stamps | redemptions | redemption_value (required)
+    #   group_by: hour | day | week | month (optional, auto-detected from event duration)
+    #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
+    #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
+    def time_series
+      metric = params[:metric]
+      return render json: { error: 'metric parameter is required' }, status: :bad_request if metric.blank?
 
-    def set_deprecation_headers_for_legacy_paths
-      if request.path.include?("/v1/events/") && request.path.include?("/analytics/")
-        response.set_header('Deprecation', 'true')
-        response.set_header('Sunset', (Time.now.utc + 90.days).httpdate)
-        response.set_header('Link', '<https://api-docs>; rel="deprecation"')
-      end
+      group_by = params[:group_by].presence || auto_group_by
+      range = build_date_range
+
+      data = fetch_time_series_data(metric, range, group_by)
+      return render json: { error: "Invalid metric: #{metric}" }, status: :bad_request if data.nil?
+
+      render json: {
+        metric: metric,
+        group_by: group_by,
+        start_date: range.begin.to_date.to_s,
+        end_date: range.end.to_date.to_s,
+        data: data
+      }, status: :ok
     end
+
+    private
 
     def set_event_and_authorize
       @event = Event.find(params[:event_id])
-      # For analytics, only allow event staff/managers, not just anyone who can view the event
       authorize @event, :analytics?
     end
 
     def scoped_active_tickets
-      # Active = purchased or scanned
       @event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
-    end
-
-    def seven_day_range
-      today = Time.zone ? Time.zone.today : Date.today
-      (today - 6)..today
     end
 
     def count_shoppers_today
@@ -99,7 +89,6 @@ module V1
     end
 
     def total_vouchers_issued
-      # Exclude unlimited vouchers from total count as they don't have a fixed quota
       @total_vouchers_issued ||= Voucher.for_event(@event).where(is_unlimited: false).sum(:total_redemption_available)
     end
 
@@ -134,8 +123,6 @@ module V1
     end
 
     def fetch_popular_halls
-      # Join visitor stamps -> event vendors -> location members -> locations
-      # This tracks which locations (halls) get the most visitor traffic based on vendor stamps
       location_traffic = VisitorVendorStamp.joins(:event_vendor)
                                            .joins("INNER JOIN event_location_members ON event_location_members.member_id = event_vendors.vendor_id")
                                            .joins("INNER JOIN event_locations ON event_locations.id = event_location_members.event_location_id")
@@ -156,6 +143,56 @@ module V1
 
     def today_range
       Time.zone.now.beginning_of_day..Time.zone.now.end_of_day
+    end
+
+    # --- Time Series Helpers ---
+
+    def auto_group_by
+      duration_days = (@event.end_date.to_date - @event.start_date.to_date).to_i
+      case duration_days
+      when 0..1   then 'hour'
+      when 2..14  then 'day'
+      when 15..60 then 'week'
+      else 'month'
+      end
+    end
+
+    def build_date_range
+      start_date = parse_date(params[:start_date]) || @event.start_date.to_date
+      end_date = parse_date(params[:end_date]) || @event.end_date.to_date
+      start_date.beginning_of_day..end_date.end_of_day
+    end
+
+    def parse_date(date_string)
+      return nil if date_string.blank?
+      Date.parse(date_string)
+    rescue ArgumentError
+      nil
+    end
+
+    def fetch_time_series_data(metric, range, group_by)
+      case metric
+      when 'tickets'
+        scoped_active_tickets.time_series_count(:created_at, range: range, group_by: group_by)
+      when 'scans'
+        @event.tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+      when 'revenue'
+        scoped_active_tickets
+          .joins(:ticket_type)
+          .time_series_sum(:created_at, '(ticket_types.price * 100.0)', range: range, group_by: group_by)
+      when 'visitors'
+        @event.visitors.time_series_count(:created_at, range: range, group_by: group_by)
+      when 'stamps'
+        VisitorVendorStamp.joins(:visitor)
+                          .where(visitors: { event_id: @event.id })
+                          .time_series_count(:created_at, range: range, group_by: group_by)
+      when 'redemptions'
+        VoucherRedemptionLog.for_event(@event)
+                            .time_series_count(:redemption_timestamp, range: range, group_by: group_by)
+      when 'redemption_value'
+        VoucherRedemptionLog.for_event(@event)
+                            .time_series_sum(:redemption_timestamp, :discount_applied_value, range: range, group_by: group_by)
+      end
     end
   end
 end

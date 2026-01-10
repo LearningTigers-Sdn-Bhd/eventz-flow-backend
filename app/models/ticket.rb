@@ -1,4 +1,6 @@
 class Ticket < ApplicationRecord
+  include TimeSeriesAnalytics
+
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
@@ -50,27 +52,6 @@ class Ticket < ApplicationRecord
   # --- Class Methods ---
   def self.total_revenue_cents
     joins(:ticket_type).sum("(ticket_types.price * 100.0)")
-  end
-
-  def self.weekly_series(timestamp_column, range)
-    grouped = where(timestamp_column => range)
-      .group(Arel.sql("DATE(#{ActiveRecord::Base.connection.quote_column_name(timestamp_column.to_s)})"))
-      .count
-
-    range.to_a.map do |date|
-      { date: date.to_s, count: grouped.fetch(date, 0) }
-    end
-  end
-
-  def self.weekly_revenue_series(range)
-    grouped = joins(:ticket_type)
-      .where(created_at: range)
-      .group(Arel.sql("DATE(tickets.created_at)"))
-      .sum("(ticket_types.price * 100.0)")
-
-    range.to_a.map do |date|
-      { date: date.to_s, count: grouped.fetch(date, 0).to_i }
-    end
   end
 
   def send_webhook_notification
