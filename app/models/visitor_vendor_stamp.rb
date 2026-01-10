@@ -1,4 +1,6 @@
 class VisitorVendorStamp < ApplicationRecord
+  include TimeSeriesAnalytics
+
   # --- Associations ---
   belongs_to :visitor
   belongs_to :event_vendor

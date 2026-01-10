@@ -22,7 +22,7 @@ module V1
         event_redemption_rate: event_redemption_rate,
         total_discount_value: redemption_logs_scope.total_discount_value,
         total_sales: redemption_logs_scope.total_sales,
-        daily_redemption_trend: redemption_logs_scope.daily_redemption_trend,
+        daily_redemption_trend: build_daily_redemption_trend(redemption_logs_scope),
         top_scanned_vouchers: redemption_logs_scope.top_scanned_vouchers,
         latest_redemption_transactions: redemption_logs_scope.latest_redemption_transactions
       }
@@ -57,6 +57,28 @@ module V1
 
     def set_event
       @event = Event.find(params[:event_id])
+    end
+
+    def build_daily_redemption_trend(scope)
+      # Use custom date range if provided, otherwise use event dates
+      start_date = params[:start_date].present? ? Date.parse(params[:start_date]) : @event.start_date
+      end_date = params[:end_date].present? ? Date.parse(params[:end_date]) : @event.end_date
+      range = start_date.beginning_of_day..end_date.end_of_day
+
+      # Determine group_by: use param if provided, otherwise auto-detect
+      group_by = params[:group_by].presence || auto_group_by(start_date, end_date)
+
+      scope.time_series_count(:redemption_timestamp, range: range, group_by: group_by)
+    end
+
+    def auto_group_by(start_date, end_date)
+      duration_days = (end_date.to_date - start_date.to_date).to_i
+      case duration_days
+      when 0..1   then 'hour'
+      when 2..14  then 'day'
+      when 15..60 then 'week'
+      else 'month'
+      end
     end
   end
 end

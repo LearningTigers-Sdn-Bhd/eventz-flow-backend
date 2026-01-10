@@ -1,5 +1,7 @@
 # Audits every successful voucher redemption transaction.
 class VoucherRedemptionLog < ApplicationRecord
+  include TimeSeriesAnalytics
+
   # --- Enums ---
   # enum :redemption_status, { completed: 0, cancelled: 1 }
 
@@ -21,16 +23,9 @@ class VoucherRedemptionLog < ApplicationRecord
   scope :for_event, ->(event) { joins(:voucher).where(vouchers: { event: event }) }
   scope :total_discount_value, -> { sum(:discount_applied_value) }
   scope :total_sales, -> { sum(:transaction_net_amount) }
-  scope :daily_redemption_trend, -> { group_by_day(:redemption_timestamp).count }
   scope :latest_redemption_transactions, -> { includes(voucher: :vendor).order(redemption_timestamp: :desc).limit(10) }
 
   # -- Class Methods --
-  def self.daily_redemption_trend
-    group_by_day(:redemption_timestamp).count.map do |date, count|
-      { date: date.to_s, count: count }
-    end
-  end
-
   def self.top_scanned_vouchers
     joins(voucher: :vendor)
       .select('vouchers.id as voucher_id, vouchers.title as voucher_title, vouchers.voucher_code, users.full_name as vendor_name, COUNT(*) as redemption_count')

@@ -59,19 +59,6 @@ RSpec.describe VoucherRedemptionLog, type: :model do
   end
 
   describe 'Class Methods' do
-    describe '.daily_redemption_trend' do
-    let(:event) { create(:event) }
-    let(:voucher) { create(:voucher, event: event) }
-    let!(:log) { create(:voucher_redemption_log, voucher: voucher, redemption_timestamp: Time.current) }
-
-    it 'returns formatted array of hashes' do
-      result = described_class.daily_redemption_trend
-      expect(result).to be_an(Array)
-      expect(result.first).to have_key(:date)
-      expect(result.first).to have_key(:count)
-    end
-    end
-
     describe '.top_scanned_vouchers' do
       let(:event) { create(:event) }
       let(:vendor) { create(:user, :vendor, full_name: 'Vendor One') }
