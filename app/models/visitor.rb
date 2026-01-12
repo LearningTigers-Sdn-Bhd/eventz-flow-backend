@@ -8,9 +8,13 @@ class Visitor < ApplicationRecord
 
   # --- Associations ---
   belongs_to :event
+  belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
   has_many :visitor_vendor_stamps, dependent: :destroy
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+
+  # --- Scopes ---
+  scope :checked_in, -> { where(checked_in: true) }
 
   # --- Validations ---
   validates :event_id, presence: true
@@ -79,6 +83,7 @@ class Visitor < ApplicationRecord
 
   def determine_event_type
     return 'visitor.created' if previous_changes[:id].present?
+    return 'visitor.scanned' if previous_changes[:checked_in] == [false, true]
     'visitor.updated'
   end
 
@@ -109,6 +114,15 @@ class Visitor < ApplicationRecord
       }
     }
 
+    # Add scanned_by information if visitor was scanned by a user
+    if self.scanned_by_id.present? && self.scanned_by
+      payload[:scanned_by] = {
+        id: self.scanned_by.id,
+        full_name: self.scanned_by.full_name,
+        email: self.scanned_by.email
+      }
+    end
+
     # Add full context on creation
     if is_creation
       payload[:visitor].merge!(
@@ -123,6 +137,12 @@ class Visitor < ApplicationRecord
     else
       # Add changes for updates
       payload[:changes] = format_changes
+
+      # Include check_in_at for scanned events
+      if event_type == 'visitor.scanned'
+        payload[:visitor][:checked_in] = self.checked_in
+        payload[:visitor][:check_in_at] = self.check_in_at&.iso8601
+      end
     end
 
     payload.compact

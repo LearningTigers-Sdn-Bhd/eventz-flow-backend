@@ -207,6 +207,18 @@ Rails.application.routes.draw do
     get 'events/:event_id/visitor-stamps', to: 'visitor_stamps#index'
     post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
 
+    # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)
+    # GET /v1/scan/recent_check_ins - Get recent check-ins for authorized events
+    # PATCH /v1/scan/:public_id/check_in
+    get 'scan/recent_check_ins', to: 'scan#recent_check_ins'
+    patch 'scan/:public_id/check_in', to: 'scan#check_in'
+
+    # GLOBAL VISITOR ACTIONS
+    # PATCH /v1/visitors/:public_id/check_in
+    resources :visitors, only: [] do
+      patch ':public_id/check_in', to: 'visitors#global_check_in', on: :collection
+    end
+
     # 5. GLOBAL TICKET ACTIONS
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
