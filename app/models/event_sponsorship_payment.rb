@@ -1,6 +1,8 @@
 class EventSponsorshipPayment < ApplicationRecord
   # --- Associations ---
   belongs_to :event_sponsorship
+  belongs_to :created_by, class_name: 'User', optional: true
+  belongs_to :updated_by, class_name: 'User', optional: true
   has_many :event_sponsorship_attachments, dependent: :nullify
 
   # --- Validations ---

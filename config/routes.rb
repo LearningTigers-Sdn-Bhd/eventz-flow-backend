@@ -282,6 +282,24 @@ Rails.application.routes.draw do
     resources :voucher_redemptions, only: [:create]
 
     # 7. GLOBAL METRICS
+    # Sponsorships
+    resources :sponsors do
+      collection do
+        get :lookup
+      end
+    end
+
+    resources :events do
+      resources :event_sponsorship_tiers, only: [:index, :create, :update, :destroy]
+      resources :event_sponsorships, only: [:index, :create, :show, :update, :destroy]
+    end
+
+    resources :event_sponsorships, only: [] do
+      resources :event_sponsorship_payments, only: [:index, :create, :update, :destroy]
+      resources :event_sponsorship_attachments, only: [:index, :create, :destroy]
+      resources :event_sponsorship_items, only: [:index, :create, :update, :destroy]
+    end
+
     scope :metrics do
       get 'events_overview', to: 'analytics#events_overview'
       get 'summary',         to: 'analytics#summary'

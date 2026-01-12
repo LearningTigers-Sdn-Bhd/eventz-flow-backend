@@ -37,7 +37,10 @@ class EventSponsorship < ApplicationRecord
 
   # --- Logic ---
   def update_payment_totals!
-    total_received = event_sponsorship_payments.sum(:amount)
+    total_payments = event_sponsorship_payments.sum(:amount)
+    total_inkind = event_sponsorship_items.where(received: true).sum(:total_value)
+    
+    total_received = total_payments + total_inkind
     last_payment = event_sponsorship_payments.maximum(:received_at)
 
     new_status = if cancelled_at.present?

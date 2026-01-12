@@ -10,6 +10,9 @@ class EventSponsorshipTier < ApplicationRecord
   # --- Enums ---
   enum :sponsorship_type_default, { monetary: 0, in_kind: 1, mixed: 2 }, prefix: :type
 
+  # --- Callbacks ---
+  after_update :sync_sponsorship_snapshots, if: :saved_change_to_name?
+
   # --- Soft Delete ---
   default_scope { where(deleted_at: nil) }
   scope :with_deleted, -> { unscoped }
@@ -21,5 +24,11 @@ class EventSponsorshipTier < ApplicationRecord
 
   def restore
     update(deleted_at: nil)
+  end
+
+  private
+
+  def sync_sponsorship_snapshots
+    event_sponsorships.update_all(tier_name_snapshot: name)
   end
 end

@@ -20,4 +20,17 @@ class Sponsor < ApplicationRecord
   def restore
     update(deleted_at: nil)
   end
+
+  # --- Analytics ---
+  def total_sponsorship_count
+    event_sponsorships.count
+  end
+
+  def total_pledged_amount
+    event_sponsorships.sum(:total_sponsor_amount)
+  end
+
+  def total_received_amount
+    event_sponsorships.sum(:received_total)
+  end
 end
