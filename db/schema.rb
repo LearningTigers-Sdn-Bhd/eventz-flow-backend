@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_12_005148) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -611,8 +611,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.jsonb "custom_fields_data", default: {}
+    t.boolean "checked_in", default: false, null: false
+    t.datetime "check_in_at"
+    t.bigint "scanned_by_id"
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
+    t.index ["scanned_by_id"], name: "index_visitors_on_scanned_by_id"
   end
 
   create_table "voucher_redemption_logs", force: :cascade do |t|
@@ -744,6 +748,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
   add_foreign_key "visitor_vendor_stamps", "event_vendors"
   add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
+  add_foreign_key "visitors", "users", column: "scanned_by_id"
   add_foreign_key "voucher_redemption_logs", "users", column: "redeemer_staff_id"
   add_foreign_key "voucher_redemption_logs", "vouchers"
   add_foreign_key "voucher_usages", "vouchers"

@@ -1,7 +1,7 @@
 module V1
   class VisitorsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: []
+    before_action :set_event_and_authorize, except: [:global_check_in]
 
     # Load the specific visitor for actions that require it
     before_action :set_visitor, only: [:show, :update, :destroy]
@@ -63,6 +63,34 @@ module V1
       else
         render json: @visitor.errors, status: :unprocessable_content
       end
+    end
+
+    # PATCH /v1/visitors/:public_id/check_in
+    # Global check-in endpoint - finds visitor by public_id and checks them in
+    def global_check_in
+      # 1. Global Lookup (Find the visitor by its UUID)
+      @visitor = Visitor.find_by!(public_id: params[:public_id])
+
+      # 2. Authorization (Must authorize against the found visitor's event)
+      authorize @visitor, :check_in?
+
+      # 3. Perform Check-in Logic
+      if @visitor.checked_in?
+        render json: { error: 'Visitor has already been checked in.' }, status: :unprocessable_content and return
+      end
+
+      if @visitor.update(checked_in: true, check_in_at: Time.current, scanned_by_id: current_user.id)
+        render json: @visitor.as_json(
+          include: {
+            event: { only: [:id, :title] },
+            scanned_by: { only: [:id, :full_name] }
+          }
+        ), status: :ok
+      else
+        render json: @visitor.errors, status: :unprocessable_content
+      end
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Visitor not found' }, status: :not_found
     end
 
     private
