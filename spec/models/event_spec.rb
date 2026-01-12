@@ -16,6 +16,15 @@ RSpec.describe Event, type: :model do
     it { should have_many(:event_rentable_items).dependent(:destroy) }
     it { should have_many(:lucky_draw_sessions).dependent(:destroy) }
     it { should have_one(:exhibitor_team_member_limit).dependent(:destroy) }
+    it { should have_many(:event_sponsorship_tiers).dependent(:destroy) }
+    it { should have_many(:event_sponsorships).dependent(:destroy) }
+    it { should have_many(:sponsors).through(:event_sponsorships) }
+  end
+
+  describe 'attributes' do
+    it 'has use_sponsorship defaulting to false' do
+      expect(Event.new.use_sponsorship).to be false
+    end
   end
 
   describe 'validations' do
