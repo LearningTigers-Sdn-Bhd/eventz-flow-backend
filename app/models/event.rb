@@ -25,6 +25,11 @@ class Event < ApplicationRecord
   has_many :lucky_draw_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
 
+  # --- Sponsorships ---
+  has_many :event_sponsorship_tiers, dependent: :destroy
+  has_many :event_sponsorships, dependent: :destroy
+  has_many :sponsors, through: :event_sponsorships
+
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
 

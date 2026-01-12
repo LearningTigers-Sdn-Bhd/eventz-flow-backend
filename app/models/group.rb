@@ -5,6 +5,11 @@ class Group < ApplicationRecord
   has_many :group_affiliates, dependent: :destroy
   has_many :vendors, through: :group_affiliates, source: :vendor
 
+  # --- Sponsorships ---
+  has_many :sponsors, dependent: :destroy
+  has_many :event_sponsorship_tiers, dependent: :destroy
+  has_many :event_sponsorships, dependent: :destroy
+
   # --- Validations ---
   validates :name, presence: true
 

@@ -192,6 +192,7 @@ module V1
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
         :business_matching_webhook_url,
+        :use_sponsorship,
         labels_data: {} # Allows JSONB hash updates
       )
     end
