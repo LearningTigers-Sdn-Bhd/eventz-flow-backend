@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -172,6 +172,117 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
     t.index ["rentable_item_id"], name: "index_event_rentable_items_on_rentable_item_id"
   end
 
+  create_table "event_sponsorship_attachments", force: :cascade do |t|
+    t.bigint "event_sponsorship_id", null: false
+    t.bigint "event_sponsorship_payment_id"
+    t.integer "media_type"
+    t.integer "attachment_type"
+    t.string "file_name"
+    t.string "mime_type"
+    t.integer "file_size"
+    t.string "storage_disk"
+    t.string "storage_path"
+    t.bigint "uploaded_by_id"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_event_sponsorship_attachments_on_deleted_at"
+    t.index ["event_sponsorship_id"], name: "index_event_sponsorship_attachments_on_event_sponsorship_id"
+    t.index ["event_sponsorship_payment_id"], name: "idx_on_event_sponsorship_payment_id_b459754389"
+    t.index ["uploaded_by_id"], name: "index_event_sponsorship_attachments_on_uploaded_by_id"
+  end
+
+  create_table "event_sponsorship_items", force: :cascade do |t|
+    t.bigint "event_sponsorship_id", null: false
+    t.integer "item_type"
+    t.string "title"
+    t.integer "quantity"
+    t.decimal "unit_value", precision: 12, scale: 2
+    t.decimal "total_value", precision: 12, scale: 2
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "received"
+    t.bigint "created_by_id"
+    t.bigint "updated_by_id"
+    t.index ["created_by_id"], name: "index_event_sponsorship_items_on_created_by_id"
+    t.index ["event_sponsorship_id"], name: "index_event_sponsorship_items_on_event_sponsorship_id"
+    t.index ["updated_by_id"], name: "index_event_sponsorship_items_on_updated_by_id"
+  end
+
+  create_table "event_sponsorship_payments", force: :cascade do |t|
+    t.bigint "event_sponsorship_id", null: false
+    t.decimal "amount", precision: 12, scale: 2
+    t.string "currency", default: "MYR"
+    t.datetime "received_at"
+    t.integer "method"
+    t.string "reference_no"
+    t.text "notes"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "created_by_id"
+    t.bigint "updated_by_id"
+    t.index ["created_by_id"], name: "index_event_sponsorship_payments_on_created_by_id"
+    t.index ["deleted_at"], name: "index_event_sponsorship_payments_on_deleted_at"
+    t.index ["event_sponsorship_id"], name: "index_event_sponsorship_payments_on_event_sponsorship_id"
+    t.index ["updated_by_id"], name: "index_event_sponsorship_payments_on_updated_by_id"
+  end
+
+  create_table "event_sponsorship_tiers", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.integer "sponsorship_type_default"
+    t.string "currency_default", default: "MYR"
+    t.decimal "suggested_value", precision: 12, scale: 2
+    t.integer "capacity"
+    t.text "benefits"
+    t.integer "sort_order"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_event_sponsorship_tiers_on_deleted_at"
+    t.index ["event_id", "name"], name: "index_event_sponsorship_tiers_on_event_id_and_name", unique: true
+    t.index ["event_id"], name: "index_event_sponsorship_tiers_on_event_id"
+    t.index ["group_id"], name: "index_event_sponsorship_tiers_on_group_id"
+  end
+
+  create_table "event_sponsorships", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.bigint "event_id", null: false
+    t.bigint "sponsor_id", null: false
+    t.bigint "event_sponsorship_tier_id"
+    t.string "tier_name_snapshot"
+    t.string "title", null: false
+    t.integer "sponsorship_type", default: 0
+    t.string "currency", default: "MYR"
+    t.decimal "total_sponsor_amount", precision: 12, scale: 2
+    t.decimal "received_total", precision: 12, scale: 2, default: "0.0"
+    t.datetime "last_received_at"
+    t.text "description"
+    t.integer "status", default: 0
+    t.string "contact_name"
+    t.string "contact_email"
+    t.string "contact_whatsapp"
+    t.string "contact_position"
+    t.bigint "internal_owner_user_id"
+    t.datetime "confirmed_at"
+    t.datetime "cancelled_at"
+    t.text "cancel_reason"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_event_sponsorships_on_deleted_at"
+    t.index ["event_id", "sponsor_id", "title"], name: "index_event_sponsorships_uniqueness", unique: true
+    t.index ["event_id"], name: "index_event_sponsorships_on_event_id"
+    t.index ["event_sponsorship_tier_id"], name: "index_event_sponsorships_on_event_sponsorship_tier_id"
+    t.index ["group_id"], name: "index_event_sponsorships_on_group_id"
+    t.index ["internal_owner_user_id"], name: "index_event_sponsorships_on_internal_owner_user_id"
+    t.index ["sponsor_id"], name: "index_event_sponsorships_on_sponsor_id"
+  end
+
   create_table "event_vendors", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.bigint "vendor_id", null: false
@@ -210,6 +321,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
     t.boolean "allow_contractor_printing_services", default: false
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
+    t.boolean "use_sponsorship", default: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -507,6 +619,28 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
     t.index ["user_id"], name: "index_rentable_items_on_user_id"
   end
 
+  create_table "sponsors", force: :cascade do |t|
+    t.bigint "group_id", null: false
+    t.string "name", null: false
+    t.string "website"
+    t.string "industry"
+    t.string "default_email"
+    t.string "default_whatsapp"
+    t.string "default_contact_name"
+    t.string "default_contact_position"
+    t.text "notes"
+    t.string "logo_path"
+    t.boolean "is_active", default: true
+    t.bigint "created_by_id"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_sponsors_on_created_by_id"
+    t.index ["deleted_at"], name: "index_sponsors_on_deleted_at"
+    t.index ["group_id", "name"], name: "index_sponsors_on_group_id_and_name", unique: true
+    t.index ["group_id"], name: "index_sponsors_on_group_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false
@@ -611,8 +745,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.jsonb "custom_fields_data", default: {}
+    t.boolean "checked_in", default: false, null: false
+    t.datetime "check_in_at"
+    t.bigint "scanned_by_id"
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
+    t.index ["scanned_by_id"], name: "index_visitors_on_scanned_by_id"
   end
 
   create_table "voucher_redemption_logs", force: :cascade do |t|
@@ -696,6 +834,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
   add_foreign_key "event_rentable_item_price_tiers", "event_rentable_items"
   add_foreign_key "event_rentable_items", "events"
   add_foreign_key "event_rentable_items", "rentable_items"
+  add_foreign_key "event_sponsorship_attachments", "event_sponsorship_payments"
+  add_foreign_key "event_sponsorship_attachments", "event_sponsorships"
+  add_foreign_key "event_sponsorship_attachments", "users", column: "uploaded_by_id"
+  add_foreign_key "event_sponsorship_items", "event_sponsorships"
+  add_foreign_key "event_sponsorship_items", "users", column: "created_by_id"
+  add_foreign_key "event_sponsorship_items", "users", column: "updated_by_id"
+  add_foreign_key "event_sponsorship_payments", "event_sponsorships"
+  add_foreign_key "event_sponsorship_payments", "users", column: "created_by_id"
+  add_foreign_key "event_sponsorship_payments", "users", column: "updated_by_id"
+  add_foreign_key "event_sponsorship_tiers", "events"
+  add_foreign_key "event_sponsorship_tiers", "groups"
+  add_foreign_key "event_sponsorships", "event_sponsorship_tiers"
+  add_foreign_key "event_sponsorships", "events"
+  add_foreign_key "event_sponsorships", "groups"
+  add_foreign_key "event_sponsorships", "sponsors"
+  add_foreign_key "event_sponsorships", "users", column: "internal_owner_user_id"
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
@@ -734,6 +888,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
   add_foreign_key "printing_services", "users"
   add_foreign_key "rentable_items", "item_categories"
   add_foreign_key "rentable_items", "users"
+  add_foreign_key "sponsors", "groups"
+  add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
@@ -744,6 +900,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_05_033447) do
   add_foreign_key "visitor_vendor_stamps", "event_vendors"
   add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
+  add_foreign_key "visitors", "users", column: "scanned_by_id"
   add_foreign_key "voucher_redemption_logs", "users", column: "redeemer_staff_id"
   add_foreign_key "voucher_redemption_logs", "vouchers"
   add_foreign_key "voucher_usages", "vouchers"

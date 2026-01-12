@@ -207,6 +207,18 @@ Rails.application.routes.draw do
     get 'events/:event_id/visitor-stamps', to: 'visitor_stamps#index'
     post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
 
+    # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)
+    # GET /v1/scan/recent_check_ins - Get recent check-ins for authorized events
+    # PATCH /v1/scan/:public_id/check_in
+    get 'scan/recent_check_ins', to: 'scan#recent_check_ins'
+    patch 'scan/:public_id/check_in', to: 'scan#check_in'
+
+    # GLOBAL VISITOR ACTIONS
+    # PATCH /v1/visitors/:public_id/check_in
+    resources :visitors, only: [] do
+      patch ':public_id/check_in', to: 'visitors#global_check_in', on: :collection
+    end
+
     # 5. GLOBAL TICKET ACTIONS
     # PATCH /v1/tickets/:public_id/check_in
     resources :tickets, only: [] do
@@ -255,6 +267,9 @@ Rails.application.routes.draw do
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
 
+    # Contractor dashboard
+    get 'contractor/dashboard', to: 'contractor_dashboard#index'
+
     resources :vendors, only: [:index, :show, :create, :update, :destroy] do
       member do
         patch :toggle_status
@@ -266,23 +281,35 @@ Rails.application.routes.draw do
     resources :vouchers, only: [:index, :show, :create, :update, :destroy]
     resources :voucher_redemptions, only: [:create]
 
-    # 7. GLOBAL METRICS (replaces analytics)
+    # 7. GLOBAL METRICS
+    # Sponsorships
+    resources :sponsors do
+      collection do
+        get :lookup
+      end
+    end
+
+    resources :events do
+      resources :event_sponsorship_tiers, only: [:index, :create, :update, :destroy]
+      resources :event_sponsorships, only: [:index, :create, :show, :update, :destroy]
+    end
+
+    resources :event_sponsorships, only: [] do
+      resources :event_sponsorship_payments, only: [:index, :create, :update, :destroy]
+      resources :event_sponsorship_attachments, only: [:index, :create, :destroy]
+      resources :event_sponsorship_items, only: [:index, :create, :update, :destroy]
+    end
+
     scope :metrics do
-      # Optimized bulk endpoints (works for all roles)
       get 'events_overview', to: 'analytics#events_overview'
       get 'summary',         to: 'analytics#summary'
-
-      # Individual metrics endpoints (requires org_owner/manager)
       get 'total_tickets',            to: 'analytics#total_tickets'
       get 'total_scanned_tickets',    to: 'analytics#total_scanned_tickets'
       get 'total_unscanned_tickets',  to: 'analytics#total_unscanned_tickets'
       get 'total_amount_price',       to: 'analytics#total_amount_price'
-      get 'weekly_registered',        to: 'analytics#weekly_registered_tickets'
-      get 'weekly_scanned',           to: 'analytics#weekly_scanned_tickets'
-      get 'weekly_sales_amount',      to: 'analytics#weekly_sales_amount'
     end
 
-    # 7c. EVENT METRICS (standalone routes to avoid altering events resource)
+    # 7c. EVENT METRICS
     scope :events do
       scope ':event_id' do
         scope :metrics do
@@ -290,28 +317,10 @@ Rails.application.routes.draw do
           get 'total_scanned_tickets',    to: 'event_analytics#total_scanned_tickets'
           get 'total_unscanned_tickets',  to: 'event_analytics#total_unscanned_tickets'
           get 'total_amount_price',       to: 'event_analytics#total_amount_price'
-          get 'weekly_registered',        to: 'event_analytics#weekly_registered_tickets'
-          get 'weekly_scanned',           to: 'event_analytics#weekly_scanned_tickets'
-          get 'weekly_sales_amount',      to: 'event_analytics#weekly_sales_amount'
           get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
+          get 'time_series',              to: 'event_analytics#time_series'
         end
       end
-    end
-
-    # 7b. GLOBAL METRICS (aliases for analytics) - path-only scope to avoid module nesting
-    scope :metrics do
-      # Optimized bulk endpoints
-      get 'events_overview', to: 'analytics#events_overview'
-      get 'summary',         to: 'analytics#summary'
-
-      # Individual metrics endpoints
-      get 'total_tickets',            to: 'analytics#total_tickets'
-      get 'total_scanned_tickets',    to: 'analytics#total_scanned_tickets'
-      get 'total_unscanned_tickets',  to: 'analytics#total_unscanned_tickets'
-      get 'total_amount_price',       to: 'analytics#total_amount_price'
-      get 'weekly_registered',        to: 'analytics#weekly_registered_tickets'
-      get 'weekly_scanned',           to: 'analytics#weekly_scanned_tickets'
-      get 'weekly_sales_amount',      to: 'analytics#weekly_sales_amount'
     end
 
     # 8. API KEYS MANAGEMENT
