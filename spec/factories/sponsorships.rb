@@ -38,6 +38,8 @@ FactoryBot.define do
     currency { "MYR" }
     received_at { Time.current }
     add_attribute(:method) { "bank_transfer" }
+    association :created_by, factory: :user
+    association :updated_by, factory: :user
   end
 
   factory :event_sponsorship_attachment do
@@ -55,5 +57,7 @@ FactoryBot.define do
     quantity { 1 }
     unit_value { 500.00 }
     total_value { 500.00 }
+    association :created_by, factory: :user
+    association :updated_by, factory: :user
   end
 end

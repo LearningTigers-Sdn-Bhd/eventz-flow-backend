@@ -31,4 +31,30 @@ RSpec.describe Sponsor, type: :model do
       expect(Sponsor.all).to include(sponsor)
     end
   end
+
+  describe 'Analytics' do
+    let(:sponsor) { create(:sponsor) }
+    let(:event1) { create(:event) }
+    let(:event2) { create(:event) }
+
+    before do
+      s1 = create(:event_sponsorship, sponsor: sponsor, event: event1, total_sponsor_amount: 1000)
+      s2 = create(:event_sponsorship, sponsor: sponsor, event: event2, total_sponsor_amount: 2000)
+      
+      create(:event_sponsorship_payment, event_sponsorship: s1, amount: 500)
+      create(:event_sponsorship_item, event_sponsorship: s2, total_value: 1000, received: true)
+    end
+
+    it 'calculates total_sponsorship_count' do
+      expect(sponsor.total_sponsorship_count).to eq(2)
+    end
+
+    it 'calculates total_pledged_amount' do
+      expect(sponsor.total_pledged_amount).to eq(3000)
+    end
+
+    it 'calculates total_received_amount' do
+      expect(sponsor.total_received_amount).to eq(1500)
+    end
+  end
 end
