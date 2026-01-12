@@ -46,6 +46,11 @@ class VisitorPolicy < ApplicationPolicy
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
 
+  # Check-in policy - same as update, allows staff to check in visitors
+  def check_in?
+    update?
+  end
+
   # Deletion is restricted to Org Owners and Event Admins.
   def destroy?
     user.is_org_owner? || user.is_event_admin?(record.event)
