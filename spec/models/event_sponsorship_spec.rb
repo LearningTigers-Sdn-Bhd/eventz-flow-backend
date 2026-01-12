@@ -26,15 +26,30 @@ RSpec.describe EventSponsorship, type: :model do
     let(:sponsorship) { create(:event_sponsorship, total_sponsor_amount: 1000) }
 
     context 'payment aggregation' do
-      it 'updates totals and status to partially_received' do
+      it 'updates totals and status to partially_received from cash payment' do
         create(:event_sponsorship_payment, event_sponsorship: sponsorship, amount: 500)
         sponsorship.reload
         expect(sponsorship.received_total).to eq(500)
         expect(sponsorship.status).to eq('partially_received')
       end
 
+      it 'updates totals including received in-kind items' do
+        create(:event_sponsorship_payment, event_sponsorship: sponsorship, amount: 200)
+        create(:event_sponsorship_item, event_sponsorship: sponsorship, total_value: 300, received: true)
+        sponsorship.reload
+        expect(sponsorship.received_total).to eq(500)
+      end
+
+      it 'excludes non-received in-kind items from totals' do
+        create(:event_sponsorship_payment, event_sponsorship: sponsorship, amount: 200)
+        create(:event_sponsorship_item, event_sponsorship: sponsorship, total_value: 300, received: false)
+        sponsorship.reload
+        expect(sponsorship.received_total).to eq(200)
+      end
+
       it 'updates totals and status to received' do
-        create(:event_sponsorship_payment, event_sponsorship: sponsorship, amount: 1000)
+        create(:event_sponsorship_payment, event_sponsorship: sponsorship, amount: 500)
+        create(:event_sponsorship_item, event_sponsorship: sponsorship, total_value: 500, received: true)
         sponsorship.reload
         expect(sponsorship.received_total).to eq(1000)
         expect(sponsorship.status).to eq('received')

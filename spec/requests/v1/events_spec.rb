@@ -379,7 +379,8 @@ RSpec.describe 'V1::Events', type: :request do
           description: { type: :string },
           location: { type: :string },
           status: { type: :string, enum: ['draft', 'published', 'canceled'] },
-          visibility: { type: :boolean }
+          visibility: { type: :boolean },
+          use_sponsorship: { type: :boolean }
         }
       }
 
@@ -387,10 +388,13 @@ RSpec.describe 'V1::Events', type: :request do
       response '200', 'Update successful (Organizer)' do
         let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
-        let(:event) { update_params }
+        let(:event) { { event: { title: 'New Title', use_sponsorship: true } } }
 
         schema EVENT_SCHEMA
-        run_test!
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['use_sponsorship']).to be true
+        end
       end
 
       # 2. Forbidden (Policy check: Member user)
