@@ -3,10 +3,10 @@ x-rails-env: &rails-env
   RAILS_SERVE_STATIC_FILES: "1"
   RAILS_LOG_TO_STDOUT: "1"
   RAILS_MAX_THREADS: "5"
-  REDIS_URL: "redis://redis:6379/1"
+  REDIS_URL: "redis://redis-staging:6379/1"
   RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
   SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-  DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db:5432/eventz_flow_api_staging}
+  DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db-staging:5432/eventz_flow_api_staging}
   # Mail configuration
   RESEND_API_KEY: ${RESEND_API_KEY}
   REDIRECT_BASE_URL: ${REDIRECT_BASE_URL}
@@ -21,9 +21,9 @@ services:
     build: .
     image: eventz-flow-backend-staging:latest
     depends_on:
-      postgres-db:
+      postgres-db-staging:
         condition: service_healthy
-      redis:
+      redis-staging:
         condition: service_healthy
     environment:
       <<: *rails-env
@@ -46,9 +46,9 @@ services:
     image: eventz-flow-backend-staging:latest
     command: bundle exec sidekiq
     depends_on:
-      postgres-db:
+      postgres-db-staging:
         condition: service_healthy
-      redis:
+      redis-staging:
         condition: service_healthy
     environment:
       <<: *rails-env
@@ -65,7 +65,7 @@ services:
     networks:
       - coolify
 
-  postgres-db:
+  postgres-db-staging:
     image: pgvector/pgvector:pg18-trixie
     environment:
       <<: *db-env
@@ -82,7 +82,7 @@ services:
     networks:
       - coolify
 
-  redis:
+  redis-staging:
     image: redis:7-alpine
     volumes:
       - redis-staging-data:/data
