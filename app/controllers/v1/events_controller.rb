@@ -193,6 +193,7 @@ module V1
         :use_business_matching,
         :business_matching_webhook_url,
         :use_sponsorship,
+        :skip_webhooks,
         labels_data: {} # Allows JSONB hash updates
       )
     end
