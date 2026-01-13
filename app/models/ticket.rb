@@ -49,17 +49,23 @@ class Ticket < ApplicationRecord
 
   after_commit :send_webhook_notification, on: [:create, :update]
 
+  attr_accessor :skip_webhooks
+
   # --- Class Methods ---
   def self.total_revenue_cents
     joins(:ticket_type).sum("(ticket_types.price * 100.0)")
   end
 
   def send_webhook_notification
+    return if skip_webhooks
     webhook_url = event.webhook_url
     return unless webhook_url.present?
 
     event_type = determine_event_type
-    return if event_type.nil?  # Skip if no significant change
+    return if event_type.nil?
+
+    # For updates, skip if nothing significant changed
+    return if event_type == 'ticket.updated' && !significant_changes?
 
     WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
   end
@@ -217,5 +223,10 @@ class Ticket < ApplicationRecord
         to: change[1]
       }
     end
+  end
+
+  def significant_changes?
+    significant_fields = %w[status payment_status attendee_name attendee_email attendee_phone checked_in]
+    (previous_changes.keys & significant_fields).any?
   end
 end

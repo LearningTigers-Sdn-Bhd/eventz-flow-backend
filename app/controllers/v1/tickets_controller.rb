@@ -428,6 +428,7 @@ module V1
         :payment_screenshot_url,
         :transaction_id,
         :payment_method,
+        :skip_webhooks,
         custom_fields_data: {}
       ]
 
