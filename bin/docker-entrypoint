@@ -2,14 +2,61 @@
 
 # If running the rails server then create or migrate existing database
 if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
-  # Check if schema_migrations table exists using raw SQL
-  TABLE_EXISTS=$(./bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('schema_migrations')" 2>/dev/null || echo "false")
-  if [ "$TABLE_EXISTS" = "true" ]; then
+  echo "=== SAFE DEPLOY MODE ==="
+
+  # Safety check: Ensure DATABASE_URL is set
+  if [ -z "$DATABASE_URL" ]; then
+    echo "ERROR: DATABASE_URL is not set. Refusing to start."
+    exit 1
+  fi
+
+  echo "DATABASE_URL is set, connecting to: ${DATABASE_URL%%@*}@[REDACTED]"
+
+  # Wait for PostgreSQL to be ready (max 30 seconds)
+  echo "Waiting for PostgreSQL to be ready..."
+  MAX_RETRIES=30
+  RETRY_COUNT=0
+
+  until ./bin/rails runner "ActiveRecord::Base.connection.execute('SELECT 1')" 2>/dev/null; do
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+      echo "ERROR: PostgreSQL not ready after ${MAX_RETRIES} seconds. Refusing to start."
+      exit 1
+    fi
+    echo "PostgreSQL not ready yet... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+    sleep 1
+  done
+
+  echo "PostgreSQL is ready!"
+
+  # Check if schema_migrations table exists
+  # CRITICAL: If this check fails, we DO NOT proceed with schema:load
+  TABLE_CHECK_RESULT=$(./bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('schema_migrations')" 2>&1)
+  TABLE_CHECK_EXIT_CODE=$?
+
+  if [ $TABLE_CHECK_EXIT_CODE -ne 0 ]; then
+    echo "ERROR: Failed to check database state. Output: $TABLE_CHECK_RESULT"
+    echo "Refusing to proceed to prevent data loss."
+    exit 1
+  fi
+
+  if [ "$TABLE_CHECK_RESULT" = "true" ]; then
     echo "Tables exist, running migrations..."
     ./bin/rails db:migrate
   else
-    echo "Database not initialized, loading schema..."
-    ./bin/rails db:create db:schema:load
+    # Extra safety: Check if this is truly an empty database
+    TABLES_COUNT=$(./bin/rails runner "puts ActiveRecord::Base.connection.tables.count" 2>&1)
+
+    if [ "$TABLES_COUNT" != "0" ] && [ -n "$TABLES_COUNT" ]; then
+      echo "WARNING: schema_migrations missing but found $TABLES_COUNT tables!"
+      echo "This may indicate database corruption. Refusing to run schema:load."
+      echo "Manual intervention required."
+      exit 1
+    fi
+
+    echo "Database is empty, loading schema..."
+    ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists
+    ./bin/rails db:schema:load
   fi
 fi
 
