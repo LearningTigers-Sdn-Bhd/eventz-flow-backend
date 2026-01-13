@@ -33,6 +33,8 @@ class Event < ApplicationRecord
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
 
+  attr_accessor :skip_webhooks
+
   # --- Validations ---
   validates :title, presence: true, length: { maximum: 100 }
   validates :status, presence: true
@@ -107,6 +109,7 @@ class Event < ApplicationRecord
   end
 
   def send_webhook_notification
+    return if skip_webhooks
     return unless webhook_url.present?
 
     event_type = determine_event_type
