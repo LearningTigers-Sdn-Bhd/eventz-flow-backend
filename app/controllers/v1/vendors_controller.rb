@@ -45,7 +45,7 @@ module V1
         # Update vendor profile if attributes provided
         if params[:vendor][:vendor_profile_attributes].present? && vendor_user.vendor_profile
           profile_params = params.require(:vendor).permit(vendor_profile_attributes: [
-            :description, :category, :person_in_charge, :address, :notes
+            :description, :category, :person_in_charge, :address, :notes, :company_profile
           ])[:vendor_profile_attributes]
           vendor_user.vendor_profile.update(profile_params)
 
@@ -149,7 +149,8 @@ module V1
             :category,
             :person_in_charge,
             :address,
-            :notes
+            :notes,
+            :company_profile
           ]
         }
       end
@@ -183,6 +184,7 @@ module V1
         person_in_charge: vendor_profile.person_in_charge,
         address: vendor_profile.address,
         notes: vendor_profile.notes,
+        company_profile: vendor_profile.company_profile,
         created_at: vendor_profile.created_at.iso8601,
         updated_at: vendor_profile.updated_at.iso8601
       }
