@@ -55,7 +55,7 @@ if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
     fi
 
     echo "Database is empty, loading schema..."
-    ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists
+    ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists!
     ./bin/rails db:schema:load
   fi
 fi
