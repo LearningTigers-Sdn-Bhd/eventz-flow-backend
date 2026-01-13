@@ -199,6 +199,9 @@ module V1
         )
       end
 
+      # Reload to get the vendor_profile created by callback
+      @user.reload
+
       # Update vendor profile if vendor_profile params provided
       # (VendorProfile is auto-created by User model callback)
       if params[:vendor_profile].present? && @user.vendor_profile.present?
@@ -209,6 +212,9 @@ module V1
             status: :unprocessable_content
           )
         end
+
+        # Handle image attachment separately (not through strong params)
+        handle_vendor_profile_image(@user.vendor_profile)
       end
 
       # Create event vendor with optional attributes
@@ -499,6 +505,14 @@ module V1
     params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes, :company_profile)
   end
 
+  def handle_vendor_profile_image(profile)
+    # Handle image upload
+    uploaded_image = params.dig(:vendor_profile, :image)
+    if uploaded_image.present? && uploaded_image.respond_to?(:read)
+      profile.image.attach(uploaded_image)
+    end
+  end
+
   def invited_event_vendor_params
     return {} unless params[:event_vendor].present?
     params.require(:event_vendor).permit(:redirect_url, :poster_url, :qr_url)
@@ -507,7 +521,9 @@ module V1
   def exhibitor_kit_params
     return {} unless params[:exhibitor_kit].present?
     params.require(:exhibitor_kit).permit(
-      :booth_number, :booth_type, :name_on_fascia,
+      :booth_number, :booth_type, :booth_dimensions,
+      :side_wall_left_required, :side_wall_right_required,
+      :name_on_fascia, :fascia_upgrade_required,
       :company_name, :company_address,
       :pic_full_name, :pic_contact_number, :pic_email_address,
       exhibitor_team_members_attributes: [:full_name]
