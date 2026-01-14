@@ -68,6 +68,7 @@ class CreateResourceFeatureTables < ActiveRecord::Migration[7.0]
 
     # Captures information from visitors who access gated resources
     create_table :resource_leads do |t|
+      t.references :resource, null: false, foreign_key: true
       t.string :email
       t.string :name
       t.string :phone

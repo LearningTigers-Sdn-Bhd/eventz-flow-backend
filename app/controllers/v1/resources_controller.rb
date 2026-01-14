@@ -4,12 +4,11 @@ class V1::ResourcesController < ApplicationController
   skip_before_action :authenticate_user!, only: [:index_public, :show_public, :increment_view]
   before_action :set_resource, only: [:show, :show_public, :update, :destroy, :approval, :duplicate, :increment_view]
   before_action :set_unscoped_resource, only: [:restore, :force_destroy]
-  before_action :ensure_not_published, only: [:update, :destroy]
 
   # GET /v1/resources (Authenticated - Admin/Writer)
   def index
     authorize Resource
-    
+
     if params[:status] == 'archived'
       resources_scope = Resource.unscoped.where(user: current_user).where.not(deleted_at: nil)
     else
@@ -29,7 +28,7 @@ class V1::ResourcesController < ApplicationController
   # GET /v1/resources/owner (Authenticated - Org Owner Only)
   def index_owner
     authorize Resource, :index_owner?
-    
+
     if params[:status] == 'archived'
       resources_scope = Resource.unscoped.where.not(deleted_at: nil)
     else
@@ -47,7 +46,7 @@ class V1::ResourcesController < ApplicationController
   # GET /v1/resources/approval_index (Authenticated - Admin Only)
   def approval_index
     authorize Resource, :approval?
-    
+
     resources_scope = Resource.pending_review_queue
     @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
 
@@ -60,6 +59,19 @@ class V1::ResourcesController < ApplicationController
 
   # GET /v1/resources/public (Unauthenticated)
   def index_public
+    # Special handling for featured parameter: returns both featured and standard resources
+    if params[:featured] == 'true' || params[:featured] == true
+      resources = Resource.featured_page_resources
+
+      formatted_featured = resources[:featured].map { |r| format_resource(r, include_article: false, include_author: true) }
+      formatted_standard = resources[:standard].map { |r| format_resource(r, include_article: false, include_author: true) }
+
+      return success_response(data: {
+        featured: formatted_featured,
+        standard: formatted_standard
+      })
+    end
+
     resources_scope = Resource.public_feed
 
     resources_scope = resources_scope.where(priority: params[:priority]) if params[:priority].present?
@@ -81,8 +93,10 @@ class V1::ResourcesController < ApplicationController
       resources_scope = resources_scope.joins(:resource_media_type).where(resource_media_types: { slug: slugs })
     end
 
+    resources_scope = resources_scope.search(params[:search].strip) if params[:search].present?
+
     @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
-    
+
     # Public index: Includes author, no summary
     formatted_resources = @resources.map { |r| format_resource(r, include_article: false, include_author: true) }
     success_response(data: formatted_resources, pagination: pagy_metadata(@pagy))
@@ -106,7 +120,7 @@ class V1::ResourcesController < ApplicationController
 
        formatted_resource = format_resource(@resource, include_article: true, include_author: true)
        formatted_suggestions = suggestions.map { |r| format_resource(r, include_article: false, include_author: true) }
-       
+
        # Merge suggestions into the main resource object
        data = formatted_resource.merge(suggestions: formatted_suggestions)
 
@@ -133,6 +147,8 @@ class V1::ResourcesController < ApplicationController
   # PATCH/PUT /v1/resources/:id
   def update
     authorize @resource
+    # Set current user for changelog tracking
+    @resource.current_user_for_changelog = current_user
     if @resource.update(resource_params)
       success_response(data: format_resource(@resource, include_article: true, include_author: true))
     else
@@ -167,7 +183,7 @@ class V1::ResourcesController < ApplicationController
   # PATCH /v1/resources/:id/approval
   def approval
     authorize @resource
-    
+
     resource_params = params.fetch(:resource, {})
     status = resource_params[:status]
     rejection_reason = resource_params[:rejection_reason]
@@ -200,17 +216,17 @@ class V1::ResourcesController < ApplicationController
     new_resource.created_at = nil
     new_resource.updated_at = nil
     new_resource.deleted_at = nil
-    
+
     # Generate unique slug
     base_slug = new_resource.title.parameterize
     new_slug = base_slug
     counter = 1
-    
+
     while Resource.exists?(slug: new_slug)
       counter += 1
       new_slug = "#{base_slug}-#{counter}"
     end
-    
+
     new_resource.slug = new_slug
 
     if new_resource.save
@@ -232,12 +248,6 @@ class V1::ResourcesController < ApplicationController
   end
 
   private
-
-  def ensure_not_published
-    if @resource.published?
-      error_response(message: 'Published resources cannot be modified or deleted. Please unpublish or archive first.', status: :forbidden)
-    end
-  end
 
   def set_resource
     @resource = Resource.find_by(slug: params[:id]) || Resource.find(params[:id])
