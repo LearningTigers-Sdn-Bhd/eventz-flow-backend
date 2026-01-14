@@ -210,6 +210,9 @@ GEM
     nokogiri (1.18.10-x86_64-linux-musl)
       racc (~> 1.4)
     ostruct (0.6.3)
+    pagy (43.2.2)
+      json
+      yaml
     parallel (1.27.0)
     parallel_tests (5.5.0)
       parallel
@@ -366,6 +369,7 @@ GEM
       base64
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
+    yaml (0.4.0)
     zeitwerk (2.7.3)
 
 PLATFORMS
@@ -396,6 +400,7 @@ DEPENDENCIES
   jwt
   letter_opener_web
   ostruct
+  pagy (~> 43.2)
   parallel_tests
   pg (~> 1.1)
   pry

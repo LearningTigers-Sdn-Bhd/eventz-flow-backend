@@ -10,7 +10,7 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 
 require 'rspec/rails'
 require 'shoulda/matchers'
-require 'pundit/matchers'
+require 'pundit/rspec'
 require 'webmock/rspec'
 
 WebMock.disable_net_connect!(allow_localhost: true)
