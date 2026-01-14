@@ -353,6 +353,11 @@ Rails.application.routes.draw do
 
     # --- RESOURCES CMS ---
     scope 'resources' do
+      # Collection routes for the main Resources controller
+      get 'public', to: 'resources#index_public', as: 'public_resources'
+      get 'approval_index', to: 'resources#approval_index', as: 'approval_index_resources'
+      get 'owner', to: 'resources#index_owner', as: 'owner_resources'
+
       # /v1/resources/permissions
       resources :permissions, controller: 'resources_permissions', except: [:new, :edit], as: 'resources_permissions'
 
@@ -392,11 +397,6 @@ Rails.application.routes.draw do
     # This is separate to avoid nesting under /resources
     # /v1/resources
     resources :resources, controller: 'resources', except: [:new, :edit] do
-      collection do
-        get :public, action: :index_public
-        get :approval_index
-        get :owner, action: :index_owner
-      end
       member do
         get :public, action: :show_public
         post :restore

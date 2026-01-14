@@ -12,29 +12,30 @@ RESOURCE_SCHEMA = {
     is_official: { type: :boolean },
     rejection_reason: { type: :string, nullable: true },
     view_counts: { type: :integer },
+    priority: { type: :integer },
     published_at: { type: :string, format: :date_time, nullable: true },
     created_at: { type: :string, format: :date_time },
     updated_at: { type: :string, format: :date_time },
     deleted_at: { type: :string, format: :date_time, nullable: true },
-    cover_image_url: { type: :string, nullable: true },
-    topic: { 
-      type: :object, 
+    header_img_url: { type: :string, nullable: true },
+    topic: {
+      type: :object,
       nullable: true,
       properties: {
         id: { type: :integer },
         name: { type: :string }
       }
     },
-    category: { 
-      type: :object, 
+    category: {
+      type: :object,
       nullable: true,
       properties: {
         id: { type: :integer },
         name: { type: :string }
       }
     },
-    media_type: { 
-      type: :object, 
+    media_type: {
+      type: :object,
       nullable: true,
       properties: {
         id: { type: :integer },
@@ -92,6 +93,7 @@ RSpec.describe "V1::Resources", type: :request do
       security [] # No auth required
       parameter name: :page, in: :query, type: :integer, description: 'Page number', required: false
       parameter name: :per_page, in: :query, type: :integer, description: 'Items per page', required: false
+      parameter name: :featured, in: :query, type: :string, description: 'Set to "true" to get featured page resources', required: false
 
       response(200, 'successful for visitor') do
         schema type: :object,
@@ -102,7 +104,7 @@ RSpec.describe "V1::Resources", type: :request do
                  },
                  pagination: PAGINATION_SCHEMA
                }
-        
+
         before do
           create_list(:resource, 5, status: :published)
           create(:resource, status: :draft)
@@ -114,6 +116,61 @@ RSpec.describe "V1::Resources", type: :request do
           # Visitors should only see published resources
           expect(data.all? { |r| r['status'] == 'published' }).to be true
           expect(json).to have_key('pagination')
+        end
+      end
+
+      response(200, 'successful with featured parameter') do
+        schema type: :object,
+               properties: {
+                 data: {
+                   type: :object,
+                   properties: {
+                     featured: {
+                       type: :array,
+                       items: RESOURCE_SCHEMA
+                     },
+                     standard: {
+                       type: :array,
+                       items: RESOURCE_SCHEMA
+                     }
+                   }
+                 }
+               }
+
+        let(:featured) { 'true' }
+
+        before do
+          # Create featured resources (priority 1)
+          create_list(:resource, 4, status: :published, priority: 1)
+          # Create standard resources (priority 2-5)
+          create_list(:resource, 8, status: :published, priority: 2)
+          create_list(:resource, 3, status: :published, priority: 3)
+          # Draft should not appear
+          create(:resource, status: :draft, priority: 1)
+        end
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          data = json['data']
+
+          # Should have both featured and standard keys
+          expect(data).to have_key('featured')
+          expect(data).to have_key('standard')
+
+          # Featured should return max 3 resources with priority 1
+          expect(data['featured'].size).to eq(3)
+          expect(data['featured'].all? { |r| r['priority'] == 1 }).to be true
+
+          # Standard should return max 6 resources with priority 2-5
+          expect(data['standard'].size).to eq(6)
+          expect(data['standard'].all? { |r| r['priority'].between?(2, 5) }).to be true
+
+          # All should be published
+          all_resources = data['featured'] + data['standard']
+          expect(all_resources.all? { |r| r['status'] == 'published' }).to be true
+
+          # Should not have pagination key when using featured parameter
+          expect(json).not_to have_key('pagination')
         end
       end
     end
@@ -176,7 +233,7 @@ RSpec.describe "V1::Resources", type: :request do
           json = JSON.parse(response.body)
           data = json['data']
           pagination = json['pagination']
-          
+
           # Writer should see the published one AND their own draft
           expect(data.size).to be >= 2
           expect(pagination['current_page']).to eq(1)
@@ -212,7 +269,7 @@ RSpec.describe "V1::Resources", type: :request do
 
       response(201, 'resource created') do
         let(:Authorization) { auth_headers(writer)['Authorization'] }
-        let(:resource_params) { { 
+        let(:resource_params) { {
           resource: {
             title: "New Article",
             article: "Content here",
@@ -254,7 +311,7 @@ RSpec.describe "V1::Resources", type: :request do
                  data: { type: :array, items: RESOURCE_SCHEMA },
                  pagination: PAGINATION_SCHEMA
                }
-        
+
         before { create_list(:resource, 3) }
         run_test!
       end
@@ -281,7 +338,7 @@ RSpec.describe "V1::Resources", type: :request do
                  data: { type: :array, items: RESOURCE_SCHEMA },
                  pagination: PAGINATION_SCHEMA
                }
-        
+
         before { create_list(:resource, 2, status: :pending_review) }
         run_test!
       end
@@ -355,6 +412,39 @@ RSpec.describe "V1::Resources", type: :request do
         let(:resource_params) { { resource: { title: "Hacked" } } }
         run_test!
       end
+
+      response(200, 'can update published resource and creates changelog') do
+        let(:published_resource) { create(:resource, user: writer, status: :published, title: "Published Title") }
+        let(:id) { published_resource.id }
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+        let(:resource_params) { { resource: { title: "Updated Published Title" } } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)['data']
+          expect(data['title']).to eq("Updated Published Title")
+
+          # Verify changelog was created
+          changelog = ResourceChangelog.where(resource_id: published_resource.id).last
+          expect(changelog).to be_present
+          expect(changelog.title).to eq("Published Title")
+          expect(changelog.changed_by_user_id).to eq(writer.id)
+        end
+      end
+
+      response(200, 'updating draft does not create changelog') do
+        let(:draft_resource) { create(:resource, user: writer, status: :draft, title: "Draft Title") }
+        let(:id) { draft_resource.id }
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+        let(:resource_params) { { resource: { title: "Updated Draft Title" } } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)['data']
+          expect(data['title']).to eq("Updated Draft Title")
+
+          # Verify no changelog was created
+          expect(ResourceChangelog.where(resource_id: draft_resource.id).count).to eq(0)
+        end
+      end
     end
 
     delete('soft delete resource') do
@@ -370,12 +460,23 @@ RSpec.describe "V1::Resources", type: :request do
           expect(Resource.unscoped.find(id).deleted_at).to be_present
         end
       end
+
+      response(200, 'can delete published resource') do
+        let(:published_resource) { create(:resource, user: writer, status: :published) }
+        let(:id) { published_resource.id }
+        let(:Authorization) { auth_headers(writer)['Authorization'] }
+
+        run_test! do
+          expect(Resource.find_by(id: published_resource.id)).to be_nil
+          expect(Resource.unscoped.find(published_resource.id).deleted_at).to be_present
+        end
+      end
     end
   end
 
   path '/v1/resources/{id}/restore' do
     parameter name: :id, in: :path, type: :string
-    
+
     let(:deleted_resource) { create(:resource, user: writer, deleted_at: Time.current) }
     let(:id) { deleted_resource.id }
 
@@ -386,12 +487,12 @@ RSpec.describe "V1::Resources", type: :request do
 
       response(200, 'restored') do
         let(:Authorization) { auth_headers(writer)['Authorization'] }
-        
+
         run_test! do
           expect(Resource.find(id).deleted_at).to be_nil
         end
       end
-      
+
       response(403, 'unauthorized') do
         let(:Authorization) { auth_headers(regular_user)['Authorization'] }
         run_test!
@@ -401,7 +502,7 @@ RSpec.describe "V1::Resources", type: :request do
 
   path '/v1/resources/{id}/force_destroy' do
     parameter name: :id, in: :path, type: :string
-    
+
     let(:resource_item) { create(:resource, user: writer) }
     let(:id) { resource_item.id }
 
@@ -412,7 +513,7 @@ RSpec.describe "V1::Resources", type: :request do
 
       response(200, 'permanently deleted') do
         let(:Authorization) { auth_headers(org_owner)['Authorization'] }
-        
+
         run_test! do
           expect(Resource.unscoped.find_by(id: id)).to be_nil
         end
@@ -474,7 +575,7 @@ RSpec.describe "V1::Resources", type: :request do
       end
 
       response(403, 'unauthorized (writer cannot approve own)') do
-        # Assuming only admins can approve? 
+        # Assuming only admins can approve?
         # Plan says: "force_destroy, approval -> Admin only."
         let(:Authorization) { auth_headers(writer)['Authorization'] }
         let(:resource_params) { { resource: { status: 'published' } } }

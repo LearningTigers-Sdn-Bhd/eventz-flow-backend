@@ -28,6 +28,7 @@ FactoryBot.define do
     status { :draft }
     is_gated { false }
     is_official { false }
+    priority { 10 }
 
     association :user
     association :resource_topic
@@ -43,5 +44,6 @@ FactoryBot.define do
     state { Faker::Address.state }
     country { Faker::Address.country }
     job_title { Faker::Job.title }
+    association :resource
   end
 end

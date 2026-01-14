@@ -26,30 +26,50 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
   LEAD_METRICS_SCHEMA = {
     type: :object,
     properties: {
+      resources: {
+        type: :object,
+        properties: {
+          count: { type: :integer, example: 10 },
+          filled: { type: :integer, example: 7 }
+        },
+        required: %w[count filled]
+      },
       total_leads: { type: :integer, example: 150 },
-      leads_this_month: { type: :integer, example: 25 },
-      leads_this_week: { type: :integer, example: 8 },
-      top_countries: {
+      date: {
         type: :array,
         items: {
           type: :object,
           properties: {
-            country: { type: :string, example: 'United States' },
-            count: { type: :integer, example: 75 }
-          }
+            week: { type: :string, example: '2026-W01' },
+            lead_counts: { type: :integer, example: 15 }
+          },
+          required: %w[week lead_counts]
         }
       },
-      top_companies: {
+      country: {
         type: :array,
         items: {
           type: :object,
           properties: {
-            company_name: { type: :string, example: 'Acme Corporation' },
-            count: { type: :integer, example: 5 }
-          }
+            name: { type: :string, example: 'United States' },
+            count: { type: :integer, example: 45 }
+          },
+          required: %w[name count]
+        }
+      },
+      job: {
+        type: :array,
+        items: {
+          type: :object,
+          properties: {
+            title: { type: :string, example: 'Event Manager' },
+            count: { type: :integer, example: 20 }
+          },
+          required: %w[title count]
         }
       }
-    }
+    },
+    required: %w[resources total_leads date country job]
   }.freeze
 
   # ============================================================
@@ -58,7 +78,18 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
   let(:org_owner) { create(:user, role: :org_owner) }
   let(:writer) { create(:user, role: :member) }
   let(:visitor) { create(:user, role: :member) }
-  let!(:resource_lead) { create(:resource_lead, email: 'test@example.com', name: 'Test Lead') }
+
+  # Create test resources
+  let!(:gated_resource) { create(:resource, is_gated: true, status: :published, title: 'Gated Resource 1') }
+  let!(:gated_resource_2) { create(:resource, is_gated: true, status: :published, title: 'Gated Resource 2') }
+  let!(:non_gated_resource) { create(:resource, is_gated: false, status: :published, title: 'Non-Gated Resource') }
+
+  # Create leads for gated resources
+  let!(:resource_lead) { create(:resource_lead, email: 'test@example.com', name: 'Test Lead', resource: gated_resource, country: 'United States', job_title: 'Event Manager') }
+  let!(:resource_lead_2) { create(:resource_lead, email: 'test2@example.com', name: 'Test Lead 2', resource: gated_resource_2, country: 'Malaysia', job_title: 'Marketing Director') }
+
+  # Create lead for non-gated resource (should be excluded from index)
+  let!(:non_gated_lead) { create(:resource_lead, email: 'test3@example.com', name: 'Test Lead 3', resource: non_gated_resource) }
 
   # ============================================================
   # API Endpoints
@@ -69,19 +100,60 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
       tags 'Resources CMS - Leads'
       produces 'application/json'
       security [bearerAuth: []]
-      description 'Admin only: List all resource leads with contact information'
+      description 'Admin only: List all resource leads for gated resources with pagination'
+
+      parameter name: :page, in: :query, type: :integer, required: false, description: 'Page number'
+      parameter name: :per_page, in: :query, type: :integer, required: false, description: 'Items per page'
 
       response(200, 'successful - admin only') do
         schema SharedSchemas::SUCCESS_RESPONSE_SCHEMA.merge(
           'properties' => {
             'data' => {
               type: :array,
-              items: RESOURCE_LEAD_SCHEMA
+              items: RESOURCE_LEAD_SCHEMA.merge(
+                properties: RESOURCE_LEAD_SCHEMA[:properties].merge(
+                  resource: {
+                    type: :object,
+                    properties: {
+                      id: { type: :integer },
+                      title: { type: :string },
+                      slug: { type: :string }
+                    }
+                  }
+                )
+              )
+            },
+            'pagination' => {
+              type: :object,
+              properties: {
+                current_page: { type: :integer },
+                total_pages: { type: :integer },
+                total_count: { type: :integer },
+                per_page: { type: :integer }
+              }
             }
           }
         )
 
         let(:Authorization) { auth_headers(org_owner)['Authorization'] }
+
+        it 'returns only leads for gated resources' do |example|
+          submit_request(example.metadata)
+
+          expect(response).to have_http_status(:ok)
+          data = JSON.parse(response.body)['data']
+
+          # Should return 2 leads (for gated resources), not 3 (excluding non-gated)
+          expect(data.length).to eq(2)
+
+          # Verify all leads are for gated resources
+          data.each do |lead|
+            expect(lead['resource']).to be_present
+            resource = Resource.find(lead['resource']['id'])
+            expect(resource.is_gated).to be true
+          end
+        end
+
         run_test!
       end
 
@@ -129,11 +201,12 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
           }
         )
 
-        let(:lead_params) { { lead: { 
-          email: 'newlead@example.com', 
+        let(:lead_params) { { resource_lead: {
+          email: 'newlead@example.com',
           name: 'New Lead',
           company_name: 'New Company',
-          job_title: 'Event Planner'
+          job_title: 'Event Planner',
+          resource_id: gated_resource.id
         } } }
         run_test!
       end
@@ -154,7 +227,7 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
           }
         }
 
-        let(:lead_params) { { lead: { email: nil, name: nil } } }
+        let(:lead_params) { { resource_lead: { email: nil, name: nil, resource_id: gated_resource.id } } }
         run_test!
       end
     end
@@ -165,7 +238,7 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
       tags 'Resources CMS - Leads'
       produces 'application/json'
       security [bearerAuth: []]
-      description 'Admin only: Get analytics and metrics for lead generation'
+      description 'Admin only: Get analytics and metrics for lead generation including resources stats, weekly trends, and top countries/jobs'
 
       response(200, 'successful - admin only') do
         schema SharedSchemas::SUCCESS_RESPONSE_SCHEMA.merge(
@@ -175,6 +248,33 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
         )
 
         let(:Authorization) { auth_headers(org_owner)['Authorization'] }
+
+        it 'returns correct metrics structure' do |example|
+          submit_request(example.metadata)
+
+          expect(response).to have_http_status(:ok)
+          data = JSON.parse(response.body)['data']
+
+          # Check resources metrics
+          expect(data['resources']).to be_present
+          expect(data['resources']['count']).to eq(2) # 2 gated resources
+          expect(data['resources']['filled']).to eq(2) # 2 gated resources with leads
+
+          # Check total leads
+          expect(data['total_leads']).to eq(3) # All leads including non-gated
+
+          # Check date array exists
+          expect(data['date']).to be_an(Array)
+
+          # Check country array
+          expect(data['country']).to be_an(Array)
+          expect(data['country'].length).to be > 0
+
+          # Check job array
+          expect(data['job']).to be_an(Array)
+          expect(data['job'].length).to be > 0
+        end
+
         run_test!
       end
 
