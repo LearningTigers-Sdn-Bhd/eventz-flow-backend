@@ -6,7 +6,14 @@
   # GET /v1/team_members
   def index
     @team_members = team_members_for_current_user
-                      .order(created_at: :desc)
+
+    if params[:exclude_resource_permissions] == 'true'
+      @team_members = @team_members.where.not(
+        id: ResourceWritePermission.select(:user_id)
+      )
+    end
+
+    @team_members = @team_members.order(created_at: :desc)
 
     render json: @team_members.map { |user| format_user(user) }, status: :ok
   end

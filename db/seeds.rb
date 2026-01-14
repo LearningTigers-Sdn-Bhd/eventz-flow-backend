@@ -33,6 +33,11 @@ puts "Cleaning up existing records..."
 # Use delete_all to bypass callbacks and foreign key constraints
 # This is more efficient and avoids foreign key issues
 ActiveRecord::Base.connection.disable_referential_integrity do
+  Resource.delete_all
+  ResourceTopic.delete_all
+  ResourceCategory.delete_all
+  ResourceMediaType.delete_all
+  ResourceWritePermission.delete_all
   Ticket.delete_all
   EventLocationMember.delete_all
   EventAssignment.delete_all
@@ -273,6 +278,11 @@ all_events.each_with_index do |event, i|
   end
 end
 
+puts "\n--- 5. Generating Resource CMS Data ---"
+
+# Load professional resource content via rake task
+Rake::Task['db:seed:resources'].invoke
+
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"
 puts "  Total Users: #{User.count}"
@@ -282,6 +292,11 @@ puts "  Total Tickets: #{Ticket.count}"
 puts "  Total Event Assignments: #{EventAssignment.count}"
 puts "  Total Event Locations: #{EventLocation.count}"
 puts "  Total Event Location Members: #{EventLocationMember.count}"
+puts "  Total Resource Topics: #{ResourceTopic.count}"
+puts "  Total Resource Categories: #{ResourceCategory.count}"
+puts "  Total Resource Media Types: #{ResourceMediaType.count}"
+puts "  Total Resource Write Permissions: #{ResourceWritePermission.count}"
+puts "  Total Published Resources: #{Resource.where(status: :published).count}"
 puts "\nLogin Credentials:"
 puts "  Superadmin (Org Owner): s@s.com / 12345678"
 puts "  Organizer 1: organizer_1@example.com / 12345678"
