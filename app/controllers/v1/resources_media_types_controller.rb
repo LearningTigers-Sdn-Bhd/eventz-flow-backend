@@ -8,13 +8,14 @@ class V1::ResourcesMediaTypesController < ApplicationController
   def index
     authorize ResourceMediaType
     filter = params.permit(:filter)[:filter]
+    base_scope = policy_scope(ResourceMediaType)
     scope = case filter
             when 'archived'
-              ResourceMediaType.unscoped.where.not(deleted_at: nil)
+              base_scope.unscoped.where.not(deleted_at: nil)
             when 'all'
-              ResourceMediaType.unscoped
+              base_scope.unscoped
             else
-              ResourceMediaType.all
+              base_scope
             end
 
     @pagy, @media_types = pagy(scope, limit: pagination_params[:per_page])
@@ -75,14 +76,14 @@ class V1::ResourcesMediaTypesController < ApplicationController
   private
 
   def set_media_type
-    @media_type = ResourceMediaType.find(params[:id])
+    @media_type = ResourceMediaType.find_by(slug: params[:id]) || ResourceMediaType.find(params[:id])
   end
 
   def set_unscoped_media_type
-    @media_type = ResourceMediaType.unscoped.find(params[:id])
+    @media_type = ResourceMediaType.unscoped.find_by(slug: params[:id]) || ResourceMediaType.unscoped.find(params[:id])
   end
 
   def media_type_params
-    params.require(:media_type).permit(:name, :description)
+    params.require(:media_type).permit(:name, :description, :slug)
   end
 end

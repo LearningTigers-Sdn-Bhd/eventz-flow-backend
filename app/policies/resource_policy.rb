@@ -1,5 +1,17 @@
 # app/policies/resource_policy.rb
 class ResourcePolicy < ApplicationPolicy
+  class Scope < ApplicationPolicy::Scope
+    def resolve
+      if user&.is_org_owner?
+        scope.admin_dashboard_view
+      elsif user&.can_write_resources?
+        scope.accessible_by_writer(user)
+      else
+        scope.public_feed
+      end
+    end
+  end
+
   def index?
     true # All can read
   end

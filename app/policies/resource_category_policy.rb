@@ -1,5 +1,11 @@
 # app/policies/resource_category_policy.rb
 class ResourceCategoryPolicy < ApplicationPolicy
+  class Scope < ApplicationPolicy::Scope
+    def resolve
+      scope.all
+    end
+  end
+
   def index?
     true # All can read
   end

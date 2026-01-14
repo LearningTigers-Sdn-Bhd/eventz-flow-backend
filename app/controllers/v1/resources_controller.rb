@@ -1,8 +1,8 @@
 class V1::ResourcesController < ApplicationController
   include ResourceFormatter
 
-  skip_before_action :authenticate_user!, only: [:index_public, :show_public]
-  before_action :set_resource, only: [:show, :show_public, :update, :destroy, :approval, :duplicate]
+  skip_before_action :authenticate_user!, only: [:index_public, :show_public, :increment_view]
+  before_action :set_resource, only: [:show, :show_public, :update, :destroy, :approval, :duplicate, :increment_view]
   before_action :set_unscoped_resource, only: [:restore, :force_destroy]
   before_action :ensure_not_published, only: [:update, :destroy]
 
@@ -13,13 +13,8 @@ class V1::ResourcesController < ApplicationController
     if params[:status] == 'archived'
       resources_scope = Resource.unscoped.where(user: current_user).where.not(deleted_at: nil)
     else
-      # Standard Index: For writers (and owners in 'writer mode') to see their own content + published content
-      if current_user&.can_write_resources? || current_user&.is_org_owner?
-        resources_scope = Resource.accessible_by_writer(current_user)
-      else
-        # Fallback for authenticated members who are not writers
-        resources_scope = Resource.public_feed
-      end
+      # Standard Index: Scope delegated to ResourcePolicy::Scope
+      resources_scope = policy_scope(Resource)
 
       resources_scope = resources_scope.where(status: params[:status]) if params[:status].present?
     end
@@ -66,6 +61,26 @@ class V1::ResourcesController < ApplicationController
   # GET /v1/resources/public (Unauthenticated)
   def index_public
     resources_scope = Resource.public_feed
+
+    resources_scope = resources_scope.where(priority: params[:priority]) if params[:priority].present?
+    resources_scope = resources_scope.where('priority >= ?', params[:priority_min]) if params[:priority_min].present?
+    resources_scope = resources_scope.where('priority <= ?', params[:priority_max]) if params[:priority_max].present?
+
+    # Slug filters
+    if params[:topic_slug].present? && params[:topic_slug] != 'all'
+      resources_scope = resources_scope.joins(:resource_topic).where(resource_topics: { slug: params[:topic_slug] })
+    end
+
+    if params[:category_slug].present?
+      slugs = params[:category_slug].is_a?(String) ? params[:category_slug].split(',') : params[:category_slug]
+      resources_scope = resources_scope.joins(:resource_category).where(resource_categories: { slug: slugs })
+    end
+
+    if params[:media_type_slug].present?
+      slugs = params[:media_type_slug].is_a?(String) ? params[:media_type_slug].split(',') : params[:media_type_slug]
+      resources_scope = resources_scope.joins(:resource_media_type).where(resource_media_types: { slug: slugs })
+    end
+
     @pagy, @resources = pagy(resources_scope, limit: pagination_params[:per_page])
     
     # Public index: Includes author, no summary
@@ -83,8 +98,19 @@ class V1::ResourcesController < ApplicationController
   # GET /v1/resources/:id/public (Unauthenticated)
   def show_public
     if @resource.published? || @resource.is_official
-       # Public Show: Full details including article, author
-       success_response(data: format_resource(@resource, include_article: true, include_author: true))
+       # Fetch 3 related resources with same topic
+       suggestions = Resource.public_feed
+                             .where(resource_topic_id: @resource.resource_topic_id)
+                             .where.not(id: @resource.id)
+                             .limit(3)
+
+       formatted_resource = format_resource(@resource, include_article: true, include_author: true)
+       formatted_suggestions = suggestions.map { |r| format_resource(r, include_article: false, include_author: true) }
+       
+       # Merge suggestions into the main resource object
+       data = formatted_resource.merge(suggestions: formatted_suggestions)
+
+       success_response(data: data)
     else
        error_response(message: 'Resource not found or not visible', status: :not_found)
     end
@@ -194,6 +220,17 @@ class V1::ResourcesController < ApplicationController
     end
   end
 
+  # POST /v1/resources/:id/increment_view
+  def increment_view
+    # No auth required, public endpoint
+    if @resource
+      @resource.increment!(:view_counts)
+      success_response(message: 'View count incremented')
+    else
+      error_response(message: 'Resource not found', status: :not_found)
+    end
+  end
+
   private
 
   def ensure_not_published
@@ -214,7 +251,7 @@ class V1::ResourcesController < ApplicationController
     params.require(:resource).permit(
       :title, :article, :slug, :meta_description,
       :resource_topic_id, :resource_category_id, :resource_media_type_id,
-      :status, :is_gated, :rejection_reason, :header_img
+      :status, :is_gated, :priority, :rejection_reason, :header_img
     )
   end
 end

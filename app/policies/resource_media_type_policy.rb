@@ -1,5 +1,11 @@
 # app/policies/resource_media_type_policy.rb
 class ResourceMediaTypePolicy < ApplicationPolicy
+  class Scope < ApplicationPolicy::Scope
+    def resolve
+      scope.all
+    end
+  end
+
   def index?
     true # All can read
   end

@@ -44,4 +44,26 @@ RSpec.describe ResourceCategoryPolicy, type: :policy do
       expect(subject).not_to permit(visitor)
     end
   end
+
+  describe "Scope" do
+    let!(:category1) { create(:resource_category) }
+    let!(:category2) { create(:resource_category) }
+    let(:scope) { ResourceCategoryPolicy::Scope.new(user, ResourceCategory.all).resolve }
+
+    context "for any user" do
+      let(:user) { regular_user }
+
+      it "returns all categories" do
+        expect(scope).to include(category1, category2)
+      end
+    end
+
+    context "for visitors" do
+      let(:user) { nil }
+
+      it "returns all categories" do
+        expect(scope).to include(category1, category2)
+      end
+    end
+  end
 end

@@ -14,9 +14,23 @@ else
   statuses = Resource.statuses.keys # ["draft", "pending_review", "published", "rejected"]
   
   # Generate 40 posts with varied data
-  40.times do |i|
+  total_posts = 40
+  prio1_count = 3
+  remaining = total_posts - prio1_count
+  half_remaining = remaining / 2 # Integer division
+
+  total_posts.times do |i|
     status = statuses[i % statuses.length]
     title = "#{Faker::Company.catch_phrase} #{i + 1}"
+    
+    # Determine priority based on index
+    if i < prio1_count
+      priority = 1
+    elsif i < prio1_count + half_remaining
+      priority = rand(2..5)
+    else
+      priority = rand(6..10)
+    end
     
     # Create a structured article with 3 sections (Header + Paragraph)
     article_content = 3.times.map do |j|
@@ -29,6 +43,7 @@ else
     # Create the resource
     resource = Resource.new(
       title: title,
+      slug: title.parameterize,
       article: article_content,
       meta_description: Faker::Lorem.sentence,
       user: writers.sample,
@@ -38,6 +53,7 @@ else
       status: status,
       is_gated: [true, false].sample,
       is_official: [true, false].sample,
+      priority: priority,
       view_counts: rand(0..1000)
     )
 

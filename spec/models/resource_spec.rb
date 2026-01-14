@@ -19,7 +19,7 @@ RSpec.describe Resource, type: :model do
   end
 
   describe 'enums' do
-    it { should define_enum_for(:status).with_values(draft: 0, in_review: 1, published: 2) }
+    it { should define_enum_for(:status).with_values(draft: 0, pending_review: 1, published: 2, rejected: 4) }
   end
 
   describe 'callbacks' do

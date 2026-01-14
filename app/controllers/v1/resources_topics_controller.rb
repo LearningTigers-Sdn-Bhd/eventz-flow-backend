@@ -8,13 +8,14 @@ class V1::ResourcesTopicsController < ApplicationController
   def index
     authorize ResourceTopic
     filter = params.permit(:filter)[:filter]
+    base_scope = policy_scope(ResourceTopic)
     scope = case filter
             when 'archived'
-              ResourceTopic.unscoped.where.not(deleted_at: nil)
+              base_scope.unscoped.where.not(deleted_at: nil)
             when 'all'
-              ResourceTopic.unscoped
+              base_scope.unscoped
             else
-              ResourceTopic.all
+              base_scope
             end
 
     @pagy, @topics = pagy(scope, limit: pagination_params[:per_page])
@@ -75,14 +76,14 @@ class V1::ResourcesTopicsController < ApplicationController
   private
 
   def set_topic
-    @topic = ResourceTopic.find(params[:id])
+    @topic = ResourceTopic.find_by(slug: params[:id]) || ResourceTopic.find(params[:id])
   end
 
   def set_unscoped_topic
-    @topic = ResourceTopic.unscoped.find(params[:id])
+    @topic = ResourceTopic.unscoped.find_by(slug: params[:id]) || ResourceTopic.unscoped.find(params[:id])
   end
 
   def topic_params
-    params.require(:topic).permit(:name, :description, :logo)
+    params.require(:topic).permit(:name, :description, :logo, :slug)
   end
 end

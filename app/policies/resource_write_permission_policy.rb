@@ -1,5 +1,11 @@
 # app/policies/resource_permission_policy.rb
 class ResourceWritePermissionPolicy < ApplicationPolicy
+  class Scope < ApplicationPolicy::Scope
+    def resolve
+      scope.all
+    end
+  end
+
   def index?
     user&.is_org_owner?
   end

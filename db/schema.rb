@@ -643,11 +643,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
 
   create_table "resource_categories", force: :cascade do |t|
     t.string "name"
+    t.string "slug", null: false
     t.text "description"
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["deleted_at"], name: "index_resource_categories_on_deleted_at"
+    t.index ["slug"], name: "index_resource_categories_on_slug", unique: true
   end
 
   create_table "resource_leads", force: :cascade do |t|
@@ -666,21 +668,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
 
   create_table "resource_media_types", force: :cascade do |t|
     t.string "name"
+    t.string "slug", null: false
     t.text "description"
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["deleted_at"], name: "index_resource_media_types_on_deleted_at"
+    t.index ["slug"], name: "index_resource_media_types_on_slug", unique: true
   end
 
   create_table "resource_topics", force: :cascade do |t|
     t.string "name"
+    t.string "slug", null: false
     t.text "description"
     t.string "logo"
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["deleted_at"], name: "index_resource_topics_on_deleted_at"
+    t.index ["slug"], name: "index_resource_topics_on_slug", unique: true
   end
 
   create_table "resource_write_permissions", force: :cascade do |t|
@@ -705,6 +711,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.datetime "published_at"
     t.datetime "deleted_at"
     t.integer "view_counts", default: 0
+    t.integer "priority", default: 10
     t.boolean "is_gated", default: false
     t.boolean "is_official", default: false
     t.text "rejection_reason"

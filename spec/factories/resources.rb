@@ -1,17 +1,17 @@
 # spec/factories/resources.rb
 FactoryBot.define do
   factory :resource_topic do
-    name { "Topic #{Faker::Lorem.word}" }
+    name { "Topic #{Faker::Lorem.word} #{SecureRandom.hex(4)}" }
     description { Faker::Lorem.sentence }
   end
 
   factory :resource_category do
-    name { "Category #{Faker::Lorem.word}" }
+    name { "Category #{Faker::Lorem.word} #{SecureRandom.hex(4)}" }
     description { Faker::Lorem.sentence }
   end
 
   factory :resource_media_type do
-    name { "Media #{Faker::Lorem.word}" }
+    name { "Media #{Faker::Lorem.word} #{SecureRandom.hex(4)}" }
     description { Faker::Lorem.sentence }
   end
 
@@ -22,7 +22,7 @@ FactoryBot.define do
   end
 
   factory :resource do
-    title { "Resource Title: #{Faker::Book.unique.title} #{Faker::Number.unique.number(digits: 5)}" }
+    title { "Resource #{SecureRandom.uuid}" }
     article { Faker::Lorem.paragraphs(number: 4).join("\n\n") }
     meta_description { Faker::Lorem.sentence }
     status { :draft }

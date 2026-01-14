@@ -7,15 +7,21 @@ class V1::ResourcesCategoriesController < ApplicationController
   # GET /v1/resources/categories
   def index
     authorize ResourceCategory
-    filter = params.permit(:filter)[:filter]
+    permitted = params.permit(:filter, :sort, :per_page)
+    filter = permitted[:filter]
+    sort = permitted[:sort]
+
+    base_scope = policy_scope(ResourceCategory)
     scope = case filter
             when 'archived'
-              ResourceCategory.unscoped.where.not(deleted_at: nil)
+              base_scope.unscoped.where.not(deleted_at: nil)
             when 'all'
-              ResourceCategory.unscoped
+              base_scope.unscoped
             else
-              ResourceCategory.all
+              base_scope
             end
+
+    scope = scope.order_by_published_resources if sort == 'most_published_resources'
     
     @pagy, @categories = pagy(scope, limit: pagination_params[:per_page])
     success_response(data: @categories, pagination: pagy_metadata(@pagy))
@@ -75,14 +81,14 @@ class V1::ResourcesCategoriesController < ApplicationController
   private
 
   def set_category
-    @category = ResourceCategory.find(params[:id])
+    @category = ResourceCategory.find_by(slug: params[:id]) || ResourceCategory.find(params[:id])
   end
 
   def set_unscoped_category
-    @category = ResourceCategory.unscoped.find(params[:id])
+    @category = ResourceCategory.unscoped.find_by(slug: params[:id]) || ResourceCategory.unscoped.find(params[:id])
   end
 
   def category_params
-    params.require(:category).permit(:name, :description)
+    params.require(:category).permit(:name, :description, :slug)
   end
 end

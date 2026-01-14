@@ -22,6 +22,7 @@ module ResourceFormatter
         deleted_at: resource.deleted_at,
         cover_image_url: resource.respond_to?(:cover_image_url) ? resource.cover_image_url : nil,
         header_img_url: resource.header_img.attached? ? url_for(resource.header_img) : nil,
+        min_read: calculate_min_read(resource.article),
         
         topic: resource.resource_topic ? {
           id: resource.resource_topic.id,
@@ -48,6 +49,16 @@ module ResourceFormatter
       end
 
       data
+    end
+
+    def calculate_min_read(html_content)
+      return 1 if html_content.blank?
+      
+      text_content = html_content.gsub(/<[^>]*>/, " ") # Strip HTML tags
+      word_count = text_content.split.size
+      minutes = (word_count / 200.0).ceil
+      
+      minutes > 0 ? minutes : 1
     end
 
     def format_approval_resource(resource)

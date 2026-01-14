@@ -283,21 +283,27 @@ puts "\n--- 5. Generating Resource CMS Data ---"
 # A. Resource Topics
 topics = ["Event Management", "AI at work", "Business Matching", "Project Planning"]
 topics.each do |topic_name|
-  ResourceTopic.find_or_create_by!(name: topic_name)
+  ResourceTopic.find_or_create_by!(name: topic_name) do |t|
+    t.slug = topic_name.parameterize
+  end
 end
 puts "Created #{ResourceTopic.count} Resource Topics."
 
 # B. Resource Categories
 categories = ["Corporate", "Wedding", "Exhibition", "Celebration"]
 categories.each do |category_name|
-  ResourceCategory.find_or_create_by!(name: category_name)
+  ResourceCategory.find_or_create_by!(name: category_name) do |c|
+    c.slug = category_name.parameterize
+  end
 end
 puts "Created #{ResourceCategory.count} Resource Categories."
 
 # C. Resource Media Types
 media_types = ["Audiobook", "eBook", "Article", "Report", "Webinar", "Video"]
 media_types.each do |media_type_name|
-  ResourceMediaType.find_or_create_by!(name: media_type_name)
+  ResourceMediaType.find_or_create_by!(name: media_type_name) do |mt|
+    mt.slug = media_type_name.parameterize
+  end
 end
 puts "Created #{ResourceMediaType.count} Resource Media Types."
 

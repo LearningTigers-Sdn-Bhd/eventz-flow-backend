@@ -403,6 +403,7 @@ Rails.application.routes.draw do
         post :duplicate
         delete :force_destroy
         patch :approval
+        post :increment_view
       end
     end
 

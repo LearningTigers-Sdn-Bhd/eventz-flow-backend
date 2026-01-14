@@ -6,7 +6,7 @@ class V1::ResourcesLeadsController < ApplicationController
   # GET /v1/resources/leads
   def index
     authorize ResourceLead
-    @leads = ResourceLead.all.order(created_at: :desc)
+    @leads = policy_scope(ResourceLead).order(created_at: :desc)
     success_response(data: @leads)
   end
 
