@@ -131,14 +131,19 @@ RSpec.describe Resource, type: :model do
     end
 
     it 'orders resources by published_at desc, then created_at desc' do
+      # Clear existing featured resources to isolate this test
+      Resource.where(priority: 1).destroy_all
+
       # Create resources with specific timestamps
       oldest = create(:resource, status: :published, priority: 1, published_at: 3.days.ago)
       newest = create(:resource, status: :published, priority: 1, published_at: 1.day.ago)
       middle = create(:resource, status: :published, priority: 1, published_at: 2.days.ago)
 
       featured = Resource.featured_page_resources[:featured]
+      expect(featured.size).to eq(3)
       expect(featured.first.id).to eq(newest.id)
-      expect(featured.last.id).to eq(oldest.id)
+      expect(featured[1].id).to eq(middle.id)
+      expect(featured[2].id).to eq(oldest.id)
     end
 
     it 'does not include draft resources' do
