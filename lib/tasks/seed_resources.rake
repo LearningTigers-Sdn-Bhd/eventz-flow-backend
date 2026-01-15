@@ -1,6 +1,59 @@
 # lib/tasks/seed_resources.rake
 namespace :db do
   namespace :seed do
+    desc "Reset and re-seed resources data (deletes all resource data then seeds fresh)"
+    task reset_resources: :environment do
+      puts "\n" + "=" * 80
+      puts "RESETTING RESOURCE CMS DATA"
+      puts "=" * 80
+
+      # Prevent destructive operations in production/staging
+      # Allow bypass with ALLOW_RESOURCE_RESET=true environment variable
+      if (Rails.env.production? || Rails.env.staging?) && ENV['ALLOW_RESOURCE_RESET'] != 'true'
+        puts "\n🚫 ERROR: Resource reset is DISABLED in production and staging environments!"
+        puts "   This task contains destructive operations (delete_all) and should"
+        puts "   only run in development environment."
+        puts "\n   To override this safety check, set ALLOW_RESOURCE_RESET=true"
+        puts "=" * 80
+        exit(1)
+      end
+
+      if Rails.env.production? || Rails.env.staging?
+        puts "\n⚠️  WARNING: Running resource reset in #{Rails.env} environment!"
+        puts "   This will DELETE ALL resource data. Proceeding in 5 seconds..."
+        puts "   Press Ctrl+C to cancel."
+        sleep 5
+      end
+
+      puts "\n--- Deleting existing resource data ---"
+
+      # Delete in reverse dependency order to respect foreign key constraints
+      ActiveRecord::Base.connection.disable_referential_integrity do
+        # Delete dependent records first
+        ResourceLead.delete_all
+        ResourceChangelog.delete_all
+
+        # Delete main resource records (this will also purge attached images)
+        Resource.find_each do |resource|
+          resource.header_img.purge if resource.header_img.attached?
+        end
+        Resource.delete_all
+
+        # Delete lookup/reference tables
+        ResourceWritePermission.delete_all
+        ResourceTopic.delete_all
+        ResourceCategory.delete_all
+        ResourceMediaType.delete_all
+      end
+
+      puts "✓ All resource data deleted"
+      puts "\n--- Re-seeding resources ---"
+
+      # Re-run the resources seeder
+      Rake::Task['db:seed:resources'].reenable
+      Rake::Task['db:seed:resources'].invoke
+    end
+
     desc "Seed only resources data (topics, categories, media types, write permissions, and professional posts)"
     task resources: :environment do
       puts "\n" + "=" * 80
@@ -84,12 +137,37 @@ namespace :db do
       def attach_header_image(resource, filename)
         file_path = Rails.root.join('public', 'post', filename)
         if File.exist?(file_path)
-          resource.header_img.attach(
-            io: File.open(file_path),
-            filename: filename,
-            content_type: "image/#{File.extname(filename).delete('.')}"
-          )
-          puts "    ✓ Attached image: #{filename}"
+          # Map file extensions to correct MIME types
+          ext = File.extname(filename).delete('.').downcase
+          content_type_map = {
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp'
+          }
+          content_type = content_type_map[ext] || "image/#{ext}"
+
+          begin
+            # Remove existing attachment if present
+            resource.header_img.purge if resource.header_img.attached?
+
+            resource.header_img.attach(
+              io: File.open(file_path),
+              filename: filename,
+              content_type: content_type
+            )
+
+            # Save the resource to persist the attachment and run validations
+            resource.save!
+            puts "    ✓ Attached image: #{filename} (#{content_type})"
+          rescue => e
+            puts "    ❌ Error attaching #{filename}: #{e.message}"
+            if resource.errors.any?
+              puts "       Validation errors: #{resource.errors.full_messages.join(', ')}"
+            end
+            puts "       #{e.backtrace.first(3).join("\n       ")}"
+          end
         else
           puts "    ⚠️  Image not found: #{file_path}"
         end
@@ -138,6 +216,10 @@ namespace :db do
         attach_header_image(post_1, "Eventzflow.jpg")
         puts "  ✓ Created: #{post_1_title}"
       else
+        # Reattach image if missing (useful after db:reset)
+        unless post_1.header_img.attached?
+          attach_header_image(post_1, "Eventzflow.jpg")
+        end
         puts "  → Already exists: #{post_1_title}"
       end
 
@@ -187,6 +269,9 @@ namespace :db do
         attach_header_image(post_2, "Event-Planning.jpg")
         puts "  ✓ Created: #{post_2_title}"
       else
+        unless post_2.header_img.attached?
+          attach_header_image(post_2, "Event-Planning.jpg")
+        end
         puts "  → Already exists: #{post_2_title}"
       end
 
@@ -240,6 +325,9 @@ namespace :db do
         attach_header_image(post_3, "Lucky-Draw.png")
         puts "  ✓ Created: #{post_3_title}"
       else
+        unless post_3.header_img.attached?
+          attach_header_image(post_3, "Lucky-Draw.png")
+        end
         puts "  → Already exists: #{post_3_title}"
       end
 
@@ -289,6 +377,9 @@ namespace :db do
         attach_header_image(post_4, "Event-Exhibition.jpg")
         puts "  ✓ Created: #{post_4_title}"
       else
+        unless post_4.header_img.attached?
+          attach_header_image(post_4, "Event-Exhibition.jpg")
+        end
         puts "  → Already exists: #{post_4_title}"
       end
 
@@ -338,6 +429,9 @@ namespace :db do
         attach_header_image(post_5, "Event-Ticket.png")
         puts "  ✓ Created: #{post_5_title}"
       else
+        unless post_5.header_img.attached?
+          attach_header_image(post_5, "Event-Ticket.png")
+        end
         puts "  → Already exists: #{post_5_title}"
       end
 
@@ -387,6 +481,9 @@ namespace :db do
         attach_header_image(post_6, "Whatsapp-Automation.jpg")
         puts "  ✓ Created: #{post_6_title}"
       else
+        unless post_6.header_img.attached?
+          attach_header_image(post_6, "Whatsapp-Automation.jpg")
+        end
         puts "  → Already exists: #{post_6_title}"
       end
 
@@ -436,6 +533,9 @@ namespace :db do
         attach_header_image(post_7, "Business-Matching.jpg")
         puts "  ✓ Created: #{post_7_title}"
       else
+        unless post_7.header_img.attached?
+          attach_header_image(post_7, "Business-Matching.jpg")
+        end
         puts "  → Already exists: #{post_7_title}"
       end
 

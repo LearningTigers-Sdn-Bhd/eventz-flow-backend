@@ -149,6 +149,10 @@ class V1::ResourcesController < ApplicationController
     authorize @resource
     # Set current user for changelog tracking
     @resource.current_user_for_changelog = current_user
+
+    # Handle header image removal before updating
+    handle_header_image_removal
+
     if @resource.update(resource_params)
       success_response(data: format_resource(@resource, include_article: true, include_author: true))
     else
@@ -263,5 +267,14 @@ class V1::ResourcesController < ApplicationController
       :resource_topic_id, :resource_category_id, :resource_media_type_id,
       :status, :is_gated, :priority, :rejection_reason, :header_img
     )
+  end
+
+  def handle_header_image_removal
+    # Check if header image should be removed
+    # Accepts boolean true, string "true", or "1"
+    remove_flag = params.dig(:resource, :remove_header_img)
+    if ActiveModel::Type::Boolean.new.cast(remove_flag)
+      @resource.header_img.purge_later if @resource.header_img.attached?
+    end
   end
 end
