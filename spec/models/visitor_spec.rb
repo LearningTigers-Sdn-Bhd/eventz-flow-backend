@@ -38,6 +38,12 @@ RSpec.describe Visitor, type: :model do
       expect(visitor).to be_valid
     end
 
+    it 'allows dynamic role' do
+      visitor = Visitor.new(event: event, full_name: 'John', role: 'Speaker')
+      expect(visitor).to be_valid
+      expect(visitor.role).to eq('Speaker')
+    end
+
     it 'allows partial information' do
       visitor = Visitor.new(event: event, full_name: 'John')
       expect(visitor).to be_valid

@@ -8,6 +8,7 @@ FactoryBot.define do
     attendee_name { "John Doe" }
     attendee_email { "john.doe@example.com" }
     attendee_phone { "+1234567890" }
+    role { "General" }
     
     # Non-nullable/Default Attributes
     checked_in { false }

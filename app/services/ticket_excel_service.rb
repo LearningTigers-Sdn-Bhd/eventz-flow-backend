@@ -34,6 +34,7 @@ class TicketExcelService
         'Attendee Phone',
         'Event Title',
         'Ticket Type',
+        'Role',
         'Public ID',
         'QR Code',
         'Payment Status',
@@ -53,6 +54,7 @@ class TicketExcelService
           ticket.attendee_phone,
           event.title,
           ticket.ticket_type&.name,
+          ticket.role,
           ticket.public_id,
           '', # QR Code column - will be filled with formula below
           ticket.payment_status,
@@ -70,10 +72,10 @@ class TicketExcelService
       # Add QR code formula for each ticket row (starting from row 2)
       tickets.each_with_index do |ticket, index|
         row_number = index + 2 # +2 because Excel is 1-indexed and row 1 is headers
-        # Formula: =IMAGE("https://quickchart.io/qr?text=" & ENCODEURL(F2))
-        # F column is now the public_id column (6th column)
-        cell = sheet.rows[index + 1].cells[6] # 0-indexed, so index+1 for data rows, column 7 for QR
-        cell.value = "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(F#{row_number}))"
+        # Formula: =IMAGE("https://quickchart.io/qr?text=" & ENCODEURL(G2))
+        # G column is now the public_id column (7th column)
+        cell = sheet.rows[index + 1].cells[7] # 0-indexed, so index+1 for data rows, column 8 for QR
+        cell.value = "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(G#{row_number}))"
       end
     end
 
@@ -126,16 +128,17 @@ class TicketExcelService
         attendee_phone: 3,
         event_title: 4,
         ticket_type: 5,
-        public_id: 6,
-        qr_code: 7,
-        payment_status: 8,
-        checked_in: 9
+        role: 6,
+        public_id: 7,
+        qr_code: 8,
+        payment_status: 9,
+        checked_in: 10
       }
 
       # Identify label columns (all columns after checked_in)
       label_columns = {}
-      if sheet.last_column > 9
-        (10..sheet.last_column).each do |col_idx|
+      if sheet.last_column > 10
+        (11..sheet.last_column).each do |col_idx|
           label_display_name = header_row[col_idx - 1] # -1 for 0-indexed array
           label_columns[col_idx] = label_display_name
         end
@@ -163,6 +166,7 @@ class TicketExcelService
           attendee_phone_raw = sheet.cell(row_num, fixed_columns[:attendee_phone])
           event_title_raw = sheet.cell(row_num, fixed_columns[:event_title])
           ticket_type_raw = sheet.cell(row_num, fixed_columns[:ticket_type])
+          role_raw = sheet.cell(row_num, fixed_columns[:role])
           payment_status_str = sheet.cell(row_num, fixed_columns[:payment_status])&.to_s&.strip
           checked_in_value = sheet.cell(row_num, fixed_columns[:checked_in])
 
@@ -170,6 +174,7 @@ class TicketExcelService
           attendee_email = normalize_email(attendee_email_raw)
           attendee_phone = normalize_phone(attendee_phone_raw)
           event_title = event_title_raw.to_s.strip
+          role = role_raw.to_s.strip
           effective_ticket_type_name = (ticket_type_raw.to_s.strip.presence || 'General Admission')
 
           # Read custom field values from label columns
@@ -247,6 +252,7 @@ class TicketExcelService
             attendee_phone: attendee_phone,
             event_title: event_title,
             ticket_type: effective_ticket_type_name,
+            role: role,
             payment_status: payment_status_str,
             checked_in: parse_boolean(checked_in_value),
             custom_fields_data: custom_fields_data
@@ -338,6 +344,7 @@ class TicketExcelService
         attendee_phone = attrs[:attendee_phone]
         event_title = attrs[:event_title]
         ticket_type_name = attrs[:ticket_type]
+        role = attrs[:role]
         checked_in = attrs[:checked_in]
         payment_status_str = attrs[:payment_status]
         custom_fields_data = attrs[:custom_fields_data]
@@ -390,6 +397,7 @@ class TicketExcelService
 
               existing.update(
                 payment_status: :paid,
+                role: role.presence || existing.role,
                 custom_fields_data: merged_custom_fields
               )
             else
@@ -417,6 +425,7 @@ class TicketExcelService
                 attendee_phone: existing.attendee_phone,
                 event_title: event.title,
                 ticket_type: ticket_type.name,
+                role: existing.role,
                 payment_status: 'paid',
                 checked_in: existing.checked_in,
                 **(existing.custom_fields_data || {})
@@ -469,6 +478,7 @@ class TicketExcelService
               existing.update(
                 attendee_name: attendee_name,
                 attendee_phone: attendee_phone.presence || existing.attendee_phone,
+                role: role.presence || existing.role,
                 payment_status: upgraded_payment_status,
                 checked_in: existing.checked_in || checked_in,
                 custom_fields_data: merged_custom_fields
@@ -498,12 +508,14 @@ class TicketExcelService
                 attendee_phone: existing.attendee_phone,
                 event_title: event.title,
                 ticket_type: ticket_type.name,
+                role: existing.role,
                 payment_status: existing.payment_status.to_s,
                 checked_in: existing.checked_in,
                 **(existing.custom_fields_data || {})
               })
             end
             results[:updated][:data] << record_data
+            next
           end
 
           # Always update custom_fields_data even if row isn't more complete
@@ -511,7 +523,7 @@ class TicketExcelService
           # Track if any changes occurred to determine if we should mark as updated
           changed_fields_for_skip = []
 
-          # Check if payment_status would change (even if row isn't more complete)
+          # Check if payment_status or role would change (even if row isn't more complete)
           # Only upgrade payment status, never downgrade
           upgraded_payment_status_for_skip = existing.payment_status
           if parsed_payment_status == :paid || (parsed_payment_status == :refunded_payment && existing.payment_status != 'paid') || parsed_payment_status == :failed
@@ -523,6 +535,10 @@ class TicketExcelService
                 changed_fields_for_skip << 'payment_status'
               end
             end
+          end
+
+          if role.present? && role != existing.role
+            changed_fields_for_skip << 'role'
           end
 
           unless dry_run
@@ -546,6 +562,11 @@ class TicketExcelService
             # Update payment_status if it changed
             if upgraded_payment_status_for_skip != existing.payment_status
               existing.update(payment_status: upgraded_payment_status_for_skip)
+            end
+
+            # Update role if it changed
+            if role.present? && role != existing.role
+              existing.update(role: role)
             end
           else
             # In dry_run mode, check if custom_fields_data would change
@@ -577,6 +598,7 @@ class TicketExcelService
                 attendee_phone: existing.attendee_phone,
                 event_title: event.title,
                 ticket_type: ticket_type.name,
+                role: existing.role,
                 payment_status: existing.payment_status.to_s,
                 checked_in: existing.checked_in,
                 **(existing.custom_fields_data || {})
@@ -620,6 +642,7 @@ class TicketExcelService
             attendee_name: attendee_name,
             attendee_email: attendee_email,
             attendee_phone: attendee_phone,
+            role: role,
             checked_in: checked_in,
             status: :purchased,
             payment_status: parsed_payment_status,
@@ -635,6 +658,7 @@ class TicketExcelService
           attendee_phone: attendee_phone,
           event_title: event_title,
           ticket_type: ticket_type_name,
+          role: role,
           payment_status: parsed_payment_status.to_s,
           checked_in: checked_in
         }.merge(merged_custom_fields)
@@ -694,7 +718,7 @@ class TicketExcelService
   end
 
   def self.row_completeness_score(attrs)
-    core_keys = [:attendee_name, :attendee_email, :attendee_phone, :ticket_type, :payment_status, :checked_in]
+    core_keys = [:attendee_name, :attendee_email, :attendee_phone, :ticket_type, :role, :payment_status, :checked_in]
     score = core_keys.count { |k| v = attrs[k]; !(v.nil? || v.to_s.strip.empty?) }
     score + (attrs[:custom_fields_data].is_a?(Hash) ? attrs[:custom_fields_data].values.count { |v| v.present? } : 0)
   end

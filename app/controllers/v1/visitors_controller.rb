@@ -139,6 +139,7 @@ module V1
         :phone,
         :gender,
         :age,
+        :role,
         :skip_webhooks,
         custom_fields_data: {}
       ]

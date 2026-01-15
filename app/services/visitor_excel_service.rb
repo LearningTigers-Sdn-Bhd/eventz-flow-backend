@@ -33,13 +33,14 @@ class VisitorExcelService
         phone: 3,
         gender: 4,
         age: 5,
-        event_title: 6
+        role: 6,
+        event_title: 7
       }
 
       # Identify custom label columns (all columns after event_title)
       label_columns = {}
-      if sheet.last_column > 6
-        (7..sheet.last_column).each do |col_idx|
+      if sheet.last_column > 7
+        (8..sheet.last_column).each do |col_idx|
           label_display_name = header_row[col_idx - 1]
           label_columns[col_idx] = label_display_name if label_display_name.present?
         end
@@ -129,6 +130,7 @@ class VisitorExcelService
     phone = normalize_phone(sheet.cell(row_num, fixed_columns[:phone]))
     gender = sheet.cell(row_num, fixed_columns[:gender])&.to_s&.strip&.downcase
     age = parse_age(sheet.cell(row_num, fixed_columns[:age]))
+    role = sheet.cell(row_num, fixed_columns[:role])&.to_s&.strip
     event_title = sheet.cell(row_num, fixed_columns[:event_title])&.to_s&.strip
 
     # Read custom fields
@@ -145,6 +147,7 @@ class VisitorExcelService
       phone: phone,
       gender: gender,
       age: age,
+      role: role,
       event_title: event_title,
       custom_fields_data: custom_fields_data
     }
@@ -263,6 +266,7 @@ class VisitorExcelService
           phone: attrs[:phone].presence || existing.phone,
           gender: attrs[:gender].presence || existing.gender,
           age: attrs[:age].presence || existing.age,
+          role: attrs[:role].presence || existing.role,
           custom_fields_data: merged_custom
         }
         existing.update!(update_attrs)
@@ -296,6 +300,7 @@ class VisitorExcelService
         phone: attrs[:phone],
         gender: attrs[:gender],
         age: attrs[:age],
+        role: attrs[:role],
         custom_fields_data: merged_custom
       )
     end
@@ -321,6 +326,7 @@ class VisitorExcelService
     changes << 'phone' if attrs[:phone].present? && attrs[:phone] != existing.phone
     changes << 'gender' if attrs[:gender].present? && attrs[:gender] != existing.gender
     changes << 'age' if attrs[:age].present? && attrs[:age] != existing.age
+    changes << 'role' if attrs[:role].present? && attrs[:role] != existing.role
     changes << 'custom_fields_data' if attrs[:custom_fields_data] != (existing.custom_fields_data || {})
     changes
   end
@@ -335,6 +341,7 @@ class VisitorExcelService
       phone: attrs[:phone],
       gender: attrs[:gender],
       age: attrs[:age],
+      role: attrs[:role],
       event_title: attrs[:event_title]
     }
 
@@ -397,6 +404,7 @@ class VisitorExcelService
       row_data[:phone],
       row_data[:gender],
       row_data[:age],
+      row_data[:role],
       row_data[:event_title]
     ].all? { |v| v.nil? || v.to_s.strip.empty? } &&
       row_data[:custom_fields_data].values.all? { |v| v.nil? || v.to_s.strip.empty? }
@@ -409,6 +417,7 @@ class VisitorExcelService
     score += 1 if attrs[:phone].present?
     score += 1 if attrs[:gender].present?
     score += 1 if attrs[:age].present?
+    score += 1 if attrs[:role].present?
     score += attrs[:custom_fields_data].values.count(&:present?) if attrs[:custom_fields_data].is_a?(Hash)
     score
   end
@@ -420,6 +429,7 @@ class VisitorExcelService
     score += 1 if visitor.phone.present?
     score += 1 if visitor.gender.present?
     score += 1 if visitor.age.present?
+    score += 1 if visitor.role.present?
     score += visitor.custom_fields_data.values.count(&:present?) if visitor.custom_fields_data.is_a?(Hash)
     score
   end
