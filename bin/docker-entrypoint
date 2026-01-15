@@ -49,14 +49,47 @@ if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
 
     if [ "$TABLES_COUNT" != "0" ] && [ -n "$TABLES_COUNT" ]; then
       echo "WARNING: schema_migrations missing but found $TABLES_COUNT tables!"
-      echo "This may indicate database corruption. Refusing to run schema:load."
-      echo "Manual intervention required."
-      exit 1
-    fi
+      echo "Attempting to recover by creating schema_migrations table and marking current schema as applied..."
 
-    echo "Database is empty, loading schema..."
-    ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists!
-    ./bin/rails db:schema:load
+      # Extract schema version and create schema_migrations table using Rails
+      echo "Creating schema_migrations table and marking current schema as applied..."
+      ./bin/rails runner "
+        # Create schema_migrations table if it doesn't exist
+        unless ActiveRecord::Base.connection.table_exists?('schema_migrations')
+          ActiveRecord::Base.connection.create_table 'schema_migrations', id: false, force: :cascade do |t|
+            t.string 'version', null: false
+          end
+          ActiveRecord::Base.connection.add_index 'schema_migrations', 'version', unique: true
+          puts 'Created schema_migrations table'
+        end
+
+        # Mark all existing migration files as applied
+        # This is safe because the tables already exist, so the migrations have effectively been applied
+        migration_files = Dir[Rails.root.join('db', 'migrate', '*.rb')].map do |f|
+          File.basename(f).split('_').first
+        end.sort
+
+        migration_files.each do |version|
+          ActiveRecord::Base.connection.execute(
+            \"INSERT INTO schema_migrations (version) VALUES ('#{version}') ON CONFLICT (version) DO NOTHING\"
+          )
+        end
+
+        puts \"✅ Successfully initialized schema_migrations table with #{migration_files.count} migration versions\"
+      " 2>&1
+
+      if [ $? -eq 0 ]; then
+        echo "Running migrations to catch any new ones..."
+        ./bin/rails db:migrate
+      else
+        echo "ERROR: Failed to create schema_migrations table. Manual intervention required."
+        exit 1
+      fi
+    else
+      echo "Database is empty, loading schema..."
+      ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists!
+      ./bin/rails db:schema:load
+    fi
   fi
 fi
 
