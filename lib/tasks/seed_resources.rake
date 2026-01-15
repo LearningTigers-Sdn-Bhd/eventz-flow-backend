@@ -8,12 +8,21 @@ namespace :db do
       puts "=" * 80
 
       # Prevent destructive operations in production/staging
-      if Rails.env.production? || Rails.env.staging?
+      # Allow bypass with ALLOW_RESOURCE_RESET=true environment variable
+      if (Rails.env.production? || Rails.env.staging?) && ENV['ALLOW_RESOURCE_RESET'] != 'true'
         puts "\n🚫 ERROR: Resource reset is DISABLED in production and staging environments!"
         puts "   This task contains destructive operations (delete_all) and should"
         puts "   only run in development environment."
+        puts "\n   To override this safety check, set ALLOW_RESOURCE_RESET=true"
         puts "=" * 80
         exit(1)
+      end
+
+      if Rails.env.production? || Rails.env.staging?
+        puts "\n⚠️  WARNING: Running resource reset in #{Rails.env} environment!"
+        puts "   This will DELETE ALL resource data. Proceeding in 5 seconds..."
+        puts "   Press Ctrl+C to cancel."
+        sleep 5
       end
 
       puts "\n--- Deleting existing resource data ---"
