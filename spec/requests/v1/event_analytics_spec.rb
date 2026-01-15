@@ -114,6 +114,92 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
+  path '/v1/events/{event_id}/metrics/total_visitors' do
+    get 'Get total visitors count for an event' do
+      tags 'Event Analytics'
+      produces 'application/json'
+      parameter name: :event_id, in: :path, type: :integer, description: 'Event ID'
+      parameter name: 'Authorization', in: :header, type: :string, description: 'Bearer token'
+
+      response '200', 'Total visitors retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 totalVisitors: { type: :integer }
+               }
+
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          create_list(:visitor, 5, event: event)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['totalVisitors']).to eq(5)
+        end
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/metrics/total_scanned_visitors' do
+    get 'Get total scanned visitors count for an event' do
+      tags 'Event Analytics'
+      produces 'application/json'
+      parameter name: :event_id, in: :path, type: :integer, description: 'Event ID'
+      parameter name: 'Authorization', in: :header, type: :string, description: 'Bearer token'
+
+      response '200', 'Total scanned visitors retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 totalScannedVisitors: { type: :integer }
+               }
+
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          create_list(:visitor, 3, event: event, checked_in: false)
+          create_list(:visitor, 2, event: event, checked_in: true)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['totalScannedVisitors']).to eq(2)
+        end
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/metrics/total_unscanned_visitors' do
+    get 'Get total unscanned visitors count for an event' do
+      tags 'Event Analytics'
+      produces 'application/json'
+      parameter name: :event_id, in: :path, type: :integer, description: 'Event ID'
+      parameter name: 'Authorization', in: :header, type: :string, description: 'Bearer token'
+
+      response '200', 'Total unscanned visitors retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 totalUnscannedVisitors: { type: :integer }
+               }
+
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          create_list(:visitor, 4, event: event, checked_in: false)
+          create_list(:visitor, 2, event: event, checked_in: true)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['totalUnscannedVisitors']).to eq(4)
+        end
+      end
+    end
+  end
+
   path '/v1/events/{event_id}/metrics/total_amount_price' do
     get 'Get total sales amount for an event' do
       tags 'Event Analytics'

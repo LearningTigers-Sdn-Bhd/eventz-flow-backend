@@ -21,6 +21,24 @@ module V1
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
+    # GET /v1/events/:event_id/metrics/total_visitors
+    def total_visitors
+      count = @event.visitors.count
+      render json: { totalVisitors: count }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/total_scanned_visitors
+    def total_scanned_visitors
+      count = @event.visitors.checked_in.count
+      render json: { totalScannedVisitors: count }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/total_unscanned_visitors
+    def total_unscanned_visitors
+      count = @event.visitors.unscanned.count
+      render json: { totalUnscannedVisitors: count }, status: :ok
+    end
+
     # GET /v1/events/:event_id/metrics/total_amount_price
     def total_amount_price
       amount_cents = scoped_active_tickets.total_revenue_cents
@@ -44,7 +62,7 @@ module V1
     # Flexible time-series analytics with hourly, daily, weekly, monthly grouping.
     #
     # Query params:
-    #   metric: tickets | scans | revenue | visitors | stamps | redemptions | redemption_value (required)
+    #   metric: tickets | scans | revenue | visitors | visitor_scans | stamps | redemptions | redemption_value (required)
     #   group_by: hour | day | week | month (optional, auto-detected from event duration)
     #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
     #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
@@ -182,6 +200,8 @@ module V1
           .time_series_sum(:created_at, '(ticket_types.price * 100.0)', range: range, group_by: group_by)
       when 'visitors'
         @event.visitors.time_series_count(:created_at, range: range, group_by: group_by)
+      when 'visitor_scans'
+        @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
       when 'stamps'
         VisitorVendorStamp.joins(:visitor)
                           .where(visitors: { event_id: @event.id })
