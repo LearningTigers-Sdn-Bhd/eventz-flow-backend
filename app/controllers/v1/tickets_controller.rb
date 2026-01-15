@@ -416,31 +416,12 @@ module V1
       render json: { error: 'Ticket not found' }, status: :not_found
     end
 
-    # 🔑 Strong parameters using Rails 8/modern syntax:
     def ticket_params
-      # Fields allowed for creation and general attendee updates.
-      allowed_params = [
-        :attendee_name,
-        :attendee_email,
-        :attendee_phone,
-        :ticket_type_id,
-        :payment_status,
-        :payment_screenshot_url,
-        :transaction_id,
-        :payment_method,
-        :skip_webhooks,
+      params.require(:ticket).permit(
+        :attendee_name, :attendee_email, :attendee_phone, :ticket_type_id,
+        :status, :payment_status, :payment_method, :transaction_id, :role,
         custom_fields_data: {}
-      ]
-
-      # Add fields often needed for staff/organizer updates or specific actions,
-      # but ensure the controller logic authorizes these updates (e.g., status/checked_in).
-      # We assume the controller handles setting user_id and order_id internally.
-      if action_name.in?(['update', 'destroy', 'check_in'])
-        allowed_params << :checked_in
-        allowed_params << :status
-      end
-
-      params.require(:ticket).permit(*allowed_params)
+      )
     end
   end
 end

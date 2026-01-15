@@ -10,7 +10,11 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
+<<<<<<< HEAD
 ActiveRecord::Schema[8.0].define(version: 2026_01_14_044845) do
+=======
+ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
+>>>>>>> 26a1cbd (feat: add role column in tickets and visitors)
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -792,6 +796,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_044845) do
     t.string "attendee_phone_norm"
     t.string "attendee_name_norm"
     t.datetime "deleted_at"
+    t.string "role"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
@@ -859,6 +864,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_044845) do
     t.boolean "checked_in", default: false, null: false
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
+    t.string "role"
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
     t.index ["scanned_by_id"], name: "index_visitors_on_scanned_by_id"

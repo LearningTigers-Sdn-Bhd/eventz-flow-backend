@@ -47,6 +47,7 @@ module V1
         combined << {
           type: 'ticket',
           scan_id: ticket.public_id,
+          role: ticket.role,
           name: ticket.attendee_name,
           email: ticket.attendee_email,
           phone: ticket.attendee_phone,
@@ -68,6 +69,7 @@ module V1
         combined << {
           type: 'visitor',
           scan_id: visitor.public_id,
+          role: visitor.role,
           name: visitor.full_name,
           email: visitor.email,
           phone: visitor.phone,
@@ -178,6 +180,7 @@ module V1
       if @record.is_a?(Ticket)
         base_response.merge!(
           id: @record.id,
+          role: @record.role,
           attendee_name: @record.attendee_name,
           attendee_email: @record.attendee_email,
           attendee_phone: @record.attendee_phone,
@@ -191,6 +194,7 @@ module V1
         # Visitor
         base_response.merge!(
           id: @record.id,
+          role: @record.role,
           full_name: @record.full_name,
           email: @record.email,
           phone: @record.phone,
