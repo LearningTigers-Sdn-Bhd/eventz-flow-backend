@@ -2,6 +2,8 @@ module ResourceFormatter
   extend ActiveSupport::Concern
 
   included do
+    # Include Active Storage URL helpers for proper URL generation
+    include Rails.application.routes.url_helpers
     def format_resource(resource, options = {})
       include_article = options.fetch(:include_article, false)
       include_author = options.fetch(:include_author, true)
@@ -76,10 +78,21 @@ module ResourceFormatter
       # Check if vips is available (variants won't work without it)
       vips_available = Resource.const_defined?(:VIPS_AVAILABLE) ? Resource::VIPS_AVAILABLE : false
 
+      # Get URL options from request context or use defaults
+      # Start with Rails default URL options (may be nil if not configured)
+      url_options = (Rails.application.routes.default_url_options || {}).dup
+      # Use request host if available (for dynamic host resolution)
+      # This ensures URLs work correctly in production when requests come from different origins
+      if respond_to?(:request) && request.present?
+        url_options[:host] = request.host
+        url_options[:protocol] = request.protocol.gsub('://', '')
+        url_options[:port] = request.port unless [80, 443].include?(request.port)
+      end
+
       unless vips_available
         # If vips is not available, return original URL for all sizes
         begin
-          original_url = url_for(resource.header_img)
+          original_url = rails_blob_url(resource.header_img, **url_options)
           return {
             thumbnail: original_url,
             medium: original_url,
@@ -95,16 +108,16 @@ module ResourceFormatter
       # Try to get variants if vips is available
       begin
         {
-          thumbnail: url_for(resource.header_img.variant(:thumbnail)),
-          medium: url_for(resource.header_img.variant(:medium)),
-          large: url_for(resource.header_img.variant(:large)),
-          original: url_for(resource.header_img)
+          thumbnail: rails_representation_url(resource.header_img.variant(:thumbnail), **url_options),
+          medium: rails_representation_url(resource.header_img.variant(:medium), **url_options),
+          large: rails_representation_url(resource.header_img.variant(:large), **url_options),
+          original: rails_blob_url(resource.header_img, **url_options)
         }
       rescue ActiveStorage::InvariableError, LoadError, NoMethodError, ArgumentError, ActiveRecord::RecordNotFound => e
         # If variant generation fails for any reason, fallback to original URL only
         Rails.logger.warn "Could not generate image variants for resource #{resource.id}: #{e.class} - #{e.message}"
         begin
-          original_url = url_for(resource.header_img)
+          original_url = rails_blob_url(resource.header_img, **url_options)
           {
             thumbnail: original_url,
             medium: original_url,
