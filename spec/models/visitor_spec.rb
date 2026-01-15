@@ -71,4 +71,24 @@ RSpec.describe Visitor, type: :model do
       expect(visitor.custom_fields_data).to eq({ "t-shirt" => "L", "meal" => "vegan" })
     end
   end
+
+  # --- Scopes ---
+  describe 'Scopes' do
+    let!(:checked_in_visitors) { create_list(:visitor, 2, event: event, checked_in: true) }
+    let!(:not_checked_in_visitors) { create_list(:visitor, 3, event: event, checked_in: false) }
+
+    describe '.checked_in' do
+      it 'returns only visitors who have checked in' do
+        expect(Visitor.checked_in.count).to eq(2)
+        expect(Visitor.checked_in).to match_array(checked_in_visitors)
+      end
+    end
+
+    describe '.unscanned' do
+      it 'returns only visitors who have not checked in' do
+        expect(Visitor.unscanned.count).to eq(3)
+        expect(Visitor.unscanned).to match_array(not_checked_in_visitors)
+      end
+    end
+  end
 end
