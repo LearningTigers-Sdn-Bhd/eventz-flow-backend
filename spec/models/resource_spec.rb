@@ -17,6 +17,7 @@ RSpec.describe Resource, type: :model do
     it { should belong_to(:resource_category) }
     it { should belong_to(:resource_media_type) }
     it { should have_many(:resource_changelogs).dependent(:destroy) }
+    it { should have_one_attached(:header_img) }
   end
 
   describe 'enums' do
@@ -150,6 +151,154 @@ RSpec.describe Resource, type: :model do
       result = Resource.featured_page_resources
       all_resources = result[:featured].to_a + result[:standard].to_a
       expect(all_resources.none? { |r| r.status == 'draft' }).to be true
+    end
+  end
+
+  describe 'image processing' do
+    let(:resource) { build(:resource) }
+
+    # Helper to check if vips is available
+    def vips_available?
+      @vips_available ||= begin
+        require 'vips'
+        defined?(Vips) && defined?(Vips::Image)
+      rescue LoadError, NameError
+        false
+      end
+    end
+
+    describe 'header_img validations' do
+      it 'accepts valid image formats (JPEG, PNG, WebP)' do
+        skip 'Vips not available' unless vips_available?
+
+        valid_formats = ['image/jpeg', 'image/png', 'image/webp']
+
+        valid_formats.each do |format|
+          resource = build(:resource)
+          file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), format)
+          resource.header_img.attach(file)
+
+          # Mock blob.persisted? to allow validation to run
+          allow(resource.header_img.blob).to receive(:persisted?).and_return(true)
+
+          # Mock blob.open to simulate file access
+          allow(resource.header_img.blob).to receive(:open).and_yield(
+            double('TempFile', path: Rails.root.join('spec/fixtures/test_image.png').to_s)
+          )
+
+          # Mock valid dimensions (only if vips is available)
+          if vips_available?
+            mock_image = double('Vips::Image', width: 2000, height: 1500)
+            allow(::Vips::Image).to receive(:new_from_file).and_return(mock_image)
+          end
+
+          resource.valid?
+          expect(resource.errors[:header_img]).to be_empty
+        end
+      end
+
+      it 'rejects invalid image formats' do
+        resource = build(:resource)
+        file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), 'image/gif')
+        resource.header_img.attach(file)
+
+        # Manually set the content_type on the blob to simulate an invalid format
+        resource.header_img.blob.update(content_type: 'image/gif')
+
+        resource.valid?
+        expect(resource.errors[:header_img]).to include('must be a JPEG, PNG, or WebP image')
+      end
+
+      it 'rejects images larger than 10MB' do
+        resource = build(:resource)
+        file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), 'image/png')
+        resource.header_img.attach(file)
+
+        # Mock the blob's byte_size
+        allow(resource.header_img.blob).to receive(:byte_size).and_return(11.megabytes)
+
+        resource.valid?
+        expect(resource.errors[:header_img]).to include('size must be less than 10MB')
+      end
+
+      it 'rejects images with dimensions larger than 4000x4000' do
+        skip 'Vips not available' unless vips_available?
+
+        resource = build(:resource)
+        file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), 'image/png')
+        resource.header_img.attach(file)
+
+        # Mock blob.persisted? to allow validation to run
+        allow(resource.header_img.blob).to receive(:persisted?).and_return(true)
+
+        # Mock blob.open to simulate file access
+        allow(resource.header_img.blob).to receive(:open).and_yield(
+          double('TempFile', path: Rails.root.join('spec/fixtures/test_image.png').to_s)
+        )
+
+        # Mock the Vips image dimensions
+        mock_image = double('Vips::Image', width: 5000, height: 3000)
+        allow(::Vips::Image).to receive(:new_from_file).and_return(mock_image)
+
+        resource.valid?
+        expect(resource.errors[:header_img]).to include(a_string_matching(/dimensions must be less than 4000x4000px/))
+      end
+
+      it 'accepts images with dimensions within 4000x4000' do
+        skip 'Vips not available' unless vips_available?
+
+        resource = build(:resource)
+        file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), 'image/png')
+        resource.header_img.attach(file)
+
+        # Mock blob.persisted? to allow validation to run
+        allow(resource.header_img.blob).to receive(:persisted?).and_return(true)
+
+        # Mock blob.open to simulate file access
+        allow(resource.header_img.blob).to receive(:open).and_yield(
+          double('TempFile', path: Rails.root.join('spec/fixtures/test_image.png').to_s)
+        )
+
+        # Mock valid dimensions
+        mock_image = double('Vips::Image', width: 2000, height: 1500)
+        allow(::Vips::Image).to receive(:new_from_file).and_return(mock_image)
+
+        resource.valid?
+        expect(resource.errors[:header_img]).to be_empty
+      end
+    end
+
+    describe 'image variants' do
+      let(:resource) { create(:resource) }
+
+      before do
+        skip 'Vips not available' unless vips_available?
+        file = fixture_file_upload(Rails.root.join('spec/fixtures/test_image.png'), 'image/png')
+        resource.header_img.attach(file)
+      end
+
+      it 'defines thumbnail variant (300x200) with WebP format' do
+        variant = resource.header_img.variant(:thumbnail)
+        expect(variant).to be_present
+        expect(variant.variation.transformations).to include(format: :webp)
+      end
+
+      it 'defines medium variant (800x533) with WebP format' do
+        variant = resource.header_img.variant(:medium)
+        expect(variant).to be_present
+        expect(variant.variation.transformations).to include(format: :webp)
+      end
+
+      it 'defines large variant (1600x1067) with WebP format' do
+        variant = resource.header_img.variant(:large)
+        expect(variant).to be_present
+        expect(variant.variation.transformations).to include(format: :webp)
+      end
+
+      it 'strips metadata from variants' do
+        variant = resource.header_img.variant(:thumbnail)
+        expect(variant.variation.transformations[:saver]).to include(strip: true)
+      end
     end
   end
 

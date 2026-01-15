@@ -1,4 +1,5 @@
 # app/models/resource.rb
+
 class Resource < ApplicationRecord
   belongs_to :user
   belongs_to :resource_topic
@@ -7,13 +8,49 @@ class Resource < ApplicationRecord
   has_many :resource_changelogs, dependent: :destroy
   has_many :resource_leads, dependent: :destroy
 
-  has_one_attached :header_img
+  # Check if vips is available before defining variants
+  # Variants are only useful if we can process them with vips
+  begin
+    require 'vips'
+    VIPS_AVAILABLE = true
+  rescue LoadError
+    VIPS_AVAILABLE = false
+    Rails.logger.warn "Vips library not available - image variants will not be defined"
+  end
+
+  has_one_attached :header_img do |attachable|
+    next unless VIPS_AVAILABLE
+
+    # Optimized variants with WebP conversion and metadata stripping
+    attachable.variant :thumbnail,
+      resize_to_limit: [300, 200],
+      format: :webp,
+      saver: { quality: 85, strip: true }
+
+    attachable.variant :medium,
+      resize_to_limit: [800, 533],
+      format: :webp,
+      saver: { quality: 85, strip: true }
+
+    attachable.variant :large,
+      resize_to_limit: [1600, 1067],
+      format: :webp,
+      saver: { quality: 90, strip: true }
+  end
 
   # Attribute to store the current user for changelog tracking
   attr_accessor :current_user_for_changelog
+  attr_accessor :_skip_header_img_validation
 
   validates :title, presence: true
   validates :slug, presence: true, uniqueness: true
+
+  before_validation :determine_if_header_img_changed
+
+  # Image validations - skip if header_img hasn't changed on update
+  validate :header_img_format, if: -> { header_img.attached? && !_skip_header_img_validation }
+  validate :header_img_size, if: -> { header_img.attached? && !_skip_header_img_validation }
+  validate :header_img_dimensions, if: -> { header_img.attached? && !_skip_header_img_validation }
 
   enum :status, { draft: 0, pending_review: 1, published: 2, rejected: 4 }
   # Alias in_review to pending_review for backward compatibility if any
@@ -81,6 +118,87 @@ class Resource < ApplicationRecord
   def generate_slug
     return if slug.present?
     self.slug = title.to_s.parameterize
+  end
+
+  def determine_if_header_img_changed
+    # Default: don't skip validation (validate by default)
+    self._skip_header_img_validation = false
+
+    return unless persisted? && header_img.attached?
+
+    # For existing records, try to determine if this is a new upload or existing attachment
+    begin
+      current_blob_id = header_img.blob.id
+      return unless current_blob_id # Can't check if blob has no ID
+
+      # Check if this blob is already attached to this record in the database
+      # If it is, this is the existing image and we should skip validation
+      existing_attachment = ActiveStorage::Attachment.find_by(
+        record_type: 'Resource',
+        record_id: id,
+        name: 'header_img'
+      )
+
+      if existing_attachment && existing_attachment.blob_id == current_blob_id
+        # This blob is already attached - it's the existing image, skip validation
+        self._skip_header_img_validation = true
+      end
+      # If no existing attachment or different blob_id, it's a new upload - validate it
+    rescue => e
+      # If we can't determine, validate to be safe
+      Rails.logger.warn "Could not determine if header_img changed: #{e.message}"
+      self._skip_header_img_validation = false
+    end
+  end
+
+  def header_img_format
+    acceptable_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    unless acceptable_types.include?(header_img.content_type)
+      errors.add(:header_img, 'must be a JPEG, PNG, or WebP image')
+    end
+  end
+
+  def header_img_size
+    # 10MB limit
+    max_size = 10.megabytes
+    if header_img.byte_size > max_size
+      errors.add(:header_img, "size must be less than #{max_size / 1.megabyte}MB")
+    end
+  end
+
+  def header_img_dimensions
+    # Skip validation if blob is not persisted yet (will be validated on save)
+    return unless header_img.blob.persisted?
+
+    begin
+      require 'vips'
+    rescue LoadError => e
+      # Vips library not available - skip dimension validation
+      Rails.logger.warn "Vips library not available, skipping dimension validation: #{e.message}"
+      return
+    end
+
+    begin
+      # Download and check dimensions using Vips
+      header_img.blob.open do |file|
+        image = ::Vips::Image.new_from_file(file.path)
+
+        max_width = 4000
+        max_height = 4000
+
+        if image.width > max_width || image.height > max_height
+          errors.add(:header_img, "dimensions must be less than #{max_width}x#{max_height}px (current: #{image.width}x#{image.height}px)")
+        end
+      end
+    rescue ::Vips::Error => e
+      errors.add(:header_img, "could not be processed - invalid image format")
+    rescue ActiveStorage::FileNotFoundError, Errno::ENOENT => e
+      # Blob file not yet available on disk - skip validation (will validate on save)
+      Rails.logger.debug "Blob file not yet available for validation: #{e.message}"
+      return
+    rescue => e
+      errors.add(:header_img, "could not be validated: #{e.message}")
+    end
   end
 
   def should_create_changelog?
