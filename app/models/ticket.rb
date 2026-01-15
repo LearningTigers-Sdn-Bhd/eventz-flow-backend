@@ -153,6 +153,7 @@ class Ticket < ApplicationRecord
       ticket: {
         id: self.id,
         public_id: self.public_id,
+        role: self.role,
         status: self.status,
         payment_status: self.payment_status,
         attendee_name: self.attendee_name,

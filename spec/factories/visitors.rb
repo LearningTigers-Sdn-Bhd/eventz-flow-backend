@@ -9,5 +9,7 @@ FactoryBot.define do
     age { 30 }
     phone { '+1234567890' }
     email { Faker::Internet.email }
+    role { "Attendee" }
+    custom_fields_data { {} }
   end
 end

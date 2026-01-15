@@ -18,16 +18,30 @@
 ## 🚀 Quick Start
 
 ```bash
-# Install dependencies
+# 1. Install system dependencies (optional - app works without it)
+# libvips enables optimized WebP image variants
+brew install vips  # macOS/Homebrew Linux
+# OR see docs/CROSS_PLATFORM_SETUP.md for other platforms
+
+# 2. Install Ruby dependencies
 bundle install
 
-# Setup database
+# 3. Setup environment (for image processing with Homebrew)
+# The app auto-detects Homebrew, but explicit setup ensures it works
+direnv allow  # If using direnv (recommended - auto-loads .envrc)
+# OR manually: source .envrc
+
+# 4. Setup database
 rails db:create db:migrate db:seed
 
-# Start the server
+# 5. Start the server
 rails server
 # → http://localhost:3000
 ```
+
+**Note**: The application works without libvips! Without it, images work normally but WebP variants won't be generated. The system automatically detects and adapts to vips availability.
+
+📚 **For detailed setup across all platforms:** [docs/CROSS_PLATFORM_SETUP.md](docs/CROSS_PLATFORM_SETUP.md)
 
 ---
 
@@ -42,6 +56,7 @@ rails server
 | **Authentication** | JWT + BCrypt |
 | **Authorization** | Pundit |
 | **Serialization** | Fast JSON API |
+| **Image Processing** | libvips + image_processing gem |
 | **Testing** | RSpec + FactoryBot + Faker |
 | **API Docs** | Rswag (OpenAPI/Swagger) |
 

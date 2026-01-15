@@ -116,8 +116,8 @@ RSpec.describe 'V1::Imports', type: :request do
           package = Axlsx::Package.new
           workbook = package.workbook
           workbook.add_worksheet(name: "Tickets") do |sheet|
-            sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In', 'Role']
-            sheet.add_row ['Test Import User', 'import.test@example.com', '+1234567890', 'Import Test Event', 'GA', '', '', 'pending', 'false', 'Delegate']
+            sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+            sheet.add_row ['Test Import User', 'import.test@example.com', '+1234567890', 'Import Test Event', 'GA', 'Delegate', '', '', 'pending', 'false']
           end
 
           temp_file = Tempfile.new(['test_import', '.xlsx'])
@@ -161,9 +161,9 @@ RSpec.describe 'V1::Imports', type: :request do
           package = Axlsx::Package.new
           workbook = package.workbook
           workbook.add_worksheet(name: 'Tickets') do |sheet|
-            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
-            # Empty Role cell
-            sheet.add_row ['Empty Role User','emptyrole@example.com','+1000000000', organizer_event.title, 'GA', '', '', 'pending', 'false', '']
+            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Role','Public ID','QR Code','Payment Status','Checked In', 'Company']
+            # Empty Role cell and empty Company cell
+            sheet.add_row ['Empty Role User','emptyrole@example.com','+1000000000', organizer_event.title, 'GA', '', '', '', 'pending', 'false', '']
           end
           tmp = Tempfile.new(['import_empty_role', '.xlsx'])
           package.serialize(tmp.path)
@@ -178,8 +178,10 @@ RSpec.describe 'V1::Imports', type: :request do
           expect(created).to be_an(Array)
           first = created.find { |r| r['attendee_email'] == 'emptyrole@example.com' }
           expect(first).to be_present
-          # In header style, key should be machine key 'role' with empty string value
+          # Top-level role should be empty
           expect(first).to include('role' => '')
+          # In header style, custom field key should be machine key 'company' with empty string value
+          expect(first).to include('company' => '')
         end
       end
 
@@ -199,9 +201,8 @@ RSpec.describe 'V1::Imports', type: :request do
           package = Axlsx::Package.new
           workbook = package.workbook
           workbook.add_worksheet(name: 'Tickets') do |sheet|
-            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Public ID','QR Code','Payment Status','Checked In','Role']
-            # Empty Role cell
-            sheet.add_row ['Empty LabelN User','emptylabeln@example.com','+1000000001', organizer_event.title, 'GA', '', '', 'pending', 'false', '']
+            sheet.add_row ['Attendee Name','Attendee Email','Attendee Phone','Event Title','Ticket Type','Role','Public ID','QR Code','Payment Status','Checked In', 'Company']
+            sheet.add_row ['Empty Labeln User','emptylabeln@example.com','+100000001', organizer_event.title, 'GA', '', '', '', 'pending', 'false', '']
           end
           tmp = Tempfile.new(['import_empty_labeln', '.xlsx'])
           package.serialize(tmp.path)
@@ -216,7 +217,9 @@ RSpec.describe 'V1::Imports', type: :request do
           expect(created).to be_an(Array)
           first = created.find { |r| r['attendee_email'] == 'emptylabeln@example.com' }
           expect(first).to be_present
-          # In Label N style, key should be 'Label 1' with empty string value (first custom column)
+          # Top-level role should be empty
+          expect(first).to include('role' => '')
+          # In Label N style, key should be 'Label 1' with empty string value
           expect(first).to include('Label 1' => '')
         end
       end
@@ -341,10 +344,14 @@ RSpec.describe 'V1::Imports', type: :request do
       package = Axlsx::Package.new
       workbook = package.workbook
       workbook.add_worksheet(name: "Tickets") do |sheet|
-        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
         header_row.concat(custom_columns)
         sheet.add_row header_row
-        rows.each { |r| sheet.add_row r }
+        rows.each do |r|
+          new_row = r.dup
+          new_row.insert(5, 'Delegate') if r.length == 9 + custom_columns.length
+          sheet.add_row new_row
+        end
       end
       tmp = Tempfile.new(['import_labels', '.xlsx'])
       package.serialize(tmp.path)
@@ -474,8 +481,12 @@ RSpec.describe 'V1::Imports', type: :request do
       package = Axlsx::Package.new
       workbook = package.workbook
       workbook.add_worksheet(name: "Tickets") do |sheet|
-        sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
-        rows.each { |r| sheet.add_row r }
+        sheet.add_row ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        rows.each do |r|
+          new_row = r.dup
+          new_row.insert(5, 'Delegate') if r.length == 9
+          sheet.add_row new_row
+        end
       end
       tmp = Tempfile.new(['import_paid', '.xlsx'])
       package.serialize(tmp.path)
@@ -488,10 +499,14 @@ RSpec.describe 'V1::Imports', type: :request do
       package = Axlsx::Package.new
       workbook = package.workbook
       workbook.add_worksheet(name: "Tickets") do |sheet|
-        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
         header_row.concat(custom_columns)
         sheet.add_row header_row
-        rows.each { |r| sheet.add_row r }
+        rows.each do |r|
+          new_row = r.dup
+          new_row.insert(5, 'Delegate') if r.length == 9 + custom_columns.length
+          sheet.add_row new_row
+        end
       end
       tmp = Tempfile.new(['import_labels', '.xlsx'])
       package.serialize(tmp.path)
@@ -672,10 +687,14 @@ RSpec.describe 'V1::Imports', type: :request do
       package = Axlsx::Package.new
       workbook = package.workbook
       workbook.add_worksheet(name: "Tickets") do |sheet|
-        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
+        header_row = ['Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title', 'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status', 'Checked In']
         header_row.concat(custom_columns)
         sheet.add_row header_row
-        rows.each { |r| sheet.add_row r }
+        rows.each do |r|
+          new_row = r.dup
+          new_row.insert(5, 'Delegate') if r.length == 9 + custom_columns.length
+          sheet.add_row new_row
+        end
       end
       tmp = Tempfile.new(['import_labels_style', '.xlsx'])
       package.serialize(tmp.path)

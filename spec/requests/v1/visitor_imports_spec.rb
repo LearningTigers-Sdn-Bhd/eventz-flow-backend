@@ -68,8 +68,8 @@ RSpec.describe 'V1::Imports - Visitors', type: :request do
           package = Axlsx::Package.new
           workbook = package.workbook
           workbook.add_worksheet(name: "Visitors") do |sheet|
-            sheet.add_row ['Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Event Title', 'Company']
-            sheet.add_row ['Test Visitor', 'visitor@example.com', '+1234567890', 'male', 30, organizer_event.title, 'Acme Inc']
+            sheet.add_row ['Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Role', 'Event Title', 'Company']
+            sheet.add_row ['Test Visitor', 'visitor@example.com', '+1234567890', 'male', 30, 'Visitor', organizer_event.title, 'Acme Inc']
           end
 
           temp_file = Tempfile.new(['test_visitor_import', '.xlsx'])
@@ -126,10 +126,19 @@ RSpec.describe 'V1::Imports - Visitors', type: :request do
       package = Axlsx::Package.new
       workbook = package.workbook
       workbook.add_worksheet(name: "Visitors") do |sheet|
-        header_row = ['Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Event Title']
+        header_row = ['Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Role', 'Event Title']
         header_row.concat(custom_columns)
         sheet.add_row header_row
-        rows.each { |r| sheet.add_row r }
+        # Adjust rows to include nil/empty Role if not provided (assuming rows passed don't have it yet, need to check usages)
+        # Actually, let's just insert a default Role 'Visitor' into the rows before writing
+        rows.each do |r| 
+          # r is [Name, Email, Phone, Gender, Age, EventTitle]
+          # We need [Name, Email, Phone, Gender, Age, Role, EventTitle]
+          # Insert Role at index 5
+          new_row = r.dup
+          new_row.insert(5, 'Visitor')
+          sheet.add_row new_row
+        end
       end
       tmp = Tempfile.new(['import_visitors', '.xlsx'])
       package.serialize(tmp.path)
