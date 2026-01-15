@@ -84,12 +84,37 @@ namespace :db do
       def attach_header_image(resource, filename)
         file_path = Rails.root.join('public', 'post', filename)
         if File.exist?(file_path)
-          resource.header_img.attach(
-            io: File.open(file_path),
-            filename: filename,
-            content_type: "image/#{File.extname(filename).delete('.')}"
-          )
-          puts "    ✓ Attached image: #{filename}"
+          # Map file extensions to correct MIME types
+          ext = File.extname(filename).delete('.').downcase
+          content_type_map = {
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp'
+          }
+          content_type = content_type_map[ext] || "image/#{ext}"
+
+          begin
+            # Remove existing attachment if present
+            resource.header_img.purge if resource.header_img.attached?
+
+            resource.header_img.attach(
+              io: File.open(file_path),
+              filename: filename,
+              content_type: content_type
+            )
+
+            # Save the resource to persist the attachment and run validations
+            resource.save!
+            puts "    ✓ Attached image: #{filename} (#{content_type})"
+          rescue => e
+            puts "    ❌ Error attaching #{filename}: #{e.message}"
+            if resource.errors.any?
+              puts "       Validation errors: #{resource.errors.full_messages.join(', ')}"
+            end
+            puts "       #{e.backtrace.first(3).join("\n       ")}"
+          end
         else
           puts "    ⚠️  Image not found: #{file_path}"
         end
@@ -138,6 +163,10 @@ namespace :db do
         attach_header_image(post_1, "Eventzflow.jpg")
         puts "  ✓ Created: #{post_1_title}"
       else
+        # Reattach image if missing (useful after db:reset)
+        unless post_1.header_img.attached?
+          attach_header_image(post_1, "Eventzflow.jpg")
+        end
         puts "  → Already exists: #{post_1_title}"
       end
 
@@ -187,6 +216,9 @@ namespace :db do
         attach_header_image(post_2, "Event-Planning.jpg")
         puts "  ✓ Created: #{post_2_title}"
       else
+        unless post_2.header_img.attached?
+          attach_header_image(post_2, "Event-Planning.jpg")
+        end
         puts "  → Already exists: #{post_2_title}"
       end
 
@@ -240,6 +272,9 @@ namespace :db do
         attach_header_image(post_3, "Lucky-Draw.png")
         puts "  ✓ Created: #{post_3_title}"
       else
+        unless post_3.header_img.attached?
+          attach_header_image(post_3, "Lucky-Draw.png")
+        end
         puts "  → Already exists: #{post_3_title}"
       end
 
@@ -289,6 +324,9 @@ namespace :db do
         attach_header_image(post_4, "Event-Exhibition.jpg")
         puts "  ✓ Created: #{post_4_title}"
       else
+        unless post_4.header_img.attached?
+          attach_header_image(post_4, "Event-Exhibition.jpg")
+        end
         puts "  → Already exists: #{post_4_title}"
       end
 
@@ -338,6 +376,9 @@ namespace :db do
         attach_header_image(post_5, "Event-Ticket.png")
         puts "  ✓ Created: #{post_5_title}"
       else
+        unless post_5.header_img.attached?
+          attach_header_image(post_5, "Event-Ticket.png")
+        end
         puts "  → Already exists: #{post_5_title}"
       end
 
@@ -387,6 +428,9 @@ namespace :db do
         attach_header_image(post_6, "Whatsapp-Automation.jpg")
         puts "  ✓ Created: #{post_6_title}"
       else
+        unless post_6.header_img.attached?
+          attach_header_image(post_6, "Whatsapp-Automation.jpg")
+        end
         puts "  → Already exists: #{post_6_title}"
       end
 
@@ -436,6 +480,9 @@ namespace :db do
         attach_header_image(post_7, "Business-Matching.jpg")
         puts "  ✓ Created: #{post_7_title}"
       else
+        unless post_7.header_img.attached?
+          attach_header_image(post_7, "Business-Matching.jpg")
+        end
         puts "  → Already exists: #{post_7_title}"
       end
 
