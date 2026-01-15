@@ -1,6 +1,50 @@
 # lib/tasks/seed_resources.rake
 namespace :db do
   namespace :seed do
+    desc "Reset and re-seed resources data (deletes all resource data then seeds fresh)"
+    task reset_resources: :environment do
+      puts "\n" + "=" * 80
+      puts "RESETTING RESOURCE CMS DATA"
+      puts "=" * 80
+
+      # Prevent destructive operations in production/staging
+      if Rails.env.production? || Rails.env.staging?
+        puts "\n🚫 ERROR: Resource reset is DISABLED in production and staging environments!"
+        puts "   This task contains destructive operations (delete_all) and should"
+        puts "   only run in development environment."
+        puts "=" * 80
+        exit(1)
+      end
+
+      puts "\n--- Deleting existing resource data ---"
+
+      # Delete in reverse dependency order to respect foreign key constraints
+      ActiveRecord::Base.connection.disable_referential_integrity do
+        # Delete dependent records first
+        ResourceLead.delete_all
+        ResourceChangelog.delete_all
+
+        # Delete main resource records (this will also purge attached images)
+        Resource.find_each do |resource|
+          resource.header_img.purge if resource.header_img.attached?
+        end
+        Resource.delete_all
+
+        # Delete lookup/reference tables
+        ResourceWritePermission.delete_all
+        ResourceTopic.delete_all
+        ResourceCategory.delete_all
+        ResourceMediaType.delete_all
+      end
+
+      puts "✓ All resource data deleted"
+      puts "\n--- Re-seeding resources ---"
+
+      # Re-run the resources seeder
+      Rake::Task['db:seed:resources'].reenable
+      Rake::Task['db:seed:resources'].invoke
+    end
+
     desc "Seed only resources data (topics, categories, media types, write permissions, and professional posts)"
     task resources: :environment do
       puts "\n" + "=" * 80
