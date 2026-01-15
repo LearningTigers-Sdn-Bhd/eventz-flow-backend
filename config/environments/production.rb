@@ -83,6 +83,13 @@ Rails.application.configure do
   # Allow Action Cable access from the frontend domain
   config.action_cable.allowed_request_origins = [ "https://eventzflow.com", "https://www.eventzflow.com" ]
 
+  # Set default URL options for Action Controller (needed for Active Storage URL generation)
+  # This ensures url_for generates absolute URLs with the correct host
+  config.action_controller.default_url_options = {
+    host: ENV.fetch("RAILS_HOST", "api.eventzflow.com"),
+    protocol: "https"
+  }
+
   # Enable DNS rebinding protection and other `Host` header attacks.
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
