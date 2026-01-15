@@ -40,6 +40,8 @@ module V1
             unscanned_tickets: 0,
             total_revenue: 0,
             total_visitors: event.visitors.count,
+            scanned_visitors: event.visitors.checked_in.count,
+            unscanned_visitors: event.visitors.unscanned.count,
             total_stamps: VisitorVendorStamp.joins(:visitor).where(visitors: { event_id: event.id }).count,
             last_activity: event.updated_at
           }

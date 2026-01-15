@@ -15,6 +15,7 @@ class Visitor < ApplicationRecord
 
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
+  scope :unscanned, -> { where(checked_in: false) }
 
   # --- Validations ---
   validates :event_id, presence: true
