@@ -7,9 +7,11 @@ class ApplicationController < ActionController::API
 	include ActionController::Cookies
 	include ActionController::MimeResponds
 
-
 	# --- Pundit Authorization ---
 	include Pundit::Authorization
+	
+	# --- Pagy Pagination ---
+	include Pagy::Method
 
 	# --- CSRF Protection (Disabled for API)---
 	# include ActionController::RequestForgeryProtection
@@ -27,6 +29,11 @@ class ApplicationController < ActionController::API
 	rescue_from CustomError::NotFound, with: :handle_not_found
 	rescue_from CustomError::UnprocessableEntity, with: :handle_unprocessable_entity
 	rescue_from ActiveRecord::RecordNotFound, with: :handle_not_found
+	
+	# --- Pagy Error Handling ---
+	# Pagy 43+ uses OptionError for invalid parameters (limit, page, etc.)
+	# Overflow is handled by configuration (:empty_page), so no error is raised.
+	rescue_from Pagy::OptionError, with: :handle_pagy_option_error
 
 	# --- Accessors --
 	attr_reader :current_user
@@ -34,7 +41,7 @@ class ApplicationController < ActionController::API
 	private
 
 	# Standard API response format
-	def success_response(data: nil, message: 'Success', status: :ok, meta: {})
+	def success_response(data: nil, message: 'Success', status: :ok, meta: {}, pagination: nil)
 		response_body = {
 			success: true,
 			message: message
@@ -42,6 +49,7 @@ class ApplicationController < ActionController::API
 
 		response_body[:data] = data if data.present?
 		response_body[:meta] = meta if meta.present?
+		response_body[:pagination] = pagination if pagination.present?
 
 		render json: response_body, status: status
 	end
@@ -80,6 +88,14 @@ class ApplicationController < ActionController::API
 		Rails.logger.error "Validation Error: #{e.message}"
 		error_response(message: 'Validation Error', errors: format_validation_errors(e.record), status: :unprocessable_content)
 	end
+	
+	# Pagy Handlers
+	def handle_pagy_option_error(exception)
+		render json: {
+			error: 'invalid_pagination_params',
+			message: exception.message
+		}, status: :bad_request
+	end
 
 	# Format ActiveRecord validation errors
 	def format_validation_errors(record)
@@ -90,20 +106,32 @@ class ApplicationController < ActionController::API
 		end
 	end
 
-	# Pagination helpers
-	def pagination_meta(collection)
-		{
-			pagination: {
-				current_page: collection.current_page,
-				per_page: collection.per_page,
-				total_pages: collection.total_pages,
-				total_count: collection.total_count
-			}
-		}
-	end
-
 	# Request logging
 	def log_request_info
 		Rails.logger.info "#{request.method} #{request.path} - Params: #{params.except(:controller, :action)}"
+	end
+
+	# Generate pagination metadata for API responses
+	def pagy_metadata(pagy)
+		{
+			current_page: pagy.page,
+			total_pages: pagy.pages,
+			total_count: pagy.count,
+			per_page: pagy.limit,
+			prev_page: pagy.previous,
+			next_page: pagy.next,
+			first_page: 1,
+			last_page: pagy.pages,
+			from: pagy.from,
+			to: pagy.to
+		}
+	end
+
+	# Sanitize pagination parameters
+	def pagination_params
+		params.slice(:page, :per_page).permit(:page, :per_page).tap do |p|
+			p[:page] = [p[:page].to_i, 1].max if p[:page].present?
+			p[:per_page] = [[p[:per_page].to_i, 100].min, 1].max if p[:per_page].present?
+		end
 	end
 end

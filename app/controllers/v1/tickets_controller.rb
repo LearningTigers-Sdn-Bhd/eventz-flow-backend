@@ -416,7 +416,6 @@ module V1
       render json: { error: 'Ticket not found' }, status: :not_found
     end
 
-    # 🔑 Strong parameters using Rails 8/modern syntax:
     def ticket_params
       # Fields allowed for creation and general attendee updates.
       allowed_params = [
@@ -428,14 +427,14 @@ module V1
         :payment_screenshot_url,
         :transaction_id,
         :payment_method,
+        :role,
         :skip_webhooks,
         custom_fields_data: {}
       ]
 
       # Add fields often needed for staff/organizer updates or specific actions,
-      # but ensure the controller logic authorizes these updates (e.g., status/checked_in).
-      # We assume the controller handles setting user_id and order_id internally.
-      if action_name.in?(['update', 'destroy', 'check_in'])
+      # but ensure the controller logic authorizes these updates (handled by Pundit).
+      if action_name.in?(['update', 'destroy', 'global_check_in', 'self_check_in', 'unscan'])
         allowed_params << :checked_in
         allowed_params << :status
       end

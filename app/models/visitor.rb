@@ -106,6 +106,7 @@ class Visitor < ApplicationRecord
       visitor: {
         id: self.id,
         public_id: self.public_id,
+        role: self.role,
         full_name: self.full_name,
         email: self.email,
         phone: self.phone,

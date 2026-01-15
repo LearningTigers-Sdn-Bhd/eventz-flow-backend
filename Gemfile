@@ -96,3 +96,5 @@ group :development do
   gem 'letter_opener_web'
 end
 gem "sidekiq-cron", "~> 2.3"
+
+gem "pagy", "~> 43.2"

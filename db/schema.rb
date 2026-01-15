@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -619,6 +619,117 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.index ["user_id"], name: "index_rentable_items_on_user_id"
   end
 
+  create_table "resource_categories", force: :cascade do |t|
+    t.string "name"
+    t.string "slug", null: false
+    t.text "description"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_categories_on_deleted_at"
+    t.index ["slug"], name: "index_resource_categories_on_slug", unique: true
+  end
+
+  create_table "resource_changelogs", force: :cascade do |t|
+    t.bigint "resource_id", null: false
+    t.bigint "changed_by_user_id", null: false
+    t.string "title"
+    t.text "article"
+    t.string "slug"
+    t.string "meta_description"
+    t.bigint "resource_topic_id"
+    t.bigint "resource_category_id"
+    t.bigint "resource_media_type_id"
+    t.integer "status"
+    t.datetime "published_at"
+    t.integer "view_counts"
+    t.integer "priority"
+    t.boolean "is_gated"
+    t.boolean "is_official"
+    t.text "rejection_reason"
+    t.datetime "changed_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["changed_at"], name: "index_resource_changelogs_on_changed_at"
+    t.index ["changed_by_user_id"], name: "index_resource_changelogs_on_changed_by_user_id"
+    t.index ["resource_id"], name: "index_resource_changelogs_on_resource_id"
+  end
+
+  create_table "resource_leads", force: :cascade do |t|
+    t.string "email"
+    t.string "name"
+    t.string "phone"
+    t.string "company_name"
+    t.string "state"
+    t.string "country"
+    t.string "job_title"
+    t.string "ip_address"
+    t.datetime "accessed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "resource_id", null: false
+    t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
+  end
+
+  create_table "resource_media_types", force: :cascade do |t|
+    t.string "name"
+    t.string "slug", null: false
+    t.text "description"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_media_types_on_deleted_at"
+    t.index ["slug"], name: "index_resource_media_types_on_slug", unique: true
+  end
+
+  create_table "resource_topics", force: :cascade do |t|
+    t.string "name"
+    t.string "slug", null: false
+    t.text "description"
+    t.string "logo"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resource_topics_on_deleted_at"
+    t.index ["slug"], name: "index_resource_topics_on_slug", unique: true
+  end
+
+  create_table "resource_write_permissions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.boolean "is_official", default: false
+    t.integer "status", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_resource_write_permissions_on_user_id", unique: true
+  end
+
+  create_table "resources", force: :cascade do |t|
+    t.string "title"
+    t.text "article"
+    t.string "slug", null: false
+    t.string "meta_description"
+    t.bigint "user_id", null: false
+    t.bigint "resource_topic_id", null: false
+    t.bigint "resource_category_id", null: false
+    t.bigint "resource_media_type_id", null: false
+    t.integer "status", default: 0
+    t.datetime "published_at"
+    t.datetime "deleted_at"
+    t.integer "view_counts", default: 0
+    t.integer "priority", default: 10
+    t.boolean "is_gated", default: false
+    t.boolean "is_official", default: false
+    t.text "rejection_reason"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deleted_at"], name: "index_resources_on_deleted_at"
+    t.index ["resource_category_id"], name: "index_resources_on_resource_category_id"
+    t.index ["resource_media_type_id"], name: "index_resources_on_resource_media_type_id"
+    t.index ["resource_topic_id"], name: "index_resources_on_resource_topic_id"
+    t.index ["slug"], name: "index_resources_on_slug", unique: true
+    t.index ["user_id"], name: "index_resources_on_user_id"
+  end
+
   create_table "sponsors", force: :cascade do |t|
     t.bigint "group_id", null: false
     t.string "name", null: false
@@ -681,6 +792,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.string "attendee_phone_norm"
     t.string "attendee_name_norm"
     t.datetime "deleted_at"
+    t.string "role"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
@@ -748,6 +860,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
     t.boolean "checked_in", default: false, null: false
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
+    t.string "role"
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
     t.index ["scanned_by_id"], name: "index_visitors_on_scanned_by_id"
@@ -888,6 +1001,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_12_022052) do
   add_foreign_key "printing_services", "users"
   add_foreign_key "rentable_items", "item_categories"
   add_foreign_key "rentable_items", "users"
+  add_foreign_key "resource_changelogs", "resources"
+  add_foreign_key "resource_changelogs", "users", column: "changed_by_user_id"
+  add_foreign_key "resource_leads", "resources"
+  add_foreign_key "resource_write_permissions", "users"
+  add_foreign_key "resources", "resource_categories"
+  add_foreign_key "resources", "resource_media_types"
+  add_foreign_key "resources", "resource_topics"
+  add_foreign_key "resources", "users"
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "ticket_types", "events"
