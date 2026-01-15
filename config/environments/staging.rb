@@ -88,6 +88,13 @@ Rails.application.configure do
     /https:\/\/staging.*\.eventzflow\.com/
   ]
 
+  # Set default URL options for Action Controller (needed for Active Storage URL generation)
+  # This ensures url_for generates absolute URLs with the correct host
+  config.action_controller.default_url_options = {
+    host: ENV.fetch("RAILS_HOST", "staging-api.eventzflow.com"),
+    protocol: ENV.fetch("RAILS_PROTOCOL", "https")
+  }
+
   # Enable DNS rebinding protection and other `Host` header attacks.
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
