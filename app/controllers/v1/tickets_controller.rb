@@ -417,11 +417,29 @@ module V1
     end
 
     def ticket_params
-      params.require(:ticket).permit(
-        :attendee_name, :attendee_email, :attendee_phone, :ticket_type_id,
-        :status, :payment_status, :payment_method, :transaction_id, :role,
+      # Fields allowed for creation and general attendee updates.
+      allowed_params = [
+        :attendee_name,
+        :attendee_email,
+        :attendee_phone,
+        :ticket_type_id,
+        :payment_status,
+        :payment_screenshot_url,
+        :transaction_id,
+        :payment_method,
+        :role,
+        :skip_webhooks,
         custom_fields_data: {}
-      )
+      ]
+
+      # Add fields often needed for staff/organizer updates or specific actions,
+      # but ensure the controller logic authorizes these updates (handled by Pundit).
+      if action_name.in?(['update', 'destroy', 'global_check_in', 'self_check_in', 'unscan'])
+        allowed_params << :checked_in
+        allowed_params << :status
+      end
+
+      params.require(:ticket).permit(*allowed_params)
     end
   end
 end
