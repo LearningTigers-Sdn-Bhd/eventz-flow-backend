@@ -12,7 +12,7 @@ module V1
       # GET /v1/public/events/:id
       # Returns basic event information (limited fields for public display)
       def show
-        @event = Event.friendly.find(params[:id])
+        @event = Event.friendly.find(params[:slug])
 
         # Return only public-safe event information
         success_response(
