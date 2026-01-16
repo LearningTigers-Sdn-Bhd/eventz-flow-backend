@@ -3,13 +3,14 @@ require 'rails_helper'
 RSpec.describe RouletteSessionPolicy, type: :policy do
   subject(:policy) { described_class }
 
+  let(:event) { create(:event) }
   let(:org_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
   let(:exhibitor) { create(:user, :exhibitor) }
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
-  let(:session_owned) { create(:roulette_session, user: owner) }
+  let(:session_owned) { create(:roulette_session, event: event, user: owner) }
 
   permissions :show? do
     it 'allows org_owner' do
@@ -64,13 +65,17 @@ RSpec.describe RouletteSessionPolicy, type: :policy do
   end
 
   describe 'Scope' do
-    let!(:session1) { create(:roulette_session, user: owner) }
-    let!(:session2) { create(:roulette_session, user: other_user) }
+    let(:event1) { create(:event) }
+    let(:event2) { create(:event) }
+    let!(:session1) { create(:roulette_session, event: event1, user: owner) }
+    let!(:session2) { create(:roulette_session, event: event2, user: other_user) }
     let!(:assigned_session) do
-      s = create(:roulette_session, user: other_user)
+      s = create(:roulette_session, event: event2, user: other_user)
       create(:roulette_assign, roulette_session: s, user: exhibitor)
       s
     end
+
+    let!(:exhibitor_owned) { create(:roulette_session, event: event1, user: exhibitor) }
 
     it 'returns all sessions for org_owner' do
       scope = described_class::Scope.new(org_owner, RouletteSession.all).resolve
@@ -78,9 +83,8 @@ RSpec.describe RouletteSessionPolicy, type: :policy do
     end
 
     it 'returns owned and assigned sessions for exhibitor' do
-      owned = create(:roulette_session, user: exhibitor)
       scope = described_class::Scope.new(exhibitor, RouletteSession.all).resolve
-      expect(scope).to include(owned, assigned_session)
+      expect(scope).to include(exhibitor_owned, assigned_session)
       expect(scope).not_to include(session1, session2)
     end
   end

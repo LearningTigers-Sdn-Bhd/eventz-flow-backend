@@ -1,5 +1,6 @@
 class RouletteSession < ApplicationRecord
   # --- Associations ---
+  belongs_to :event
   belongs_to :user
   has_many :roulette_assigns, dependent: :destroy
   has_many :assigned_users, through: :roulette_assigns, source: :user
@@ -14,9 +15,12 @@ class RouletteSession < ApplicationRecord
   # draw_styles structure: { style: "wheel|slot|box", theme: "wireframe|colorful|cartoon" }
 
   # --- Validations ---
+  validates :event_id, presence: true
   validates :user_id, presence: true
   validates :title, presence: true
+  validates :draw_counts, presence: true, numericality: { greater_than_or_equal_to: 1 }
   validate :validate_draw_styles_structure
+  validate :validate_draw_counts
   validate :acceptable_logo
   validate :acceptable_background_image
 
@@ -78,6 +82,22 @@ class RouletteSession < ApplicationRecord
 
     if theme.present? && !valid_themes.include?(theme)
       errors.add(:draw_styles, "theme must be one of: #{valid_themes.join(', ')}")
+    end
+  end
+
+  def validate_draw_counts
+    return if draw_counts.nil?
+
+    if is_multiple
+      # When multiple is enabled, draw_counts must be >= 1
+      if draw_counts < 1
+        errors.add(:draw_counts, 'must be greater than or equal to 1 when multiple draws are enabled')
+      end
+    else
+      # When multiple is disabled, draw_counts should be 1
+      if draw_counts != 1
+        errors.add(:draw_counts, 'must be 1 when multiple draws are disabled')
+      end
     end
   end
 end

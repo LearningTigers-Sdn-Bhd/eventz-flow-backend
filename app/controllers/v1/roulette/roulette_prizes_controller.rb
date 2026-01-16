@@ -1,10 +1,11 @@
 module V1
   module Roulette
     class RoulettePrizesController < ApplicationController
+      before_action :set_event
       before_action :set_session
       before_action :set_prize, only: [:show, :update, :destroy]
 
-      # GET /v1/roulette/sessions/:session_id/prizes
+      # GET /v1/events/:event_id/roulette/sessions/:session_id/prizes
       def index
         authorize @session, :show?
         @prizes = @session.roulette_prizes.ordered.includes(:roulette_winners)
@@ -86,8 +87,12 @@ module V1
 
       private
 
+      def set_event
+        @event = Event.friendly.find(params[:event_id])
+      end
+
       def set_session
-        @session = RouletteSession.find(params[:session_id])
+        @session = @event.roulette_sessions.find(params[:session_id])
       end
 
       def set_prize

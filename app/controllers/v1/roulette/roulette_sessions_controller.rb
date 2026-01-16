@@ -1,11 +1,14 @@
 module V1
   module Roulette
     class RouletteSessionsController < ApplicationController
+      before_action :set_event
       before_action :set_session, only: [:show, :update, :destroy, :background_manager]
 
-      # GET /v1/roulette/sessions
+      # GET /v1/events/:event_id/roulette/sessions
       def index
-        @sessions = policy_scope(RouletteSession).ordered
+        authorize @event, :show?
+
+        @sessions = @event.roulette_sessions.ordered
 
         success_response(
           data: @sessions.map { |s| format_session_response(s) },
@@ -13,7 +16,7 @@ module V1
         )
       end
 
-      # GET /v1/roulette/sessions/:id
+      # GET /v1/events/:event_id/roulette/sessions/:id
       def show
         authorize @session
         success_response(
@@ -22,9 +25,11 @@ module V1
         )
       end
 
-      # POST /v1/roulette/sessions
+      # POST /v1/events/:event_id/roulette/sessions
       def create
-        @session = current_user.roulette_sessions.build(session_params)
+        params_hash = session_params.merge(user: current_user)
+        params_hash[:draw_counts] ||= 1 if params_hash[:draw_counts].nil?
+        @session = @event.roulette_sessions.build(params_hash)
         authorize @session
 
         # Handle logo upload via Active Storage
@@ -159,23 +164,33 @@ module V1
 
       private
 
+      def set_event
+        @event = Event.friendly.find(params[:event_id])
+      end
+
       def set_session
-        @session = RouletteSession.find(params[:id])
+        @session = @event.roulette_sessions.find(params[:id])
       end
 
       def session_params
-        params.permit(:title, :is_multiple, draw_styles: {}, wrapper_background: {})
+        permitted = params.permit(:title, :draw_date, :is_multiple, :draw_counts, draw_styles: {}, wrapper_background: {})
+        # Ensure draw_counts defaults to 1 if not provided
+        permitted[:draw_counts] ||= 1 if permitted[:draw_counts].nil?
+        permitted
       end
 
       def format_session_response(session)
         {
           id: session.id,
+          event_id: session.event_id,
           user_id: session.user_id,
           title: session.title,
+          draw_date: session.draw_date&.iso8601,
           logo_url: session.logo.attached? ? url_for(session.logo) : nil,
           draw_styles: session.draw_styles || {},
           wrapper_background: format_wrapper_background(session),
           is_multiple: session.is_multiple,
+          draw_counts: session.draw_counts || 1,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }

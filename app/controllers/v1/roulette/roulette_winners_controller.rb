@@ -1,9 +1,11 @@
 module V1
   module Roulette
     class RouletteWinnersController < ApplicationController
+      before_action :set_event
       before_action :set_session
+      before_action :set_winner, only: [:destroy]
 
-      # GET /v1/roulette/sessions/:session_id/winners
+      # GET /v1/events/:event_id/roulette/sessions/:session_id/winners
       def index
         authorize @session, :show?
         @winners = @session.roulette_winners.includes(:roulette_prize, :ticket, :visitor).order(drawn_at: :desc)
@@ -115,10 +117,31 @@ module V1
         )
       end
 
+      # DELETE /v1/events/:event_id/roulette/sessions/:session_id/winners/:id
+      def destroy
+        authorize @winner
+        prize = @winner.roulette_prize
+        @winner.destroy
+        # Reload prize to get updated winners count
+        prize.reload
+        success_response(
+          data: format_prize_response(prize),
+          message: 'Winner removed successfully'
+        )
+      end
+
       private
 
+      def set_event
+        @event = Event.friendly.find(params[:event_id])
+      end
+
       def set_session
-        @session = RouletteSession.find(params[:session_id])
+        @session = @event.roulette_sessions.find(params[:session_id])
+      end
+
+      def set_winner
+        @winner = @session.roulette_winners.find(params[:id])
       end
 
       def format_winner_response(winner)
@@ -133,6 +156,20 @@ module V1
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601
+        }
+      end
+
+      def format_prize_response(prize)
+        {
+          id: prize.id,
+          roulette_session_id: prize.roulette_session_id,
+          name: prize.name,
+          quantity: prize.quantity,
+          remaining_quantity: prize.remaining_quantity,
+          image_url: prize.image.attached? ? url_for(prize.image) : nil,
+          winners: prize.roulette_winners.map { |w| format_winner_response(w) },
+          created_at: prize.created_at.iso8601,
+          updated_at: prize.updated_at.iso8601
         }
       end
     end

@@ -172,20 +172,21 @@ Rails.application.routes.draw do
         end
       end
 
-      # Event Metrics moved outside to avoid impacting event resources
-    end
-
-    # Prize Roulette feature
-    namespace :roulette do
-      resources :sessions, controller: 'roulette_sessions' do
-        member do
-          get :background_manager, path: 'background-manager'
-          post :background_manager, path: 'background-manager'
+      # Prize Roulette feature
+      namespace :roulette do
+        resources :sessions, controller: 'roulette_sessions' do
+          member do
+            get :background_manager, path: 'background-manager'
+            post :background_manager, path: 'background-manager'
+          end
+          resources :assigns, only: [:index, :create, :destroy], controller: 'roulette_assigns'
+          resources :prizes, only: [:index, :show, :create, :update, :destroy], controller: 'roulette_prizes'
+          resources :winners, only: [:index, :create, :destroy], controller: 'roulette_winners'
+          resources :participants, only: [:show], controller: 'roulette_participants'
         end
-        resources :assigns, only: [:index, :create, :destroy], controller: 'roulette_assigns'
-        resources :prizes, only: [:index, :show, :create, :update, :destroy], controller: 'roulette_prizes'
-        resources :winners, only: [:index, :create], controller: 'roulette_winners'
       end
+
+      # Event Metrics moved outside to avoid impacting event resources
     end
 
     # Business Matching Availability

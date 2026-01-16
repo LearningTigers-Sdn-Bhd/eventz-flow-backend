@@ -751,15 +751,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_15_084144) do
   end
 
   create_table "roulette_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
     t.bigint "user_id", null: false
     t.string "title", null: false
+    t.date "draw_date"
     t.jsonb "draw_styles", default: {}
     t.jsonb "wrapper_background", default: {}
     t.boolean "is_multiple", default: false, null: false
+    t.integer "draw_counts", default: 1, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_roulette_sessions_on_created_at"
+    t.index ["draw_date"], name: "index_roulette_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_roulette_sessions_on_draw_styles", using: :gin
+    t.index ["event_id"], name: "index_roulette_sessions_on_event_id"
     t.index ["user_id"], name: "index_roulette_sessions_on_user_id"
     t.index ["wrapper_background"], name: "index_roulette_sessions_on_wrapper_background", using: :gin
   end
@@ -1061,6 +1066,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_15_084144) do
   add_foreign_key "roulette_assigns", "roulette_sessions"
   add_foreign_key "roulette_assigns", "users"
   add_foreign_key "roulette_prizes", "roulette_sessions"
+  add_foreign_key "roulette_sessions", "events"
   add_foreign_key "roulette_sessions", "users"
   add_foreign_key "roulette_winners", "roulette_prizes"
   add_foreign_key "roulette_winners", "roulette_sessions"

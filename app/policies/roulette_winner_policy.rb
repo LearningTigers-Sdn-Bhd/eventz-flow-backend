@@ -20,6 +20,11 @@ class RouletteWinnerPolicy < ApplicationPolicy
     session.roulette_assigns.exists?(user_id: user.id)
   end
 
+  # destroy? - same permissions as create?
+  def destroy?
+    create?
+  end
+
   class Scope < Scope
     def resolve
       if user.blank?
