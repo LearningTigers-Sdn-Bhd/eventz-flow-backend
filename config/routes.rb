@@ -22,8 +22,10 @@ Rails.application.routes.draw do
     # Public endpoints (No authentication required)
     namespace :public do
       # Public event info - accessible without login (limited fields)
-      resources :events, only: [:show] do
+      resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
+        # Public check-in endpoint - scoped to event
+        resource :check_in, only: [:show, :create], controller: 'check_ins'
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: [:index, :show]
