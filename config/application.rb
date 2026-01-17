@@ -62,6 +62,9 @@ module EventzFlowApi
     #   end
     # end
 
+    # --- Rate Limiting ---
+    config.middleware.use Rack::Attack
+
     # --- 2. Active Job Adapter (for Sidekiq) ---
     # Set the queue adapter for webhooks and notifications
     config.active_job.queue_adapter = :sidekiq

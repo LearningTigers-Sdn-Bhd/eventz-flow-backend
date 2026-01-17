@@ -98,3 +98,5 @@ end
 gem "sidekiq-cron", "~> 2.3"
 
 gem "pagy", "~> 43.2"
+
+gem "rack-attack", "~> 6.8"
