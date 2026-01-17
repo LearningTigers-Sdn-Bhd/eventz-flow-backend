@@ -601,6 +601,87 @@ paths:
                 properties:
                   totalUnscannedTickets:
                     type: integer
+  "/v1/events/{event_id}/metrics/total_visitors":
+    get:
+      summary: Get total visitors count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total visitors retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalVisitors:
+                    type: integer
+  "/v1/events/{event_id}/metrics/total_scanned_visitors":
+    get:
+      summary: Get total scanned visitors count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total scanned visitors retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalScannedVisitors:
+                    type: integer
+  "/v1/events/{event_id}/metrics/total_unscanned_visitors":
+    get:
+      summary: Get total unscanned visitors count for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Total unscanned visitors retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUnscannedVisitors:
+                    type: integer
   "/v1/events/{event_id}/metrics/total_amount_price":
     get:
       summary: Get total sales amount for an event
@@ -2770,6 +2851,8 @@ paths:
                   - canceled
                 visibility:
                   type: boolean
+                use_sponsorship:
+                  type: boolean
     delete:
       summary: Deletes/Archives the event
       tags:
@@ -4794,6 +4877,54 @@ paths:
           description: no content
         '404':
           description: not found
+  "/v1/resources/permission_context/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: User ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: show permission context
+      tags:
+      - Resources CMS - Permission Context
+      security:
+      - bearerAuth: []
+      description: Check if a specific user has writer permissions
+      responses:
+        '200':
+          description: successful - no permission
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      has_writer_permission:
+                        type: boolean
+                        example: true
+                      updated_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                    required:
+                    - has_writer_permission
+        '404':
+          description: not found - user does not exist
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Resource not found
   "/v1/printing_services":
     get:
       summary: list printing services
@@ -5475,7 +5606,20 @@ paths:
       - Resources CMS - Leads
       security:
       - bearerAuth: []
-      description: 'Admin only: List all resource leads with contact information'
+      description: 'Admin only: List all resource leads for gated resources with pagination'
+      parameters:
+      - name: page
+        in: query
+        required: false
+        description: Page number
+        schema:
+          type: integer
+      - name: per_page
+        in: query
+        required: false
+        description: Items per page
+        schema:
+          type: integer
       responses:
         '200':
           description: successful - admin only
@@ -5533,10 +5677,30 @@ paths:
                         updated_at:
                           type: string
                           format: date_time
+                        resource:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            title:
+                              type: string
+                            slug:
+                              type: string
                       required:
                       - id
                       - email
                       - name
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+                      total_count:
+                        type: integer
+                      per_page:
+                        type: integer
         '403':
           description: forbidden - non-admin
           content:
@@ -5685,7 +5849,8 @@ paths:
       - Resources CMS - Leads
       security:
       - bearerAuth: []
-      description: 'Admin only: Get analytics and metrics for lead generation'
+      description: 'Admin only: Get analytics and metrics for lead generation including
+        resources stats, weekly trends, and top countries/jobs'
       responses:
         '200':
           description: successful - admin only
@@ -5697,37 +5862,69 @@ paths:
                   data:
                     type: object
                     properties:
+                      resources:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            example: 10
+                          filled:
+                            type: integer
+                            example: 7
+                        required:
+                        - count
+                        - filled
                       total_leads:
                         type: integer
                         example: 150
-                      leads_this_month:
-                        type: integer
-                        example: 25
-                      leads_this_week:
-                        type: integer
-                        example: 8
-                      top_countries:
+                      date:
                         type: array
                         items:
                           type: object
                           properties:
-                            country:
+                            week:
+                              type: string
+                              example: 2026-W01
+                            lead_counts:
+                              type: integer
+                              example: 15
+                          required:
+                          - week
+                          - lead_counts
+                      country:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
                               type: string
                               example: United States
                             count:
                               type: integer
-                              example: 75
-                      top_companies:
+                              example: 45
+                          required:
+                          - name
+                          - count
+                      job:
                         type: array
                         items:
                           type: object
                           properties:
-                            company_name:
+                            title:
                               type: string
-                              example: Acme Corporation
+                              example: Event Manager
                             count:
                               type: integer
-                              example: 5
+                              example: 20
+                          required:
+                          - title
+                          - count
+                    required:
+                    - resources
+                    - total_leads
+                    - date
+                    - country
+                    - job
         '403':
           description: forbidden - non-admin
           content:
@@ -6633,16 +6830,35 @@ paths:
       tags:
       - Resources CMS
       security: []
+      parameters:
+      - name: page
+        in: query
+        description: Page number
+        required: false
+        schema:
+          type: integer
+      - name: per_page
+        in: query
+        description: Items per page
+        required: false
+        schema:
+          type: integer
+      - name: featured
+        in: query
+        description: Set to "true" to get featured page resources
+        required: false
+        schema:
+          type: string
       responses:
         '200':
-          description: successful for visitor
+          description: successful with featured parameter
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: array
+                    type: object
                     items:
                       type: object
                       properties:
@@ -6650,38 +6866,281 @@ paths:
                           type: integer
                         title:
                           type: string
-                        article:
-                          type: string
                         slug:
                           type: string
                         meta_description:
                           type: string
+                          nullable: true
                         status:
                           type: string
+                          enum:
+                          - draft
+                          - pending_review
+                          - published
+                          - rejected
+                          - archived
                         is_gated:
                           type: boolean
                         is_official:
                           type: boolean
+                        rejection_reason:
+                          type: string
+                          nullable: true
                         view_counts:
+                          type: integer
+                        priority:
                           type: integer
                         published_at:
                           type: string
                           format: date_time
                           nullable: true
-                        resource_topic_id:
-                          type: integer
-                        resource_category_id:
-                          type: integer
-                        resource_media_type_id:
-                          type: integer
-                        user_id:
-                          type: integer
                         created_at:
                           type: string
                           format: date_time
                         updated_at:
                           type: string
                           format: date_time
+                        deleted_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        header_img_url:
+                          type: string
+                          nullable: true
+                        topic:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        category:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        media_type:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        article:
+                          type: string
+                        author:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            full_name:
+                              type: string
+                            email:
+                              type: string
+                    properties:
+                      featured:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            title:
+                              type: string
+                            slug:
+                              type: string
+                            meta_description:
+                              type: string
+                              nullable: true
+                            status:
+                              type: string
+                              enum:
+                              - draft
+                              - pending_review
+                              - published
+                              - rejected
+                              - archived
+                            is_gated:
+                              type: boolean
+                            is_official:
+                              type: boolean
+                            rejection_reason:
+                              type: string
+                              nullable: true
+                            view_counts:
+                              type: integer
+                            priority:
+                              type: integer
+                            published_at:
+                              type: string
+                              format: date_time
+                              nullable: true
+                            created_at:
+                              type: string
+                              format: date_time
+                            updated_at:
+                              type: string
+                              format: date_time
+                            deleted_at:
+                              type: string
+                              format: date_time
+                              nullable: true
+                            header_img_url:
+                              type: string
+                              nullable: true
+                            topic:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            category:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            media_type:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            article:
+                              type: string
+                            author:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                full_name:
+                                  type: string
+                                email:
+                                  type: string
+                      standard:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            title:
+                              type: string
+                            slug:
+                              type: string
+                            meta_description:
+                              type: string
+                              nullable: true
+                            status:
+                              type: string
+                              enum:
+                              - draft
+                              - pending_review
+                              - published
+                              - rejected
+                              - archived
+                            is_gated:
+                              type: boolean
+                            is_official:
+                              type: boolean
+                            rejection_reason:
+                              type: string
+                              nullable: true
+                            view_counts:
+                              type: integer
+                            priority:
+                              type: integer
+                            published_at:
+                              type: string
+                              format: date_time
+                              nullable: true
+                            created_at:
+                              type: string
+                              format: date_time
+                            updated_at:
+                              type: string
+                              format: date_time
+                            deleted_at:
+                              type: string
+                              format: date_time
+                              nullable: true
+                            header_img_url:
+                              type: string
+                              nullable: true
+                            topic:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            category:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            media_type:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            article:
+                              type: string
+                            author:
+                              type: object
+                              nullable: true
+                              properties:
+                                id:
+                                  type: integer
+                                full_name:
+                                  type: string
+                                email:
+                                  type: string
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+                      total_count:
+                        type: integer
+                      per_page:
+                        type: integer
+                      prev_page:
+                        type: integer
+                        nullable: true
+                      next_page:
+                        type: integer
+                        nullable: true
+                      first_page:
+                        type: integer
+                      last_page:
+                        type: integer
+                      from:
+                        type: integer
+                      to:
+                        type: integer
   "/v1/resources/{id}/public":
     parameters:
     - name: id
@@ -6710,38 +7169,83 @@ paths:
                         type: integer
                       title:
                         type: string
-                      article:
-                        type: string
                       slug:
                         type: string
                       meta_description:
                         type: string
+                        nullable: true
                       status:
                         type: string
+                        enum:
+                        - draft
+                        - pending_review
+                        - published
+                        - rejected
+                        - archived
                       is_gated:
                         type: boolean
                       is_official:
                         type: boolean
+                      rejection_reason:
+                        type: string
+                        nullable: true
                       view_counts:
+                        type: integer
+                      priority:
                         type: integer
                       published_at:
                         type: string
                         format: date_time
                         nullable: true
-                      resource_topic_id:
-                        type: integer
-                      resource_category_id:
-                        type: integer
-                      resource_media_type_id:
-                        type: integer
-                      user_id:
-                        type: integer
                       created_at:
                         type: string
                         format: date_time
                       updated_at:
                         type: string
                         format: date_time
+                      deleted_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      header_img_url:
+                        type: string
+                        nullable: true
+                      topic:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      category:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      media_type:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      article:
+                        type: string
+                      author:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
         '404':
           description: not found
   "/v1/resources":
@@ -6751,6 +7255,19 @@ paths:
       - Resources CMS
       security:
       - bearerAuth: []
+      parameters:
+      - name: page
+        in: query
+        description: Page number
+        required: false
+        schema:
+          type: integer
+      - name: per_page
+        in: query
+        description: Items per page
+        required: false
+        schema:
+          type: integer
       responses:
         '200':
           description: successful for writer
@@ -6768,38 +7285,108 @@ paths:
                           type: integer
                         title:
                           type: string
-                        article:
-                          type: string
                         slug:
                           type: string
                         meta_description:
                           type: string
+                          nullable: true
                         status:
                           type: string
+                          enum:
+                          - draft
+                          - pending_review
+                          - published
+                          - rejected
+                          - archived
                         is_gated:
                           type: boolean
                         is_official:
                           type: boolean
+                        rejection_reason:
+                          type: string
+                          nullable: true
                         view_counts:
+                          type: integer
+                        priority:
                           type: integer
                         published_at:
                           type: string
                           format: date_time
                           nullable: true
-                        resource_topic_id:
-                          type: integer
-                        resource_category_id:
-                          type: integer
-                        resource_media_type_id:
-                          type: integer
-                        user_id:
-                          type: integer
                         created_at:
                           type: string
                           format: date_time
                         updated_at:
                           type: string
                           format: date_time
+                        deleted_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        header_img_url:
+                          type: string
+                          nullable: true
+                        topic:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        category:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        media_type:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        article:
+                          type: string
+                        author:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            full_name:
+                              type: string
+                            email:
+                              type: string
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+                      total_count:
+                        type: integer
+                      per_page:
+                        type: integer
+                      prev_page:
+                        type: integer
+                        nullable: true
+                      next_page:
+                        type: integer
+                        nullable: true
+                      first_page:
+                        type: integer
+                      last_page:
+                        type: integer
+                      from:
+                        type: integer
+                      to:
+                        type: integer
     post:
       summary: create resource
       tags:
@@ -6843,9 +7430,289 @@ paths:
                       type: string
                       enum:
                       - draft
+                      - pending_review
                       - published
+                      - rejected
                     is_gated:
                       type: boolean
+  "/v1/resources/owner":
+    get:
+      summary: list all resources (owner only)
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: successful for owner
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        slug:
+                          type: string
+                        meta_description:
+                          type: string
+                          nullable: true
+                        status:
+                          type: string
+                          enum:
+                          - draft
+                          - pending_review
+                          - published
+                          - rejected
+                          - archived
+                        is_gated:
+                          type: boolean
+                        is_official:
+                          type: boolean
+                        rejection_reason:
+                          type: string
+                          nullable: true
+                        view_counts:
+                          type: integer
+                        priority:
+                          type: integer
+                        published_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                        deleted_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        header_img_url:
+                          type: string
+                          nullable: true
+                        topic:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        category:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        media_type:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        article:
+                          type: string
+                        author:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            full_name:
+                              type: string
+                            email:
+                              type: string
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+                      total_count:
+                        type: integer
+                      per_page:
+                        type: integer
+                      prev_page:
+                        type: integer
+                        nullable: true
+                      next_page:
+                        type: integer
+                        nullable: true
+                      first_page:
+                        type: integer
+                      last_page:
+                        type: integer
+                      from:
+                        type: integer
+                      to:
+                        type: integer
+        '403':
+          description: forbidden for non-owner
+  "/v1/resources/approval_index":
+    get:
+      summary: list resources pending approval
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: successful for admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        slug:
+                          type: string
+                        meta_description:
+                          type: string
+                          nullable: true
+                        status:
+                          type: string
+                          enum:
+                          - draft
+                          - pending_review
+                          - published
+                          - rejected
+                          - archived
+                        is_gated:
+                          type: boolean
+                        is_official:
+                          type: boolean
+                        rejection_reason:
+                          type: string
+                          nullable: true
+                        view_counts:
+                          type: integer
+                        priority:
+                          type: integer
+                        published_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        created_at:
+                          type: string
+                          format: date_time
+                        updated_at:
+                          type: string
+                          format: date_time
+                        deleted_at:
+                          type: string
+                          format: date_time
+                          nullable: true
+                        header_img_url:
+                          type: string
+                          nullable: true
+                        topic:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        category:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        media_type:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        article:
+                          type: string
+                        author:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: integer
+                            full_name:
+                              type: string
+                            email:
+                              type: string
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+                      total_count:
+                        type: integer
+                      per_page:
+                        type: integer
+                      prev_page:
+                        type: integer
+                        nullable: true
+                      next_page:
+                        type: integer
+                        nullable: true
+                      first_page:
+                        type: integer
+                      last_page:
+                        type: integer
+                      from:
+                        type: integer
+                      to:
+                        type: integer
+        '403':
+          description: forbidden for writer
   "/v1/resources/{id}":
     parameters:
     - name: id
@@ -6875,38 +7742,83 @@ paths:
                         type: integer
                       title:
                         type: string
-                      article:
-                        type: string
                       slug:
                         type: string
                       meta_description:
                         type: string
+                        nullable: true
                       status:
                         type: string
+                        enum:
+                        - draft
+                        - pending_review
+                        - published
+                        - rejected
+                        - archived
                       is_gated:
                         type: boolean
                       is_official:
                         type: boolean
+                      rejection_reason:
+                        type: string
+                        nullable: true
                       view_counts:
+                        type: integer
+                      priority:
                         type: integer
                       published_at:
                         type: string
                         format: date_time
                         nullable: true
-                      resource_topic_id:
-                        type: integer
-                      resource_category_id:
-                        type: integer
-                      resource_media_type_id:
-                        type: integer
-                      user_id:
-                        type: integer
                       created_at:
                         type: string
                         format: date_time
                       updated_at:
                         type: string
                         format: date_time
+                      deleted_at:
+                        type: string
+                        format: date_time
+                        nullable: true
+                      header_img_url:
+                        type: string
+                        nullable: true
+                      topic:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      category:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      media_type:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      article:
+                        type: string
+                      author:
+                        type: object
+                        nullable: true
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+                          email:
+                            type: string
         '404':
           description: not found
     put:
@@ -6918,7 +7830,7 @@ paths:
       parameters: []
       responses:
         '200':
-          description: updated
+          description: updating draft does not create changelog
         '403':
           description: unauthorized update (not owner)
       requestBody:
@@ -6938,6 +7850,32 @@ paths:
                       type: string
                     is_gated:
                       type: boolean
+    patch:
+      summary: update resource - delete image
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: updates resource without deleting image when flag not set
+        '422':
+          description: unprocessable entity - invalid image format
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                    remove_header_img:
+                      type: boolean
+                      description: Set to true to delete the header image
     delete:
       summary: soft delete resource
       tags:
@@ -6946,7 +7884,7 @@ paths:
       - bearerAuth: []
       responses:
         '200':
-          description: soft deleted
+          description: can delete published resource
   "/v1/resources/{id}/restore":
     parameters:
     - name: id
@@ -6999,7 +7937,7 @@ paths:
       parameters: []
       responses:
         '200':
-          description: status updated
+          description: status updated (rejected)
         '403':
           description: unauthorized (writer cannot approve own)
       requestBody:
@@ -7018,6 +7956,25 @@ paths:
                       enum:
                       - published
                       - draft
+                      - rejected
+                    rejection_reason:
+                      type: string
+  "/v1/resources/{id}/duplicate":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: duplicate resource
+      tags:
+      - Resources CMS
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: resource duplicated
   "/v1/resources/topics":
     get:
       summary: list resource topics
@@ -7464,6 +8421,153 @@ paths:
                   message:
                     type: string
                     example: Resource topic not found
+  "/v1/scan/recent_check_ins":
+    get:
+      summary: Lists recent check-ins scanned by the current user
+      tags:
+      - Scan
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: event_id
+        in: query
+        required: false
+        description: Filter by specific event ID
+        schema:
+          type: integer
+      - name: limit
+        in: query
+        required: false
+        description: 'Number of records to return (default: 50, max: 100)'
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Filters by event_id when provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check_ins:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                          - ticket
+                          - visitor
+                        scan_id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        event_id:
+                          type: integer
+                        event_name:
+                          type: string
+                        checked_in:
+                          type: boolean
+                        check_in_at:
+                          type: string
+                        status:
+                          type: string
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+        '403':
+          description: Forbidden when filtering by unauthorized event
+        '401':
+          description: Unauthorized without token
+  "/v1/scan/{public_id}/check_in":
+    parameters:
+    - name: public_id
+      in: path
+      description: Public ID (UUID) of ticket or visitor
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Performs unified check-in for ticket or visitor
+      tags:
+      - Scan
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Visitor check-in successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  public_id:
+                    type: string
+                  checked_in:
+                    type: boolean
+                  check_in_at:
+                    type: string
+                  attendee_name:
+                    type: string
+                  attendee_email:
+                    type: string
+                  event:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      title:
+                        type: string
+                  scanned_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      full_name:
+                        type: string
+        '422':
+          description: Visitor already checked in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  type:
+                    type: string
+                  checked_in_at:
+                    type: string
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '403':
+          description: Forbidden for unauthorized user
+        '401':
+          description: Unauthorized without token
   "/v1/events/{event_id}/vendors/{id}/stamp_count":
     parameters:
     - name: event_id
@@ -8371,6 +9475,85 @@ paths:
                 properties:
                   error:
                     type: string
+  "/v1/uploads":
+    post:
+      summary: upload file
+      tags:
+      - Generic Uploads
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: successful upload with default target
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Success
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        description: Permanent URL to the uploaded file
+                      signed_id:
+                        type: string
+                        description: Signed ID for ActiveStorage
+                      filename:
+                        type: string
+                        description: Original filename
+                      content_type:
+                        type: string
+                        description: MIME type of the file
+                      byte_size:
+                        type: integer
+                        description: File size in bytes
+                    required:
+                    - url
+                    - signed_id
+                    - filename
+                    - content_type
+                    - byte_size
+                required:
+                - success
+                - message
+                - data
+        '422':
+          description: unprocessable entity - invalid file type for rich-editor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: File size exceeds maximum allowed size of 10MB
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                required:
+                - success
+                - message
+        '401':
+          description: unauthorized - no token
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: File to upload
   "/v1/users/{id}/role":
     put:
       summary: Updates a global user's role

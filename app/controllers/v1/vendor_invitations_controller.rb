@@ -104,10 +104,16 @@ module V1
         begin
           auth_token = request.headers['Authorization'].split(' ').last
           decoded = JwtService.decode(auth_token)
-          user = User.find_by(id: decoded[:user_id], jti: decoded[:jti])
-          if user&.role == 'vendor'
-            is_authenticated = true
-            is_assigned = EventVendor.exists?(event_id: event.id, vendor_id: user.id)
+          
+          # Session-based auth (match Authenticable concern logic)
+          session = UserSession.find_by(jti: decoded[:jti], user_id: decoded[:user_id])
+          
+          if session&.active?
+            user = session.user
+            if user&.role == 'vendor'
+              is_authenticated = true
+              is_assigned = EventVendor.exists?(event_id: event.id, vendor_id: user.id)
+            end
           end
         rescue StandardError
           # Ignore auth errors - user is not authenticated
