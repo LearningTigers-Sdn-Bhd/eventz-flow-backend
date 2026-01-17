@@ -29,16 +29,20 @@ module Authenticable
         token = header.split(' ').last
         begin
           payload = JwtService.decode(token)
-          @current_user = User.find_by(id: payload[:user_id], jti: payload[:jti])
-          return if @current_user.present?
+          
+          # Session-based auth
+          session = UserSession.find_by(jti: payload[:jti], user_id: payload[:user_id])
+          
+          if session && session.active?
+             @current_user = session.user
+             session.touch!
+             return if @current_user.present?
+          end
         rescue CustomError::Unauthorized => e
            if e.message.include?('expired')
             render_token_expired(e)
             return
            end
-           # If decode fails, fall through to API key check? 
-           # Usually Bearer means JWT. If JWT fails, we should probably fail here.
-           # But existing logic falls through. Let's keep it consistent.
         end
       end
 
@@ -69,8 +73,18 @@ module Authenticable
         token = header.split(' ').last
         begin
           payload = JwtService.decode(token)
-          @current_user = User.find_by(id: payload[:user_id], jti: payload[:jti])
-          return if @current_user.present?
+          
+          # Session-based auth
+          session = UserSession.find_by(jti: payload[:jti], user_id: payload[:user_id])
+          
+          if session && session.active?
+             @current_user = session.user
+             session.touch!
+             return if @current_user.present?
+          else
+             # Session invalid or revoked
+             return render_unauthorized(CustomError::Unauthorized.new('Session invalid or expired'))
+          end
         rescue CustomError::Unauthorized => e
           # Check if it's a token expiration error
           if e.message.include?('expired')

@@ -36,6 +36,8 @@ Rails.application.routes.draw do
     post 'auth/register', to: 'authentication#register'
     post 'auth/refresh_token', to: 'authentication#refresh_token'
     delete 'auth/logout', to: 'authentication#logout'
+    get 'auth/sessions', to: 'authentication#sessions'
+    delete 'auth/sessions/:id', to: 'authentication#revoke_session'
     post 'auth/send-verification-code', to: 'authentication#send_verification_code'
     post 'auth/verify-email', to: 'authentication#verify_email'
     patch 'auth/password', to: 'authentication#password_update'
