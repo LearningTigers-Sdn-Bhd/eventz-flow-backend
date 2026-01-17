@@ -31,6 +31,10 @@ class User < ApplicationRecord
 
   # --- Associations ---
 
+  # Session Management
+  has_many :user_sessions, dependent: :destroy
+  has_many :active_sessions, -> { active }, class_name: 'UserSession'
+
   # 0. USER CREATION TRACKING
   belongs_to :created_by, class_name: 'User', optional: true
   has_many :created_users, class_name: 'User', foreign_key: 'created_by_id', dependent: :nullify
@@ -38,13 +42,13 @@ class User < ApplicationRecord
   # 1. EVENT STAFFING (Unified Event Assignment Model)
   has_many :event_assignments, dependent: :destroy
   has_many :assigned_events, through: :event_assignments, source: :event
-  
+
   has_many :business_host_assignments, dependent: :destroy # Added association
 
   # Event vendor assignments (for exhibitors/merchants)
   has_many :event_vendor_assignments, class_name: 'EventVendor', foreign_key: 'vendor_id', dependent: :destroy
   has_many :vendor_events, through: :event_vendor_assignments, source: :event
-  
+
   # Vendor profile (for vendors only - one profile per vendor)
   has_one :vendor_profile, foreign_key: 'vendor_id', dependent: :destroy
   accepts_nested_attributes_for :vendor_profile
@@ -85,6 +89,10 @@ class User < ApplicationRecord
   # 7. RESOURCES
   has_one :resource_write_permission, dependent: :destroy
   has_many :resources, foreign_key: 'user_id', dependent: :destroy
+
+  # 8. PRIZE ROULETTE
+  has_many :roulette_sessions, dependent: :destroy
+  has_many :roulette_assigns, dependent: :destroy
 
   # --- Resource-Specific Role Helper Methods ---
 
@@ -209,7 +217,7 @@ class User < ApplicationRecord
     exhibition_contractor_profile.present? &&
       exhibition_contractor_profile.event_exhibition_contractors.exists?(event_id: event.id)
   end
-  
+
   attr_accessor :skip_profile_creation
 
   private
@@ -229,7 +237,7 @@ class User < ApplicationRecord
   def generate_jti
     self.jti = SecureRandom.uuid
   end
-  
+
   def create_associated_profile
     return if skip_profile_creation
 

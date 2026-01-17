@@ -36,6 +36,8 @@ Rails.application.routes.draw do
     post 'auth/register', to: 'authentication#register'
     post 'auth/refresh_token', to: 'authentication#refresh_token'
     delete 'auth/logout', to: 'authentication#logout'
+    get 'auth/sessions', to: 'authentication#sessions'
+    delete 'auth/sessions/:id', to: 'authentication#revoke_session'
     post 'auth/send-verification-code', to: 'authentication#send_verification_code'
     post 'auth/verify-email', to: 'authentication#verify_email'
     patch 'auth/password', to: 'authentication#password_update'
@@ -172,6 +174,20 @@ Rails.application.routes.draw do
         end
       end
 
+      # Prize Roulette feature
+      namespace :roulette do
+        resources :sessions, controller: 'roulette_sessions' do
+          member do
+            get :background_manager, path: 'background-manager'
+            post :background_manager, path: 'background-manager'
+          end
+          resources :assigns, only: [:index, :create, :destroy], controller: 'roulette_assigns'
+          resources :prizes, only: [:index, :show, :create, :update, :destroy], controller: 'roulette_prizes'
+          resources :winners, only: [:index, :create, :destroy], controller: 'roulette_winners'
+          resources :participants, only: [:show], controller: 'roulette_participants'
+        end
+      end
+
       # Event Metrics moved outside to avoid impacting event resources
     end
 
@@ -179,10 +195,10 @@ Rails.application.routes.draw do
     namespace :business_matching do
       post 'receive', to: 'callbacks#receive'
       post 'events/:event_id/report', to: 'bookings#generate_report'
-      
+
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
-      
+
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'

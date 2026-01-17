@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_17_055028) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -730,6 +730,60 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
     t.index ["user_id"], name: "index_resources_on_user_id"
   end
 
+  create_table "roulette_assigns", force: :cascade do |t|
+    t.bigint "roulette_session_id", null: false
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["roulette_session_id", "user_id"], name: "index_roulette_assigns_on_roulette_session_id_and_user_id", unique: true
+    t.index ["roulette_session_id"], name: "index_roulette_assigns_on_roulette_session_id"
+    t.index ["user_id"], name: "index_roulette_assigns_on_user_id"
+  end
+
+  create_table "roulette_prizes", force: :cascade do |t|
+    t.bigint "roulette_session_id", null: false
+    t.string "name", null: false
+    t.integer "quantity", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["roulette_session_id", "created_at"], name: "index_roulette_prizes_on_roulette_session_id_and_created_at"
+    t.index ["roulette_session_id"], name: "index_roulette_prizes_on_roulette_session_id"
+  end
+
+  create_table "roulette_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "user_id", null: false
+    t.string "title", null: false
+    t.date "draw_date"
+    t.jsonb "draw_styles", default: {}
+    t.jsonb "wrapper_background", default: {}
+    t.boolean "is_multiple", default: false, null: false
+    t.integer "draw_counts", default: 1, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_roulette_sessions_on_created_at"
+    t.index ["draw_date"], name: "index_roulette_sessions_on_draw_date"
+    t.index ["draw_styles"], name: "index_roulette_sessions_on_draw_styles", using: :gin
+    t.index ["event_id"], name: "index_roulette_sessions_on_event_id"
+    t.index ["user_id"], name: "index_roulette_sessions_on_user_id"
+    t.index ["wrapper_background"], name: "index_roulette_sessions_on_wrapper_background", using: :gin
+  end
+
+  create_table "roulette_winners", force: :cascade do |t|
+    t.bigint "roulette_session_id", null: false
+    t.bigint "roulette_prize_id", null: false
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.datetime "drawn_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["roulette_prize_id"], name: "index_roulette_winners_on_roulette_prize_id"
+    t.index ["roulette_session_id"], name: "index_roulette_winners_on_roulette_session_id"
+    t.index ["ticket_id"], name: "index_roulette_winners_on_ticket_id"
+    t.index ["visitor_id"], name: "index_roulette_winners_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "roulette_winners_exactly_one_participant"
+  end
+
   create_table "sponsors", force: :cascade do |t|
     t.bigint "group_id", null: false
     t.string "name", null: false
@@ -803,6 +857,26 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
+  end
+
+  create_table "user_sessions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "jti", null: false
+    t.string "refresh_token_hash", null: false
+    t.string "device_name"
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "last_used_at"
+    t.datetime "expires_at", null: false
+    t.boolean "revoked", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_user_sessions_on_expires_at"
+    t.index ["jti"], name: "index_user_sessions_on_jti", unique: true
+    t.index ["last_used_at"], name: "index_user_sessions_on_last_used_at"
+    t.index ["refresh_token_hash"], name: "index_user_sessions_on_refresh_token_hash", unique: true
+    t.index ["user_id", "revoked"], name: "index_user_sessions_on_user_id_and_revoked"
+    t.index ["user_id"], name: "index_user_sessions_on_user_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -1009,6 +1083,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
   add_foreign_key "resources", "resource_media_types"
   add_foreign_key "resources", "resource_topics"
   add_foreign_key "resources", "users"
+  add_foreign_key "roulette_assigns", "roulette_sessions"
+  add_foreign_key "roulette_assigns", "users"
+  add_foreign_key "roulette_prizes", "roulette_sessions"
+  add_foreign_key "roulette_sessions", "events"
+  add_foreign_key "roulette_sessions", "users"
+  add_foreign_key "roulette_winners", "roulette_prizes"
+  add_foreign_key "roulette_winners", "roulette_sessions"
+  add_foreign_key "roulette_winners", "tickets", on_delete: :cascade
+  add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "ticket_types", "events"
@@ -1016,6 +1099,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_14_064202) do
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
   add_foreign_key "visitor_vendor_stamps", "event_vendors"

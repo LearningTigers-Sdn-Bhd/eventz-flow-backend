@@ -6,7 +6,7 @@ class Event < ApplicationRecord
   # Unified event staff assignment
   has_many :event_assignments, dependent: :destroy
   has_many :staff, through: :event_assignments, source: :user
-  
+
   has_many :business_host_assignments, dependent: :destroy # Added association
 
   # Core Event Resources
@@ -23,6 +23,7 @@ class Event < ApplicationRecord
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
+  has_many :roulette_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
 
   # --- Sponsorships ---
