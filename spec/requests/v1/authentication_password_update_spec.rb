@@ -35,8 +35,15 @@ RSpec.describe 'Password Update', type: :request, openapi_spec: 'v1/swagger.yaml
         run_test! do
           user.reload
           expect(user.authenticate('NewPass123!')).to be_truthy
+          
+          # Verify response body matches standard (no refresh_token in body)
           body = JSON.parse(response.body)
-          expect(body['data']).to include('access_token', 'refresh_token', 'expires_at')
+          expect(body['data']).to include('access_token', 'expires_at')
+          expect(body['data']).not_to include('refresh_token')
+
+          # Verify refresh token in signed cookie
+          signed_cookies = ActionDispatch::Cookies::CookieJar.build(request, cookies.to_hash).signed
+          expect(signed_cookies['refresh_token']).to be_present
         end
       end
 

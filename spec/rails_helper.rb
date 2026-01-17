@@ -43,20 +43,12 @@ RSpec.configure do |config|
   config.include AuthHelpers, type: :request
   config.include AuthHelpers, type: :controller
   config.include Pundit::Matchers, type: :policy
-
+  config.include ActiveSupport::Testing::TimeHelpers
 
   config.before(:suite) do
     DatabaseCleaner.strategy = :transaction
     DatabaseCleaner.allow_remote_database_url = true
     DatabaseCleaner.clean_with(:truncation)
-  end
-
-  # --- Ensure cookie jar works in API-only request specs ---
-  # This patch restores cookie support for ActionDispatch in API mode.
-  config.before(:each, type: :request) do
-    allow_any_instance_of(ActionDispatch::Request)
-      .to receive(:cookie_jar)
-      .and_return(ActionDispatch::Cookies::CookieJar.build(request, {}))
   end
 end
 

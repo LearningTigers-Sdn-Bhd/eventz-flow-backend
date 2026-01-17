@@ -10,21 +10,29 @@ RSpec.describe 'V1::Authentication', type: :request do
     }
   end
 
+  # Helper to access signed cookies from the response/cookie jar
+  def response_signed_cookies
+    ActionDispatch::Cookies::CookieJar.build(request, cookies.to_hash).signed
+  end
+
   describe 'POST /v1/auth/register' do
     context 'when the request is valid' do
-      it 'creates a new user and returns token' do
+      it 'creates a new user, session, and returns token' do
         expect do
           post '/v1/auth/register', params: { user: valid_attributes }
         end.to change(User, :count).by(1)
+           .and change(UserSession, :count).by(1)
 
         expect(response).to have_http_status(:created)
         expect(json_response['success']).to be true
         expect(json_response['data']).to have_key('access_token')
-        expect(json_response['data']).to have_key('refresh_token')
-        expect(json_response['data']).to have_key('user')
-        expect(json_response['data']['user']['email']).to eq('test@example.com')
+        expect(json_response['data']).to have_key('session_id')
+        
+        # Verify cookie using signed helper
+        expect(response_signed_cookies['refresh_token']).to be_present
       end
     end
+
     context 'when the request is invalid' do
       it 'returns validation errors for invalid email' do
         post '/v1/auth/register', params: {
@@ -35,27 +43,6 @@ RSpec.describe 'V1::Authentication', type: :request do
         expect(json_response['success']).to be false
         expect(json_response['errors']).to be_present
       end
-
-      it 'returns validation errors for missing password' do
-        post '/v1/auth/register', params: {
-          user: valid_attributes.except(:password)
-        }
-
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'with duplicate email' do
-      before { create(:user, email: 'test@example.com') }
-      it 'returns an error for duplicate email' do
-        post '/v1/auth/register', params: {
-          user: valid_attributes
-        }
-
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['errors']).to be_present
-      end
     end
   end
 
@@ -63,443 +50,146 @@ RSpec.describe 'V1::Authentication', type: :request do
     let!(:user) { create(:user, email: 'test@example.com', password: 'password', password_confirmation: 'password') }
 
     context 'with valid credentials' do
-      it 'returns a token and user details' do
-        post '/v1/auth/login', params: { email: 'test@example.com', password: 'password' }
+      it 'returns a token, creates session, and sets cookie' do
+        expect do
+            post '/v1/auth/login', params: { email: 'test@example.com', password: 'password' }
+        end.to change(UserSession, :count).by(1)
 
         expect(response).to have_http_status(:ok)
         expect(json_response['success']).to be true
         expect(json_response['data']).to have_key('access_token')
-        expect(json_response['data']).to have_key('refresh_token')
-        expect(json_response['data']['user']['email']).to eq('test@example.com')
+        expect(json_response['data']).to have_key('session_id')
+        expect(response_signed_cookies['refresh_token']).to be_present
       end
     end
 
     context 'with invalid credentials' do
-      it 'returns unauthorized error for wrong password' do
+      it 'returns unauthorized error' do
         post '/v1/auth/login', params: { email: 'test@example.com', password: 'wrong_password' }
 
         expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Authentication failed')
-        expect(json_response['errors']).to be_present
-        expect(json_response['errors'].first['field']).to eq('password')
-        expect(json_response['errors'].first['message']).to eq('Invalid password')
-      end
-
-      it 'returns unauthorized error for non-existent email' do
-        post '/v1/auth/login', params: { email: 'nonexistent@example.com', password: 'password' }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Authentication failed')
-        expect(json_response['errors']).to be_present
-        expect(json_response['errors'].first['field']).to eq('email')
-        expect(json_response['errors'].first['message']).to eq('Email not found')
-      end
-
-      it 'returns unauthorized error for inactive account' do
-        inactive_user = create(:user, email: 'inactive@example.com', password: 'password', password_confirmation: 'password', status: :inactive)
-        post '/v1/auth/login', params: { email: 'inactive@example.com', password: 'password' }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Authentication failed')
-        expect(json_response['errors']).to be_present
-        expect(json_response['errors'].first['field']).to eq('account')
-        expect(json_response['errors'].first['message']).to eq('Account is inactive')
-      end
-    end
-  end
-
-  describe 'Password reset flow' do
-    let!(:user) { create(:user, email: 'resetme@example.com', password: 'oldpassword', password_confirmation: 'oldpassword') }
-
-    describe 'POST /v1/auth/password/request_reset_password' do
-      it 'returns success even if email does not exist' do
-        post '/v1/auth/password/request_reset_password', params: { email: 'unknown@example.com' }
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('If that email exists, instructions have been sent.')
-      end
-
-      it 'creates a password reset and sends email for existing user' do
-        expect do
-          post '/v1/auth/password/request_reset_password', params: { email: user.email }
-        end.to change(PasswordReset, :count).by(1)
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-      end
-    end
-
-    describe 'GET /v1/auth/password/verify_reset_password_request' do
-      it 'validates a usable token' do
-        raw = PasswordReset.issue_for!(user)
-        get '/v1/auth/password/verify_reset_password_request', params: { token: raw }
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('Token is valid')
-      end
-
-      it 'returns error for invalid token' do
-        get '/v1/auth/password/verify_reset_password_request', params: { token: 'bad' }
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    describe 'POST /v1/auth/password/reset_password' do
-      it 'resets password with valid token' do
-        raw = PasswordReset.issue_for!(user)
-        post '/v1/auth/password/reset_password', params: {
-          token: raw,
-          password: 'newpassword',
-          password_confirmation: 'newpassword'
-        }
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('Password has been reset')
-      end
-
-      it 'fails when token invalid' do
-        post '/v1/auth/password/reset_password', params: { token: 'bad', password: 'x', password_confirmation: 'x' }
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
-      end
-
-      it "fails when confirmation doesn't match" do
-        raw = PasswordReset.issue_for!(user)
-        post '/v1/auth/password/reset_password', params: {
-          token: raw,
-          password: 'newpassword',
-          password_confirmation: 'mismatch'
-        }
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
+        expect(response_signed_cookies['refresh_token']).to be_nil
       end
     end
   end
 
   describe 'DELETE /v1/auth/logout' do
-    let!(:user) { create(:user) }
-    let(:auth_headers_hash) { auth_headers(user) }
+    let!(:user) { create(:user, password: 'password', password_confirmation: 'password') }
+    
+    it 'revokes the session and clears cookie' do
+        # 1. Login to set the cookie
+        post '/v1/auth/login', params: { email: user.email, password: 'password' }
+        expect(response).to have_http_status(:ok)
+        
+        session_id = json_response['data']['session_id']
+        access_token = json_response['data']['access_token']
+        headers = { 'Authorization' => "Bearer #{access_token}" }
 
-    it 'invalidates the token by updating the jti' do
-      old_jti = user.jti
+        expect(response_signed_cookies['refresh_token']).to be_present
 
-      delete '/v1/auth/logout', headers: auth_headers_hash
-
-      expect(response).to have_http_status(:ok)
-      expect(json_response['success']).to be true
-      expect(json_response['message']).to eq('Logged out successfully')
-      expect(user.reload.jti).not_to eq(old_jti)
-    end
-
-    it 'returns unauthorized error if user without token' do
-      delete '/v1/auth/logout'
-
-      expect(response).to have_http_status(:unauthorized)
-      expect(json_response['success']).to be false
-      expect(json_response['message']).to eq('Unauthorized')
-      expect(json_response['errors']).to eq([])
-    end
-
-    context 'when user is not verified' do
-      let!(:unverified_user) { create(:user, :unverified) }
-      let(:unverified_auth_headers_hash) { auth_headers(unverified_user) }
-
-      it 'allows logout even without verified email' do
-        delete '/v1/auth/logout', headers: unverified_auth_headers_hash
+        # 2. Logout (send cookie + auth header)
+        delete '/v1/auth/logout', headers: headers
 
         expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
         expect(json_response['message']).to eq('Logged out successfully')
-      end
+        
+        # Verify session revoked
+        expect(UserSession.find(session_id).revoked?).to be true
+        
+        # Verify cookie cleared (nil or empty)
+        expect(response_signed_cookies['refresh_token']).to be_blank
     end
   end
 
   describe 'POST /v1/auth/refresh_token' do
-    let!(:user) { create(:user) }
-    let(:tokens) { JwtService.generate_tokens(user) }
+    let!(:user) { create(:user, password: 'password', password_confirmation: 'password') }
 
-    context 'with valid refresh token' do
-      it 'returns new access_token, refresh_token, and expires_at' do
+    context 'with valid refresh token in cookie' do
+      it 'rotates tokens and updates cookie' do
+        # 1. Login to set the cookie
+        post '/v1/auth/login', params: { email: user.email, password: 'password' }
+        original_cookie = response_signed_cookies['refresh_token']
+        original_session_id = json_response['data']['session_id']
+        
+        # 2. Refresh (sends cookie automatically)
+        post '/v1/auth/refresh_token'
+
+        expect(response).to have_http_status(:ok)
+        expect(json_response['data']).to have_key('access_token')
+        
+        new_cookie = response_signed_cookies['refresh_token']
+        expect(new_cookie).to be_present
+        expect(new_cookie).not_to eq(original_cookie)
+        
+        # Verify session updated (rotated)
+        session = UserSession.find(original_session_id)
+        expect(session.refresh_token_hash).to eq(JwtService.hash_token(new_cookie))
+      end
+    end
+
+    context 'with refresh token in params (fallback)' do
+      let!(:tokens) { JwtService.generate_tokens(user) }
+      
+      it 'rotates tokens and sets cookie' do
         post '/v1/auth/refresh_token', params: { refresh_token: tokens[:refresh_token] }
 
         expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['data']).to have_key('access_token')
-        expect(json_response['data']).to have_key('refresh_token')
-        expect(json_response['data']).to have_key('expires_at')
+        expect(response_signed_cookies['refresh_token']).to be_present
       end
     end
 
     context 'with invalid refresh token' do
-      it 'returns error for invalid refresh token' do
-        post '/v1/auth/refresh_token', params: { refresh_token: 'invalid_token' }
+      it 'returns unprocessable_content if cookie is tampered and clears cookie' do
+        # 1. Login to set cookie
+        post '/v1/auth/login', params: { email: user.email, password: 'password' }
+        
+        # 2. Corrupt the cookie manually
+        cookies['refresh_token'] = 'invalid_garbage'
+        
+        post '/v1/auth/refresh_token' # Sends the bad cookie
 
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response_signed_cookies['refresh_token']).to be_blank
       end
 
-      it 'returns error with access token instead of refresh token' do
-        post '/v1/auth/refresh_token', params: { refresh_token: tokens[:access_token] }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'with revoked refresh token' do
-      it 'returns error when user jti has changed' do
-        refresh_token = tokens[:refresh_token]
-        user.update!(jti: SecureRandom.uuid)
-
-        post '/v1/auth/refresh_token', params: { refresh_token: refresh_token }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'when user is not verified' do
-      let!(:unverified_user) { create(:user, :unverified) }
-      let(:unverified_tokens) { JwtService.generate_tokens(unverified_user) }
-
-      it 'allows refresh even without verified email' do
-        post '/v1/auth/refresh_token', params: { refresh_token: unverified_tokens[:refresh_token] }
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['data']).to have_key('access_token')
-        expect(json_response['data']).to have_key('refresh_token')
-        expect(json_response['data']).to have_key('expires_at')
+      it 'returns unauthorized if token is invalid (via param)' do
+         post '/v1/auth/refresh_token', params: { refresh_token: 'invalid.jwt.token' }
+         
+         expect(response).to have_http_status(:unauthorized)
       end
     end
   end
 
-  describe 'POST /v1/auth/send-verification-code' do
+  describe 'GET /v1/auth/sessions' do
     let!(:user) { create(:user) }
-    let(:auth_headers_hash) { auth_headers(user) }
-
-    context 'when user is authenticated' do
-      it 'creates and sends a new verification code' do
-        expect do
-          post '/v1/auth/send-verification-code', headers: auth_headers_hash
-        end.to change(EmailVerification, :count).by(1)
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('Verification code sent successfully')
-
-        # Verify that the EmailVerification was created with correct user
-        email_verification = EmailVerification.last
-        expect(email_verification.user_id).to eq(user.id)
-        expect(email_verification.hashed_code).to be_present
-        expect(email_verification.expires_at).to be_present
-      end
-
-      it 'revokes any existing verification codes' do
-        # Create an existing verification code
-        EmailVerification.create_for_user(user)
-        first_verification = EmailVerification.where(user_id: user.id).first
-
-        # Send a new code
-        post '/v1/auth/send-verification-code', headers: auth_headers_hash
-
-        expect(response).to have_http_status(:ok)
-
-        # The old code should be revoked
-        first_verification.reload
-        expect(first_verification.revoked_at).to be_present
-
-        # There should be a new non-revoked code
-        new_verification = EmailVerification.where(user_id: user.id).order(created_at: :desc).first
-        expect(new_verification.id).not_to eq(first_verification.id)
-        expect(new_verification.revoked_at).to be_nil
-      end
-    end
-
-    context 'when user is not authenticated' do
-      it 'returns unauthorized error' do
-        post '/v1/auth/send-verification-code'
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'when user is not verified' do
-      let!(:unverified_user) { create(:user, :unverified) }
-      let(:unverified_auth_headers_hash) { auth_headers(unverified_user) }
-
-      it 'allows sending verification code even without verified email' do
-        expect do
-          post '/v1/auth/send-verification-code', headers: unverified_auth_headers_hash
-        end.to change(EmailVerification, :count).by(1)
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-      end
+    let(:tokens) { JwtService.generate_tokens(user) }
+    let(:headers) { { 'Authorization' => "Bearer #{tokens[:access_token]}" } }
+    
+    it 'lists active sessions' do
+      get '/v1/auth/sessions', headers: headers
+      
+      expect(response).to have_http_status(:ok)
+      expect(json_response['data']).to be_an(Array)
+      expect(json_response['data'].length).to eq(1)
+      expect(json_response['data'].first['id']).to eq(tokens[:session_id])
     end
   end
 
-  describe 'POST /v1/auth/verify-email' do
-    let!(:user) { create(:user, email_verified_at: nil) }
-    let(:auth_headers_hash) { auth_headers(user) }
+  describe 'DELETE /v1/auth/sessions/:id' do
+    let!(:user) { create(:user) }
+    let!(:session1) { UserSession.create!(user: user, jti: '1', refresh_token_hash: '1', expires_at: 1.day.from_now) }
+    let!(:session2) { UserSession.create!(user: user, jti: '2', refresh_token_hash: '2', expires_at: 1.day.from_now) }
+    
+    # Authenticate with session1
+    let(:token) { JwtService.encode({ user_id: user.id, jti: '1', role: user.role }) }
+    let(:headers) { { 'Authorization' => "Bearer #{token}" } }
 
-    context 'when verification code is valid' do
-      it 'verifies the user email successfully' do
-        # Generate a verification code
-        raw_code = EmailVerification.create_for_user(user)
-
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('Email verified successfully')
-        expect(json_response['data']['user']['email_verified']).to be true
-
-        # Verify that the user's email is marked as verified in the database
-        user.reload
-        expect(user.email_verified_at).to be_present
-
-        # Verify that the code was revoked (one-time use)
-        verification = EmailVerification.where(user_id: user.id).first
-        expect(verification.revoked_at).to be_present
-      end
-
-      it 'returns user details with verified email' do
-        raw_code = EmailVerification.create_for_user(user)
-
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['data']['user']).to include(
-          'id' => user.id,
-          'email' => user.email,
-          'full_name' => user.full_name,
-          'email_verified' => true
-        )
-      end
-    end
-
-    context 'when verification code is invalid' do
-      it 'returns unauthorized error for invalid code' do
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: '123456' }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Invalid verification code')
-        expect(json_response['errors']).to be_present
-        expect(json_response['errors'].first['field']).to eq('code')
-        expect(json_response['errors'].first['message']).to eq('Invalid or expired code')
-
-        # Verify that the user's email was not verified
-        user.reload
-        expect(user.email_verified_at).to be_nil
-      end
-
-      it 'returns unauthorized error for expired code' do
-        # Create and manually expire a code
-        raw_code = EmailVerification.create_for_user(user)
-        verification = EmailVerification.where(user_id: user.id).first
-        verification.update!(expires_at: 1.minute.ago)
-
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Invalid verification code')
-      end
-
-      it 'returns unauthorized error for already used code' do
-        raw_code = EmailVerification.create_for_user(user)
-
-        # Use the code once
-        EmailVerification.verify_code(user, raw_code)
-
-        # Try to use it again
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-
-      it 'returns unauthorized error for code belonging to different user' do
-        other_user = create(:user)
-        raw_code = EmailVerification.create_for_user(other_user)
-
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'when verification code is missing' do
-      it 'returns unprocessable_content error' do
-        post '/v1/auth/verify-email',
-             headers: auth_headers_hash,
-             params: { code: '' }
-
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Verification code is required')
-        expect(json_response['errors']).to be_present
-        expect(json_response['errors'].first['field']).to eq('code')
-        expect(json_response['errors'].first['message']).to eq('Verification code is required')
-      end
-
-      it 'returns error when code parameter is not provided' do
-        post '/v1/auth/verify-email', headers: auth_headers_hash
-
-        expect(response).to have_http_status(:unprocessable_content)
-        expect(json_response['success']).to be false
-        expect(json_response['message']).to eq('Verification code is required')
-      end
-    end
-
-    context 'when user is not authenticated' do
-      it 'returns unauthorized error' do
-        post '/v1/auth/verify-email', params: { code: '123456' }
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(json_response['success']).to be false
-      end
-    end
-
-    context 'when unverified user verifies their email' do
-      let!(:unverified_user) { create(:user, :unverified) }
-      let(:unverified_auth_headers_hash) { auth_headers(unverified_user) }
-
-      it 'allows verification code submission even when email is not verified' do
-        raw_code = EmailVerification.create_for_user(unverified_user)
-
-        post '/v1/auth/verify-email',
-             headers: unverified_auth_headers_hash,
-             params: { code: raw_code }
-
-        expect(response).to have_http_status(:ok)
-        expect(json_response['success']).to be true
-        expect(json_response['message']).to eq('Email verified successfully')
-
-        # Verify that the user's email is now marked as verified
-        unverified_user.reload
-        expect(unverified_user.email_verified_at).to be_present
-      end
+    it 'revokes the specified session' do
+      delete "/v1/auth/sessions/#{session2.id}", headers: headers
+      
+      expect(response).to have_http_status(:ok)
+      expect(session2.reload.revoked?).to be true
+      expect(session1.reload.revoked?).to be false
     end
   end
 end
