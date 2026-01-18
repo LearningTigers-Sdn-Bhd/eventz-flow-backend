@@ -1,96 +1,210 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
-# If running the rails server then create or migrate existing database
-if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
-  echo "=== SAFE DEPLOY MODE ==="
+# =============================================================================
+# Docker Entrypoint for Rails Application
+# =============================================================================
+# This script handles database initialization and migrations in a safe manner
+# before starting the Rails server.
+#
+# Environment Variables:
+#   DATABASE_URL           - Required. PostgreSQL connection string.
+#   MAX_DB_WAIT_SECONDS    - Optional. Max seconds to wait for DB (default: 30)
+#   ENTRYPOINT_VERBOSE     - Optional. Set to "true" for verbose logging
+#   SKIP_MIGRATION_RECOVERY - Optional. Set to "true" to disable auto-recovery
+# =============================================================================
 
-  # Safety check: Ensure DATABASE_URL is set
-  if [ -z "$DATABASE_URL" ]; then
-    echo "ERROR: DATABASE_URL is not set. Refusing to start."
-    exit 1
+# === Configuration ===
+MAX_DB_WAIT_SECONDS="${MAX_DB_WAIT_SECONDS:-30}"
+VERBOSE="${ENTRYPOINT_VERBOSE:-false}"
+SKIP_RECOVERY="${SKIP_MIGRATION_RECOVERY:-false}"
+
+# === Helper Functions ===
+
+log() {
+  local level="$1"
+  shift
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $*"
+}
+
+log_info() {
+  log "INFO" "$@"
+}
+
+log_warn() {
+  log "WARN" "$@"
+}
+
+log_error() {
+  log "ERROR" "$@"
+}
+
+log_verbose() {
+  if [ "$VERBOSE" = "true" ]; then
+    log "DEBUG" "$@"
   fi
+}
 
-  echo "DATABASE_URL is set, connecting to: ${DATABASE_URL%%@*}@[REDACTED]"
+# Error trap for debugging
+on_error() {
+  local exit_code=$?
+  local line_number=$1
+  log_error "Script failed at line $line_number with exit code $exit_code"
+  exit $exit_code
+}
+trap 'on_error $LINENO' ERR
 
-  # Wait for PostgreSQL to be ready (max 30 seconds)
-  echo "Waiting for PostgreSQL to be ready..."
-  MAX_RETRIES=30
-  RETRY_COUNT=0
+# Wait for PostgreSQL to be ready
+wait_for_db() {
+  log_info "Waiting for PostgreSQL to be ready..."
+  local retry_count=0
 
   until ./bin/rails runner "ActiveRecord::Base.connection.execute('SELECT 1')" 2>/dev/null; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-      echo "ERROR: PostgreSQL not ready after ${MAX_RETRIES} seconds. Refusing to start."
+    retry_count=$((retry_count + 1))
+    if [ "$retry_count" -ge "$MAX_DB_WAIT_SECONDS" ]; then
+      log_error "PostgreSQL not ready after ${MAX_DB_WAIT_SECONDS} seconds. Refusing to start."
       exit 1
     fi
-    echo "PostgreSQL not ready yet... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+    log_verbose "PostgreSQL not ready yet... (attempt $retry_count/$MAX_DB_WAIT_SECONDS)"
     sleep 1
   done
 
-  echo "PostgreSQL is ready!"
+  log_info "PostgreSQL is ready!"
+}
 
-  # Check if schema_migrations table exists
-  # CRITICAL: If this check fails, we DO NOT proceed with schema:load
-  TABLE_CHECK_RESULT=$(./bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('schema_migrations')" 2>&1)
-  TABLE_CHECK_EXIT_CODE=$?
+# Check if schema_migrations table exists
+check_schema_migrations_exists() {
+  local result
+  # Use tail -1 to get only the actual result, filtering out Vips and other Rails startup messages
+  result=$(./bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('schema_migrations')" 2>&1 | tail -1) || {
+    log_error "Failed to check database state. Output: $result"
+    log_error "Refusing to proceed to prevent data loss."
+    exit 1
+  }
+  echo "$result"
+}
 
-  if [ $TABLE_CHECK_EXIT_CODE -ne 0 ]; then
-    echo "ERROR: Failed to check database state. Output: $TABLE_CHECK_RESULT"
-    echo "Refusing to proceed to prevent data loss."
+# Get count of existing tables
+get_tables_count() {
+  # Use tail -1 to get only the count, filtering out Vips and other Rails startup messages
+  ./bin/rails runner "puts ActiveRecord::Base.connection.tables.count" 2>&1 | tail -1 || echo "0"
+}
+
+# Run database migrations
+run_migrations() {
+  log_info "Running database migrations..."
+  if ./bin/rails db:migrate; then
+    log_info "✅ Migrations completed successfully"
+  else
+    log_error "❌ Migrations failed"
+    exit 1
+  fi
+}
+
+# Load database schema for fresh database
+load_schema() {
+  log_info "Database is empty, loading schema..."
+  ./bin/rails db:create 2>/dev/null || {
+    log_verbose "Database already exists, continuing..."
+  }
+  if ./bin/rails db:schema:load; then
+    log_info "✅ Schema loaded successfully"
+  else
+    log_error "❌ Schema load failed"
+    exit 1
+  fi
+}
+
+# Recover schema_migrations table when tables exist but schema_migrations is missing
+recover_schema_migrations() {
+  local tables_count="$1"
+
+  if [ "$SKIP_RECOVERY" = "true" ]; then
+    log_warn "Recovery is disabled (SKIP_MIGRATION_RECOVERY=true). Manual intervention required."
     exit 1
   fi
 
-  if [ "$TABLE_CHECK_RESULT" = "true" ]; then
-    echo "Tables exist, running migrations..."
-    ./bin/rails db:migrate
+  log_warn "schema_migrations missing but found $tables_count tables!"
+  log_info "Attempting to recover by creating schema_migrations table..."
+
+  ./bin/rails runner "
+    # Create schema_migrations table if it doesn't exist
+    unless ActiveRecord::Base.connection.table_exists?('schema_migrations')
+      ActiveRecord::Base.connection.create_table 'schema_migrations', id: false, force: :cascade do |t|
+        t.string 'version', null: false
+      end
+      ActiveRecord::Base.connection.add_index 'schema_migrations', 'version', unique: true
+      puts 'Created schema_migrations table'
+    end
+
+    # Get existing tables for verification
+    existing_tables = ActiveRecord::Base.connection.tables
+
+    # Mark all existing migration files as applied
+    migration_files = Dir[Rails.root.join('db', 'migrate', '*.rb')].map do |f|
+      File.basename(f).split('_').first
+    end.sort
+
+    applied_count = 0
+    skipped_count = 0
+
+    migration_files.each do |version|
+      # Insert the migration version
+      ActiveRecord::Base.connection.execute(
+        \"INSERT INTO schema_migrations (version) VALUES ('#{version}') ON CONFLICT (version) DO NOTHING\"
+      )
+      applied_count += 1
+    end
+
+    puts \"✅ Initialized schema_migrations with #{applied_count} migrations\"
+  " 2>&1 || {
+    log_error "Failed to create schema_migrations table. Manual intervention required."
+    exit 1
+  }
+
+  log_info "Recovery complete. Running migrations to catch any new ones..."
+  run_migrations
+}
+
+# === Main Logic ===
+
+# Only run database setup when starting the Rails server
+if [ "${1:-}" = "./bin/rails" ] && [ "${2:-}" = "server" ]; then
+  log_info "=== SAFE DEPLOY MODE ==="
+
+  # Safety check: Ensure DATABASE_URL is set
+  if [ -z "${DATABASE_URL:-}" ]; then
+    log_error "DATABASE_URL is not set. Refusing to start."
+    exit 1
+  fi
+
+  # Log redacted connection info
+  log_info "DATABASE_URL is set, connecting to: ${DATABASE_URL%%@*}@[REDACTED]"
+
+  # Wait for database to be ready
+  wait_for_db
+
+  # Check database state
+  schema_migrations_exists=$(check_schema_migrations_exists)
+
+  if [ "$schema_migrations_exists" = "true" ]; then
+    log_info "Database initialized, checking for pending migrations..."
+    run_migrations
   else
-    # Extra safety: Check if this is truly an empty database
-    TABLES_COUNT=$(./bin/rails runner "puts ActiveRecord::Base.connection.tables.count" 2>&1)
+    # Check if this is truly an empty database
+    tables_count=$(get_tables_count)
 
-    if [ "$TABLES_COUNT" != "0" ] && [ -n "$TABLES_COUNT" ]; then
-      echo "WARNING: schema_migrations missing but found $TABLES_COUNT tables!"
-      echo "Attempting to recover by creating schema_migrations table and marking current schema as applied..."
-
-      # Extract schema version and create schema_migrations table using Rails
-      echo "Creating schema_migrations table and marking current schema as applied..."
-      ./bin/rails runner "
-        # Create schema_migrations table if it doesn't exist
-        unless ActiveRecord::Base.connection.table_exists?('schema_migrations')
-          ActiveRecord::Base.connection.create_table 'schema_migrations', id: false, force: :cascade do |t|
-            t.string 'version', null: false
-          end
-          ActiveRecord::Base.connection.add_index 'schema_migrations', 'version', unique: true
-          puts 'Created schema_migrations table'
-        end
-
-        # Mark all existing migration files as applied
-        # This is safe because the tables already exist, so the migrations have effectively been applied
-        migration_files = Dir[Rails.root.join('db', 'migrate', '*.rb')].map do |f|
-          File.basename(f).split('_').first
-        end.sort
-
-        migration_files.each do |version|
-          ActiveRecord::Base.connection.execute(
-            \"INSERT INTO schema_migrations (version) VALUES ('#{version}') ON CONFLICT (version) DO NOTHING\"
-          )
-        end
-
-        puts \"✅ Successfully initialized schema_migrations table with #{migration_files.count} migration versions\"
-      " 2>&1
-
-      if [ $? -eq 0 ]; then
-        echo "Running migrations to catch any new ones..."
-        ./bin/rails db:migrate
-      else
-        echo "ERROR: Failed to create schema_migrations table. Manual intervention required."
-        exit 1
-      fi
+    if [ "$tables_count" != "0" ] && [ -n "$tables_count" ]; then
+      # Tables exist but schema_migrations is missing - need recovery
+      recover_schema_migrations "$tables_count"
     else
-      echo "Database is empty, loading schema..."
-      ./bin/rails db:create 2>/dev/null || true  # Ignore if DB already exists!
-      ./bin/rails db:schema:load
+      # Fresh database - load schema
+      load_schema
     fi
   fi
+
+  log_info "=== DATABASE SETUP COMPLETE ==="
 fi
 
+# Execute the main command
 exec "${@}"
