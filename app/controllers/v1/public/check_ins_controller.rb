@@ -80,11 +80,18 @@ module V1
       end
 
       def check_in_attendee(attendee)
-        if attendee.is_a?(Ticket)
+        # Store check_in_url in Thread for webhook/printer integration
+        Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
+
+        result = if attendee.is_a?(Ticket)
           attendee.update(checked_in: true, check_in_at: Time.current, status: :scanned)
         else
           attendee.update(checked_in: true, check_in_at: Time.current)
         end
+
+        # Clear thread-local variable after update
+        Thread.current[:check_in_url] = nil
+        result
       end
 
       def already_checked_in_error(attendee)
@@ -104,7 +111,7 @@ module V1
         success_response(data: {
           action: 'select',
           message: 'Please select to check in.',
-          attendees: attendees.map { |a| format_attendee(a, masked: true) }
+          attendees: attendees.map { |a| format_attendee(a) }
         })
       end
 
@@ -134,40 +141,24 @@ module V1
           base.where("LOWER(#{email_col}) = ?", @value.downcase)
         when 'phone'
           normalized = @value.gsub(/\D+/, '')
-          base.where("REGEXP_REPLACE(#{phone_col}, '[^0-9]', '', 'g') = ?", normalized)
+          base.where("REGEXP_REPLACE(#{phone_col}, '[^0-9]', '', 'g') LIKE ?", "%#{normalized}%")
         end.order(created_at: :desc).limit(10)
       end
 
       # --- Formatting ---
 
-      def format_attendee(attendee, masked: false)
+      def format_attendee(attendee)
         is_ticket = attendee.is_a?(Ticket)
         {
           public_id: attendee.public_id,
           name: is_ticket ? attendee.attendee_name : attendee.full_name,
-          email: masked ? mask_email(is_ticket ? attendee.attendee_email : attendee.email) : (is_ticket ? attendee.attendee_email : attendee.email),
-          phone: masked ? mask_phone(is_ticket ? attendee.attendee_phone : attendee.phone) : (is_ticket ? attendee.attendee_phone : attendee.phone),
+          email: is_ticket ? attendee.attendee_email : attendee.email,
+          phone: is_ticket ? attendee.attendee_phone : attendee.phone,
           role: attendee.role,
           type_name: is_ticket ? attendee.ticket_type&.name : nil,
           checked_in: attendee.checked_in,
           check_in_at: attendee.check_in_at&.iso8601
         }.compact
-      end
-
-      def mask_email(email)
-        return nil if email.blank?
-        parts = email.split('@')
-        return email if parts.length != 2
-
-        local, domain = parts
-        masked = local.length <= 2 ? "#{local[0]}***" : "#{local[0]}***#{local[-1]}"
-        "#{masked}@#{domain}"
-      end
-
-      def mask_phone(phone)
-        return nil if phone.blank?
-        digits = phone.gsub(/\D+/, '')
-        digits.length < 4 ? phone : "***-***-#{digits[-4..]}"
       end
     end
   end
