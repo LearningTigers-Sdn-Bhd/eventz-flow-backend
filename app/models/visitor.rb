@@ -122,6 +122,11 @@ class Visitor < ApplicationRecord
       }
     }
 
+    # Include check_in_url if provided (from Thread local storage set in controller)
+    if Thread.current[:check_in_url].present?
+      payload[:check_in_url] = Thread.current[:check_in_url]
+    end
+
     # Add scanned_by information if visitor was scanned by a user
     if self.scanned_by_id.present? && self.scanned_by
       payload[:scanned_by] = {
