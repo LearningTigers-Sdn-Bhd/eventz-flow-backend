@@ -318,6 +318,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                 description: 'Metric to retrieve: tickets, scans, revenue, visitors, stamps, redemptions, redemption_value'
       parameter name: :group_by, in: :query, type: :string, required: false,
                 description: 'Time grouping: hour, day, week, month (auto-detected if not provided)'
+      parameter name: :date_mode, in: :query, type: :string, required: false,
+                description: 'Date mode: all_time (from first registration), pre_event (before event start)'
       parameter name: :start_date, in: :query, type: :string, required: false,
                 description: 'Start date (YYYY-MM-DD), defaults to event start_date'
       parameter name: :end_date, in: :query, type: :string, required: false,
@@ -367,6 +369,50 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           expect(data['metric']).to eq('visitors')
           expect(data['group_by']).to be_present
           expect(data['data']).to be_an(Array)
+        end
+      end
+
+      response '200', 'Returns all_time data including pre-event registrations' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'tickets' }
+        let(:date_mode) { 'all_time' }
+
+        before do
+          # Create tickets before the event start date
+          travel_to(event.start_date - 7.days) do
+            create_list(:ticket, 3, event: event, ticket_type: ticket_type, status: :purchased)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('tickets')
+          expect(data['data']).to be_an(Array)
+          # Start date should be earlier than event start_date (from first registration)
+          expect(Date.parse(data['start_date'])).to be <= event.start_date.to_date
+        end
+      end
+
+      response '200', 'Returns pre_event data only before event start' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'tickets' }
+        let(:date_mode) { 'pre_event' }
+
+        before do
+          # Create tickets before the event start date
+          travel_to(event.start_date - 5.days) do
+            create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :purchased)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('tickets')
+          expect(data['data']).to be_an(Array)
+          # End date should be the event start date
+          expect(Date.parse(data['end_date'])).to eq(event.start_date.to_date)
         end
       end
 

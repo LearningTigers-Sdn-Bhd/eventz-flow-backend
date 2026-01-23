@@ -166,7 +166,8 @@ module V1
     # --- Time Series Helpers ---
 
     def auto_group_by
-      duration_days = (@event.end_date.to_date - @event.start_date.to_date).to_i
+      range = build_date_range
+      duration_days = (range.end.to_date - range.begin.to_date).to_i
       case duration_days
       when 0..1   then 'hour'
       when 2..14  then 'day'
@@ -176,9 +177,33 @@ module V1
     end
 
     def build_date_range
-      start_date = parse_date(params[:start_date]) || @event.start_date.to_date
-      end_date = parse_date(params[:end_date]) || @event.end_date.to_date
-      start_date.beginning_of_day..end_date.end_of_day
+      date_mode = params[:date_mode]
+
+      case date_mode
+      when 'all_time'
+        # From the earliest registration to now (or event end, whichever is later)
+        earliest_date = find_earliest_registration_date
+        latest_date = [Time.current, @event.end_date].max
+        earliest_date.beginning_of_day..latest_date.end_of_day
+      when 'pre_event'
+        # From the earliest registration to event start
+        earliest_date = find_earliest_registration_date
+        earliest_date.beginning_of_day..@event.start_date.beginning_of_day
+      else
+        # Default: use provided dates or event duration
+        start_date = parse_date(params[:start_date]) || @event.start_date.to_date
+        end_date = parse_date(params[:end_date]) || @event.end_date.to_date
+        start_date.beginning_of_day..end_date.end_of_day
+      end
+    end
+
+    def find_earliest_registration_date
+      # Find the earliest registration across tickets and visitors
+      earliest_ticket = @event.tickets.minimum(:created_at)
+      earliest_visitor = @event.visitors.minimum(:created_at)
+
+      candidates = [earliest_ticket, earliest_visitor, @event.start_date].compact
+      candidates.min.to_date
     end
 
     def parse_date(date_string)
