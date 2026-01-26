@@ -25,6 +25,11 @@ class RouletteWinnerPolicy < ApplicationPolicy
     create?
   end
 
+  # notify? - same permissions as create?
+  def notify?
+    create?
+  end
+
   class Scope < Scope
     def resolve
       if user.blank?

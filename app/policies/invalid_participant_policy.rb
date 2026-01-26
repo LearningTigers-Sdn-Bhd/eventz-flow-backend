@@ -44,6 +44,11 @@ class InvalidParticipantPolicy < ApplicationPolicy
     index?
   end
 
+  # notify? - same as index? (can notify if can view)
+  def notify?
+    index?
+  end
+
   # destroy_all? - event admins, team members, org admins
   def destroy_all?
     index?

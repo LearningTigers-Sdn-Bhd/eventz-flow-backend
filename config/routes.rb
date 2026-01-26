@@ -162,6 +162,9 @@ Rails.application.routes.draw do
           end
           resources :gifts, only: [:index, :show, :create, :update, :destroy] do
             resources :winners, only: [:create, :destroy], controller: 'gift_winners' do
+              member do
+                post :notify
+              end
               collection do
                 post :bulk
               end
@@ -169,6 +172,9 @@ Rails.application.routes.draw do
           end
           resources :participants, only: [:index], controller: 'lucky_draw_participants'
           resources :invalid_participants, only: [:index, :create, :destroy] do
+            member do
+              post :notify
+            end
             collection do
               delete :destroy_all
             end
@@ -185,7 +191,11 @@ Rails.application.routes.draw do
           end
           resources :assigns, only: [:index, :create, :destroy], controller: 'roulette_assigns'
           resources :prizes, only: [:index, :show, :create, :update, :destroy], controller: 'roulette_prizes'
-          resources :winners, only: [:index, :create, :destroy], controller: 'roulette_winners'
+          resources :winners, only: [:index, :create, :destroy], controller: 'roulette_winners' do
+            member do
+              post :notify
+            end
+          end
           resources :participants, only: [:show], controller: 'roulette_participants'
         end
       end

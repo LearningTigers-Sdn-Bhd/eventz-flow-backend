@@ -6,7 +6,7 @@ module V1
       before_action :set_session
       before_action :authorize_event
       before_action :set_gift
-      before_action :set_winner, only: [:destroy]
+      before_action :set_winner, only: [:destroy, :notify]
 
       # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/gifts/:gift_id/winners
       def create
@@ -19,6 +19,10 @@ module V1
           # Access associations to trigger loading
           @winner.ticket if @winner.ticket_id
           @winner.visitor if @winner.visitor_id
+
+          # Send webhook notification if webhook_url is configured
+          send_winner_webhook(@winner)
+
           success_response(
             data: format_winner_response(@winner),
             message: 'Success',
@@ -78,6 +82,9 @@ module V1
             status: :unprocessable_content
           )
         else
+          # Send webhook notifications for all winners
+          winners.each { |winner| send_winner_webhook(winner) }
+
           success_response(
             data: winners.map { |winner| format_winner_response(winner) },
             message: 'Success',
@@ -91,6 +98,26 @@ module V1
         authorize @winner
         @winner.destroy
         head :no_content
+      end
+
+      # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/gifts/:gift_id/winners/:winner_id/notify
+      def notify
+        authorize @winner, :notify?
+
+        webhook_url = @event.webhook_url
+        unless webhook_url.present?
+          return error_response(
+            message: 'No webhook URL configured for this event',
+            status: :unprocessable_content
+          )
+        end
+
+        send_winner_webhook(@winner)
+
+        success_response(
+          data: format_winner_response(@winner),
+          message: 'Notification sent successfully'
+        )
       end
 
       private
@@ -144,6 +171,72 @@ module V1
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601
+        }
+      end
+
+      def send_winner_webhook(winner)
+        webhook_url = @event.webhook_url
+        return unless webhook_url.present?
+
+        payload = build_winner_webhook_payload(winner)
+        WebhookSenderJob.perform_later(webhook_url, payload)
+      rescue StandardError => e
+        # Log error but don't fail the request
+        Rails.logger.error "Failed to queue webhook: #{e.message}"
+      end
+
+      def build_winner_webhook_payload(winner)
+        participant = winner.ticket || winner.visitor
+        participant_data = if winner.ticket
+          {
+            type: 'ticket',
+            id: winner.ticket.id,
+            public_id: winner.ticket.public_id,
+            name: winner.ticket.attendee_name,
+            email: winner.ticket.attendee_email,
+            phone: winner.ticket.attendee_phone
+          }
+        else
+          {
+            type: 'visitor',
+            id: winner.visitor.id,
+            public_id: winner.visitor.public_id,
+            name: winner.visitor.full_name,
+            email: winner.visitor.email,
+            phone: winner.visitor.phone
+          }
+        end
+
+        {
+          event_type: 'lucky_draw.winner_declared',
+          webhook_id: SecureRandom.uuid,
+          timestamp: Time.now.utc.iso8601,
+          api_version: 'v1',
+
+          event: {
+            id: @event.id,
+            title: @event.title,
+            slug: @event.slug
+          },
+
+          lucky_draw_session: {
+            id: @session.id,
+            title: @session.title,
+            draw_date: @session.draw_date&.iso8601
+          },
+
+          gift: {
+            id: winner.gift.id,
+            name: winner.gift.name,
+            order: winner.gift.order,
+            winner_counts: winner.gift.winner_counts
+          },
+
+          winner: {
+            id: winner.id,
+            drawn_at: winner.drawn_at.iso8601,
+            participant: participant_data
+          }
         }
       end
     end
