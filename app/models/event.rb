@@ -33,6 +33,7 @@ class Event < ApplicationRecord
 
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
+  after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
 
   attr_accessor :skip_webhooks
 
@@ -119,7 +120,58 @@ class Event < ApplicationRecord
     WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
   end
 
+  # Sync custom label keys to tickets and visitors when labels_data changes
+  def sync_custom_labels_to_attendees
+    old_labels, new_labels = saved_change_to_labels_data
+    old_labels ||= {}
+    new_labels ||= {}
+
+    # Build key mapping by comparing old and new labels by position
+    old_keys = old_labels.keys
+    new_keys = new_labels.keys
+
+    # Find keys that were renamed (same position, different key)
+    key_mapping = {}
+    old_keys.each_with_index do |old_key, index|
+      new_key = new_keys[index]
+      # If there's a new key at this position and it's different, it's a rename
+      if new_key.present? && old_key != new_key
+        key_mapping[old_key] = new_key
+      end
+    end
+
+    # Update tickets and visitors if there are key changes
+    return if key_mapping.empty?
+
+    # Update tickets
+    tickets.find_each do |ticket|
+      update_custom_fields_keys(ticket, key_mapping)
+    end
+
+    # Update visitors
+    visitors.find_each do |visitor|
+      update_custom_fields_keys(visitor, key_mapping)
+    end
+  end
+
   private
+
+  # Update custom_fields_data keys based on the mapping
+  def update_custom_fields_keys(record, key_mapping)
+    return unless record.custom_fields_data.present?
+
+    updated_data = {}
+    record.custom_fields_data.each do |key, value|
+      # Use new key if it exists in mapping, otherwise keep original key
+      new_key = key_mapping[key] || key
+      updated_data[new_key] = value
+    end
+
+    # Only update if data actually changed
+    if updated_data != record.custom_fields_data
+      record.update_columns(custom_fields_data: updated_data)
+    end
+  end
 
   def end_date_must_be_after_start_date
     if start_date.present? && end_date.present? && end_date < start_date
