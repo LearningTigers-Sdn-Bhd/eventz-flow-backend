@@ -389,10 +389,7 @@ module V1
     private
 
     def broadcast_to_welcome_screen(ticket)
-      ActionCable.server.broadcast(
-        "welcome_screen_event_#{ticket.event_id}",
-        { name: ticket.attendee_name, checked_in_at: Time.current.iso8601 }
-      )
+      WelcomeScreenQueueService.enqueue(ticket.event_id, ticket.attendee_name)
     end
 
     def set_event

@@ -92,10 +92,7 @@ module V1
         # Broadcast to welcome screen after successful check-in
         if result
           attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
-          ActionCable.server.broadcast(
-            "welcome_screen_event_#{@event.id}",
-            { name: attendee_name, checked_in_at: Time.current.iso8601 }
-          )
+          WelcomeScreenQueueService.enqueue(@event.id, attendee_name)
         end
 
         # Clear thread-local variable after update

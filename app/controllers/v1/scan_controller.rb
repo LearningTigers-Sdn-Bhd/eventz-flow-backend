@@ -209,10 +209,7 @@ module V1
 
     def broadcast_to_welcome_screen
       attendee_name = @record.is_a?(Ticket) ? @record.attendee_name : @record.full_name
-      ActionCable.server.broadcast(
-        "welcome_screen_event_#{@record.event_id}",
-        { name: attendee_name, checked_in_at: Time.current.iso8601 }
-      )
+      WelcomeScreenQueueService.enqueue(@record.event_id, attendee_name)
     end
   end
 end
