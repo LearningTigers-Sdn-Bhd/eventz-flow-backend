@@ -80,6 +80,7 @@ module V1
       end
 
       if @visitor.update(checked_in: true, check_in_at: Time.current, scanned_by_id: current_user.id)
+        broadcast_to_welcome_screen(@visitor)
         render json: @visitor.as_json(
           include: {
             event: { only: [:id, :title] },
@@ -94,6 +95,13 @@ module V1
     end
 
     private
+
+    def broadcast_to_welcome_screen(visitor)
+      ActionCable.server.broadcast(
+        "welcome_screen_event_#{visitor.event_id}",
+        { name: visitor.full_name, checked_in_at: Time.current.iso8601 }
+      )
+    end
 
     def set_event
       # Allow accessing archived events for record-keeping

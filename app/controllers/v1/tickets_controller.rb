@@ -136,7 +136,8 @@ module V1
       end
 
       if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
-        render json: @ticket.as_json(include: { 
+        broadcast_to_welcome_screen(@ticket)
+        render json: @ticket.as_json(include: {
           ticket_type: { only: [:id, :name, :price] },
           event: { only: [:id, :title] }
         }), status: :ok
@@ -331,6 +332,7 @@ module V1
         # Clear the thread-local variable after update
         Thread.current[:check_in_url] = nil
 
+        broadcast_to_welcome_screen(@ticket)
         render json: @ticket.as_json(
           include: {
             ticket_type: { only: [:id, :name, :price] },
@@ -385,6 +387,13 @@ module V1
     end
 
     private
+
+    def broadcast_to_welcome_screen(ticket)
+      ActionCable.server.broadcast(
+        "welcome_screen_event_#{ticket.event_id}",
+        { name: ticket.attendee_name, checked_in_at: Time.current.iso8601 }
+      )
+    end
 
     def set_event
       # Allow accessing archived events for record-keeping

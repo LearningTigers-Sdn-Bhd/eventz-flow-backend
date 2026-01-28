@@ -26,6 +26,8 @@ Rails.application.routes.draw do
         get :business_matching_events, on: :member
         # Public check-in endpoint - scoped to event
         resource :check_in, only: [:show, :create], controller: 'check_ins'
+        # Public check-in display settings
+        resource :check_in_display, only: [:show], controller: 'check_in_displays'
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: [:index, :show]
@@ -149,6 +151,9 @@ Rails.application.routes.draw do
 
       # Exhibitor team member limit settings (singular - one per event)
       resource :exhibitor_team_member_limit, only: [:show, :create, :update, :destroy]
+
+      # Check-in display settings (singular - one per event)
+      resource :check_in_display, only: [:show, :update]
 
       # Received payments for payees (contractors/org_owners)
       resources :received_payments, only: [:index]

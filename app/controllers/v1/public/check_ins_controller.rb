@@ -89,6 +89,15 @@ module V1
           attendee.update(checked_in: true, check_in_at: Time.current)
         end
 
+        # Broadcast to welcome screen after successful check-in
+        if result
+          attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
+          ActionCable.server.broadcast(
+            "welcome_screen_event_#{@event.id}",
+            { name: attendee_name, checked_in_at: Time.current.iso8601 }
+          )
+        end
+
         # Clear thread-local variable after update
         Thread.current[:check_in_url] = nil
         result

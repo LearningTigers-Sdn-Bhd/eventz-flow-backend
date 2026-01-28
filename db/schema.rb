@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_17_055028) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_28_003034) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -63,6 +63,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_17_055028) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_business_host_assignments_on_event_id"
     t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
+  end
+
+  create_table "check_in_displays", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "font_family", default: "Inter"
+    t.integer "font_size", default: 72
+    t.integer "animation_type", default: 0
+    t.boolean "is_bold", default: false
+    t.string "name_color", default: "#FFFFFF"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -1006,6 +1018,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_17_055028) do
   add_foreign_key "api_keys", "users"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
+  add_foreign_key "check_in_displays", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"

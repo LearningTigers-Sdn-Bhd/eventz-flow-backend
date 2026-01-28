@@ -38,3 +38,4 @@
 
 # Ignore config/database.yml
 /config/database.yml
+mise.toml
