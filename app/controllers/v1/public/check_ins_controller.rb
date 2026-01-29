@@ -70,7 +70,7 @@ module V1
 
       def find_attendee_by_public_id
         attendee = if @event.use_ticket
-                     @event.tickets.find_by(public_id: @value, payment_status: :paid)
+                     @event.tickets.find_by(public_id: @value)
                    else
                      @event.visitors.find_by(public_id: @value)
                    end
@@ -123,7 +123,7 @@ module V1
 
       def search_tickets
         search_attendees_by(
-          @event.tickets.where(payment_status: :paid),
+          @event.tickets,
           name_col: 'attendee_name',
           email_col: 'attendee_email',
           phone_col: 'attendee_phone'
