@@ -210,6 +210,21 @@ Rails.application.routes.draw do
       # Event Metrics moved outside to avoid impacting event resources
     end
 
+    # Seat Ticketing
+    namespace :seat_ticketing do
+      resources :sessions do
+        member do
+          delete :force_delete
+          patch :restore
+        end
+        resources :venues do
+          resources :sections do
+            resources :event_ticket_seats, path: 'ticket-seats'
+          end
+        end
+      end
+    end
+
     # Business Matching Availability
     namespace :business_matching do
       post 'receive', to: 'callbacks#receive'

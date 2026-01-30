@@ -22,7 +22,8 @@ EVENT_SCHEMA = {
     payment_status: { type: :string, example: 'paid' },
     price: { type: :string, example: '100.0' },
     published: { type: :boolean, example: true },
-    visibility: { type: :boolean, example: true }
+    visibility: { type: :boolean, example: true },
+    use_seat_ticketing: { type: :boolean, example: false }
   },
   required: ['id', 'title', 'status', 'start_date', 'end_date', 'payment_status', 'price', 'published', 'visibility']
 }.freeze
@@ -135,6 +136,7 @@ RSpec.describe 'V1::Events', type: :request do
           start_date: { type: :string, format: :date_time },
           end_date: { type: :string, format: :date_time },
           visibility: { type: :boolean },
+          use_seat_ticketing: { type: :boolean },
           event_admin_id: { type: :integer, description: 'Optional: User ID to assign as event admin. Defaults to current user if not provided.' }
         },
         required: ['title', 'start_date', 'end_date']
@@ -380,6 +382,7 @@ RSpec.describe 'V1::Events', type: :request do
           location: { type: :string },
           status: { type: :string, enum: ['draft', 'published', 'canceled'] },
           visibility: { type: :boolean },
+          use_seat_ticketing: { type: :boolean },
           use_sponsorship: { type: :boolean }
         }
       }

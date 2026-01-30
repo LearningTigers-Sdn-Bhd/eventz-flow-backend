@@ -187,6 +187,7 @@ module V1
         :webhook_url,
         :visibility,
         :use_ticket,
+        :use_seat_ticketing,
         :use_exhibitor_kit,
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin

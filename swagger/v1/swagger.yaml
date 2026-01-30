@@ -794,6 +794,13 @@ paths:
           provided)'
         schema:
           type: string
+      - name: date_mode
+        in: query
+        required: false
+        description: 'Date mode: all_time (from first registration), pre_event (before
+          event start)'
+        schema:
+          type: string
       - name: start_date
         in: query
         required: false
@@ -808,7 +815,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Auto-detects group_by based on event duration
+          description: Returns pre_event data only before event start
           content:
             application/json:
               schema:
@@ -4780,6 +4787,115 @@ paths:
                   type: integer
                   nullable: true
         required: true
+  "/v1/events/{event_id}/lucky_draw/sessions/{session_id}/gifts/{gift_id}/winners/{id}/notify":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: session_id
+      in: path
+      required: true
+      description: Session ID
+      schema:
+        type: integer
+    - name: gift_id
+      in: path
+      required: true
+      description: Gift ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Winner ID
+      schema:
+        type: integer
+    post:
+      summary: Sends notification for a gift winner
+      tags:
+      - Lucky Draw Winners
+      security:
+      - BearerAuth: []
+      description: Manually triggers webhook notification for a specific gift winner.
+        Useful for resending notifications if the initial webhook failed.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Notification sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Notification sent successfully
+        '422':
+          description: No webhook URL configured
+  "/v1/events/{event_id}/lucky_draw/sessions/{session_id}/invalid_participants/{id}/notify":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: integer
+    - name: session_id
+      in: path
+      required: true
+      description: Session ID
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      description: Invalid Participant ID
+      schema:
+        type: integer
+    post:
+      summary: Sends notification for an invalid participant (winner without gifts)
+      tags:
+      - Lucky Draw Invalid Participants
+      security:
+      - BearerAuth: []
+      description: Manually triggers webhook notification for a specific invalid participant
+        (winner in sessions without gifts). Useful for resending notifications if
+        the initial webhook failed.
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        description: Bearer JWT token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Notification sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Notification sent successfully
+        '422':
+          description: No webhook URL configured
   "/v1/payment_detail/me":
     get:
       summary: get current user payment details
@@ -8568,6 +8684,521 @@ paths:
           description: Forbidden for unauthorized user
         '401':
           description: Unauthorized without token
+  "/v1/seat_ticketing/sessions":
+    get:
+      summary: List seat sessions
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: event_id
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: archived
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: full
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventSeatSession"
+    post:
+      summary: Create seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatSession"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session:
+                  type: object
+                  properties:
+                    event_id:
+                      type: integer
+                    name:
+                      type: string
+                    location:
+                      type: string
+                    start_datetime:
+                      type: string
+                      format: date_time
+                    end_datetime:
+                      type: string
+                      format: date_time
+                  required:
+                  - event_id
+                  - name
+                  - start_datetime
+                  - end_datetime
+  "/v1/seat_ticketing/sessions/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatSession"
+    put:
+      summary: Update seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatSession"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    location:
+                      type: string
+                    start_datetime:
+                      type: string
+                      format: date_time
+                    end_datetime:
+                      type: string
+                      format: date_time
+    delete:
+      summary: Archive seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Archived
+  "/v1/seat_ticketing/sessions/{id}/force_delete":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Force delete seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+  "/v1/seat_ticketing/sessions/{id}/restore":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    patch:
+      summary: Restore seat session
+      tags:
+      - Seat Ticketing
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Restored
+  "/v1/seat_ticketing/sessions/{session_id}/maps":
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: List maps
+      tags:
+      - Seat Ticketing - Maps
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventSeatMap"
+    post:
+      summary: Create map
+      tags:
+      - Seat Ticketing - Maps
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatMap"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                map:
+                  type: object
+                  properties:
+                    coord_x:
+                      type: integer
+                    coord_y:
+                      type: integer
+                    price:
+                      type: string
+                  required:
+                  - coord_x
+                  - coord_y
+  "/v1/seat_ticketing/sessions/{session_id}/maps/{id}":
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show map
+      tags:
+      - Seat Ticketing - Maps
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatMap"
+    put:
+      summary: Update map
+      tags:
+      - Seat Ticketing - Maps
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatMap"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                map:
+                  type: object
+                  properties:
+                    coord_x:
+                      type: integer
+                    coord_y:
+                      type: integer
+                    price:
+                      type: string
+    delete:
+      summary: Delete map
+      tags:
+      - Seat Ticketing - Maps
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/seats":
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: map_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: List seats
+      tags:
+      - Seat Ticketing - Seats
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventSeat"
+    post:
+      summary: Create seat
+      tags:
+      - Seat Ticketing - Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeat"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seat:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    ticket_id:
+                      type: integer
+                      nullable: true
+                  required:
+                  - name
+  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/seats/{id}":
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: map_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show seat
+      tags:
+      - Seat Ticketing - Seats
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeat"
+    put:
+      summary: Update seat
+      tags:
+      - Seat Ticketing - Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeat"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seat:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    ticket_id:
+                      type: integer
+                      nullable: true
+    delete:
+      summary: Delete seat
+      tags:
+      - Seat Ticketing - Seats
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/batch-seats":
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: map_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Batch create seats
+      tags:
+      - Seat Ticketing - Batch Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventSeat"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seats:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      ticket_id:
+                        type: integer
+                        nullable: true
+                    required:
+                    - name
+              required:
+              - seats
+    put:
+      summary: Batch update seats
+      tags:
+      - Seat Ticketing - Batch Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventSeat"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seats:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      ticket_id:
+                        type: integer
+                        nullable: true
+                    required:
+                    - id
+              required:
+              - seats
+    delete:
+      summary: Batch delete seats
+      tags:
+      - Seat Ticketing - Batch Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '204':
+          description: Deleted
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              required:
+              - ids
   "/v1/events/{event_id}/vendors/{id}/stamp_count":
     parameters:
     - name: event_id
@@ -11081,6 +11712,53 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    EventSeatSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        event_id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: string
+        start_datetime:
+          type: string
+          format: date_time
+        end_datetime:
+          type: string
+          format: date_time
+        deleted_at:
+          type: string
+          format: date_time
+          nullable: true
+        image_url:
+          type: string
+          nullable: true
+    EventSeatMap:
+      type: object
+      properties:
+        id:
+          type: integer
+        coord_x:
+          type: integer
+        coord_y:
+          type: integer
+        price:
+          type: string
+          example: '50.0'
+    EventSeat:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        ticket_id:
+          type: integer
+          nullable: true
 servers:
 - url: https://{defaultHost}
   variables:

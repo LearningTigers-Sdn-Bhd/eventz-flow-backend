@@ -283,6 +283,67 @@ puts "\n--- 5. Generating Resource CMS Data ---"
 # Load professional resource content via rake task
 Rake::Task['db:seed:resources'].invoke
 
+# --- 6. SEAT TICKETING SEED DATA ---
+puts "\n--- 6. Generating Seat Ticketing Seed Data ---"
+
+# 6.1 Test Ticket Seat
+test_ticket_seat_event = Event.create!(
+  title: "Test Ticket Seat",
+  description: "Event for testing seat ticketing with tickets.",
+  status: :published,
+  payment_status: :paid,
+  start_date: BASE_DATE + 30.days,
+  end_date: BASE_DATE + 30.days + 2.days,
+  published: true,
+  use_seat_ticketing: true
+)
+
+# Assign superadmin as admin
+EventAssignment.create!(event: test_ticket_seat_event, user: superadmin, role: :event_admin)
+
+# Create sessions
+3.times do |i|
+  EventSeatSession.create!(
+    event: test_ticket_seat_event,
+    name: "Ticket Session #{i+1}",
+    status: :published,
+    location: "Hall A",
+    order: i + 1,
+    start_datetime: test_ticket_seat_event.start_date + i.hours,
+    end_datetime: test_ticket_seat_event.start_date + (i + 2).hours
+  )
+end
+puts "Created 'Test Ticket Seat' event with 3 sessions."
+
+# 6.2 Test Visitor Seed
+test_visitor_seed_event = Event.create!(
+  title: "Test Visitor Seed",
+  description: "Event for testing seat ticketing with visitors.",
+  status: :published,
+  payment_status: :paid,
+  start_date: BASE_DATE + 35.days,
+  end_date: BASE_DATE + 35.days + 1.day,
+  published: true,
+  use_seat_ticketing: true
+)
+
+# Assign superadmin as admin
+EventAssignment.create!(event: test_visitor_seed_event, user: superadmin, role: :event_admin)
+
+# Create sessions
+2.times do |i|
+  EventSeatSession.create!(
+    event: test_visitor_seed_event,
+    name: "Visitor Session #{i+1}",
+    status: :published,
+    location: "VIP Room",
+    order: i + 1,
+    start_datetime: test_visitor_seed_event.start_date + i.hours,
+    end_datetime: test_visitor_seed_event.start_date + (i + 1).hours
+  )
+end
+puts "Created 'Test Visitor Seed' event with 2 sessions."
+
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"
 puts "  Total Users: #{User.count}"

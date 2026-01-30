@@ -24,6 +24,7 @@ class Event < ApplicationRecord
   has_many :event_rentable_items, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
+  has_many :event_seat_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
 
