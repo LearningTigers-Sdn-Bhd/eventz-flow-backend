@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_28_003034) do
+ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -74,6 +74,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_28_003034) do
     t.string "name_color", default: "#FFFFFF"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "voice_enabled", default: true
+    t.string "voice_type", default: "en-US-female"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end
 

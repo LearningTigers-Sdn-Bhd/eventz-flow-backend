@@ -24,7 +24,9 @@ class CheckInDisplay < ApplicationRecord
       animation_type: animation_type,
       is_bold: is_bold,
       name_color: name_color,
-      background_image_url: background_image_url
+      background_image_url: background_image_url,
+      voice_enabled: voice_enabled,
+      voice_type: voice_type
     }
 
     if include_event && event.present?

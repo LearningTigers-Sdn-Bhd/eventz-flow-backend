@@ -37,7 +37,7 @@ module V1
     end
 
     def check_in_display_params
-      params.require(:check_in_display).permit(:font_family, :font_size, :animation_type, :is_bold, :name_color)
+      params.require(:check_in_display).permit(:font_family, :font_size, :animation_type, :is_bold, :name_color, :voice_enabled, :voice_type)
     end
 
     def handle_background_image
