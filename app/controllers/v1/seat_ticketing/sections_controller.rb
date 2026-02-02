@@ -49,7 +49,9 @@ module V1
       def section_params
         params.require(:section).permit(
           :name,
-          :prize,
+          :price,
+          :start_row,
+          :start_column,
           :seat_row,
           :seat_column,
           :row_span,

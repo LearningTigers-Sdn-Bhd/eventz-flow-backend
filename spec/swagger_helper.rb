@@ -38,7 +38,7 @@ RSpec.configure do |config|
               id: { type: :integer },
               event_id: { type: :integer },
               name: { type: :string },
-              status: { type: :integer, example: 0 },
+              status: { type: :string, example: 'draft' },
               location: { type: :string },
               start_datetime: { type: :string, format: :date_time },
               end_datetime: { type: :string, format: :date_time },
@@ -51,8 +51,8 @@ RSpec.configure do |config|
             properties: {
               id: { type: :integer },
               name: { type: :string },
-              row: { type: :integer },
-              column: { type: :integer },
+              total_row: { type: :integer },
+              total_column: { type: :integer },
               image_url: { type: :string, nullable: true }
             }
           },
@@ -61,7 +61,9 @@ RSpec.configure do |config|
             properties: {
               id: { type: :integer },
               name: { type: :string },
-              prize: { type: :string, example: "50.0" },
+              price: { type: :string, example: "50.0" },
+              start_row: { type: :integer },
+              start_column: { type: :integer },
               seat_row: { type: :integer },
               seat_column: { type: :integer },
               row_span: { type: :integer },

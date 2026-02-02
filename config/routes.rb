@@ -230,10 +230,12 @@ Rails.application.routes.draw do
     namespace :seat_ticketing do
       resources :sessions do
         member do
+          patch :bulk_update
           delete :force_delete
           patch :restore
         end
         resources :venues do
+          post :attach_image, on: :member
           resources :sections do
             resources :event_ticket_seats, path: 'ticket-seats'
           end

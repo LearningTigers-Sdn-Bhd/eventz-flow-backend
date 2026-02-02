@@ -63,6 +63,83 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
     end
   end
 
+  describe 'GET /v1/seat_ticketing/sessions/:id' do
+    let!(:venue) { create(:event_seat_venue, event_seat_session: seat_session) }
+    let!(:section) { create(:event_seat_section, event_seat_venue: venue) }
+    let!(:seat) { create(:event_ticket_seat, event_seat_section: section) }
+
+    it 'returns the session with nested venue, sections, and seats' do
+      get "/v1/seat_ticketing/sessions/#{seat_session.id}", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      
+      expect(json['id']).to eq(seat_session.id)
+      expect(json['event_seat_venues']).to be_present
+      expect(json['event_seat_venues'].first['id']).to eq(venue.id)
+      expect(json['event_seat_venues'].first['event_seat_sections']).to be_present
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['id']).to eq(section.id)
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats']).to be_present
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats'].first['id']).to eq(seat.id)
+    end
+  end
+
+  describe 'PATCH /v1/seat_ticketing/sessions/:id/bulk_update' do
+    let(:bulk_params) do
+      {
+        session: {
+          name: "Updated Blueprint",
+          event_seat_venues_attributes: [
+            {
+              name: "Main Hall",
+              total_row: 10,
+              total_column: 10,
+              event_seat_sections_attributes: [
+                {
+                  name: "VIP Section",
+                  start_row: 1,
+                  start_column: 1,
+                  seat_row: 5,
+                  seat_column: 5,
+                  event_ticket_seats_attributes: [
+                    {
+                      name: "A1",
+                      row_set: 1,
+                      col_set: 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    end
+
+    it 'updates the session and creates nested resources' do
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", 
+            params: bulk_params, 
+            headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+            
+      expect(response).to have_http_status(:ok)
+      
+      seat_session.reload
+      expect(seat_session.name).to eq("Updated Blueprint")
+      expect(seat_session.event_seat_venues.count).to eq(1)
+      
+      venue = seat_session.event_seat_venues.first
+      expect(venue.name).to eq("Main Hall")
+      expect(venue.event_seat_sections.count).to eq(1)
+      
+      section = venue.event_seat_sections.first
+      expect(section.name).to eq("VIP Section")
+      expect(section.event_ticket_seats.count).to eq(1)
+      
+      seat = section.event_ticket_seats.first
+      expect(seat.name).to eq("A1")
+    end
+  end
+
   describe 'PUT /v1/seat_ticketing/sessions/:id' do
     it 'updates the session' do
       put "/v1/seat_ticketing/sessions/#{seat_session.id}", params: { session: { name: 'Updated Name' } }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }

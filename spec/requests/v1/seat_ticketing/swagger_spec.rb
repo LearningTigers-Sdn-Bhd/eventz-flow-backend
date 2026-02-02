@@ -1,6 +1,106 @@
 require 'swagger_helper'
 
 RSpec.describe 'V1::SeatTicketing', type: :request do
+  # --- Setup Users & Tokens ---
+  let(:organizer_user) { create(:user, :organizer) }
+  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
+  let(:Authorization) { "Bearer #{organizer_token}" }
+
+  # --- Setup Event & Assignments ---
+  let!(:event) do
+    event = create(:event, payment_status: :paid, use_ticket: false, use_seat_ticketing: true)
+    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
+    event
+  end
+
+  # --- Setup Seat Ticketing Data ---
+  let!(:seat_session_record) { create(:event_seat_session, event: event) }
+  let!(:venue_record) { create(:event_seat_venue, event_seat_session: seat_session_record) }
+  let!(:section_record) { create(:event_seat_section, event_seat_venue: venue_record) }
+  let!(:ticket_seat_record) { create(:event_ticket_seat, event_seat_section: section_record) }
+
+  # --- Payload Helpers ---
+  let(:session_payload) do
+    {
+      session: {
+        event_id: event.id,
+        name: 'Seat Session A',
+        status: 'draft',
+        location: 'Main Hall',
+        start_datetime: Time.current.iso8601,
+        end_datetime: 1.hour.from_now.iso8601
+      }
+    }
+  end
+
+  let(:session_update_payload) do
+    {
+      session: {
+        name: 'Updated Seat Session'
+      }
+    }
+  end
+
+  let(:venue_payload) do
+    {
+      venue: {
+        name: 'Venue A',
+        total_row: 10,
+        total_column: 12
+      }
+    }
+  end
+
+  let(:venue_update_payload) do
+    {
+      venue: {
+        name: 'Updated Venue'
+      }
+    }
+  end
+
+  let(:section_payload) do
+    {
+      section: {
+        name: 'Section A',
+        price: '50.0',
+        start_row: 1,
+        start_column: 1,
+        seat_row: 1,
+        seat_column: 1,
+        row_span: 1,
+        col_span: 1
+      }
+    }
+  end
+
+  let(:section_update_payload) do
+    {
+      section: {
+        name: 'Updated Section'
+      }
+    }
+  end
+
+  let(:ticket_seat_payload) do
+    {
+      ticket_seat: {
+        name: 'A1',
+        extra_price: '0.0',
+        row_set: 1,
+        col_set: 1
+      }
+    }
+  end
+
+  let(:ticket_seat_update_payload) do
+    {
+      ticket_seat: {
+        name: 'A1-Updated'
+      }
+    }
+  end
+
   # --- Schemas ---
   let(:session_schema) do
     {
@@ -9,7 +109,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
         id: { type: :integer },
         event_id: { type: :integer },
         name: { type: :string },
-        status: { type: :integer, example: 0 },
+        status: { type: :string, example: 'draft' },
         location: { type: :string },
         start_datetime: { type: :string, format: :date_time },
         end_datetime: { type: :string, format: :date_time },
@@ -25,8 +125,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       properties: {
         id: { type: :integer },
         name: { type: :string },
-        row: { type: :integer },
-        column: { type: :integer },
+        total_row: { type: :integer },
+        total_column: { type: :integer },
         image_url: { type: :string, nullable: true }
       }
     }
@@ -38,7 +138,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       properties: {
         id: { type: :integer },
         name: { type: :string },
-        prize: { type: :string, example: "50.0" },
+        price: { type: :string, example: "50.0" },
+        start_row: { type: :integer },
+        start_column: { type: :integer },
         seat_row: { type: :integer },
         seat_column: { type: :integer },
         row_span: { type: :integer },
@@ -62,6 +164,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
 
   # --- Sessions ---
   path '/v1/seat_ticketing/sessions' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     get 'List seat sessions' do
       tags 'Seat Ticketing'
       produces 'application/json'
@@ -71,6 +174,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       parameter name: :full, in: :query, type: :boolean, required: false
 
       response '200', 'Success' do
+        let(:event_id) { event.id }
         schema type: :array, items: { '$ref' => '#/components/schemas/EventSeatSession' }
         run_test!
       end
@@ -100,6 +204,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '201', 'Created' do
+        let(:session) { session_payload }
         schema '$ref' => '#/components/schemas/EventSeatSession'
         run_test!
       end
@@ -107,6 +212,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
   end
 
   path '/v1/seat_ticketing/sessions/{id}' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :id, in: :path, type: :integer
 
     get 'Show seat session' do
@@ -115,6 +221,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:id) { seat_session_record.id }
         schema '$ref' => '#/components/schemas/EventSeatSession'
         run_test!
       end
@@ -142,6 +249,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '200', 'Success' do
+        let(:id) { seat_session_record.id }
+        let(:session) { session_update_payload }
         schema '$ref' => '#/components/schemas/EventSeatSession'
         run_test!
       end
@@ -152,28 +261,33 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '204', 'Archived' do
+        let(:id) { seat_session_record.id }
         run_test!
       end
     end
   end
 
   path '/v1/seat_ticketing/sessions/{id}/force_delete' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :id, in: :path, type: :integer
     delete 'Force delete seat session' do
       tags 'Seat Ticketing'
       security [BearerAuth: []]
       response '204', 'Deleted' do
+        let(:id) { seat_session_record.id }
         run_test!
       end
     end
   end
 
   path '/v1/seat_ticketing/sessions/{id}/restore' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :id, in: :path, type: :integer
     patch 'Restore seat session' do
       tags 'Seat Ticketing'
       security [BearerAuth: []]
       response '200', 'Restored' do
+        let(:id) { seat_session_record.id }
         run_test!
       end
     end
@@ -181,6 +295,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
 
   # --- Venues ---
   path '/v1/seat_ticketing/sessions/{session_id}/venues' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
 
     get 'List venues' do
@@ -189,6 +304,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
         schema type: :array, items: { '$ref' => '#/components/schemas/EventSeatVenue' }
         run_test!
       end
@@ -206,8 +322,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
             type: :object,
             properties: {
               name: { type: :string },
-              row: { type: :integer },
-              column: { type: :integer }
+              total_row: { type: :integer },
+              total_column: { type: :integer }
             },
             required: ['name']
           }
@@ -215,6 +331,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '201', 'Created' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue) { venue_payload }
         schema '$ref' => '#/components/schemas/EventSeatVenue'
         run_test!
       end
@@ -222,6 +340,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
   end
 
   path '/v1/seat_ticketing/sessions/{session_id}/venues/{id}' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
     parameter name: :id, in: :path, type: :integer
 
@@ -231,6 +350,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:id) { venue_record.id }
         schema '$ref' => '#/components/schemas/EventSeatVenue'
         run_test!
       end
@@ -248,14 +369,17 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
             type: :object,
             properties: {
               name: { type: :string },
-              row: { type: :integer },
-              column: { type: :integer }
+              total_row: { type: :integer },
+              total_column: { type: :integer }
             }
           }
         }
       }
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:id) { venue_record.id }
+        let(:venue) { venue_update_payload }
         schema '$ref' => '#/components/schemas/EventSeatVenue'
         run_test!
       end
@@ -266,6 +390,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '204', 'Deleted' do
+        let(:session_id) { seat_session_record.id }
+        let(:id) { venue_record.id }
         run_test!
       end
     end
@@ -273,6 +399,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
 
   # --- Sections ---
   path '/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
     parameter name: :venue_id, in: :path, type: :integer
 
@@ -282,6 +409,8 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
         schema type: :array, items: { '$ref' => '#/components/schemas/EventSeatSection' }
         run_test!
       end
@@ -299,7 +428,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
             type: :object,
             properties: {
               name: { type: :string },
-              prize: { type: :string },
+              price: { type: :string },
+              start_row: { type: :integer },
+              start_column: { type: :integer },
               seat_row: { type: :integer },
               seat_column: { type: :integer },
               row_span: { type: :integer },
@@ -311,6 +442,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '201', 'Created' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section) { section_payload }
         schema '$ref' => '#/components/schemas/EventSeatSection'
         run_test!
       end
@@ -318,6 +452,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
   end
 
   path '/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{id}' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
     parameter name: :venue_id, in: :path, type: :integer
     parameter name: :id, in: :path, type: :integer
@@ -328,6 +463,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:id) { section_record.id }
         schema '$ref' => '#/components/schemas/EventSeatSection'
         run_test!
       end
@@ -345,7 +483,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
             type: :object,
             properties: {
               name: { type: :string },
-              prize: { type: :string },
+              price: { type: :string },
+              start_row: { type: :integer },
+              start_column: { type: :integer },
               seat_row: { type: :integer },
               seat_column: { type: :integer },
               row_span: { type: :integer },
@@ -356,6 +496,10 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:id) { section_record.id }
+        let(:section) { section_update_payload }
         schema '$ref' => '#/components/schemas/EventSeatSection'
         run_test!
       end
@@ -366,6 +510,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '204', 'Deleted' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:id) { section_record.id }
         run_test!
       end
     end
@@ -373,6 +520,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
 
   # --- Ticket Seats ---
   path '/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{section_id}/ticket-seats' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
     parameter name: :venue_id, in: :path, type: :integer
     parameter name: :section_id, in: :path, type: :integer
@@ -383,6 +531,9 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section_id) { section_record.id }
         schema type: :array, items: { '$ref' => '#/components/schemas/EventTicketSeat' }
         run_test!
       end
@@ -411,6 +562,10 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '201', 'Created' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section_id) { section_record.id }
+        let(:ticket_seat) { ticket_seat_payload }
         schema '$ref' => '#/components/schemas/EventTicketSeat'
         run_test!
       end
@@ -418,6 +573,7 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
   end
 
   path '/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{section_id}/ticket-seats/{id}' do
+    parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT'
     parameter name: :session_id, in: :path, type: :integer
     parameter name: :venue_id, in: :path, type: :integer
     parameter name: :section_id, in: :path, type: :integer
@@ -429,6 +585,10 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section_id) { section_record.id }
+        let(:id) { ticket_seat_record.id }
         schema '$ref' => '#/components/schemas/EventTicketSeat'
         run_test!
       end
@@ -456,6 +616,11 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       }
 
       response '200', 'Success' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section_id) { section_record.id }
+        let(:id) { ticket_seat_record.id }
+        let(:ticket_seat) { ticket_seat_update_payload }
         schema '$ref' => '#/components/schemas/EventTicketSeat'
         run_test!
       end
@@ -466,6 +631,10 @@ RSpec.describe 'V1::SeatTicketing', type: :request do
       security [BearerAuth: []]
 
       response '204', 'Deleted' do
+        let(:session_id) { seat_session_record.id }
+        let(:venue_id) { venue_record.id }
+        let(:section_id) { section_record.id }
+        let(:id) { ticket_seat_record.id }
         run_test!
       end
     end
