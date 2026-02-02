@@ -1,7 +1,8 @@
 module V1
   module SeatTicketing
     class SessionsController < ApplicationController
-      before_action :set_session, only: [:show, :update, :destroy, :restore, :force_delete]
+      include Rails.application.routes.url_helpers
+      before_action :set_session, only: [:show, :update, :bulk_update, :destroy, :restore, :force_delete]
 
       def index
         return render json: { error: 'event_id is required' }, status: :bad_request if params[:event_id].blank?
@@ -18,7 +19,7 @@ module V1
       end
 
       def show
-        render json: @session
+        render json: session_with_details
       end
 
       def create
@@ -40,6 +41,16 @@ module V1
         end
       end
 
+      def bulk_update
+        authorize @session, :update?
+        
+        if @session.update(bulk_update_params)
+          render json: session_with_details
+        else
+          render json: { errors: @session.errors.full_messages }, status: :unprocessable_content
+        end
+      end
+
       def destroy
         @session.archive
         head :no_content
@@ -56,6 +67,41 @@ module V1
       end
 
       private
+
+      def session_with_details
+        @session.as_json(
+          include: {
+            event_seat_venues: {
+              include: {
+                event_seat_sections: {
+                  include: :event_ticket_seats
+                }
+              }
+            }
+          }
+        ).tap do |json|
+          json['event_seat_venues']&.each_with_index do |venue_json, index|
+            venue = @session.event_seat_venues[index]
+            venue_json['image_url'] = venue_image_url(venue)
+          end
+        end
+      end
+
+      def venue_image_url(venue)
+        return nil unless venue&.image&.attached?
+
+        url_options = (Rails.application.routes.default_url_options || {}).dup
+        if respond_to?(:request) && request.present?
+          url_options[:host] = request.host
+          url_options[:protocol] = request.protocol.gsub('://', '')
+          url_options[:port] = request.port unless [80, 443].include?(request.port)
+        end
+
+        rails_blob_url(venue.image, **url_options)
+      rescue => e
+        Rails.logger.error "Could not generate URL for venue #{venue&.id}: #{e.message}"
+        nil
+      end
 
       def set_session
          if action_name.in?(['restore', 'force_delete'])
@@ -74,6 +120,22 @@ module V1
           :location,
           :start_datetime,
           :end_datetime
+        )
+      end
+
+      def bulk_update_params
+        params.require(:session).permit(
+          :name, :status, :location, :start_datetime, :end_datetime,
+          event_seat_venues_attributes: [
+            :id, :name, :total_row, :total_column, :image, :aspect_ratio, :_destroy,
+            event_seat_sections_attributes: [
+              :id, :name, :price, :start_row, :start_column, 
+              :seat_row, :seat_column, :row_span, :col_span, :_destroy,
+              event_ticket_seats_attributes: [
+                :id, :name, :extra_price, :row_set, :col_set, :ticket_id, :_destroy
+              ]
+            ]
+          ]
         )
       end
     end

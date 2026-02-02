@@ -18,6 +18,10 @@ class EventSeatSessionPolicy < ApplicationPolicy
     allowed?
   end
 
+  def bulk_update?
+    update?
+  end
+
   def destroy?
     allowed?
   end

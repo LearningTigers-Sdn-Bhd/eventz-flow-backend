@@ -190,13 +190,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   create_table "event_seat_sections", force: :cascade do |t|
     t.bigint "event_seat_venue_id", null: false
     t.string "name", null: false
-    t.decimal "prize", precision: 8, scale: 2, default: "0.0"
-    t.integer "seat_row"
-    t.integer "seat_column"
+    t.decimal "price", precision: 8, scale: 2, default: "0.0"
+    t.integer "start_row"
+    t.integer "start_column"
     t.integer "row_span"
     t.integer "col_span"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "seat_row", default: 1
+    t.integer "seat_column", default: 1
     t.index ["event_seat_venue_id"], name: "index_event_seat_sections_on_event_seat_venue_id"
   end
 
@@ -218,10 +220,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   create_table "event_seat_venues", force: :cascade do |t|
     t.bigint "event_seat_session_id", null: false
     t.string "name", null: false
-    t.integer "row"
-    t.integer "column"
+    t.integer "total_row"
+    t.integer "total_column"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "aspect_ratio"
     t.index ["event_seat_session_id"], name: "index_event_seat_venues_on_event_seat_session_id"
   end
 
