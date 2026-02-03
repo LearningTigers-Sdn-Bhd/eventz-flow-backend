@@ -218,7 +218,9 @@ module V1
       when 'tickets'
         scoped_active_tickets.time_series_count(:created_at, range: range, group_by: group_by)
       when 'scans'
-        @event.tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        TicketCheckIn.joins(:ticket)
+                     .where(tickets: { event_id: @event.id })
+                     .time_series_count(:check_in_at, range: range, group_by: group_by)
       when 'revenue'
         scoped_active_tickets
           .joins(:ticket_type)

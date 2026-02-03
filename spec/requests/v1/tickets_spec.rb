@@ -85,7 +85,9 @@ RSpec.describe 'V1::Tickets', type: :request do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
   let!(:checked_in_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, status: :scanned, attendee_name: 'Scanned Attendee')
+    create(:ticket_check_in, ticket: ticket, check_in_at: Time.current)
+    ticket
   end
   let(:valid_ticket_params) do
     {

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_02_060643) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -820,6 +820,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "ticket_check_ins", force: :cascade do |t|
+    t.bigint "ticket_id", null: false
+    t.datetime "check_in_at", null: false
+    t.bigint "scanned_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "ticket_id, date(check_in_at)", name: "idx_ticket_check_ins_unique_per_day", unique: true
+    t.index ["scanned_by_id"], name: "index_ticket_check_ins_on_scanned_by_id"
+    t.index ["ticket_id"], name: "index_ticket_check_ins_on_ticket_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false
@@ -833,6 +844,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.date "valid_from_date"
+    t.date "valid_to_date"
     t.index ["event_id", "status"], name: "index_ticket_types_on_event_id_and_status"
     t.index ["event_id"], name: "index_ticket_types_on_event_id"
   end
@@ -846,8 +859,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
     t.string "attendee_email"
     t.string "attendee_phone"
     t.boolean "checked_in", default: false, null: false
-    t.datetime "check_in_at"
-    t.bigint "scanned_by_id"
     t.integer "status", default: 0, null: false
     t.integer "payment_status", default: 0, null: false
     t.string "payment_screenshot_url"
@@ -868,7 +879,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
     t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
-    t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
   end
@@ -1109,11 +1119,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_30_011055) do
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
+  add_foreign_key "ticket_check_ins", "tickets"
+  add_foreign_key "ticket_check_ins", "users", column: "scanned_by_id"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
-  add_foreign_key "tickets", "users", column: "scanned_by_id"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"

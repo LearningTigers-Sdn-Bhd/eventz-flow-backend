@@ -59,12 +59,11 @@ module V1
 
       def perform_check_in
         attendee = find_attendee_by_public_id
-        return already_checked_in_error(attendee) if attendee.checked_in?
 
-        if check_in_attendee(attendee)
-          success_response(data: { action: 'checked_in', message: 'Successfully checked in.', attendee: format_attendee(attendee) })
+        if attendee.is_a?(Ticket)
+          perform_ticket_check_in(attendee)
         else
-          error_response(message: 'Check-in failed', errors: attendee.errors, status: :unprocessable_entity)
+          perform_visitor_check_in(attendee)
         end
       end
 
@@ -79,25 +78,86 @@ module V1
         attendee
       end
 
-      def check_in_attendee(attendee)
+      def perform_ticket_check_in(ticket)
+        # Check if ticket is valid for today
+        unless ticket.ticket_type.valid_for_date?(Date.current)
+          error_response(
+            message: 'Ticket not valid for today',
+            errors: {
+              reason: 'wrong_day',
+              valid_from: ticket.ticket_type.valid_from_date,
+              valid_to: ticket.ticket_type.valid_to_date,
+              validity_description: ticket.ticket_type.validity_description
+            },
+            status: :unprocessable_entity
+          )
+          return
+        end
+
+        # Check if already checked in today
+        if ticket.checked_in_today?
+          existing = ticket.check_in_for(Date.current)
+          error_response(
+            message: 'Already checked in today',
+            errors: {
+              reason: 'duplicate_today',
+              check_in_at: existing.check_in_at&.iso8601
+            },
+            status: :unprocessable_entity
+          )
+          return
+        end
+
         # Store check_in_url in Thread for webhook/printer integration
         Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
 
-        result = if attendee.is_a?(Ticket)
-          attendee.update(checked_in: true, check_in_at: Time.current, status: :scanned)
-        else
-          attendee.update(checked_in: true, check_in_at: Time.current)
-        end
+        ActiveRecord::Base.transaction do
+          # Create check-in record
+          check_in = ticket.check_ins.create!(
+            check_in_at: Time.current,
+            scanned_by: nil # Public check-in has no user
+          )
 
-        # Broadcast to welcome screen after successful check-in
-        if result
-          attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
-          WelcomeScreenQueueService.enqueue(@event.id, attendee_name)
-        end
+          # Update "pernah" flag (first time only)
+          unless ticket.checked_in?
+            ticket.update!(checked_in: true, status: :scanned)
+          end
 
-        # Clear thread-local variable after update
+          # Broadcast to welcome screen
+          WelcomeScreenQueueService.enqueue(@event.id, ticket.attendee_name)
+
+          success_response(data: {
+            action: 'checked_in',
+            message: 'Successfully checked in.',
+            attendee: format_ticket(ticket, check_in)
+          })
+        end
+      rescue ActiveRecord::RecordInvalid => e
+        error_response(message: 'Check-in failed', errors: { base: e.message }, status: :unprocessable_entity)
+      ensure
         Thread.current[:check_in_url] = nil
-        result
+      end
+
+      def perform_visitor_check_in(visitor)
+        return already_checked_in_error(visitor) if visitor.checked_in?
+
+        # Store check_in_url in Thread for webhook/printer integration
+        Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
+
+        result = visitor.update(checked_in: true, check_in_at: Time.current)
+
+        if result
+          WelcomeScreenQueueService.enqueue(@event.id, visitor.full_name)
+          success_response(data: {
+            action: 'checked_in',
+            message: 'Successfully checked in.',
+            attendee: format_visitor(visitor)
+          })
+        else
+          error_response(message: 'Check-in failed', errors: visitor.errors, status: :unprocessable_entity)
+        end
+      ensure
+        Thread.current[:check_in_url] = nil
       end
 
       def already_checked_in_error(attendee)
@@ -163,7 +223,32 @@ module V1
           role: attendee.role,
           type_name: is_ticket ? attendee.ticket_type&.name : nil,
           checked_in: attendee.checked_in,
-          check_in_at: attendee.check_in_at&.iso8601
+          checked_in_today: is_ticket ? attendee.checked_in_today? : attendee.checked_in
+        }.compact
+      end
+
+      def format_ticket(ticket, check_in)
+        {
+          public_id: ticket.public_id,
+          name: ticket.attendee_name,
+          email: ticket.attendee_email,
+          phone: ticket.attendee_phone,
+          role: ticket.role,
+          type_name: ticket.ticket_type&.name,
+          checked_in: ticket.checked_in,
+          check_in_at: check_in.check_in_at&.iso8601
+        }.compact
+      end
+
+      def format_visitor(visitor)
+        {
+          public_id: visitor.public_id,
+          name: visitor.full_name,
+          email: visitor.email,
+          phone: visitor.phone,
+          role: visitor.role,
+          checked_in: visitor.checked_in,
+          check_in_at: visitor.check_in_at&.iso8601
         }.compact
       end
     end

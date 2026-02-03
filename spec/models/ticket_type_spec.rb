@@ -91,4 +91,89 @@ RSpec.describe TicketType, type: :model do
       expect(ticket_type.available?).to be false
     end
   end
+
+  # --- MULTI-DAY VALIDITY METHODS ---
+  describe '#valid_for_date?' do
+    let(:event) { create(:event, start_date: Date.current, end_date: Date.current + 3.days) }
+
+    context 'when no valid dates are set' do
+      let(:ticket_type) { create(:ticket_type, event: event, valid_from_date: nil, valid_to_date: nil) }
+
+      it 'returns true for any date' do
+        expect(ticket_type.valid_for_date?(Date.current)).to be true
+        expect(ticket_type.valid_for_date?(Date.current + 1.day)).to be true
+        expect(ticket_type.valid_for_date?(Date.current - 1.day)).to be true
+      end
+    end
+
+    context 'when valid dates are set' do
+      let(:ticket_type) do
+        create(:ticket_type, event: event,
+               valid_from_date: Date.current,
+               valid_to_date: Date.current + 1.day)
+      end
+
+      it 'returns true for dates within the valid range' do
+        expect(ticket_type.valid_for_date?(Date.current)).to be true
+        expect(ticket_type.valid_for_date?(Date.current + 1.day)).to be true
+      end
+
+      it 'returns false for dates outside the valid range' do
+        expect(ticket_type.valid_for_date?(Date.current - 1.day)).to be false
+        expect(ticket_type.valid_for_date?(Date.current + 2.days)).to be false
+      end
+    end
+
+    context 'when ticket type is for a single day' do
+      let(:ticket_type) do
+        create(:ticket_type, event: event,
+               valid_from_date: Date.current + 1.day,
+               valid_to_date: Date.current + 1.day)
+      end
+
+      it 'returns true only for that specific day' do
+        expect(ticket_type.valid_for_date?(Date.current)).to be false
+        expect(ticket_type.valid_for_date?(Date.current + 1.day)).to be true
+        expect(ticket_type.valid_for_date?(Date.current + 2.days)).to be false
+      end
+    end
+  end
+
+  describe '#validity_description' do
+    let(:event) { create(:event, start_date: Date.current, end_date: Date.current + 3.days) }
+
+    context 'when no valid dates are set' do
+      let(:ticket_type) { create(:ticket_type, event: event, valid_from_date: nil, valid_to_date: nil) }
+
+      it 'returns "Valid all event days"' do
+        expect(ticket_type.validity_description).to eq('Valid all event days')
+      end
+    end
+
+    context 'when valid dates are set for a single day' do
+      let(:ticket_type) do
+        create(:ticket_type, event: event,
+               valid_from_date: Date.current,
+               valid_to_date: Date.current)
+      end
+
+      it 'returns description for single day' do
+        expect(ticket_type.validity_description).to include('Valid on')
+        expect(ticket_type.validity_description).to include('only')
+      end
+    end
+
+    context 'when valid dates span multiple days' do
+      let(:ticket_type) do
+        create(:ticket_type, event: event,
+               valid_from_date: Date.current,
+               valid_to_date: Date.current + 2.days)
+      end
+
+      it 'returns description with date range' do
+        expect(ticket_type.validity_description).to include('Valid from')
+        expect(ticket_type.validity_description).to include('to')
+      end
+    end
+  end
 end

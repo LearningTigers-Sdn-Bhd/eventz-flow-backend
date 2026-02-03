@@ -368,10 +368,9 @@ RSpec.describe 'V1::Roulette', type: :request do
       it 'includes all ticket fields in response' do
         ticket.update!(
           checked_in: true,
-          check_in_at: Time.current,
-          status: :scanned,
-          scanned_by: exhibitor
+          status: :scanned
         )
+        create(:ticket_check_in, ticket: ticket, check_in_at: Time.current, scanned_by: exhibitor)
 
         get "/v1/events/#{ticket_event.id}/roulette/sessions/#{session_ticket.id}/participants/#{ticket.public_id}",
             headers: auth_header(exhibitor)

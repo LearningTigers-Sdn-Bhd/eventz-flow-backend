@@ -30,6 +30,32 @@ class TicketType < ApplicationRecord
     published? && !hidden? && on_sale?
   end
 
+  # Check if ticket type is valid for a specific date
+  def valid_for_date?(date)
+    return true if valid_from_date.nil? && valid_to_date.nil?
+
+    from_date = valid_from_date || event&.start_date&.to_date
+    to_date = valid_to_date || event&.end_date&.to_date
+
+    return true if from_date.nil? && to_date.nil?
+
+    (from_date..to_date).cover?(date.to_date)
+  end
+
+  # Human-readable validity description
+  def validity_description
+    return "Valid all event days" if valid_from_date.nil? && valid_to_date.nil?
+
+    from_date = valid_from_date || event&.start_date&.to_date
+    to_date = valid_to_date || event&.end_date&.to_date
+
+    if from_date == to_date
+      "Valid on #{from_date.strftime('%B %d, %Y')} only"
+    else
+      "Valid from #{from_date.strftime('%b %d')} to #{to_date.strftime('%b %d, %Y')}"
+    end
+  end
+
   def send_webhook_notification
     # Only send webhooks for event-specific ticket types (not global templates)
     return unless event.present? && event.webhook_url.present?
@@ -62,7 +88,7 @@ class TicketType < ApplicationRecord
   end
 
   def significant_changes?
-    significant_fields = %w[name price quantity status sale_starts_at sale_ends_at]
+    significant_fields = %w[name price quantity status sale_starts_at sale_ends_at valid_from_date valid_to_date]
     (previous_changes.keys & significant_fields).any?
   end
 

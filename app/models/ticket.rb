@@ -12,8 +12,7 @@ class Ticket < ApplicationRecord
   belongs_to :event
   belongs_to :ticket_type
   belongs_to :user, optional: true
-  # belongs_to :order, optional: true
-  belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
+  has_many :check_ins, class_name: 'TicketCheckIn', dependent: :destroy
 
   # --- Enums ---
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3 }
@@ -54,6 +53,30 @@ class Ticket < ApplicationRecord
   # --- Class Methods ---
   def self.total_revenue_cents
     joins(:ticket_type).sum("(ticket_types.price * 100.0)")
+  end
+
+  # Check if checked in on a specific date (timezone-aware)
+  def checked_in_on?(date)
+    date = date.to_date
+    range = date.in_time_zone.beginning_of_day..date.in_time_zone.end_of_day
+    check_ins.exists?(check_in_at: range)
+  end
+
+  # Check if checked in today
+  def checked_in_today?
+    checked_in_on?(Date.current)
+  end
+
+  # Alias for JSON serialization (without question mark)
+  def checked_in_today
+    checked_in_today?
+  end
+
+  # Get check-in record for a specific date (timezone-aware)
+  def check_in_for(date)
+    date = date.to_date
+    range = date.in_time_zone.beginning_of_day..date.in_time_zone.end_of_day
+    check_ins.find_by(check_in_at: range)
   end
 
   def send_webhook_notification
@@ -179,12 +202,13 @@ class Ticket < ApplicationRecord
       payload[:check_in_url] = Thread.current[:check_in_url]
     end
 
-    # Add scanned_by information if ticket was scanned by a user
-    if self.scanned_by_id.present? && self.scanned_by
+    # Add scanned_by information from today's check-in
+    todays_check_in = check_in_for(Date.current)
+    if todays_check_in&.scanned_by.present?
       payload[:scanned_by] = {
-        id: self.scanned_by.id,
-        full_name: self.scanned_by.full_name,
-        email: self.scanned_by.email
+        id: todays_check_in.scanned_by.id,
+        full_name: todays_check_in.scanned_by.full_name,
+        email: todays_check_in.scanned_by.email
       }
     end
 
@@ -192,7 +216,6 @@ class Ticket < ApplicationRecord
     if is_creation
       payload[:ticket].merge!(
         checked_in: self.checked_in,
-        check_in_at: self.check_in_at&.iso8601,
         payment_method: self.payment_method,
         transaction_id: self.transaction_id,
         created_at: self.created_at.iso8601
@@ -210,7 +233,7 @@ class Ticket < ApplicationRecord
       # Include check_in_at for scanned events
       if event_type == 'ticket.scanned'
         payload[:ticket][:checked_in] = self.checked_in
-        payload[:ticket][:check_in_at] = self.check_in_at&.iso8601
+        payload[:ticket][:check_in_at] = todays_check_in&.check_in_at&.iso8601
       end
     end
 

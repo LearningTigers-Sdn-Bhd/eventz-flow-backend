@@ -26,15 +26,35 @@ RSpec.describe 'V1::Scan', type: :request do
   # --- Setup Ticket Type ---
   let!(:general_ticket_type) { create(:ticket_type, event: organizer_event, name: 'GA') }
 
+  # Day-specific ticket types for multi-day testing
+  let!(:day1_ticket_type) do
+    create(:ticket_type, event: organizer_event, name: 'Day 1 Pass',
+           valid_from_date: Date.current, valid_to_date: Date.current)
+  end
+
+  let!(:day2_ticket_type) do
+    create(:ticket_type, event: organizer_event, name: 'Day 2 Pass',
+           valid_from_date: Date.current + 1.day, valid_to_date: Date.current + 1.day)
+  end
+
   # --- Setup Tickets ---
   let!(:purchased_ticket) do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
 
   let!(:checked_in_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
-           checked_in: true, check_in_at: 1.hour.ago, status: :scanned,
-           attendee_name: 'Scanned Attendee', scanned_by: staff_user)
+    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                    checked_in: true, status: :scanned, attendee_name: 'Scanned Attendee')
+    create(:ticket_check_in, ticket: ticket, check_in_at: 1.hour.ago, scanned_by: staff_user)
+    ticket
+  end
+
+  let!(:day1_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: day1_ticket_type, status: :purchased, attendee_name: 'Day 1 Attendee')
+  end
+
+  let!(:day2_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: day2_ticket_type, status: :purchased, attendee_name: 'Day 2 Attendee')
   end
 
   # --- Setup Visitors ---
@@ -204,25 +224,58 @@ RSpec.describe 'V1::Scan', type: :request do
           purchased_ticket.reload
           expect(purchased_ticket.checked_in).to be true
           expect(purchased_ticket.status).to eq('scanned')
-          expect(purchased_ticket.scanned_by_id).to eq(staff_user.id)
+          expect(purchased_ticket.check_ins.count).to eq(1)
+          expect(purchased_ticket.check_ins.first.scanned_by_id).to eq(staff_user.id)
         end
       end
 
-      response '422', 'Ticket already checked in' do
+      response '422', 'Ticket already checked in today' do
         let(:Authorization) { "Bearer #{staff_token}" }
         let(:public_id) { checked_in_ticket.public_id }
 
         schema type: :object,
                properties: {
                  error: { type: :string },
+                 reason: { type: :string },
                  type: { type: :string },
                  checked_in_at: { type: :string }
                }
 
         run_test! do |response|
           json = JSON.parse(response.body)
-          expect(json['error']).to include('already been checked in')
+          expect(json['error']).to include('Already checked in today')
+          expect(json['reason']).to eq('duplicate_today')
           expect(json['type']).to eq('ticket')
+        end
+      end
+
+      # --- Multi-day Ticket Check-in Tests ---
+
+      response '422', 'Ticket not valid for today (wrong day)' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:public_id) { day2_ticket.public_id }
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['error']).to include('Ticket not valid for today')
+          expect(json['reason']).to eq('wrong_day')
+          expect(json['type']).to eq('ticket')
+          expect(json['validity_description']).to be_present
+        end
+      end
+
+      response '200', 'Day-specific ticket check-in successful on valid day' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:public_id) { day1_ticket.public_id }
+
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['type']).to eq('ticket')
+          expect(json['checked_in']).to be true
+
+          day1_ticket.reload
+          expect(day1_ticket.checked_in).to be true
+          expect(day1_ticket.check_ins.count).to eq(1)
         end
       end
 
@@ -296,9 +349,9 @@ RSpec.describe 'V1::Scan', type: :request do
     context 'when user scans multiple records' do
       before do
         # Create additional check-ins by staff_user
-        create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
-               checked_in: true, check_in_at: 5.minutes.ago, status: :scanned,
-               attendee_name: 'Recent Attendee', scanned_by: staff_user)
+        ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                        checked_in: true, status: :scanned, attendee_name: 'Recent Attendee')
+        create(:ticket_check_in, ticket: ticket, check_in_at: 5.minutes.ago, scanned_by: staff_user)
       end
 
       it 'returns check-ins sorted by check_in_at descending' do
@@ -326,13 +379,14 @@ RSpec.describe 'V1::Scan', type: :request do
 
   describe 'Unified Check-in Behavior' do
     context 'when checking in a ticket' do
-      it 'sets status to scanned' do
+      it 'sets status to scanned and creates check_in record' do
         patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
               headers: { 'Authorization' => "Bearer #{staff_token}" }
 
         expect(response).to have_http_status(:ok)
         purchased_ticket.reload
         expect(purchased_ticket.status).to eq('scanned')
+        expect(purchased_ticket.check_ins.count).to eq(1)
       end
     end
 
@@ -344,6 +398,61 @@ RSpec.describe 'V1::Scan', type: :request do
         expect(response).to have_http_status(:ok)
         unchecked_visitor.reload
         expect(unchecked_visitor.checked_in).to be true
+      end
+    end
+  end
+
+  # =========================================================================
+  # Multi-day Ticketing Tests
+  # =========================================================================
+
+  describe 'Multi-day Ticketing' do
+    context 'when ticket type has no date restrictions' do
+      it 'allows check-in on any day' do
+        patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
+              headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:ok)
+        purchased_ticket.reload
+        expect(purchased_ticket.checked_in).to be true
+      end
+    end
+
+    context 'when ticket type is valid for today only' do
+      it 'allows check-in on valid day' do
+        patch "/v1/scan/#{day1_ticket.public_id}/check_in",
+              headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:ok)
+        day1_ticket.reload
+        expect(day1_ticket.checked_in).to be true
+      end
+    end
+
+    context 'when ticket type is valid for tomorrow only' do
+      it 'rejects check-in on wrong day' do
+        patch "/v1/scan/#{day2_ticket.public_id}/check_in",
+              headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['reason']).to eq('wrong_day')
+      end
+    end
+
+    context 'when ticket was already checked in today' do
+      before do
+        day1_ticket.update!(checked_in: true, status: :scanned)
+        create(:ticket_check_in, ticket: day1_ticket, check_in_at: 1.hour.ago, scanned_by: staff_user)
+      end
+
+      it 'rejects duplicate check-in for the same day' do
+        patch "/v1/scan/#{day1_ticket.public_id}/check_in",
+              headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['reason']).to eq('duplicate_today')
       end
     end
   end

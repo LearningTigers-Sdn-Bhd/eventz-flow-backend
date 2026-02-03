@@ -10,6 +10,17 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
     let(:event) { create(:event, use_ticket: true) }
     let(:ticket_type) { create(:ticket_type, event: event) }
 
+    # Day-specific ticket types for multi-day testing
+    let(:day1_ticket_type) do
+      create(:ticket_type, event: event, name: 'Day 1 Pass',
+             valid_from_date: Date.current, valid_to_date: Date.current)
+    end
+
+    let(:day2_ticket_type) do
+      create(:ticket_type, event: event, name: 'Day 2 Pass',
+             valid_from_date: Date.current + 1.day, valid_to_date: Date.current + 1.day)
+    end
+
     let!(:paid_ticket) do
       create(:ticket, :paid,
              event: event,
@@ -35,6 +46,22 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
              attendee_name: 'Jane Unpaid',
              attendee_email: 'jane.unpaid@example.com',
              payment_status: :pending)
+    end
+
+    let!(:day1_ticket) do
+      create(:ticket, :paid,
+             event: event,
+             ticket_type: day1_ticket_type,
+             attendee_name: 'Day 1 Attendee',
+             attendee_email: 'day1@example.com')
+    end
+
+    let!(:day2_ticket) do
+      create(:ticket, :paid,
+             event: event,
+             ticket_type: day2_ticket_type,
+             attendee_name: 'Day 2 Attendee',
+             attendee_email: 'day2@example.com')
     end
 
     let(:other_event) { create(:event, use_ticket: true) }
@@ -221,16 +248,19 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
           paid_ticket.reload
           expect(paid_ticket.checked_in).to eq(true)
           expect(paid_ticket.status).to eq('scanned')
+          expect(paid_ticket.check_ins.count).to eq(1)
         end
 
-        it 'returns error for already checked-in ticket' do
-          paid_ticket.update!(checked_in: true, check_in_at: Time.current, status: :scanned)
+        it 'returns error for already checked-in ticket today' do
+          # Create a check-in record for today
+          paid_ticket.update!(checked_in: true, status: :scanned)
+          create(:ticket_check_in, ticket: paid_ticket, check_in_at: 1.hour.ago)
 
           post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
 
           expect(response).to have_http_status(:unprocessable_content)
-          expect(json_response['message']).to eq('Already checked in')
-          expect(json_response['errors']['check_in_at']).to be_present
+          expect(json_response['message']).to eq('Already checked in today')
+          expect(json_response['errors']['reason']).to eq('duplicate_today')
         end
 
         it 'returns 404 for non-existent public_id' do
@@ -257,6 +287,7 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
 
           unpaid_ticket.reload
           expect(unpaid_ticket.checked_in).to eq(true)
+          expect(unpaid_ticket.check_ins.count).to eq(1)
         end
 
         context 'with check_in_url parameter' do
@@ -275,6 +306,42 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
             paid_ticket.reload
             expect(paid_ticket.checked_in).to eq(true)
           end
+        end
+      end
+
+      # ============================================
+      # Multi-day ticket check-in tests
+      # ============================================
+      context 'multi-day ticket check-in' do
+        it 'allows check-in for day 1 ticket on day 1' do
+          post endpoint, params: { method: 'scan', value: day1_ticket.public_id }
+
+          expect(response).to have_http_status(:ok)
+          data = json_response['data']
+          expect(data['action']).to eq('checked_in')
+
+          day1_ticket.reload
+          expect(day1_ticket.checked_in).to eq(true)
+          expect(day1_ticket.check_ins.count).to eq(1)
+        end
+
+        it 'rejects check-in for day 2 ticket on day 1 (wrong day)' do
+          post endpoint, params: { method: 'scan', value: day2_ticket.public_id }
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json_response['message']).to eq('Ticket not valid for today')
+          expect(json_response['errors']['reason']).to eq('wrong_day')
+          expect(json_response['errors']['validity_description']).to be_present
+        end
+
+        it 'includes checked_in_today in search results for tickets' do
+          post endpoint, params: { method: 'name', value: 'Day 1' }
+
+          expect(response).to have_http_status(:ok)
+          data = json_response['data']
+          attendee = data['attendees'].first
+          expect(attendee).to have_key('checked_in_today')
+          expect(attendee['checked_in_today']).to eq(false)
         end
       end
     end

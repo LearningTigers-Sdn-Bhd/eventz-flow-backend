@@ -16,7 +16,7 @@ module V1
     def index
       # 1. Scope the tickets based on the authorized events and filter by the current event.
       # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :check_ins)
 
       # Apply filtering based on query parameters
       if params[:archived] == 'true'
@@ -33,9 +33,9 @@ module V1
 
       render json: @tickets.as_json(
         include: {
-          ticket_type: { only: [:id, :name, :price] },
-          scanned_by: { only: [:id, :full_name] }
-        }
+          ticket_type: { only: [:id, :name, :price] }
+        },
+        methods: [:checked_in_today]
       ), status: :ok
     end
 
@@ -130,22 +130,41 @@ module V1
       # The user must be staff/manager for @ticket.event
       authorize @ticket, :check_in?
 
-      # 3. Perform Check-in Logic
-      if @ticket.checked_in?
-        render json: { error: 'Ticket has already been checked in.' }, status: :unprocessable_content and return
+      # 3. Check if ticket is valid for today
+      unless @ticket.ticket_type.valid_for_date?(Date.current)
+        render json: {
+          error: 'Ticket not valid for today',
+          reason: 'wrong_day',
+          validity_description: @ticket.ticket_type.validity_description
+        }, status: :unprocessable_content and return
       end
 
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
+      # 4. Check if already checked in today
+      if @ticket.checked_in_today?
+        render json: { error: 'Ticket has already been checked in today.' }, status: :unprocessable_content and return
+      end
+
+      # 5. Perform Check-in Logic
+      ActiveRecord::Base.transaction do
+        @check_in = @ticket.check_ins.create!(
+          check_in_at: Time.current,
+          scanned_by: current_user
+        )
+
+        unless @ticket.checked_in?
+          @ticket.update!(checked_in: true, status: :scanned)
+        end
+
         broadcast_to_welcome_screen(@ticket)
         render json: @ticket.as_json(include: {
           ticket_type: { only: [:id, :name, :price] },
           event: { only: [:id, :title] }
         }), status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.message }, status: :unprocessable_content
     end
 
     # GET /v1/tickets/export?event_id=1
@@ -283,7 +302,7 @@ module V1
 
     # POST /v1/tickets/self_check_in
     # Public endpoint for attendees to check themselves in using ticket public_id
-    # No authentication required, no scanned_by_id set
+    # No authentication required, no scanned_by set
     # Optionally accepts attendee_phone, attendee_email, and check_in_url to update missing contact info
     def self_check_in
       public_id = params[:public_id]
@@ -300,26 +319,18 @@ module V1
         render json: { error: 'Ticket not found' }, status: :not_found and return
       end
 
-      # Check if already checked in
-      if @ticket.checked_in?
-        render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
+      # Check if ticket is valid for today
+      unless @ticket.ticket_type.valid_for_date?(Date.current)
+        render json: {
+          error: 'Ticket not valid for today',
+          reason: 'wrong_day',
+          validity_description: @ticket.ticket_type.validity_description
+        }, status: :unprocessable_content and return
       end
 
-      # Prepare update parameters for check-in
-      update_params = {
-        checked_in: true,
-        check_in_at: Time.current,
-        status: :scanned
-      }
-
-      # Update phone number if provided and currently missing
-      if params[:attendee_phone].present? && @ticket.attendee_phone.blank?
-        update_params[:attendee_phone] = params[:attendee_phone]
-      end
-
-      # Update email if provided and currently missing
-      if params[:attendee_email].present? && @ticket.attendee_email.blank?
-        update_params[:attendee_email] = params[:attendee_email]
+      # Check if already checked in today
+      if @ticket.checked_in_today?
+        render json: { error: 'This ticket has already been checked in today.' }, status: :unprocessable_content and return
       end
 
       # Store check_in_url temporarily in Thread for webhook access
@@ -327,8 +338,31 @@ module V1
         Thread.current[:check_in_url] = params[:check_in_url]
       end
 
-      # Perform self check-in (WITHOUT scanned_by_id)
-      if @ticket.update(update_params)
+      ActiveRecord::Base.transaction do
+        # Update phone number if provided and currently missing
+        if params[:attendee_phone].present? && @ticket.attendee_phone.blank?
+          @ticket.attendee_phone = params[:attendee_phone]
+        end
+
+        # Update email if provided and currently missing
+        if params[:attendee_email].present? && @ticket.attendee_email.blank?
+          @ticket.attendee_email = params[:attendee_email]
+        end
+
+        # Create check-in record (no scanned_by for self check-in)
+        @ticket.check_ins.create!(
+          check_in_at: Time.current,
+          scanned_by: nil
+        )
+
+        # Update "pernah" flag (first time only)
+        unless @ticket.checked_in?
+          @ticket.checked_in = true
+          @ticket.status = :scanned
+        end
+
+        @ticket.save!
+
         # Clear the thread-local variable after update
         Thread.current[:check_in_url] = nil
 
@@ -339,11 +373,11 @@ module V1
             event: { only: [:id, :title] }
           }
         ), status: :ok
-      else
-        # Clear the thread-local variable on error
-        Thread.current[:check_in_url] = nil
-        render json: @ticket.errors, status: :unprocessable_content
       end
+    rescue ActiveRecord::RecordInvalid => e
+      # Clear the thread-local variable on error
+      Thread.current[:check_in_url] = nil
+      render json: { error: e.message }, status: :unprocessable_content
     rescue StandardError => e
       # Clear the thread-local variable on exception
       Thread.current[:check_in_url] = nil
@@ -364,19 +398,20 @@ module V1
         render json: { error: 'Ticket is not checked in' }, status: :unprocessable_content and return
       end
 
-      # Reset ticket to not scanned state
-      if @ticket.update(
-        checked_in: false,
-        check_in_at: nil,
-        scanned_by_id: nil,
-        status: :purchased
-      )
+      ActiveRecord::Base.transaction do
+        # Delete all check-in records for this ticket
+        @ticket.check_ins.destroy_all
+
+        # Reset ticket to not scanned state
+        @ticket.update!(
+          checked_in: false,
+          status: :purchased
+        )
+
         render json: {
           message: 'Ticket successfully unscanned',
           ticket: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } })
         }, status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found

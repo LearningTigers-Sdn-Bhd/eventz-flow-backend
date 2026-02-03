@@ -23,13 +23,12 @@ module V1
       end
 
       # Fetch recent ticket check-ins scanned by the current user
-      tickets = Ticket.where(event_id: authorized_event_ids)
-                      .where(checked_in: true)
-                      .where(scanned_by_id: current_user.id)
-                      .where.not(check_in_at: nil)
-                      .includes(:ticket_type, :event, :scanned_by)
-                      .order(check_in_at: :desc)
-                      .limit(limit)
+      ticket_check_ins = TicketCheckIn.joins(:ticket)
+                                       .where(tickets: { event_id: authorized_event_ids })
+                                       .where(scanned_by_id: current_user.id)
+                                       .includes(ticket: [:ticket_type, :event], scanned_by: [])
+                                       .order(check_in_at: :desc)
+                                       .limit(limit)
 
       # Fetch recent visitor check-ins scanned by the current user
       visitors = Visitor.where(event_id: authorized_event_ids)
@@ -43,7 +42,8 @@ module V1
       # Combine and sort by check_in_at
       combined = []
 
-      tickets.each do |ticket|
+      ticket_check_ins.each do |check_in|
+        ticket = check_in.ticket
         combined << {
           type: 'ticket',
           scan_id: ticket.public_id,
@@ -56,11 +56,11 @@ module V1
           event_id: ticket.event_id,
           event_name: ticket.event&.title,
           checked_in: ticket.checked_in,
-          check_in_at: ticket.check_in_at&.iso8601,
+          check_in_at: check_in.check_in_at&.iso8601,
           status: 'success',
-          scanned_by: ticket.scanned_by ? {
-            id: ticket.scanned_by.id,
-            full_name: ticket.scanned_by.full_name
+          scanned_by: check_in.scanned_by ? {
+            id: check_in.scanned_by.id,
+            full_name: check_in.scanned_by.full_name
           } : nil
         }
       end
@@ -116,31 +116,10 @@ module V1
       @type = @record.is_a?(Ticket) ? 'ticket' : 'visitor'
       authorize @record, :check_in?
 
-      # Check if already checked in
-      if @record.checked_in?
-        render json: {
-          error: "#{@type.capitalize} has already been checked in.",
-          type: @type,
-          checked_in_at: @record.check_in_at&.iso8601
-        }, status: :unprocessable_content
-        return
-      end
-
-      # Perform check-in
-      check_in_params = {
-        checked_in: true,
-        check_in_at: Time.current,
-        scanned_by_id: current_user.id
-      }
-
-      # Tickets also need status update
-      check_in_params[:status] = :scanned if @record.is_a?(Ticket)
-
-      if @record.update(check_in_params)
-        broadcast_to_welcome_screen
-        render json: build_response, status: :ok
+      if @record.is_a?(Ticket)
+        perform_ticket_check_in
       else
-        render json: @record.errors, status: :unprocessable_content
+        perform_visitor_check_in
       end
     rescue Pundit::NotAuthorizedError
       render json: { error: 'Not authorized to check in this record' }, status: :forbidden
@@ -161,9 +140,107 @@ module V1
       nil
     end
 
-    # Build unified response based on record type
-    def build_response
-      base_response = {
+    def perform_ticket_check_in
+      # Check if ticket is valid for today
+      unless @record.ticket_type.valid_for_date?(Date.current)
+        render json: {
+          error: "Ticket not valid for today",
+          reason: "wrong_day",
+          type: @type,
+          valid_from: @record.ticket_type.valid_from_date,
+          valid_to: @record.ticket_type.valid_to_date,
+          validity_description: @record.ticket_type.validity_description
+        }, status: :unprocessable_content
+        return
+      end
+
+      # Check if already checked in today
+      if @record.checked_in_today?
+        existing = @record.check_in_for(Date.current)
+        render json: {
+          error: "Already checked in today",
+          reason: "duplicate_today",
+          type: @type,
+          checked_in_at: existing.check_in_at&.iso8601
+        }, status: :unprocessable_content
+        return
+      end
+
+      ActiveRecord::Base.transaction do
+        # Create check-in record
+        @check_in = @record.check_ins.create!(
+          check_in_at: Time.current,
+          scanned_by: current_user
+        )
+
+        # Update "pernah" flag (first time only)
+        unless @record.checked_in?
+          @record.update!(checked_in: true, status: :scanned)
+        end
+
+        broadcast_to_welcome_screen
+        render json: build_ticket_response, status: :ok
+      end
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.message }, status: :unprocessable_content
+    end
+
+    def perform_visitor_check_in
+      # Visitors keep the original single check-in logic
+      if @record.checked_in?
+        render json: {
+          error: "Visitor has already been checked in.",
+          type: @type,
+          checked_in_at: @record.check_in_at&.iso8601
+        }, status: :unprocessable_content
+        return
+      end
+
+      check_in_params = {
+        checked_in: true,
+        check_in_at: Time.current,
+        scanned_by_id: current_user.id
+      }
+
+      if @record.update(check_in_params)
+        broadcast_to_welcome_screen
+        render json: build_visitor_response, status: :ok
+      else
+        render json: @record.errors, status: :unprocessable_content
+      end
+    end
+
+    def build_ticket_response
+      {
+        type: @type,
+        public_id: @record.public_id,
+        checked_in: @record.checked_in,
+        check_in_at: @check_in.check_in_at&.iso8601,
+        event: {
+          id: @record.event.id,
+          title: @record.event.title
+        },
+        scanned_by: @check_in.scanned_by ? {
+          id: @check_in.scanned_by.id,
+          full_name: @check_in.scanned_by.full_name
+        } : nil,
+        id: @record.id,
+        role: @record.role,
+        attendee_name: @record.attendee_name,
+        attendee_email: @record.attendee_email,
+        attendee_phone: @record.attendee_phone,
+        ticket_type: @record.ticket_type ? {
+          id: @record.ticket_type.id,
+          name: @record.ticket_type.name,
+          price: @record.ticket_type.price.to_f,
+          valid_from_date: @record.ticket_type.valid_from_date,
+          valid_to_date: @record.ticket_type.valid_to_date
+        } : nil
+      }.compact
+    end
+
+    def build_visitor_response
+      {
         type: @type,
         public_id: @record.public_id,
         checked_in: @record.checked_in,
@@ -175,36 +252,15 @@ module V1
         scanned_by: @record.scanned_by ? {
           id: @record.scanned_by.id,
           full_name: @record.scanned_by.full_name
-        } : nil
-      }
-
-      if @record.is_a?(Ticket)
-        base_response.merge!(
-          id: @record.id,
-          role: @record.role,
-          attendee_name: @record.attendee_name,
-          attendee_email: @record.attendee_email,
-          attendee_phone: @record.attendee_phone,
-          ticket_type: @record.ticket_type ? {
-            id: @record.ticket_type.id,
-            name: @record.ticket_type.name,
-            price: @record.ticket_type.price.to_f
-          } : nil
-        )
-      else
-        # Visitor
-        base_response.merge!(
-          id: @record.id,
-          role: @record.role,
-          full_name: @record.full_name,
-          email: @record.email,
-          phone: @record.phone,
-          gender: @record.gender,
-          age: @record.age
-        )
-      end
-
-      base_response.compact
+        } : nil,
+        id: @record.id,
+        role: @record.role,
+        full_name: @record.full_name,
+        email: @record.email,
+        phone: @record.phone,
+        gender: @record.gender,
+        age: @record.age
+      }.compact
     end
 
     def broadcast_to_welcome_screen

@@ -64,13 +64,13 @@ module V1
       def find_ticket(identifier)
         # Try public_id first (UUID format)
         ticket = Ticket.where(event_id: @event.id)
-                       .includes(:ticket_type, :event, :scanned_by)
+                       .includes(:ticket_type, :event, :check_ins)
                        .find_by(public_id: identifier)
         return ticket if ticket
 
         # Fallback to internal id
         Ticket.where(event_id: @event.id)
-              .includes(:ticket_type, :event, :scanned_by)
+              .includes(:ticket_type, :event, :check_ins)
               .find_by(id: identifier)
       end
 
@@ -111,6 +111,9 @@ module V1
       # Format participant response (ticket or visitor)
       def format_participant_response(participant, type)
         if type == 'ticket'
+          # Get the most recent check-in for scanned_by info
+          latest_check_in = participant.check_ins.order(check_in_at: :desc).first
+
           {
             type: 'ticket',
             id: participant.id,
@@ -120,7 +123,7 @@ module V1
             attendee_phone: participant.attendee_phone,
             role: participant.role,
             checked_in: participant.checked_in,
-            check_in_at: participant.check_in_at&.iso8601,
+            check_in_at: latest_check_in&.check_in_at&.iso8601,
             status: participant.status,
             ticket_type: participant.ticket_type ? {
               id: participant.ticket_type.id,
@@ -131,9 +134,9 @@ module V1
               id: participant.event.id,
               title: participant.event.title
             },
-            scanned_by: participant.scanned_by ? {
-              id: participant.scanned_by.id,
-              full_name: participant.scanned_by.full_name
+            scanned_by: latest_check_in&.scanned_by ? {
+              id: latest_check_in.scanned_by.id,
+              full_name: latest_check_in.scanned_by.full_name
             } : nil
           }
         else # visitor

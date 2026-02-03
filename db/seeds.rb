@@ -265,8 +265,6 @@ all_events.each_with_index do |event, i|
       attendee_phone: "+1#{rand(100..999)}-#{rand(100..999)}-#{rand(1000..9999)}",
       status: status,
       checked_in: status == 'scanned',
-      scanned_by: status == 'scanned' ? scanner : nil,
-      check_in_at: status == 'scanned' ? Time.current - rand(1..10).hours : nil,
       payment_status: payment_status,
       payment_screenshot_url: payment_status == 1 ? "https://example.com/screenshots/payment_#{rand(10000..99999)}.jpg" : nil,
       transaction_id: payment_status == 1 ? "TXN#{rand(100000..999999)}" : nil,
@@ -274,7 +272,16 @@ all_events.each_with_index do |event, i|
     }
 
     # Use Ticket.create! to ensure all models and validations are run
-    Ticket.create!(ticket_attributes)
+    ticket = Ticket.create!(ticket_attributes)
+
+    # Create check-in record for scanned tickets
+    if status == 'scanned'
+      TicketCheckIn.create!(
+        ticket: ticket,
+        check_in_at: Time.current - rand(1..10).hours,
+        scanned_by: scanner
+      )
+    end
   end
 end
 
