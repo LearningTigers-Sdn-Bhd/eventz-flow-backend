@@ -1,7 +1,7 @@
 module V1
   module SeatTicketing
     class VenuesController < ApplicationController
-      include Rails.application.routes.url_helpers
+      include SeatTicketingContext
       before_action :set_session
       before_action :set_venue, only: [:show, :update, :destroy, :attach_image]
 

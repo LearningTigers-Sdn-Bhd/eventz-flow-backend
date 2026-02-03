@@ -226,8 +226,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "public_id"
+    t.string "slug"
     t.index ["deleted_at"], name: "index_event_seat_sessions_on_deleted_at"
     t.index ["event_id"], name: "index_event_seat_sessions_on_event_id"
+    t.index ["public_id"], name: "index_event_seat_sessions_on_public_id", unique: true
+    t.index ["slug"], name: "index_event_seat_sessions_on_slug", unique: true
   end
 
   create_table "event_seat_venues", force: :cascade do |t|
