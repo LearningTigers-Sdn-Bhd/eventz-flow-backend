@@ -1,8 +1,10 @@
 module V1
   module SeatTicketing
     class SessionsController < ApplicationController
-      include Rails.application.routes.url_helpers
-      before_action :set_session, only: [:show, :update, :bulk_update, :destroy, :restore, :force_delete]
+      include SeatTicketingContext
+      before_action :set_session, only: [:show, :update, :bulk_update, :destroy, :restore, :force_delete, :duplicate]
+      skip_before_action :authenticate_user!, only: [:public_index, :public_show]
+      skip_before_action :require_verified_email!, only: [:public_index, :public_show]
 
       def index
         return render json: { error: 'event_id is required' }, status: :bad_request if params[:event_id].blank?
@@ -19,7 +21,30 @@ module V1
       end
 
       def show
-        render json: session_with_details
+        render json: seat_session_with_details(@session)
+      end
+
+      def public_index
+        return error_response(message: 'event_slug is required', status: :bad_request) if params[:event_slug].blank?
+
+        event = Event.friendly.find(params[:event_slug])
+        sessions = EventSeatSession.where(event_id: event.id, status: :published)
+        render json: sessions.map { |session| session.as_json.merge(archived: false) }
+      rescue ActiveRecord::RecordNotFound
+        error_response(message: 'Event not found', status: :not_found)
+      end
+
+      def public_show
+        identifier = params[:id]
+        session = EventSeatSession.find_by(id: identifier) ||
+          EventSeatSession.find_by(slug: identifier) ||
+          EventSeatSession.find_by(public_id: identifier)
+
+        if session&.published?
+          render json: seat_session_with_details(session)
+        else
+          error_response(message: 'Session not found', status: :not_found)
+        end
       end
 
       def create

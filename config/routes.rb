@@ -212,9 +212,12 @@ Rails.application.routes.draw do
 
     # Seat Ticketing
     namespace :seat_ticketing do
+      get 'sessions/public', to: 'sessions#public_index'
+      get 'sessions/public/:id', to: 'sessions#public_show'
       resources :sessions do
         member do
           patch :bulk_update
+          post :duplicate
           delete :force_delete
           patch :restore
         end

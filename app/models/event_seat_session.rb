@@ -3,9 +3,14 @@ class EventSeatSession < ApplicationRecord
   has_many :event_seat_venues, dependent: :destroy
   accepts_nested_attributes_for :event_seat_venues, allow_destroy: true
 
+  before_validation :set_public_id, on: :create
+  before_validation :generate_slug, on: :create
+
   enum :status, { draft: 0, published: 1, cancelled: 2 }
 
   validates :name, presence: true
+  validates :public_id, presence: true, uniqueness: true
+  validates :slug, presence: true, uniqueness: true
   validates :start_datetime, presence: true
   validates :end_datetime, presence: true
   validate :end_date_after_start_date

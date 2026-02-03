@@ -37,13 +37,12 @@ module V1
       private
 
       def set_venue
-        @session = EventSeatSession.find(params[:session_id])
-        authorize @session
-        @venue = @session.event_seat_venues.find(params[:venue_id])
+        load_seat_session
+        load_seat_venue
       end
 
       def set_section
-        @section = @venue.event_seat_sections.find(params[:id])
+        load_seat_section
       end
 
       def section_params
