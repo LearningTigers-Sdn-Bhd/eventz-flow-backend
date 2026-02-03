@@ -33,7 +33,13 @@ module V1
 
       render json: @tickets.as_json(
         include: {
-          ticket_type: { only: [:id, :name, :price] }
+          ticket_type: { only: [:id, :name, :price, :valid_from_date, :valid_to_date] },
+          check_ins: {
+            only: [:id, :check_in_at],
+            include: {
+              scanned_by: { only: [:id, :full_name] }
+            }
+          }
         },
         methods: [:checked_in_today]
       ), status: :ok
@@ -43,7 +49,18 @@ module V1
     def show
       # Authorize the specific ticket record against the show? policy
       authorize @ticket
-      render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      render json: @ticket.as_json(
+        include: {
+          ticket_type: { only: [:id, :name, :price, :valid_from_date, :valid_to_date] },
+          check_ins: {
+            only: [:id, :check_in_at],
+            include: {
+              scanned_by: { only: [:id, :full_name] }
+            }
+          }
+        },
+        methods: [:checked_in_today]
+      ), status: :ok
     end
 
     # POST /v1/events/:event_id/tickets
