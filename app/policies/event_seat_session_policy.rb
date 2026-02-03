@@ -38,6 +38,10 @@ class EventSeatSessionPolicy < ApplicationPolicy
     allowed?
   end
 
+  def duplicate?
+    allowed?
+  end
+
   private
 
   def allowed?

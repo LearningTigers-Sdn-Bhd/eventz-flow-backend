@@ -70,7 +70,7 @@ module V1
         authorize @session, :update?
         
         if @session.update(bulk_update_params)
-          render json: session_with_details
+          render json: seat_session_with_details(@session)
         else
           render json: { errors: @session.errors.full_messages }, status: :unprocessable_content
         end
@@ -91,50 +91,21 @@ module V1
         head :no_content
       end
 
+      def duplicate
+        authorize @session, :create?
+
+        new_session = @session.deep_duplicate!
+        render json: new_session, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: [e.message] }, status: :unprocessable_content
+      end
+
       private
-
-      def session_with_details
-        @session.as_json(
-          include: {
-            event_seat_venues: {
-              include: {
-                event_seat_sections: {
-                  include: :event_ticket_seats
-                }
-              }
-            }
-          }
-        ).tap do |json|
-          json['event_seat_venues']&.each_with_index do |venue_json, index|
-            venue = @session.event_seat_venues[index]
-            venue_json['image_url'] = venue_image_url(venue)
-          end
-        end
-      end
-
-      def venue_image_url(venue)
-        return nil unless venue&.image&.attached?
-
-        url_options = (Rails.application.routes.default_url_options || {}).dup
-        if respond_to?(:request) && request.present?
-          url_options[:host] = request.host
-          url_options[:protocol] = request.protocol.gsub('://', '')
-          url_options[:port] = request.port unless [80, 443].include?(request.port)
-        end
-
-        rails_blob_url(venue.image, **url_options)
-      rescue => e
-        Rails.logger.error "Could not generate URL for venue #{venue&.id}: #{e.message}"
-        nil
-      end
-
       def set_session
-         if action_name.in?(['restore', 'force_delete'])
-            @session = EventSeatSession.with_deleted.find(params[:id])
-         else
-            @session = EventSeatSession.find(params[:id])
-         end
-         authorize @session
+         load_seat_session(
+           param_key: :id,
+           include_deleted: action_name.in?(['restore', 'force_delete'])
+         )
       end
 
       def session_params

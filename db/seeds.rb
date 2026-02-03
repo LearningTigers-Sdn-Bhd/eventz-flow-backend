@@ -282,63 +282,139 @@ Rake::Task['db:seed:resources'].invoke
 # --- 6. SEAT TICKETING SEED DATA ---
 puts "\n--- 6. Generating Seat Ticketing Seed Data ---"
 
-# 6.1 Test Ticket Seat
-test_ticket_seat_event = Event.create!(
-  title: "Test Ticket Seat",
-  description: "Event for testing seat ticketing with tickets.",
+def create_section_seats(section, seat_rows:, seat_columns:, gap_columns: [])
+  (1..seat_rows).each do |row|
+    row_letter = ("A".ord + row - 1).chr
+    (1..seat_columns).each do |col|
+      next if gap_columns.include?(col)
+
+      section.event_ticket_seats.create!(
+        name: "#{section.name} #{row_letter}#{col}",
+        extra_price: 0,
+        row_set: row,
+        col_set: col,
+        ticket_id: nil
+      )
+    end
+  end
+end
+
+def create_seat_ticketing_layout(session, venue_names:)
+  section_specs = [
+    { name: "Stage Front Seats [Premium]", price: 150, start_row: 2 },
+    { name: "Stage Mid Seats [Fans]", price: 110, start_row: 8 },
+    { name: "Stage Back Seats [Regular]", price: 80, start_row: 14 }
+  ]
+
+  venue_names.each do |venue_name|
+    venue = session.event_seat_venues.create!(
+      name: venue_name,
+      total_row: 20,
+      total_column: 20,
+      aspect_ratio: "square"
+    )
+
+    section_specs.each do |spec|
+      section = venue.event_seat_sections.create!(
+        name: spec[:name],
+        price: spec[:price],
+        start_row: spec[:start_row],
+        start_column: 5,
+        row_span: 5,
+        col_span: 12,
+        seat_row: 3,
+        seat_column: 11
+      )
+
+      create_section_seats(section, seat_rows: 3, seat_columns: 11, gap_columns: [4, 8])
+    end
+  end
+end
+
+# 6.1 Ticket-based event
+ticket_event = Event.create!(
+  title: "THE IDOLM@STER Gakuen The 2nd Period",
+  description: "May 15th - June 7th 2026",
   status: :published,
   payment_status: :paid,
-  start_date: BASE_DATE + 30.days,
-  end_date: BASE_DATE + 30.days + 2.days,
+  start_date: Date.new(2026, 5, 15),
+  end_date: Date.new(2026, 6, 7),
   published: true,
-  use_seat_ticketing: true
+  use_seat_ticketing: true,
+  use_ticket: true
 )
 
-# Assign superadmin as admin
-EventAssignment.create!(event: test_ticket_seat_event, user: superadmin, role: :event_admin)
+EventAssignment.create!(event: ticket_event, user: superadmin, role: :event_admin)
 
-# Create sessions
-3.times do |i|
-  EventSeatSession.create!(
-    event: test_ticket_seat_event,
-    name: "Ticket Session #{i+1}",
-    status: :published,
-    location: "Hall A",
-    order: i + 1,
-    start_datetime: test_ticket_seat_event.start_date + i.hours,
-    end_datetime: test_ticket_seat_event.start_date + (i + 2).hours
-  )
-end
-puts "Created 'Test Ticket Seat' event with 3 sessions."
+session = EventSeatSession.create!(
+  event: ticket_event,
+  name: "The 2nd Period H.I.F Senbatsushiken (Selection)",
+  status: :published,
+  location: "Makuhari Messe Event Hall, Chiba",
+  order: 1,
+  start_datetime: Time.zone.local(2026, 5, 15, 10, 0),
+  end_datetime: Time.zone.local(2026, 5, 16, 21, 0)
+)
 
-# 6.2 Test Visitor Seed
-test_visitor_seed_event = Event.create!(
-  title: "Test Visitor Seed",
-  description: "Event for testing seat ticketing with visitors.",
+create_seat_ticketing_layout(
+  session,
+  venue_names: ["Makuhari Messe Event Hall, Chiba"]
+)
+
+session = EventSeatSession.create!(
+  event: ticket_event,
+  name: "The 2nd Period Hatsuboshi IDOL FESTIVAL",
+  status: :published,
+  location: "Yokohama Arena, Yokohama",
+  order: 2,
+  start_datetime: Time.zone.local(2026, 6, 6, 10, 0),
+  end_datetime: Time.zone.local(2026, 6, 7, 21, 0)
+)
+
+create_seat_ticketing_layout(
+  session,
+  venue_names: ["Yokohama Arena, Yokohama"]
+)
+
+puts "Created 'THE IDOLM@STER Gakuen The 2nd Period' event with 2 sessions."
+
+# 6.2 Visitor-based event
+visitor_event = Event.create!(
+  title: "THE IDOLM@STER 20th Anniversary MORE RE@LITY LIVE IDOL WORLD SUPER FESTIVAL 2026",
+  description: "July 24-26 2026",
   status: :published,
   payment_status: :paid,
-  start_date: BASE_DATE + 35.days,
-  end_date: BASE_DATE + 35.days + 1.day,
+  start_date: Date.new(2026, 7, 24),
+  end_date: Date.new(2026, 7, 26),
   published: true,
-  use_seat_ticketing: true
+  use_seat_ticketing: true,
+  use_ticket: false
 )
 
-# Assign superadmin as admin
-EventAssignment.create!(event: test_visitor_seed_event, user: superadmin, role: :event_admin)
+EventAssignment.create!(event: visitor_event, user: superadmin, role: :event_admin)
 
-# Create sessions
-2.times do |i|
-  EventSeatSession.create!(
-    event: test_visitor_seed_event,
-    name: "Visitor Session #{i+1}",
+[
+  { name: "(ALL) Dance", date: [2026, 7, 24], order: 1 },
+  { name: "(ALL) Band", date: [2026, 7, 25], order: 2 },
+  { name: "(ALL) Call & Response", date: [2026, 7, 26], order: 3 }
+].each do |session_data|
+  session = EventSeatSession.create!(
+    event: visitor_event,
+    name: session_data[:name],
     status: :published,
-    location: "VIP Room",
-    order: i + 1,
-    start_datetime: test_visitor_seed_event.start_date + i.hours,
-    end_datetime: test_visitor_seed_event.start_date + (i + 1).hours
+    location: "Keio Arena Tokyo",
+    order: session_data[:order],
+    start_datetime: Time.zone.local(*session_data[:date], 10, 0),
+    end_datetime: Time.zone.local(*session_data[:date], 20, 0)
+  )
+
+  create_seat_ticketing_layout(
+    session,
+    venue_names: ["Keio Arena Tokyo"]
   )
 end
-puts "Created 'Test Visitor Seed' event with 2 sessions."
+
+puts "Created 'THE IDOLM@STER 20th Anniversary MORE RE@LITY LIVE IDOL WORLD SUPER FESTIVAL 2026' event with 3 sessions."
 
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"

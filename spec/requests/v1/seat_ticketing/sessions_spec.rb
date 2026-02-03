@@ -84,6 +84,69 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
     end
   end
 
+  describe 'GET /v1/seat_ticketing/sessions/public' do
+    let(:public_event) { create(:event, use_seat_ticketing: true) }
+    let!(:published_session) { create(:event_seat_session, event: public_event, status: :published) }
+    let!(:draft_session) { create(:event_seat_session, event: public_event, status: :draft) }
+
+    it 'returns only published sessions by event slug' do
+      get '/v1/seat_ticketing/sessions/public', params: { event_slug: public_event.slug }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json.size).to eq(1)
+      expect(json.first['id']).to eq(published_session.id)
+    end
+
+    it 'returns bad request when event_slug is missing' do
+      get '/v1/seat_ticketing/sessions/public'
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it 'returns not found when event does not exist' do
+      get '/v1/seat_ticketing/sessions/public', params: { event_slug: 'missing-event' }
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe 'GET /v1/seat_ticketing/sessions/public/:id' do
+    let(:public_event) { create(:event, use_seat_ticketing: true) }
+    let!(:published_session) { create(:event_seat_session, event: public_event, status: :published) }
+    let!(:draft_session) { create(:event_seat_session, event: public_event, status: :draft) }
+
+    it 'returns published session by id' do
+      get "/v1/seat_ticketing/sessions/public/#{published_session.id}"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['id']).to eq(published_session.id)
+    end
+
+    it 'returns published session by slug' do
+      get "/v1/seat_ticketing/sessions/public/#{published_session.slug}"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['id']).to eq(published_session.id)
+    end
+
+    it 'returns published session by public_id' do
+      get "/v1/seat_ticketing/sessions/public/#{published_session.public_id}"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['id']).to eq(published_session.id)
+    end
+
+    it 'returns not found for non-published session' do
+      get "/v1/seat_ticketing/sessions/public/#{draft_session.id}"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe 'PATCH /v1/seat_ticketing/sessions/:id/bulk_update' do
     let(:bulk_params) do
       {
