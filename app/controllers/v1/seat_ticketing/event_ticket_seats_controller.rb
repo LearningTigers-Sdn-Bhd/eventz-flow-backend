@@ -1,6 +1,7 @@
 module V1
   module SeatTicketing
     class EventTicketSeatsController < ApplicationController
+      include SeatTicketingContext
       before_action :set_section
       before_action :set_ticket_seat, only: [:show, :update, :destroy]
 
@@ -37,14 +38,13 @@ module V1
       private
 
       def set_section
-        @session = EventSeatSession.find(params[:session_id])
-        authorize @session
-        @venue = @session.event_seat_venues.find(params[:venue_id])
-        @section = @venue.event_seat_sections.find(params[:section_id])
+        load_seat_session
+        load_seat_venue
+        load_seat_section(param_key: :section_id)
       end
 
       def set_ticket_seat
-        @ticket_seat = @section.event_ticket_seats.find(params[:id])
+        load_ticket_seat
       end
 
       def ticket_seat_params

@@ -1,6 +1,7 @@
 module V1
   module SeatTicketing
     class SectionsController < ApplicationController
+      include SeatTicketingContext
       before_action :set_venue
       before_action :set_section, only: [:show, :update, :destroy]
 

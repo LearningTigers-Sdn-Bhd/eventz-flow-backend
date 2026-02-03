@@ -45,36 +45,12 @@ module V1
       end
 
       private
-
-      def venue_as_json(venue)
-        venue.as_json.merge(
-          image_url: venue_image_url(venue)
-        )
-      end
-
-      def venue_image_url(venue)
-        return nil unless venue.image.attached?
-
-        url_options = (Rails.application.routes.default_url_options || {}).dup
-        if respond_to?(:request) && request.present?
-          url_options[:host] = request.host
-          url_options[:protocol] = request.protocol.gsub('://', '')
-          url_options[:port] = request.port unless [80, 443].include?(request.port)
-        end
-
-        rails_blob_url(venue.image, **url_options)
-      rescue => e
-        Rails.logger.error "Could not generate URL for venue #{venue.id}: #{e.message}"
-        nil
-      end
-
       def set_session
-        @session = EventSeatSession.find(params[:session_id])
-        authorize @session
+        load_seat_session
       end
 
       def set_venue
-        @venue = @session.event_seat_venues.find(params[:id])
+        load_seat_venue(param_key: :id)
       end
 
       def venue_params
