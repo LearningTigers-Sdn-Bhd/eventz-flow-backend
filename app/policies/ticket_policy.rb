@@ -33,8 +33,9 @@ class TicketPolicy < ApplicationPolicy
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
 
+  # Check-in policy - same as update, allows org-level users and event staff to check in tickets
   def check_in?
-    user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
+    update?
   end
 
   # Unscan is restricted to org_owner only
