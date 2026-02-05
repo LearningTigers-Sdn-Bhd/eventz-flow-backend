@@ -1,0 +1,21 @@
+You're Registered!
+
+Hi <%= @ticket.attendee_name %>,
+
+Your registration is confirmed. Here are your ticket details:
+
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+Ticket Type: <%= @ticket_type.name %>
+
+Your Ticket ID: <%= @ticket.public_id %>
+
+Please show this ticket ID or the attached QR code at check-in.
+
+See you at the event!
+
+---
+This email was sent by EventzFlow

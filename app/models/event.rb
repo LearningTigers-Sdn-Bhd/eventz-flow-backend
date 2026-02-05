@@ -33,6 +33,9 @@ class Event < ApplicationRecord
   has_many :event_sponsorships, dependent: :destroy
   has_many :sponsors, through: :event_sponsorships
 
+  # --- Reminders ---
+  has_many :event_reminder_logs, dependent: :destroy
+
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?

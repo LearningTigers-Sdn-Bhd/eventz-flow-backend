@@ -1,0 +1,21 @@
+<%= @days_until == 1 ? "See You Tomorrow!" : "Event Reminder" %>
+
+Hi <%= @ticket.attendee_name %>,
+
+<%= @event.title %> is coming up <%= @days_until == 1 ? 'tomorrow' : "in #{@days_until} days" %>.
+
+EVENT DETAILS
+-------------
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+Ticket Type: <%= @ticket.ticket_type.name %>
+
+Your Ticket ID: <%= @ticket.public_id %>
+
+Have this ready for check-in. We look forward to seeing you!
+
+---
+This email was sent by EventzFlow
