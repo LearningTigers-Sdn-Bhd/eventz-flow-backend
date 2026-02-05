@@ -33,6 +33,12 @@ Rails.application.routes.draw do
       resources :vouchers, only: [:index, :show]
       # Public booking details
       resources :bookings, only: [:show]
+
+      # Public registration for walk-ins
+      scope 'events/:event_slug' do
+        get 'ticket_types', to: 'registrations#ticket_types'
+        post 'register', to: 'registrations#create'
+      end
     end
 
     # Authentication endpoints
@@ -75,7 +81,9 @@ Rails.application.routes.draw do
 
     resources :item_categories
     # 3. GLOBAL TICKET TYPES (Templates - event_id is null)
-    resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
+    resources :ticket_types, only: [:index, :show, :create, :update, :destroy] do
+      resources :price_tiers, controller: 'ticket_type_price_tiers'
+    end
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
@@ -83,7 +91,9 @@ Rails.application.routes.draw do
         delete :force_delete
         patch :restore
       end
-      resources :ticket_types, only: [:index, :show, :create, :update, :destroy]
+      resources :ticket_types, only: [:index, :show, :create, :update, :destroy] do
+        resources :price_tiers, controller: 'ticket_type_price_tiers'
+      end
       resources :tickets, only: [:index, :show, :create, :update, :destroy] do
         member do
           delete :force_delete
