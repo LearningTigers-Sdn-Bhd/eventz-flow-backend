@@ -26,7 +26,8 @@ class CheckInDisplay < ApplicationRecord
       name_color: name_color,
       background_image_url: background_image_url,
       voice_enabled: voice_enabled,
-      voice_type: voice_type
+      voice_type: voice_type,
+      welcome_text: welcome_text
     }
 
     if include_event && event.present?
