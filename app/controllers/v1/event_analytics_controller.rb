@@ -85,6 +85,29 @@ module V1
       }, status: :ok
     end
 
+    # GET /v1/events/:event_id/metrics/hourly_breakdown_by_day
+    # Returns hourly data grouped by day - useful for multi-day event reports.
+    #
+    # Query params:
+    #   metric: scans | visitors | visitor_scans | tickets | stamps | redemptions (required)
+    #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
+    #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
+    def hourly_breakdown_by_day
+      metric = params[:metric]
+      return render json: { error: 'metric parameter is required' }, status: :bad_request if metric.blank?
+
+      range = build_date_range_for_metric(metric)
+      data = fetch_hourly_breakdown_by_day(metric, range)
+      return render json: { error: "Invalid metric: #{metric}" }, status: :bad_request if data.nil?
+
+      render json: {
+        metric: metric,
+        start_date: range.begin.to_date.to_s,
+        end_date: range.end.to_date.to_s,
+        data: data
+      }, status: :ok
+    end
+
     private
 
     def set_event_and_authorize
@@ -206,6 +229,80 @@ module V1
       candidates.min.to_date
     end
 
+    def find_earliest_date_for_metric(metric)
+      case metric
+      when 'scans'
+        # For ticket scans, use earliest check_in_at
+        earliest = @event.tickets.checked_in.minimum(:check_in_at)
+        earliest&.to_date || @event.start_date.to_date
+      when 'visitor_scans'
+        # For visitor scans, use earliest check_in_at
+        earliest = @event.visitors.checked_in.minimum(:check_in_at)
+        earliest&.to_date || @event.start_date.to_date
+      when 'stamps'
+        # For stamps, use earliest stamp created_at
+        earliest = VisitorVendorStamp.joins(:visitor)
+                                      .where(visitors: { event_id: @event.id })
+                                      .minimum(:created_at)
+        earliest&.to_date || @event.start_date.to_date
+      when 'redemptions', 'redemption_value'
+        # For redemptions, use earliest redemption_timestamp
+        earliest = VoucherRedemptionLog.for_event(@event).minimum(:redemption_timestamp)
+        earliest&.to_date || @event.start_date.to_date
+      else
+        # For tickets, visitors, revenue - use earliest registration
+        find_earliest_registration_date
+      end
+    end
+
+    def find_latest_date_for_metric(metric)
+      case metric
+      when 'scans'
+        latest = @event.tickets.checked_in.maximum(:check_in_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'visitor_scans'
+        latest = @event.visitors.checked_in.maximum(:check_in_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'stamps'
+        latest = VisitorVendorStamp.joins(:visitor)
+                                    .where(visitors: { event_id: @event.id })
+                                    .maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'redemptions', 'redemption_value'
+        latest = VoucherRedemptionLog.for_event(@event).maximum(:redemption_timestamp)
+        latest&.to_date || @event.end_date.to_date
+      when 'tickets', 'revenue'
+        latest = @event.tickets.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'visitors'
+        latest = @event.visitors.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      else
+        @event.end_date.to_date
+      end
+    end
+
+    def build_date_range_for_metric(metric)
+      date_mode = params[:date_mode]
+
+      case date_mode
+      when 'all_time'
+        # From the earliest data for this metric to now (or event end, whichever is later)
+        earliest_date = find_earliest_date_for_metric(metric)
+        latest_date = find_latest_date_for_metric(metric)
+        earliest_date.beginning_of_day..latest_date.end_of_day
+      when 'pre_event'
+        # From the earliest data to event start (only makes sense for registration metrics)
+        earliest_date = find_earliest_date_for_metric(metric)
+        earliest_date.beginning_of_day..@event.start_date.beginning_of_day
+      else
+        # Default: use provided dates or event duration
+        start_date = parse_date(params[:start_date]) || @event.start_date.to_date
+        end_date = parse_date(params[:end_date]) || @event.end_date.to_date
+        start_date.beginning_of_day..end_date.end_of_day
+      end
+    end
+
     def parse_date(date_string)
       return nil if date_string.blank?
       Date.parse(date_string)
@@ -237,6 +334,72 @@ module V1
       when 'redemption_value'
         VoucherRedemptionLog.for_event(@event)
                             .time_series_sum(:redemption_timestamp, :discount_applied_value, range: range, group_by: group_by)
+      end
+    end
+
+    # Fetches hourly data for each day in the range, grouped by day.
+    # Returns array of { date: "YYYY-MM-DD", hourlyData: [{ hour: "HH:00", value: N }, ...] }
+    def fetch_hourly_breakdown_by_day(metric, range)
+      scope = build_scope_for_metric(metric)
+      return nil if scope.nil?
+
+      timestamp_column = timestamp_column_for_metric(metric)
+
+      # Get all days in the range
+      start_date = range.begin.to_date
+      end_date = range.end.to_date
+      days = (start_date..end_date).to_a
+
+      days.map do |day|
+        day_range = day.beginning_of_day..day.end_of_day
+        hourly_data = scope.where(timestamp_column => day_range)
+                           .group_by_hour(timestamp_column)
+                           .count
+
+        {
+          date: day.strftime('%Y-%m-%d'),
+          hourlyData: format_hourly_data(hourly_data, day)
+        }
+      end
+    end
+
+    def build_scope_for_metric(metric)
+      case metric
+      when 'tickets'
+        scoped_active_tickets
+      when 'scans'
+        @event.tickets.checked_in
+      when 'visitors'
+        @event.visitors
+      when 'visitor_scans'
+        @event.visitors.checked_in
+      when 'stamps'
+        VisitorVendorStamp.joins(:visitor).where(visitors: { event_id: @event.id })
+      when 'redemptions'
+        VoucherRedemptionLog.for_event(@event)
+      end
+    end
+
+    def timestamp_column_for_metric(metric)
+      case metric
+      when 'scans', 'visitor_scans'
+        :check_in_at
+      when 'redemptions'
+        :redemption_timestamp
+      else
+        :created_at
+      end
+    end
+
+    def format_hourly_data(hourly_data, day)
+      # Generate all 24 hours for the day, filling in zeros where no data
+      (0..23).map do |hour|
+        hour_time = day.beginning_of_day + hour.hours
+        value = hourly_data[hour_time] || 0
+        {
+          hour: format('%02d:00', hour),
+          value: value
+        }
       end
     end
   end

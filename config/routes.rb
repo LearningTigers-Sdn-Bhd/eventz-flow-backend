@@ -365,6 +365,7 @@ Rails.application.routes.draw do
           get 'total_amount_price',       to: 'event_analytics#total_amount_price'
           get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
           get 'time_series',              to: 'event_analytics#time_series'
+          get 'hourly_breakdown_by_day',  to: 'event_analytics#hourly_breakdown_by_day'
         end
       end
     end
