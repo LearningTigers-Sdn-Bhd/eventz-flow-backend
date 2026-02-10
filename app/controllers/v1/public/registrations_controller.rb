@@ -45,7 +45,8 @@ module V1
             name: tt.name,
             price: tt.current_price,
             current_tier: tt.active_tier&.label,
-            available: tt.quantity.nil? || tt.tickets.count < tt.quantity
+            available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
+            custom_fields_data: tt.custom_fields_data
           }
         end
 
@@ -55,7 +56,13 @@ module V1
       private
 
       def registration_params
-        params.permit(:attendee_name, :attendee_email, :attendee_phone)
+        params.permit(
+          :attendee_name,
+          :attendee_email,
+          :attendee_phone,
+          :role,
+          custom_fields_data: {}
+        )
       end
 
       def serialize_ticket(ticket, ticket_type)
@@ -64,9 +71,12 @@ module V1
           public_id: ticket.public_id,
           attendee_name: ticket.attendee_name,
           attendee_email: ticket.attendee_email,
+          attendee_phone: ticket.attendee_phone,
+          role: ticket.role,
           ticket_type: ticket_type.name,
           price: ticket_type.current_price,
           payment_status: ticket.payment_status,
+          custom_fields_data: ticket.custom_fields_data,
           qr_code_data: ticket.public_id
         }
       end
