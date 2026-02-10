@@ -5,6 +5,9 @@ module V1
       before_action :set_venue
       before_action :set_section, only: [:show, :update, :destroy]
 
+      skip_before_action :authenticate_user!, only: [:index, :show]
+      skip_before_action :require_verified_email!, only: [:index, :show]
+
       def index
         render json: @venue.event_seat_sections
       end
@@ -55,7 +58,8 @@ module V1
           :seat_row,
           :seat_column,
           :row_span,
-          :col_span
+          :col_span,
+          :rotation
         )
       end
     end

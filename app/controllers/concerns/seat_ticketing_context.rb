@@ -10,7 +10,14 @@ module SeatTicketingContext
   def load_seat_session(param_key: :session_id, include_deleted: false)
     scope = include_deleted ? EventSeatSession.with_deleted : EventSeatSession
     @session = scope.find(params[param_key])
-    authorize @session
+    
+    # Skip authorization for public actions to allow anonymous access to seat selection
+    public_actions = ['index', 'show', 'lock', 'unlock', 'public_index', 'public_show', 'checkout']
+    if action_name.in?(public_actions)
+      skip_authorization
+    else
+      authorize @session
+    end
   end
 
   def load_seat_venue(param_key: :venue_id)
@@ -49,20 +56,29 @@ module SeatTicketingContext
   end
 
   def seat_session_with_details(session)
+    # Ensure event is loaded for seat status logic
+    session.event if session.association(:event).loaded? == false
+
     session.as_json(
       include: {
         event_seat_venues: {
           include: {
             event_seat_sections: {
-              include: :event_ticket_seats
+              include: {
+                event_seat_groups: {},
+                event_ticket_seats: {
+                  methods: :status,
+                  include: :event_seat_group_assignment
+                }
+              }
             }
           }
         }
       }
     ).tap do |json|
-      json['event_seat_venues']&.each_with_index do |venue_json, index|
-        venue = session.event_seat_venues[index]
-        venue_json['image_url'] = venue_image_url(venue)
+      json['event_seat_venues']&.each do |venue_json|
+        venue = session.event_seat_venues.find { |v| v.id == venue_json['id'] }
+        venue_json['image_url'] = venue_image_url(venue) if venue
       end
     end
   end

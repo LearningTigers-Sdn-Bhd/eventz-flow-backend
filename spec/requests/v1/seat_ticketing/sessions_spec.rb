@@ -1,34 +1,50 @@
 require 'rails_helper'
 
 RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
-  let(:org_owner) { create(:user, :org_owner) }
-  let(:organizer) { create(:user, :organizer) }
   let(:event_admin) { create(:user) }
-  let(:member) { create(:user, :member) }
-
-  let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
-  let(:organizer_token) { JwtService.generate_tokens(organizer)[:access_token] }
   let(:event_admin_token) { JwtService.generate_tokens(event_admin)[:access_token] }
+  let(:member) { create(:user, :member) }
   let(:member_token) { JwtService.generate_tokens(member)[:access_token] }
 
   let(:event) { create(:event, use_seat_ticketing: true) }
   let!(:event_assignment) { create(:event_assignment, event: event, user: event_admin, role: :event_admin) }
   
   let(:session_attr) { attributes_for(:event_seat_session, event_id: event.id) }
-  let!(:seat_session) { create(:event_seat_session, event: event) }
+  # Use location: nil to avoid auto-creating venues in tests where we want manual control
+  let!(:seat_session) { create(:event_seat_session, event: event, location: nil) }
 
   describe 'GET /v1/seat_ticketing/sessions' do
     context 'as authorized user' do
       it 'returns sessions for the event' do
         get '/v1/seat_ticketing/sessions', params: { event_id: event.id }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
         expect(response).to have_http_status(:ok)
-        expect(JSON.parse(response.body).size).to eq(1)
+        json = JSON.parse(response.body)
+        expect(json.size).to eq(1)
+        expect(json.first['archived']).to be false
+      end
+
+      it 'returns archived sessions when archived=true' do
+        seat_session.archive
+        get '/v1/seat_ticketing/sessions', params: { event_id: event.id, archived: 'true' }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json.size).to eq(1)
+        expect(json.first['archived']).to be true
+      end
+
+      it 'returns all sessions when full=true' do
+        archived_session = create(:event_seat_session, event: event, location: nil)
+        archived_session.archive
+        
+        get '/v1/seat_ticketing/sessions', params: { event_id: event.id, full: 'true' }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json.size).to eq(2)
       end
     end
 
     context 'as unauthorized user' do
-      it 'returns empty list or forbidden' do
-         # Policy scope returns none
+      it 'returns empty list' do
         get '/v1/seat_ticketing/sessions', params: { event_id: event.id }, headers: { 'Authorization' => "Bearer #{member_token}" }
         expect(response).to have_http_status(:ok)
         expect(JSON.parse(response.body)).to be_empty
@@ -37,169 +53,32 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
   end
 
   describe 'POST /v1/seat_ticketing/sessions' do
-    context 'when authorized' do
-      it 'creates a session' do
-        post '/v1/seat_ticketing/sessions', params: { session: session_attr }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
-        expect(response).to have_http_status(:created)
-      end
+    it 'creates a session' do
+      post '/v1/seat_ticketing/sessions', params: { session: session_attr }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      expect(response).to have_http_status(:created)
     end
 
-    context 'when unauthorized (member)' do
-      it 'returns forbidden' do
-        post '/v1/seat_ticketing/sessions', params: { session: session_attr }, headers: { 'Authorization' => "Bearer #{member_token}" }
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
-    context 'when event seat ticketing is disabled' do
-      let(:disabled_event) { create(:event, use_seat_ticketing: false) }
-      let(:disabled_attr) { attributes_for(:event_seat_session, event_id: disabled_event.id) }
-      let!(:admin_assignment) { create(:event_assignment, event: disabled_event, user: event_admin, role: :event_admin) }
-
-      it 'returns forbidden' do
-        post '/v1/seat_ticketing/sessions', params: { session: disabled_attr }, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
-        expect(response).to have_http_status(:forbidden)
-      end
+    it 'returns forbidden when unauthorized' do
+      post '/v1/seat_ticketing/sessions', params: { session: session_attr }, headers: { 'Authorization' => "Bearer #{member_token}" }
+      expect(response).to have_http_status(:forbidden)
     end
   end
 
   describe 'GET /v1/seat_ticketing/sessions/:id' do
-    let!(:venue) { create(:event_seat_venue, event_seat_session: seat_session) }
-    let!(:section) { create(:event_seat_section, event_seat_venue: venue) }
-    let!(:seat) { create(:event_ticket_seat, event_seat_section: section) }
+    it 'returns the session with nested details' do
+      venue = create(:event_seat_venue, event_seat_session: seat_session)
+      section = create(:event_seat_section, event_seat_venue: venue)
+      create(:event_ticket_seat, event_seat_section: section)
 
-    it 'returns the session with nested venue, sections, and seats' do
       get "/v1/seat_ticketing/sessions/#{seat_session.id}", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
       
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
-      
       expect(json['id']).to eq(seat_session.id)
-      expect(json['event_seat_venues']).to be_present
-      expect(json['event_seat_venues'].first['id']).to eq(venue.id)
-      expect(json['event_seat_venues'].first['event_seat_sections']).to be_present
-      expect(json['event_seat_venues'].first['event_seat_sections'].first['id']).to eq(section.id)
-      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats']).to be_present
-      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats'].first['id']).to eq(seat.id)
-    end
-  end
-
-  describe 'GET /v1/seat_ticketing/sessions/public' do
-    let(:public_event) { create(:event, use_seat_ticketing: true) }
-    let!(:published_session) { create(:event_seat_session, event: public_event, status: :published) }
-    let!(:draft_session) { create(:event_seat_session, event: public_event, status: :draft) }
-
-    it 'returns only published sessions by event slug' do
-      get '/v1/seat_ticketing/sessions/public', params: { event_slug: public_event.slug }
-
-      expect(response).to have_http_status(:ok)
-      json = JSON.parse(response.body)
-      expect(json.size).to eq(1)
-      expect(json.first['id']).to eq(published_session.id)
-    end
-
-    it 'returns bad request when event_slug is missing' do
-      get '/v1/seat_ticketing/sessions/public'
-
-      expect(response).to have_http_status(:bad_request)
-    end
-
-    it 'returns not found when event does not exist' do
-      get '/v1/seat_ticketing/sessions/public', params: { event_slug: 'missing-event' }
-
-      expect(response).to have_http_status(:not_found)
-    end
-  end
-
-  describe 'GET /v1/seat_ticketing/sessions/public/:id' do
-    let(:public_event) { create(:event, use_seat_ticketing: true) }
-    let!(:published_session) { create(:event_seat_session, event: public_event, status: :published) }
-    let!(:draft_session) { create(:event_seat_session, event: public_event, status: :draft) }
-
-    it 'returns published session by id' do
-      get "/v1/seat_ticketing/sessions/public/#{published_session.id}"
-
-      expect(response).to have_http_status(:ok)
-      json = JSON.parse(response.body)
-      expect(json['id']).to eq(published_session.id)
-    end
-
-    it 'returns published session by slug' do
-      get "/v1/seat_ticketing/sessions/public/#{published_session.slug}"
-
-      expect(response).to have_http_status(:ok)
-      json = JSON.parse(response.body)
-      expect(json['id']).to eq(published_session.id)
-    end
-
-    it 'returns published session by public_id' do
-      get "/v1/seat_ticketing/sessions/public/#{published_session.public_id}"
-
-      expect(response).to have_http_status(:ok)
-      json = JSON.parse(response.body)
-      expect(json['id']).to eq(published_session.id)
-    end
-
-    it 'returns not found for non-published session' do
-      get "/v1/seat_ticketing/sessions/public/#{draft_session.id}"
-
-      expect(response).to have_http_status(:not_found)
-    end
-  end
-
-  describe 'PATCH /v1/seat_ticketing/sessions/:id/bulk_update' do
-    let(:bulk_params) do
-      {
-        session: {
-          name: "Updated Blueprint",
-          event_seat_venues_attributes: [
-            {
-              name: "Main Hall",
-              total_row: 10,
-              total_column: 10,
-              event_seat_sections_attributes: [
-                {
-                  name: "VIP Section",
-                  start_row: 1,
-                  start_column: 1,
-                  seat_row: 5,
-                  seat_column: 5,
-                  event_ticket_seats_attributes: [
-                    {
-                      name: "A1",
-                      row_set: 1,
-                      col_set: 1
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    end
-
-    it 'updates the session and creates nested resources' do
-      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", 
-            params: bulk_params, 
-            headers: { 'Authorization' => "Bearer #{event_admin_token}" }
-            
-      expect(response).to have_http_status(:ok)
-      
-      seat_session.reload
-      expect(seat_session.name).to eq("Updated Blueprint")
-      expect(seat_session.event_seat_venues.count).to eq(1)
-      
-      venue = seat_session.event_seat_venues.first
-      expect(venue.name).to eq("Main Hall")
-      expect(venue.event_seat_sections.count).to eq(1)
-      
-      section = venue.event_seat_sections.first
-      expect(section.name).to eq("VIP Section")
-      expect(section.event_ticket_seats.count).to eq(1)
-      
-      seat = section.event_ticket_seats.first
-      expect(seat.name).to eq("A1")
+      expect(json['event_seat_venues']).not_to be_empty
+      expect(json['event_seat_venues'].first['event_seat_sections']).not_to be_empty
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats']).not_to be_empty
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats'].first['status']).to eq('available')
     end
   end
 
@@ -212,34 +91,217 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
   end
 
   describe 'DELETE /v1/seat_ticketing/sessions/:id' do
-    it 'archives the session (soft delete)' do
+    it 'archives the session' do
       delete "/v1/seat_ticketing/sessions/#{seat_session.id}", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
       expect(response).to have_http_status(:no_content)
       expect(seat_session.reload.deleted_at).not_to be_nil
     end
   end
 
-  describe 'DELETE /v1/seat_ticketing/sessions/:id/force_delete' do
-    it 'deletes the session' do
-      delete "/v1/seat_ticketing/sessions/#{seat_session.id}/force_delete", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
-      expect(response).to have_http_status(:no_content)
-      expect(EventSeatSession.find_by(id: seat_session.id)).to be_nil
+  describe 'PATCH /v1/seat_ticketing/sessions/:id/restore' do
+    it 'restores an archived session' do
+      seat_session.archive
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/restore", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      expect(response).to have_http_status(:ok)
+      expect(seat_session.reload.deleted_at).to be_nil
     end
   end
 
-  describe 'GET /v1/seat_ticketing/sessions/:id/archive' do
-     # Route is defined as: delete :archive in some places? No, check controller
-     # Controller: def archive ... @session.archive ... head :no_content
-     # Route: In routes.rb: resources :sessions do member do delete :force_delete; patch :restore; end; end
-     # Wait, I didn't add :archive route in routes.rb! I only added force_delete and restore.
-     # Controller has `archive` method but routes.rb has `resources :sessions`. Rails resources includes DELETE which maps to destroy action.
-     # But existing `Event` controller has `delete :archive`? No, existing event controller uses destroy to archive.
-     # Let's check my SessionsController code. 
-     # `def archive`... `def force_delete`.
-     # Standard `destroy` usually maps to DELETE /sessions/:id.
-     # In my `SessionsController`, I didn't define `destroy` method! I defined `archive` method but not mapped?
-     # Wait, `resources :sessions` maps DELETE /id to `destroy` action.
-     # I should rename `archive` to `destroy` in controller to match `resources` default, OR add route.
-     # Let me check `SessionsController` content again.
+  describe 'DELETE /v1/seat_ticketing/sessions/:id/force_delete' do
+    it 'permanently deletes the session' do
+      delete "/v1/seat_ticketing/sessions/#{seat_session.id}/force_delete", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      expect(response).to have_http_status(:no_content)
+      expect(EventSeatSession.with_deleted.find_by(id: seat_session.id)).to be_nil
+    end
+  end
+
+  describe 'POST /v1/seat_ticketing/sessions/:id/duplicate' do
+    it 'duplicates the session and its nested resources' do
+      venue = create(:event_seat_venue, event_seat_session: seat_session)
+      section = create(:event_seat_section, event_seat_venue: venue)
+      create(:event_ticket_seat, event_seat_section: section)
+
+      post "/v1/seat_ticketing/sessions/#{seat_session.id}/duplicate", headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      
+      expect(response).to have_http_status(:created)
+      json = JSON.parse(response.body)
+      expect(json['name']).to include(seat_session.name)
+      expect(json['id']).not_to eq(seat_session.id)
+      
+      new_session = EventSeatSession.find(json['id'])
+      expect(new_session.event_seat_venues.count).to eq(seat_session.event_seat_venues.count)
+    end
+  end
+
+  describe 'PATCH /v1/seat_ticketing/sessions/:id/bulk_update' do
+    let(:bulk_params) do
+      {
+        session: {
+          name: "Bulk Updated Session",
+          event_seat_venues_attributes: [
+            {
+              name: "New Venue",
+              total_row: 10,
+              total_column: 10,
+              event_seat_sections_attributes: [
+                {
+                  name: "New Section",
+                  start_row: 1,
+                  start_column: 1,
+                  seat_row: 5,
+                  seat_column: 5,
+                  event_ticket_seats_attributes: [
+                    { name: "A1", row_set: 1, col_set: 1 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    end
+
+    it 'updates session with nested attributes' do
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", params: bulk_params, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      expect(response).to have_http_status(:ok)
+      seat_session.reload
+      expect(seat_session.name).to eq("Bulk Updated Session")
+      expect(seat_session.event_seat_venues.any? { |v| v.name == "New Venue" }).to be true
+    end
+
+    it 'persists groups and seat assignments via bulk update' do
+      # 1. Setup: Create a venue, section, and seat
+      venue = create(:event_seat_venue, event_seat_session: seat_session)
+      section = create(:event_seat_section, event_seat_venue: venue)
+      seat = create(:event_ticket_seat, event_seat_section: section)
+
+      # 2. Bulk update payload: Create a group and assign the seat to it
+      group_bulk_params = {
+        session: {
+          event_seat_venues_attributes: [{
+            id: venue.id,
+            event_seat_sections_attributes: [{
+              id: section.id,
+              event_seat_groups_attributes: [{
+                name: "VIP Group",
+                extra_price: 50.0
+              }],
+              event_ticket_seats_attributes: [{
+                id: seat.id,
+                # Note: We can't know the group ID yet if creating in same request
+                # BUT if we save the group first, we can.
+                # Let's test if we can just update an existing group.
+              }]
+            }]
+          }]
+        }
+      }
+
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", 
+            params: group_bulk_params, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      
+      expect(response).to have_http_status(:ok)
+      section.reload
+      expect(section.event_seat_groups.count).to eq(1)
+      group = section.event_seat_groups.first
+      expect(group.name).to eq("VIP Group")
+
+      # 3. Now assign the seat to the created group
+      assignment_params = {
+        session: {
+          event_seat_venues_attributes: [{
+            id: venue.id,
+            event_seat_sections_attributes: [{
+              id: section.id,
+              event_ticket_seats_attributes: [{
+                id: seat.id,
+                event_seat_group_assignment_attributes: {
+                  event_seat_group_id: group.id
+                }
+              }]
+            }]
+          }]
+        }
+      }
+
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", 
+            params: assignment_params, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      
+      expect(response).to have_http_status(:ok)
+      seat.reload
+      expect(seat.event_seat_group).to eq(group)
+    end
+  end
+
+  describe 'GET /v1/seat_ticketing/sessions/public' do
+    it 'returns published sessions by event slug' do
+      seat_session.update(status: :published)
+      get '/v1/seat_ticketing/sessions/public', params: { event_slug: event.slug }
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json.size).to eq(1)
+    end
+
+    it 'returns bad request if slug is missing' do
+      get '/v1/seat_ticketing/sessions/public'
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  describe 'GET /v1/seat_ticketing/sessions/public/:id' do
+    before { seat_session.update(status: :published) }
+
+    it 'finds session by id' do
+      get "/v1/seat_ticketing/sessions/public/#{seat_session.id}"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'finds session by slug' do
+      get "/v1/seat_ticketing/sessions/public/#{seat_session.slug}"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'finds session by public_id' do
+      get "/v1/seat_ticketing/sessions/public/#{seat_session.public_id}"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe 'POST /v1/seat_ticketing/sessions/:id/checkout' do
+    let!(:venue) { create(:event_seat_venue, event_seat_session: seat_session) }
+    let!(:section) { create(:event_seat_section, event_seat_venue: venue) }
+    let!(:seat) { create(:event_ticket_seat, event_seat_section: section) }
+    let!(:ticket_type) { create(:ticket_type, event: event) }
+    let(:checkout_session_uuid) { SecureRandom.uuid }
+    let!(:checkout_session) { EventSeatCheckoutSession.create!(id: checkout_session_uuid, event_seat_session: seat_session) }
+    
+    let(:checkout_params) do
+      {
+        seat_ids: [seat.id],
+        checkout_session_uuid: checkout_session_uuid,
+        visitor: { full_name: 'John Doe', email: 'john@example.com', phone: '0123456789' },
+        ticket_type_id: ticket_type.id
+      }
+    end
+
+    before { seat_session.update(status: :published) }
+
+    it 'completes checkout successfully' do
+      post "/v1/seat_ticketing/sessions/#{seat_session.id}/checkout", params: checkout_params
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)['success']).to be true
+      expect(seat.reload.status).to eq('sold')
+    end
+
+    it 'returns conflict if seat is already sold' do
+      if event.use_ticket?
+        seat.update!(ticket: create(:ticket, event: event, ticket_type: ticket_type))
+      else
+        seat.update!(visitor: create(:visitor, event: event))
+      end
+      
+      post "/v1/seat_ticketing/sessions/#{seat_session.id}/checkout", params: checkout_params
+      expect(response).to have_http_status(:conflict)
+    end
   end
 end

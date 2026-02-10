@@ -2,19 +2,16 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::SeatTicketing', type: :request do
   # --- Setup Users & Tokens ---
-  let(:organizer_user) { create(:user, :organizer) }
-  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
-  let(:Authorization) { "Bearer #{organizer_token}" }
+  let(:event_admin_user) { create(:user) }
+  let(:event_admin_token) { JwtService.generate_tokens(event_admin_user)[:access_token] }
+  let(:Authorization) { "Bearer #{event_admin_token}" }
 
   # --- Setup Event & Assignments ---
-  let!(:event) do
-    event = create(:event, payment_status: :paid, use_ticket: false, use_seat_ticketing: true)
-    create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
-    event
-  end
+  let!(:event) { create(:event, payment_status: :paid, use_ticket: false, use_seat_ticketing: true) }
+  let!(:event_assignment) { create(:event_assignment, role: :event_admin, event: event, user: event_admin_user) }
 
   # --- Setup Seat Ticketing Data ---
-  let!(:seat_session_record) { create(:event_seat_session, event: event) }
+  let!(:seat_session_record) { create(:event_seat_session, event: event, status: :published) }
   let!(:venue_record) { create(:event_seat_venue, event_seat_session: seat_session_record) }
   let!(:section_record) { create(:event_seat_section, event_seat_venue: venue_record) }
   let!(:ticket_seat_record) { create(:event_ticket_seat, event_seat_section: section_record) }

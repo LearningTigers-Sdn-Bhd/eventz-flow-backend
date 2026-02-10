@@ -5,6 +5,8 @@ class EventSeatSessionPolicy < ApplicationPolicy
   end
 
   def show?
+    session = record.is_a?(EventSeatSession) ? record : record.event_seat_venue.event_seat_session
+    return true if session.published?
     allowed?
   end
 
@@ -19,6 +21,14 @@ class EventSeatSessionPolicy < ApplicationPolicy
   end
 
   def bulk_update?
+    update?
+  end
+
+  def attach_image?
+    update?
+  end
+
+  def assign_seats?
     update?
   end
 
@@ -46,15 +56,17 @@ class EventSeatSessionPolicy < ApplicationPolicy
 
   def allowed?
     return false unless user.present?
-    return false unless record.event.present?
+    
+    session = record.is_a?(EventSeatSession) ? record : record.event_seat_venue.event_seat_session
+    return false unless session&.event.present?
     
     # Policy: Controller cannot be accessed when the event is not set for it (use_seat_ticketing)
-    return false unless record.event.use_seat_ticketing?
+    return false unless session.event.use_seat_ticketing?
 
     # Policy: not event_admin, event_organizer or org_owner
     user.is_org_owner? || 
     user.is_organizer? || 
-    user.is_event_admin?(record.event)
+    user.is_event_admin?(session.event)
   end
 
   class Scope < Scope
