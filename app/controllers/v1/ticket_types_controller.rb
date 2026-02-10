@@ -85,16 +85,39 @@ module V1
         end
       end
 
+      # Check for seat ticketing constraints
+      if @ticket_type.seat_ticketing_type.present?
+        if @ticket_type.st_section?
+          return render json: { 
+            error: 'Cannot delete the base ticket type for a seat section. Please delete or modify the section in the map editor instead.' 
+          }, status: :unprocessable_content
+        end
+      end
+
       # Check if there are any tickets sold for this ticket type
       if @ticket_type.tickets.exists?
         render json: { error: 'Cannot delete ticket type with existing tickets' }, status: :unprocessable_content
       else
+        cleanup_seat_ticketing_links
         @ticket_type.destroy
         head :no_content
       end
     end
 
     private
+
+    def cleanup_seat_ticketing_links
+      return unless @ticket_type.seat_ticketing_type.present?
+
+      case @ticket_type.seat_ticketing_type.to_sym
+      when :st_group
+        group = EventSeatGroup.find_by(id: @ticket_type.seat_ticketing_source_id)
+        group&.destroy # This will cascade to assignments and should be handled carefully if logic is complex
+      when :st_individual
+        seat = EventTicketSeat.find_by(id: @ticket_type.seat_ticketing_source_id)
+        seat&.update_columns(extra_price: 0, ticket_type_id: seat.event_seat_section.ticket_type_id)
+      end
+    end
 
     # Check if this is an event-scoped request
     def event_scoped?
