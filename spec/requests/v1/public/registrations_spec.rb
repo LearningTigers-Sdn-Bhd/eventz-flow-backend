@@ -2,7 +2,20 @@ require 'rails_helper'
 
 RSpec.describe "V1::Public::Registrations", type: :request do
   let(:event) { create(:event, status: :published) }
-  let!(:ticket_type) { create(:ticket_type, event: event, name: "General", price: 100.00, status: :published, hidden: false) }
+  let!(:ticket_type) do
+    create(
+      :ticket_type,
+      event: event,
+      name: "General",
+      price: 100.00,
+      status: :published,
+      hidden: false,
+      custom_fields_data: {
+        company_name: "text",
+        job_title: "text"
+      }
+    )
+  end
 
   describe "GET /v1/public/events/:event_slug/ticket_types" do
     it "returns available ticket types" do
@@ -14,6 +27,7 @@ RSpec.describe "V1::Public::Registrations", type: :request do
       expect(json['data']).to be_an(Array)
       expect(json['data'].first['name']).to eq("General")
       expect(json['data'].first['price'].to_f).to eq(100.0)
+      expect(json['data'].first['custom_fields_data']['company_name']).to eq("text")
     end
 
     context "with active price tier" do
@@ -43,7 +57,13 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         attendee_name: "John Doe",
         attendee_email: "john@example.com",
         attendee_phone: "0123456789",
-        ticket_type_id: ticket_type.id
+        ticket_type_id: ticket_type.id,
+        role: "delegate",
+        custom_fields_data: {
+          company: "Acme Energy",
+          job_title: "Engineer",
+          registration_kind: "member"
+        }
       }
     end
 
@@ -56,6 +76,8 @@ RSpec.describe "V1::Public::Registrations", type: :request do
       json = JSON.parse(response.body)
       expect(json['data']['attendee_name']).to eq("John Doe")
       expect(json['data']['payment_status']).to eq("pending")
+      expect(json['data']['role']).to eq("delegate")
+      expect(json['data']['custom_fields_data']['company']).to eq("Acme Energy")
     end
 
     context "with free ticket type" do
