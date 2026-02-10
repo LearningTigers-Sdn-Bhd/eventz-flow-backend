@@ -153,7 +153,9 @@ Rails.application.routes.draw do
       resource :exhibitor_team_member_limit, only: [:show, :create, :update, :destroy]
 
       # Check-in display settings (singular - one per event)
-      resource :check_in_display, only: [:show, :update]
+      resource :check_in_display, only: [:show, :update] do
+        post :announce, on: :member
+      end
 
       # Received payments for payees (contractors/org_owners)
       resources :received_payments, only: [:index]

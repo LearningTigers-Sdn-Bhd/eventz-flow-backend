@@ -26,6 +26,16 @@ module V1
       end
     end
 
+    def announce
+      authorize @check_in_display, :update?
+
+      name = params[:name].to_s.strip
+      return error_response(message: 'Name is required', status: :bad_request) if name.blank?
+
+      WelcomeScreenQueueService.enqueue(@event.id, name)
+      success_response(data: { message: 'Guest announced', name: name })
+    end
+
     private
 
     def set_event

@@ -3,7 +3,7 @@ class WelcomeScreenQueueService
   DISPLAY_DURATION_SECONDS = DISPLAY_DURATION_MS / 1000.0
   MAX_QUEUE_SIZE = 20
   TTL_SECONDS = 120
-  DEDUPE_WINDOW_SECONDS = 10
+  DEDUPE_WINDOW_SECONDS = DISPLAY_DURATION_SECONDS
 
   class << self
     def enqueue(event_id, name)
