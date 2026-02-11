@@ -389,7 +389,11 @@ module V1
     private
 
     def broadcast_to_welcome_screen(ticket)
-      WelcomeScreenQueueService.enqueue(ticket.event_id, ticket.attendee_name)
+      WelcomeScreenQueueService.enqueue(
+        ticket.event_id,
+        ticket.attendee_name,
+        custom_fields_data: ticket.custom_fields_data
+      )
     end
 
     def set_event

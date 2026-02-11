@@ -97,7 +97,11 @@ module V1
     private
 
     def broadcast_to_welcome_screen(visitor)
-      WelcomeScreenQueueService.enqueue(visitor.event_id, visitor.full_name)
+      WelcomeScreenQueueService.enqueue(
+        visitor.event_id,
+        visitor.full_name,
+        custom_fields_data: visitor.custom_fields_data
+      )
     end
 
     def set_event

@@ -92,7 +92,11 @@ module V1
         # Broadcast to welcome screen after successful check-in
         if result
           attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
-          WelcomeScreenQueueService.enqueue(@event.id, attendee_name)
+          WelcomeScreenQueueService.enqueue(
+            @event.id,
+            attendee_name,
+            custom_fields_data: attendee.custom_fields_data
+          )
         end
 
         # Clear thread-local variable after update
