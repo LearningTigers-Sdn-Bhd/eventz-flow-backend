@@ -10,6 +10,10 @@ class EventSeatSessionPolicy < ApplicationPolicy
     allowed?
   end
 
+  def seats?
+    show?
+  end
+
   def create?
     # For create, the record is a new instance.
     # We must ensure the event is set on the record before calling authorize

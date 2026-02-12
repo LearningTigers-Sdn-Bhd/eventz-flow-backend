@@ -212,23 +212,27 @@ Rails.application.routes.draw do
 
       # Seat Ticketing
     namespace :seat_ticketing do
-      get 'sessions/public', to: 'sessions#public_index'
-      get 'sessions/public/:id', to: 'sessions#public_show'
+      resources :public_sessions, only: [:index, :show] do
+        member do
+          get :section_seats
+          post :checkout
+        end
+      end
+
       get 'checkout_sessions/:id', to: 'checkout_sessions#show'
       post 'checkout_sessions/:id/clear_locks', to: 'checkout_sessions#clear_locks'
       post 'checkout_sessions/:id/heartbeat', to: 'checkout_sessions#heartbeat'
-      get 'sessions/public/:id', to: 'sessions#public_show'
       resources :sessions do
         member do
           patch :bulk_update
           post :duplicate
           delete :force_delete
           patch :restore
-          post :checkout
         end
         resources :venues do
           post :attach_image, on: :member
           resources :sections do
+            get :seats, on: :member
             resources :event_seat_groups, path: 'groups' do
               post :assign_seats, on: :member
             end

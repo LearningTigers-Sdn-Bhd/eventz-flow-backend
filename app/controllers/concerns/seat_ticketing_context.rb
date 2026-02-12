@@ -12,7 +12,7 @@ module SeatTicketingContext
     @session = scope.find(params[param_key])
     
     # Skip authorization for public actions to allow anonymous access to seat selection
-    public_actions = ['index', 'show', 'lock', 'unlock', 'public_index', 'public_show', 'checkout']
+    public_actions = ['index', 'show', 'seats', 'lock', 'unlock', 'public_index', 'public_show', 'checkout']
     if action_name.in?(public_actions)
       skip_authorization
     else
@@ -79,6 +79,36 @@ module SeatTicketingContext
       json['event_seat_venues']&.each do |venue_json|
         venue = session.event_seat_venues.find { |v| v.id == venue_json['id'] }
         venue_json['image_url'] = venue_image_url(venue) if venue
+      end
+    end
+  end
+
+  def seat_session_summary(session)
+    # Pre-fetch counts to avoid N+1
+    section_ids = session.event_seat_venues.flat_map(&:event_seat_section_ids)
+    section_counts = EventTicketSeat.where(event_seat_section_id: section_ids)
+                                   .group(:event_seat_section_id).count
+
+    session.as_json(
+      include: {
+        event_seat_venues: {
+          include: {
+            event_seat_sections: {
+              include: {
+                event_seat_groups: {}
+              }
+            }
+          }
+        }
+      }
+    ).tap do |json|
+      json['event_seat_venues']&.each do |venue_json|
+        venue = session.event_seat_venues.find { |v| v.id == venue_json['id'] }
+        venue_json['image_url'] = venue_image_url(venue) if venue
+
+        venue_json['event_seat_sections']&.each do |section_json|
+          section_json['seats_count'] = section_counts[section_json['id']] || 0
+        end
       end
     end
   end

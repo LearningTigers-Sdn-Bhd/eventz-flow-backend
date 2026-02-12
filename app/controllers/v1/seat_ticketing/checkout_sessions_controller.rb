@@ -12,24 +12,37 @@ module V1
           id: checkout_session.id,
           event_seat_session_id: checkout_session.event_seat_session_id,
           updated_at: checkout_session.updated_at,
-          expires_at: checkout_session.updated_at + EventSeatCheckoutSession::LOCK_DURATION
+          expires_at: checkout_session.created_at + EventSeatCheckoutSession::LOCK_DURATION
         }
       end
 
       def heartbeat
         checkout_session = EventSeatCheckoutSession.find_by(id: params[:id])
-        return error_response(message: "Checkout session not found", status: :not_found) if checkout_session.nil?
+        
+        if checkout_session.nil?
+          return render json: {
+            success: true,
+            expires_at: Time.current,
+            message: "Session not found, heartbeat skipped."
+          }
+        end
 
-        checkout_session.touch
         render json: {
           success: true,
-          expires_at: checkout_session.updated_at + EventSeatCheckoutSession::LOCK_DURATION
+          expires_at: checkout_session.created_at + EventSeatCheckoutSession::LOCK_DURATION
         }
       end
 
       def clear_locks
         checkout_session = EventSeatCheckoutSession.find_by(id: params[:id])
-        return error_response(message: "Checkout session not found", status: :not_found) if checkout_session.nil?
+        
+        if checkout_session.nil?
+          return render json: {
+            success: true,
+            cleared: 0,
+            message: "Checkout session not found, no locks to clear."
+          }
+        end
 
         # TODO: Add ownership validation (e.g. check client_ip or visitor token)
         # to ensure only the creator can clear their own locks.

@@ -3,10 +3,10 @@ module V1
     class SectionsController < ApplicationController
       include SeatTicketingContext
       before_action :set_venue
-      before_action :set_section, only: [:show, :update, :destroy]
+      before_action :set_section, only: [:show, :update, :destroy, :seats]
 
-      skip_before_action :authenticate_user!, only: [:index, :show]
-      skip_before_action :require_verified_email!, only: [:index, :show]
+      skip_before_action :authenticate_user!, only: [:index, :show, :seats]
+      skip_before_action :require_verified_email!, only: [:index, :show, :seats]
 
       def index
         render json: @venue.event_seat_sections
@@ -14,6 +14,13 @@ module V1
 
       def show
         render json: @section
+      end
+
+      def seats
+        render json: @section.event_ticket_seats.as_json(
+          methods: :status,
+          include: :event_seat_group_assignment
+        )
       end
 
       def create
