@@ -27,7 +27,11 @@ class CreateEventSeatGroupsAndSyncTicketTypes < ActiveRecord::Migration[8.0]
 
     # 4. Add ticket_type_id and color to existing Seat Ticketing tables
     add_reference :event_seat_sections, :ticket_type, null: true, foreign_key: true
-    add_column :event_seat_sections, :color, :string, default: 'blue'
-    add_reference :event_ticket_seats, :ticket_type, null: true, foreign_key: true
-  end
-end
+        add_column :event_seat_sections, :color, :string, default: 'blue'
+        add_reference :event_ticket_seats, :ticket_type, null: true, foreign_key: true
+    
+        # 5. Prevent Overlapping Seats
+        add_index :event_ticket_seats, [:event_seat_section_id, :row_set, :col_set], unique: true, name: 'idx_event_ticket_seats_on_section_coords'
+      end
+    end
+    

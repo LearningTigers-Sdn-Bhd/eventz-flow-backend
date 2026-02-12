@@ -1,7 +1,7 @@
 namespace :seat_ticketing do
   desc "Clean up expired checkout sessions and release seat locks"
   task cleanup_expired_sessions: :environment do
-    expired_sessions = EventSeatCheckoutSession.where("updated_at < ?", EventSeatCheckoutSession::LOCK_DURATION.ago)
+    expired_sessions = EventSeatCheckoutSession.where("created_at < ?", EventSeatCheckoutSession::LOCK_DURATION.ago)
     
     count = expired_sessions.count
     puts "Found #{count} expired checkout sessions."

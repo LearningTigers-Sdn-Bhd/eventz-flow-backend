@@ -9,9 +9,15 @@ class EventSeatSection < ApplicationRecord
   accepts_nested_attributes_for :event_ticket_seats, allow_destroy: true
   accepts_nested_attributes_for :event_seat_groups, allow_destroy: true
 
+  attr_accessor :blueprint_config
+
   validates :name, presence: true
 
   after_commit :sync_ticket_type, on: [:create, :update]
+
+  def seats_count
+    event_ticket_seats.count
+  end
 
   private
 

@@ -44,7 +44,6 @@ module V1
           id: checkout_session_uuid,
           event_seat_session_id: @session.id
         )
-        checkout_session.touch
 
         if @ticket_seat.available?
           if @ticket_seat.update(locked_by_session_id: checkout_session.id)

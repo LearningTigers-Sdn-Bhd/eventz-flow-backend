@@ -401,6 +401,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
     t.datetime "updated_at", null: false
     t.uuid "locked_by_session_id"
     t.bigint "ticket_type_id"
+    t.index ["event_seat_section_id", "row_set", "col_set"], name: "idx_event_ticket_seats_on_section_coords", unique: true
     t.index ["event_seat_section_id"], name: "index_event_ticket_seats_on_event_seat_section_id"
     t.index ["locked_by_session_id"], name: "index_event_ticket_seats_on_locked_by_session_id"
     t.index ["ticket_id"], name: "index_event_ticket_seats_on_ticket_id"

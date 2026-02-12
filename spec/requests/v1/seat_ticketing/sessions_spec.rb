@@ -65,7 +65,7 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
   end
 
   describe 'GET /v1/seat_ticketing/sessions/:id' do
-    it 'returns the session with nested details' do
+    it 'returns the session with summary details (no individual seats)' do
       venue = create(:event_seat_venue, event_seat_session: seat_session)
       section = create(:event_seat_section, event_seat_venue: venue)
       create(:event_ticket_seat, event_seat_section: section)
@@ -77,8 +77,10 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
       expect(json['id']).to eq(seat_session.id)
       expect(json['event_seat_venues']).not_to be_empty
       expect(json['event_seat_venues'].first['event_seat_sections']).not_to be_empty
-      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats']).not_to be_empty
-      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats'].first['status']).to eq('available')
+      # Summary should NOT include individual seats
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['event_ticket_seats']).to be_nil
+      # But should include seats_count
+      expect(json['event_seat_venues'].first['event_seat_sections'].first['seats_count']).to eq(1)
     end
   end
 
@@ -231,43 +233,74 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
       seat.reload
       expect(seat.event_seat_group).to eq(group)
     end
+
+    it 'creates seats via blueprint config' do
+      blueprint_params = {
+        session: {
+          event_seat_venues_attributes: [{
+            name: "Blueprint Venue",
+            total_row: 10,
+            total_column: 10,
+            event_seat_sections_attributes: [{
+              name: "Blueprint Section",
+              start_row: 1,
+              start_column: 1,
+              seat_row: 2,
+              seat_column: 3,
+              blueprint_config: {
+                row_blocks: [2],
+                col_blocks: [3]
+              }
+            }]
+          }]
+        }
+      }
+
+      patch "/v1/seat_ticketing/sessions/#{seat_session.id}/bulk_update", 
+            params: blueprint_params, headers: { 'Authorization' => "Bearer #{event_admin_token}" }
+      
+      expect(response).to have_http_status(:ok)
+      seat_session.reload
+      section = seat_session.event_seat_venues.last.event_seat_sections.first
+      expect(section.event_ticket_seats.count).to eq(6) # 2 * 3 = 6 seats
+    end
   end
 
-  describe 'GET /v1/seat_ticketing/sessions/public' do
+  describe 'GET /v1/seat_ticketing/public_sessions' do
     it 'returns published sessions by event slug' do
       seat_session.update(status: :published)
-      get '/v1/seat_ticketing/sessions/public', params: { event_slug: event.slug }
+      get '/v1/seat_ticketing/public_sessions', params: { event_slug: event.slug }
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
       expect(json.size).to eq(1)
     end
 
     it 'returns bad request if slug is missing' do
-      get '/v1/seat_ticketing/sessions/public'
+      get '/v1/seat_ticketing/public_sessions'
       expect(response).to have_http_status(:bad_request)
     end
   end
 
-  describe 'GET /v1/seat_ticketing/sessions/public/:id' do
+  describe 'GET /v1/seat_ticketing/public_sessions/:id' do
     before { seat_session.update(status: :published) }
 
     it 'finds session by id' do
-      get "/v1/seat_ticketing/sessions/public/#{seat_session.id}"
+      get "/v1/seat_ticketing/public_sessions/#{seat_session.id}"
       expect(response).to have_http_status(:ok)
     end
 
     it 'finds session by slug' do
-      get "/v1/seat_ticketing/sessions/public/#{seat_session.slug}"
+      get "/v1/seat_ticketing/public_sessions/#{seat_session.slug}"
       expect(response).to have_http_status(:ok)
     end
 
     it 'finds session by public_id' do
-      get "/v1/seat_ticketing/sessions/public/#{seat_session.public_id}"
+      get "/v1/seat_ticketing/public_sessions/#{seat_session.public_id}"
       expect(response).to have_http_status(:ok)
     end
   end
 
-  describe 'POST /v1/seat_ticketing/sessions/:id/checkout' do
+  describe 'POST /v1/seat_ticketing/public_sessions/:id/checkout' do
     let!(:venue) { create(:event_seat_venue, event_seat_session: seat_session) }
     let!(:section) { create(:event_seat_section, event_seat_venue: venue) }
     let!(:seat) { create(:event_ticket_seat, event_seat_section: section) }
@@ -287,21 +320,21 @@ RSpec.describe 'V1::SeatTicketing::Sessions', type: :request do
     before { seat_session.update(status: :published) }
 
     it 'completes checkout successfully' do
-      post "/v1/seat_ticketing/sessions/#{seat_session.id}/checkout", params: checkout_params
+      post "/v1/seat_ticketing/public_sessions/#{seat_session.id}/checkout", params: checkout_params
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['success']).to be true
       expect(seat.reload.status).to eq('sold')
     end
 
-    it 'returns conflict if seat is already sold' do
+    it 'returns unprocessable content if seat is already sold' do
       if event.use_ticket?
         seat.update!(ticket: create(:ticket, event: event, ticket_type: ticket_type))
       else
         seat.update!(visitor: create(:visitor, event: event))
       end
       
-      post "/v1/seat_ticketing/sessions/#{seat_session.id}/checkout", params: checkout_params
-      expect(response).to have_http_status(:conflict)
+      post "/v1/seat_ticketing/public_sessions/#{seat_session.id}/checkout", params: checkout_params
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 end
