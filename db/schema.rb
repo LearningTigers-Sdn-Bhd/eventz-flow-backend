@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_13_013239) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -636,6 +636,34 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.index ["user_id"], name: "index_printing_services_on_user_id"
   end
 
+  create_table "registration_form_ticket_types", force: :cascade do |t|
+    t.bigint "registration_form_id", null: false
+    t.bigint "ticket_type_id", null: false
+    t.integer "registration_mode", default: 0, null: false
+    t.integer "min_attendees", default: 1, null: false
+    t.integer "max_attendees"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id", "ticket_type_id"], name: "idx_reg_form_ticket_types_unique", unique: true
+    t.index ["registration_form_id"], name: "index_registration_form_ticket_types_on_registration_form_id"
+    t.index ["ticket_type_id"], name: "index_registration_form_ticket_types_on_ticket_type_id"
+    t.check_constraint "max_attendees IS NULL OR max_attendees >= min_attendees", name: "chk_reg_form_ticket_types_max_attendees"
+    t.check_constraint "min_attendees >= 1", name: "chk_reg_form_ticket_types_min_attendees"
+  end
+
+  create_table "registration_forms", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "slug", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.integer "status", default: 0, null: false
+    t.integer "position"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "slug"], name: "index_registration_forms_on_event_id_and_slug", unique: true
+    t.index ["event_id"], name: "index_registration_forms_on_event_id"
+  end
+
   create_table "rentable_items", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -1136,6 +1164,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "payment_details", "users"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
+  add_foreign_key "registration_form_ticket_types", "registration_forms"
+  add_foreign_key "registration_form_ticket_types", "ticket_types"
+  add_foreign_key "registration_forms", "events"
   add_foreign_key "rentable_items", "item_categories"
   add_foreign_key "rentable_items", "users"
   add_foreign_key "resource_changelogs", "resources"

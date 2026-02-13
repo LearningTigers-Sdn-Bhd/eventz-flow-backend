@@ -4,6 +4,8 @@ class TicketType < ApplicationRecord
   belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
   has_many :ticket_type_price_tiers, dependent: :destroy
+  has_many :registration_form_ticket_types, dependent: :destroy
+  has_many :registration_forms, through: :registration_form_ticket_types
 
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: [:create, :update]
