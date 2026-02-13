@@ -7,6 +7,22 @@ module V1
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
+      def registration_forms
+        event = Event.friendly.find(params[:event_slug])
+        forms = event.registration_forms.active.order(:position, :created_at)
+
+        render json: {
+          success: true,
+          data: forms.map { |f|
+            {
+              slug: f.slug,
+              name: f.name,
+              description: f.description
+            }
+          }
+        }
+      end
+
       def create
         event = Event.friendly.find(params[:event_slug])
 
@@ -14,10 +30,33 @@ module V1
           return render json: {
             success: false,
             message: "Registration is not open for this event"
-          }, status: :unprocessable_entity
+          }, status: :unprocessable_content
         end
 
-        ticket_type = event.ticket_types.publicly_available.find(params[:ticket_type_id])
+        available_ticket_types = event.ticket_types.publicly_available
+
+        # Filter by form_slug if provided
+        if params[:form_slug].present?
+          form = event.registration_forms.find_by(slug: params[:form_slug])
+          unless form
+            return render json: {
+              success: false,
+              message: "Registration form not found"
+            }, status: :not_found
+          end
+
+          allowed_ticket_type_ids = form.ticket_type_ids
+          unless allowed_ticket_type_ids.include?(params[:ticket_type_id].to_i)
+            return render json: {
+              success: false,
+              message: "Ticket type is not allowed for the selected registration form"
+            }, status: :unprocessable_content
+          end
+
+          available_ticket_types = available_ticket_types.where(id: allowed_ticket_type_ids)
+        end
+
+        ticket_type = available_ticket_types.find(params[:ticket_type_id])
 
         ticket = event.tickets.new(registration_params)
         ticket.ticket_type = ticket_type
@@ -32,21 +71,46 @@ module V1
           render json: {
             success: false,
             errors: ticket.errors.full_messages
-          }, status: :unprocessable_entity
+          }, status: :unprocessable_content
         end
       end
 
       def ticket_types
         event = Event.friendly.find(params[:event_slug])
 
-        ticket_types = event.ticket_types.publicly_available.map do |tt|
+        available_ticket_types = event.ticket_types.publicly_available
+        rule_by_ticket_type_id = {}
+
+        # Filter by form_slug if provided
+        if params[:form_slug].present?
+          form = event.registration_forms.find_by(slug: params[:form_slug])
+          unless form
+            return render json: {
+              success: false,
+              message: "Registration form not found"
+            }, status: :not_found
+          end
+
+          mappings = form.registration_form_ticket_types
+            .where(ticket_type_id: available_ticket_types.select(:id))
+
+          rule_by_ticket_type_id = mappings.index_by(&:ticket_type_id)
+          available_ticket_types = available_ticket_types.where(id: rule_by_ticket_type_id.keys)
+        end
+
+        ticket_types = available_ticket_types.map do |tt|
+          rule = rule_by_ticket_type_id[tt.id]
+
           {
             id: tt.id,
             name: tt.name,
             price: tt.current_price,
             current_tier: tt.active_tier&.label,
             available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
-            custom_fields_data: tt.custom_fields_data
+            custom_fields_data: tt.custom_fields_data,
+            registration_mode: rule&.registration_mode || 'single',
+            min_attendees: rule&.min_attendees || 1,
+            max_attendees: rule&.max_attendees
           }
         end
 

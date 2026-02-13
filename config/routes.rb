@@ -36,6 +36,7 @@ Rails.application.routes.draw do
 
       # Public registration for walk-ins
       scope 'events/:event_slug' do
+        get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         post 'register', to: 'registrations#create'
       end
@@ -102,6 +103,7 @@ Rails.application.routes.draw do
         end
       end
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
+      resources :registration_forms, only: [:index, :show, :create, :update, :destroy]
 
       # Vendor invitations
       resources :vendor_invitations, only: [] do

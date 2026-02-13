@@ -4,6 +4,8 @@ class TicketType < ApplicationRecord
   belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
   has_many :ticket_type_price_tiers, dependent: :destroy
+  has_many :registration_form_ticket_types, dependent: :destroy
+  has_many :registration_forms, through: :registration_form_ticket_types
 
   # --- Seat Ticketing Sync ---
   enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }
