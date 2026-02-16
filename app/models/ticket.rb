@@ -17,7 +17,7 @@ class Ticket < ApplicationRecord
   has_one :ticket_payment, dependent: :destroy
 
   # --- Enums ---
-  enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3 }
+  enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4 }
   enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
   # --- Soft Delete Scopes ---

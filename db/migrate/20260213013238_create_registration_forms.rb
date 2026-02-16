@@ -5,6 +5,7 @@ class CreateRegistrationForms < ActiveRecord::Migration[8.0]
       t.string :slug, null: false
       t.string :name, null: false
       t.text :description
+      t.jsonb :custom_labels_data, null: false, default: {}
       t.integer :status, default: 0, null: false
       t.integer :position
 

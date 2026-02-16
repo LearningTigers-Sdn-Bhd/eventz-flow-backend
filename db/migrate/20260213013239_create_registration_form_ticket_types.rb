@@ -6,6 +6,7 @@ class CreateRegistrationFormTicketTypes < ActiveRecord::Migration[8.0]
       t.integer :registration_mode, null: false, default: 0
       t.integer :min_attendees, null: false, default: 1
       t.integer :max_attendees
+      t.jsonb :custom_labels_data, null: false, default: {}
 
       t.timestamps
     end

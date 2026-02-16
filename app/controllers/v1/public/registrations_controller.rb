@@ -17,7 +17,64 @@ module V1
             {
               slug: f.slug,
               name: f.name,
-              description: f.description
+              description: f.description,
+              custom_labels_data: f.custom_labels_data || {},
+            }
+          }
+        }
+      end
+
+      def registration_status
+        event = Event.friendly.find(params[:event_slug])
+        email = params[:email].to_s.strip.downcase
+        form_slug = params[:form_slug].to_s.strip
+
+        if email.blank?
+          return render json: {
+            success: false,
+            message: "Email is required"
+          }, status: :unprocessable_content
+        end
+
+        tickets = event.tickets.where("LOWER(attendee_email) = ?", email)
+        if form_slug.present?
+          tickets = tickets.where("custom_fields_data ->> 'registration_mode' = ?", form_slug)
+        end
+
+        pending_tickets = tickets
+          .where(status: :pending_payment)
+          .or(tickets.where(payment_status: :pending))
+          .order(created_at: :desc)
+
+        paid_tickets = tickets
+          .where(payment_status: :paid)
+          .where.not(status: [:canceled, :refunded])
+          .order(created_at: :desc)
+
+        render json: {
+          success: true,
+          data: {
+            has_pending_payment: pending_tickets.exists?,
+            has_paid_ticket: paid_tickets.exists?,
+            pending_tickets: pending_tickets.limit(5).map { |ticket|
+              {
+                id: ticket.id,
+                public_id: ticket.public_id,
+                attendee_name: ticket.attendee_name,
+                payment_status: ticket.payment_status,
+                status: ticket.status,
+                created_at: ticket.created_at,
+              }
+            },
+            paid_tickets: paid_tickets.limit(5).map { |ticket|
+              {
+                id: ticket.id,
+                public_id: ticket.public_id,
+                attendee_name: ticket.attendee_name,
+                payment_status: ticket.payment_status,
+                status: ticket.status,
+                created_at: ticket.created_at,
+              }
             }
           }
         }
@@ -60,7 +117,14 @@ module V1
 
         ticket = event.tickets.new(registration_params)
         ticket.ticket_type = ticket_type
-        ticket.payment_status = ticket_type.current_price.zero? ? "paid" : "pending"
+
+        if ticket_type.current_price.zero?
+          ticket.status = "purchased"
+          ticket.payment_status = "paid"
+        else
+          ticket.status = "pending_payment"
+          ticket.payment_status = "pending"
+        end
 
         if ticket.save
           render json: {
@@ -108,6 +172,7 @@ module V1
             current_tier: tt.active_tier&.label,
             available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
             custom_fields_data: tt.custom_fields_data,
+            custom_labels_data: rule&.custom_labels_data || {},
             registration_mode: rule&.registration_mode || 'single',
             min_attendees: rule&.min_attendees || 1,
             max_attendees: rule&.max_attendees

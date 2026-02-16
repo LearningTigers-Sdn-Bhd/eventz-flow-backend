@@ -51,6 +51,98 @@ RSpec.describe "V1::Public::Registrations", type: :request do
     end
   end
 
+  describe "GET /v1/public/events/:event_slug/registration_forms" do
+    let!(:form_with_custom_labels) do
+      create(
+        :registration_form,
+        event: event,
+        name: "Delegate",
+        slug: "delegate",
+        custom_labels_data: {
+          "company_name" => "Company Name",
+          "dietary_requirements" => "Dietary Requirements"
+        }
+      )
+    end
+
+    it "returns custom labels for each registration form" do
+      get "/v1/public/events/#{event.slug}/registration_forms"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      matching_form = json["data"].find { |f| f["slug"] == "delegate" }
+
+      expect(matching_form).to be_present
+      expect(matching_form["custom_labels_data"]).to eq(
+        {
+          "company_name" => "Company Name",
+          "dietary_requirements" => "Dietary Requirements"
+        }
+      )
+    end
+  end
+
+  describe "GET /v1/public/events/:event_slug/registration_status" do
+    let!(:pending_ticket) do
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: "john@example.com",
+        status: :pending_payment,
+        payment_status: :pending,
+        custom_fields_data: { "registration_mode" => "delegate" }
+      )
+    end
+
+    let!(:paid_ticket) do
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: "john@example.com",
+        status: :purchased,
+        payment_status: :paid,
+        custom_fields_data: { "registration_mode" => "delegate" }
+      )
+    end
+
+    let!(:other_form_ticket) do
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: "john@example.com",
+        status: :pending_payment,
+        payment_status: :pending,
+        custom_fields_data: { "registration_mode" => "other_form" }
+      )
+    end
+
+    it "returns pending and paid registration state for an email" do
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: "john@example.com",
+        form_slug: "delegate"
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json["success"]).to be(true)
+      expect(json["data"]["has_pending_payment"]).to be(true)
+      expect(json["data"]["has_paid_ticket"]).to be(true)
+      expect(json["data"]["pending_tickets"].map { |t| t["public_id"] }).to include(pending_ticket.public_id)
+      expect(json["data"]["pending_tickets"].map { |t| t["public_id"] }).not_to include(other_form_ticket.public_id)
+      expect(json["data"]["paid_tickets"].map { |t| t["public_id"] }).to include(paid_ticket.public_id)
+    end
+
+    it "returns 422 when email is blank" do
+      get "/v1/public/events/#{event.slug}/registration_status", params: { email: "" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
   describe "POST /v1/public/events/:event_slug/register" do
     let(:valid_params) do
       {
@@ -78,6 +170,9 @@ RSpec.describe "V1::Public::Registrations", type: :request do
       expect(json['data']['payment_status']).to eq("pending")
       expect(json['data']['role']).to eq("delegate")
       expect(json['data']['custom_fields_data']['company']).to eq("Acme Energy")
+
+      created_ticket = Ticket.order(created_at: :desc).first
+      expect(created_ticket.status).to eq("pending_payment")
     end
 
     context "with free ticket type" do
@@ -88,6 +183,9 @@ RSpec.describe "V1::Public::Registrations", type: :request do
 
         json = JSON.parse(response.body)
         expect(json['data']['payment_status']).to eq("paid")
+
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq("purchased")
       end
     end
 
@@ -133,6 +231,9 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         registration_mode: :group,
         min_attendees: 3,
         max_attendees: 10,
+        custom_labels_data: {
+          "member_id" => "Member ID"
+        },
       )
       form
     end
@@ -156,6 +257,11 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         expect(conference_response['registration_mode']).to eq('group')
         expect(conference_response['min_attendees']).to eq(3)
         expect(conference_response['max_attendees']).to eq(10)
+        expect(conference_response['custom_labels_data']).to eq(
+          {
+            "member_id" => "Member ID"
+          }
+        )
       end
 
       it "returns 404 for unknown form slug" do
