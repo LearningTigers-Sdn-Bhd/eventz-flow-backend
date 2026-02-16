@@ -5,6 +5,7 @@ class RegistrationFormTicketType < ApplicationRecord
   enum :registration_mode, { single: 0, group: 1 }, prefix: true
 
   validates :min_attendees, numericality: { greater_than_or_equal_to: 1 }
+  validate :custom_labels_data_must_be_hash
   validate :max_attendees_not_less_than_min
 
   private
@@ -14,5 +15,11 @@ class RegistrationFormTicketType < ApplicationRecord
     return if max_attendees >= min_attendees
 
     errors.add(:max_attendees, 'must be greater than or equal to min_attendees')
+  end
+
+  def custom_labels_data_must_be_hash
+    return if custom_labels_data.is_a?(Hash)
+
+    errors.add(:custom_labels_data, 'must be an object')
   end
 end

@@ -41,7 +41,22 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
         description: 'Golf tournament registration',
         status: 0,
         position: 3,
-        ticket_type_ids: [ticket_type_3.id]
+        ticket_type_ids: [ticket_type_3.id],
+        ticket_type_rules: [
+          {
+            ticket_type_id: ticket_type_3.id,
+            registration_mode: 'single',
+            min_attendees: 1,
+            max_attendees: nil,
+            custom_labels_data: {
+              "member_id" => "Member ID"
+            }
+          }
+        ],
+        custom_labels_data: {
+          "company_name" => "Company Name",
+          "dietary_requirements" => "Dietary Requirements"
+        }
       }
     }
   end
@@ -50,7 +65,26 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
     {
       registration_form: {
         name: 'Updated Conference',
-        ticket_type_ids: [ticket_type_1.id, ticket_type_2.id]
+        ticket_type_ids: [ticket_type_1.id, ticket_type_2.id],
+        ticket_type_rules: [
+          {
+            ticket_type_id: ticket_type_1.id,
+            registration_mode: 'single',
+            min_attendees: 1,
+            custom_labels_data: {
+              "member_id" => "Member ID"
+            }
+          },
+          {
+            ticket_type_id: ticket_type_2.id,
+            registration_mode: 'group',
+            min_attendees: 2,
+            max_attendees: 5,
+            custom_labels_data: {
+              "invitation_code" => "Invitation Code"
+            }
+          }
+        ]
       }
     }
   end
@@ -135,6 +169,17 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
           expect(json['slug']).to eq('golf')
           expect(json['ticket_types'].length).to eq(1)
           expect(json['ticket_types'].first['id']).to eq(ticket_type_3.id)
+          expect(json['ticket_types'].first['custom_labels_data']).to eq(
+            {
+              "member_id" => "Member ID"
+            }
+          )
+          expect(json['custom_labels_data']).to eq(
+            {
+              "company_name" => "Company Name",
+              "dietary_requirements" => "Dietary Requirements"
+            }
+          )
         end
       end
 
@@ -218,6 +263,20 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
           expect(json['name']).to eq('Updated Conference')
           ticket_ids = json['ticket_types'].map { |t| t['id'] }
           expect(ticket_ids).to contain_exactly(ticket_type_1.id, ticket_type_2.id)
+
+          ticket_type_1_payload = json['ticket_types'].find { |t| t['id'] == ticket_type_1.id }
+          ticket_type_2_payload = json['ticket_types'].find { |t| t['id'] == ticket_type_2.id }
+
+          expect(ticket_type_1_payload['custom_labels_data']).to eq(
+            {
+              "member_id" => "Member ID"
+            }
+          )
+          expect(ticket_type_2_payload['custom_labels_data']).to eq(
+            {
+              "invitation_code" => "Invitation Code"
+            }
+          )
         end
       end
 

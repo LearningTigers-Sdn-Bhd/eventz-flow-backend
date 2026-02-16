@@ -96,15 +96,40 @@ module V1
     end
 
     def registration_form_params
-      params.require(:registration_form).permit(:slug, :name, :description, :status, :position)
+      permitted_registration_form_payload.slice(
+        :slug,
+        :name,
+        :description,
+        :status,
+        :position,
+      )
+    end
+
+    def permitted_registration_form_payload
+      @permitted_registration_form_payload ||= params.require(:registration_form).permit(
+        :slug,
+        :name,
+        :description,
+        :status,
+        :position,
+        custom_labels_data: {},
+        ticket_type_ids: [],
+        ticket_type_rules: [
+          :ticket_type_id,
+          :registration_mode,
+          :min_attendees,
+          :max_attendees,
+          { custom_labels_data: {} },
+        ],
+      )
     end
 
     def ticket_type_ids_param
-      params.dig(:registration_form, :ticket_type_ids)
+      permitted_registration_form_payload[:ticket_type_ids]
     end
 
     def ticket_type_rules_param
-      params.dig(:registration_form, :ticket_type_rules)
+      permitted_registration_form_payload[:ticket_type_rules]
     end
 
     def normalized_ticket_type_rules
@@ -118,6 +143,7 @@ module V1
             registration_mode: (rule[:registration_mode] || 'single').to_s,
             min_attendees: (rule[:min_attendees] || 1).to_i,
             max_attendees: rule[:max_attendees].presence&.to_i,
+            custom_labels_data: normalize_custom_labels_data(rule[:custom_labels_data]),
           }
         end
       end
@@ -130,6 +156,7 @@ module V1
           registration_mode: 'single',
           min_attendees: 1,
           max_attendees: nil,
+          custom_labels_data: {},
         }
       end
     end
@@ -166,6 +193,7 @@ module V1
             registration_mode: rule[:registration_mode],
             min_attendees: rule[:min_attendees],
             max_attendees: rule[:max_attendees],
+            custom_labels_data: rule[:custom_labels_data] || {},
           )
 
           unless mapping.save
@@ -187,6 +215,7 @@ module V1
         name: form.name,
         slug: form.slug,
         description: form.description,
+        custom_labels_data: form.custom_labels_data || {},
         status: form.status,
         position: form.position,
         created_at: form.created_at,
@@ -202,9 +231,29 @@ module V1
             registration_mode: mapping.registration_mode,
             min_attendees: mapping.min_attendees,
             max_attendees: mapping.max_attendees,
+            custom_labels_data: mapping.custom_labels_data || {},
           }
         }
       }
+    end
+
+    def normalize_custom_labels_data(value)
+      labels_hash = if value.respond_to?(:to_unsafe_h)
+                      value.to_unsafe_h
+                    elsif value.respond_to?(:to_h)
+                      value.to_h
+                    else
+                      nil
+                    end
+
+      return {} unless labels_hash.is_a?(Hash)
+
+      labels_hash.each_with_object({}) do |(key, label), result|
+        next if key.blank?
+        next if label.blank?
+
+        result[key.to_s] = label.to_s
+      end
     end
   end
 end

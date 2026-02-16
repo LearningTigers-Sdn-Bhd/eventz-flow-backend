@@ -38,6 +38,7 @@ Rails.application.routes.draw do
       scope 'events/:event_slug' do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
+        get 'registration_status', to: 'registrations#registration_status'
         post 'register', to: 'registrations#create'
       end
     end
