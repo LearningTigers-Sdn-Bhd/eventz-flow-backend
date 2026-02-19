@@ -42,8 +42,7 @@ module V1
         end
 
         pending_tickets = tickets
-          .where(status: :pending_payment)
-          .or(tickets.where(payment_status: :pending))
+          .where(status: :pending_payment, payment_status: [:pending, :failed])
           .order(created_at: :desc)
 
         paid_tickets = tickets

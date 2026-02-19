@@ -35,10 +35,13 @@ Rails.application.routes.draw do
       resources :bookings, only: [:show]
 
       # Public registration for walk-ins
+      post 'payments/webhook', to: 'payments#webhook'
       scope 'events/:event_slug' do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        post 'payments/create_order', to: 'payments#create_order'
+        post 'payments/verify', to: 'payments#verify'
         post 'register', to: 'registrations#create'
       end
     end
