@@ -103,3 +103,6 @@ gem "rack-attack", "~> 6.8"
 
 # QR Code generation
 gem "rqrcode", "~> 2.0"
+
+# .env for development
+gem "dotenv-rails", groups: [:development, :test]

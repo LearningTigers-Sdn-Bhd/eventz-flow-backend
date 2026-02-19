@@ -45,6 +45,77 @@ rails server
 
 ---
 
+## 🔐 Payment Environment Variables (Razorpay Sandbox)
+
+Add these to your backend environment (`.env`, `.envrc`, or deployment secrets):
+
+```bash
+RAZORPAY_KEY_ID=rzp_test_xxxxxxxx
+RAZORPAY_KEY_SECRET=xxxxxxxxxxxxxxxx
+RAZORPAY_WEBHOOK_SECRET=xxxxxxxxxxxxxxxx
+```
+
+Notes:
+- `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are used to create Razorpay orders and verify checkout signatures.
+- `RAZORPAY_WEBHOOK_SECRET` is used to verify incoming webhook signatures.
+- Never hardcode these in source code.
+
+Webhook setup (Razorpay dashboard):
+- URL: `https://<your-api-domain>/v1/public/payments/webhook`
+- Events: `payment.captured`, `payment.failed`
+
+---
+
+## ✅ Registration Payment Test Plan (Sandbox)
+
+Use this checklist before going live.
+
+### 1) Backend automated tests
+
+```bash
+bundle exec rspec spec/requests/v1/public/payments_spec.rb
+bundle exec rspec spec/requests/v1/public/registrations_spec.rb
+```
+
+Expected:
+- payment order endpoint returns order payload for pending tickets
+- verify endpoint transitions ticket to `status: purchased`, `payment_status: paid`
+- webhook valid signature updates status correctly
+- invalid signature requests are rejected
+
+### 2) Manual happy path (paid ticket)
+
+1. Start a new public registration with a paid ticket.
+2. Complete details + confirm information.
+3. On payment step, click `Proceed to Razorpay Sandbox`.
+4. Complete sandbox checkout.
+5. Confirm ticket state in DB/API:
+   - before payment: `status = pending_payment`, `payment_status = pending`
+   - after success: `status = purchased`, `payment_status = paid`
+
+### 3) Manual failure path
+
+1. Start payment but fail/cancel in Razorpay sandbox.
+2. Confirm API/UI shows failure and allows retry.
+3. Confirm ticket remains non-paid:
+   - `status = pending_payment`
+   - `payment_status = failed` (or `pending`, depending on fail timing)
+
+### 4) Existing ticket checks
+
+1. Re-enter with email that already has `pending_payment` ticket.
+2. Verify flow routes to payment step directly.
+3. Re-enter with email that has paid ticket.
+4. Verify warning is shown and duplicate registration is discouraged.
+
+### 5) Webhook validation
+
+1. Trigger sandbox webhook for `payment.captured`.
+2. Confirm backend accepts valid `X-Razorpay-Signature`.
+3. Confirm invalid webhook signature is rejected (`422`).
+
+---
+
 ## 📦 Tech Stack
 
 | Category | Technology |

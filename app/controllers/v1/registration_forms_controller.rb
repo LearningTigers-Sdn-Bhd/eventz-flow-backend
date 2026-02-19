@@ -96,13 +96,19 @@ module V1
     end
 
     def registration_form_params
-      permitted_registration_form_payload.slice(
+      attrs = permitted_registration_form_payload.slice(
         :slug,
         :name,
         :description,
         :status,
         :position,
       )
+
+      attrs[:custom_labels_data] = normalize_custom_labels_data(
+        permitted_registration_form_payload[:custom_labels_data],
+      )
+
+      attrs
     end
 
     def permitted_registration_form_payload

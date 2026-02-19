@@ -141,6 +141,30 @@ RSpec.describe "V1::Public::Registrations", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
     end
+
+    it "does not treat purchased tickets with pending payment_status as payable" do
+      stale_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: "stale@example.com",
+        status: :purchased,
+        payment_status: :pending,
+        custom_fields_data: { "registration_mode" => "delegate" }
+      )
+
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: "stale@example.com",
+        form_slug: "delegate"
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json["success"]).to be(true)
+      expect(json["data"]["has_pending_payment"]).to be(false)
+      expect(json["data"]["pending_tickets"].map { |t| t["public_id"] }).not_to include(stale_ticket.public_id)
+    end
   end
 
   describe "POST /v1/public/events/:event_slug/register" do
