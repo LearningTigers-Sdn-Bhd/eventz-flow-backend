@@ -187,6 +187,84 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.index ["rentable_item_id"], name: "index_event_rentable_items_on_rentable_item_id"
   end
 
+  create_table "event_seat_checkout_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.bigint "event_seat_session_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seat_session_id"], name: "index_event_seat_checkout_sessions_on_event_seat_session_id"
+  end
+
+  create_table "event_seat_group_assignments", force: :cascade do |t|
+    t.bigint "event_seat_group_id", null: false
+    t.bigint "event_ticket_seat_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seat_group_id"], name: "idx_seat_group_assignment_on_group_id"
+    t.index ["event_ticket_seat_id"], name: "idx_seat_group_assignment_on_seat_id"
+    t.index ["event_ticket_seat_id"], name: "idx_unique_seat_assignment", unique: true
+  end
+
+  create_table "event_seat_groups", force: :cascade do |t|
+    t.bigint "event_seat_section_id", null: false
+    t.bigint "ticket_type_id"
+    t.string "name", null: false
+    t.decimal "extra_price", precision: 8, scale: 2, default: "0.0"
+    t.string "color", default: "green"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seat_section_id"], name: "index_event_seat_groups_on_event_seat_section_id"
+    t.index ["ticket_type_id"], name: "index_event_seat_groups_on_ticket_type_id"
+  end
+
+  create_table "event_seat_sections", force: :cascade do |t|
+    t.bigint "event_seat_venue_id", null: false
+    t.string "name", null: false
+    t.decimal "price", precision: 8, scale: 2, default: "0.0"
+    t.integer "start_row"
+    t.integer "start_column"
+    t.integer "row_span"
+    t.integer "col_span"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "seat_row", default: 1
+    t.integer "seat_column", default: 1
+    t.float "rotation", default: 0.0, null: false
+    t.bigint "ticket_type_id"
+    t.string "color", default: "blue"
+    t.index ["event_seat_venue_id"], name: "index_event_seat_sections_on_event_seat_venue_id"
+    t.index ["ticket_type_id"], name: "index_event_seat_sections_on_ticket_type_id"
+  end
+
+  create_table "event_seat_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.integer "status", default: 0, null: false
+    t.string "location"
+    t.integer "order", default: 0
+    t.datetime "start_datetime"
+    t.datetime "end_datetime"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "public_id"
+    t.string "slug"
+    t.index ["deleted_at"], name: "index_event_seat_sessions_on_deleted_at"
+    t.index ["event_id"], name: "index_event_seat_sessions_on_event_id"
+    t.index ["public_id"], name: "index_event_seat_sessions_on_public_id", unique: true
+    t.index ["slug"], name: "index_event_seat_sessions_on_slug", unique: true
+  end
+
+  create_table "event_seat_venues", force: :cascade do |t|
+    t.bigint "event_seat_session_id", null: false
+    t.string "name", null: false
+    t.integer "total_row"
+    t.integer "total_column"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "aspect_ratio"
+    t.index ["event_seat_session_id"], name: "index_event_seat_venues_on_event_seat_session_id"
+  end
+
   create_table "event_sponsorship_attachments", force: :cascade do |t|
     t.bigint "event_sponsorship_id", null: false
     t.bigint "event_sponsorship_payment_id"
@@ -298,6 +376,26 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.index ["sponsor_id"], name: "index_event_sponsorships_on_sponsor_id"
   end
 
+  create_table "event_ticket_seats", force: :cascade do |t|
+    t.bigint "event_seat_section_id", null: false
+    t.string "name", null: false
+    t.decimal "extra_price", precision: 8, scale: 2, default: "0.0"
+    t.integer "row_set"
+    t.integer "col_set"
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "locked_by_session_id"
+    t.bigint "ticket_type_id"
+    t.index ["event_seat_section_id", "row_set", "col_set"], name: "idx_event_ticket_seats_on_section_coords", unique: true
+    t.index ["event_seat_section_id"], name: "index_event_ticket_seats_on_event_seat_section_id"
+    t.index ["locked_by_session_id"], name: "index_event_ticket_seats_on_locked_by_session_id"
+    t.index ["ticket_id"], name: "index_event_ticket_seats_on_ticket_id"
+    t.index ["ticket_type_id"], name: "index_event_ticket_seats_on_ticket_type_id"
+    t.index ["visitor_id"], name: "index_event_ticket_seats_on_visitor_id"
+  end
+
   create_table "event_vendors", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.bigint "vendor_id", null: false
@@ -337,6 +435,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -671,6 +770,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
+    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -682,7 +782,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -834,8 +933,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "seat_ticketing_type"
+    t.bigint "seat_ticketing_source_id"
     t.index ["event_id", "status"], name: "index_ticket_types_on_event_id_and_status"
     t.index ["event_id"], name: "index_ticket_types_on_event_id"
+    t.index ["seat_ticketing_type", "seat_ticketing_source_id"], name: "idx_ticket_types_on_seat_ticketing"
   end
 
   create_table "tickets", force: :cascade do |t|
@@ -1037,6 +1139,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "event_rentable_item_price_tiers", "event_rentable_items"
   add_foreign_key "event_rentable_items", "events"
   add_foreign_key "event_rentable_items", "rentable_items"
+  add_foreign_key "event_seat_checkout_sessions", "event_seat_sessions"
+  add_foreign_key "event_seat_group_assignments", "event_seat_groups"
+  add_foreign_key "event_seat_group_assignments", "event_ticket_seats"
+  add_foreign_key "event_seat_groups", "event_seat_sections"
+  add_foreign_key "event_seat_groups", "ticket_types"
+  add_foreign_key "event_seat_sections", "event_seat_venues"
+  add_foreign_key "event_seat_sections", "ticket_types"
+  add_foreign_key "event_seat_sessions", "events"
+  add_foreign_key "event_seat_venues", "event_seat_sessions"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorship_payments"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorships"
   add_foreign_key "event_sponsorship_attachments", "users", column: "uploaded_by_id"
@@ -1053,6 +1164,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "event_sponsorships", "groups"
   add_foreign_key "event_sponsorships", "sponsors"
   add_foreign_key "event_sponsorships", "users", column: "internal_owner_user_id"
+  add_foreign_key "event_ticket_seats", "event_seat_checkout_sessions", column: "locked_by_session_id"
+  add_foreign_key "event_ticket_seats", "event_seat_sections"
+  add_foreign_key "event_ticket_seats", "ticket_types"
+  add_foreign_key "event_ticket_seats", "tickets"
+  add_foreign_key "event_ticket_seats", "visitors"
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"

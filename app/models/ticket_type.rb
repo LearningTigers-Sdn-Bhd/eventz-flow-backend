@@ -4,7 +4,15 @@ class TicketType < ApplicationRecord
   belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
 
+  # --- Seat Ticketing Sync ---
+  enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }
+  
+  has_one :event_seat_section, foreign_key: :ticket_type_id
+  has_one :event_ticket_seat, foreign_key: :ticket_type_id
+  has_one :event_seat_group, foreign_key: :ticket_type_id
+
   # --- Callbacks ---
+  after_commit :sync_map_elements, on: :update
   after_commit :send_webhook_notification, on: [:create, :update]
 
   # Enums for Status
@@ -41,6 +49,13 @@ class TicketType < ApplicationRecord
   end
 
   private
+
+  def sync_map_elements
+    return unless seat_ticketing_type.present?
+    return unless previous_changes[:price].present?
+
+    SeatTicketing::SyncService.sync_from_ticket_type(self)
+  end
 
   def on_sale?
     (sale_starts_at.nil? || sale_starts_at <= Time.current) &&

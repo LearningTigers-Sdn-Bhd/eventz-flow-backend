@@ -210,6 +210,43 @@ Rails.application.routes.draw do
       # Event Metrics moved outside to avoid impacting event resources
     end
 
+      # Seat Ticketing
+    namespace :seat_ticketing do
+      resources :public_sessions, only: [:index, :show] do
+        member do
+          get :section_seats
+          post :checkout
+        end
+      end
+
+      get 'checkout_sessions/:id', to: 'checkout_sessions#show'
+      post 'checkout_sessions/:id/clear_locks', to: 'checkout_sessions#clear_locks'
+      post 'checkout_sessions/:id/heartbeat', to: 'checkout_sessions#heartbeat'
+      resources :sessions do
+        member do
+          patch :bulk_update
+          post :duplicate
+          delete :force_delete
+          patch :restore
+        end
+        resources :venues do
+          post :attach_image, on: :member
+          resources :sections do
+            get :seats, on: :member
+            resources :event_seat_groups, path: 'groups' do
+              post :assign_seats, on: :member
+            end
+            resources :event_ticket_seats, path: 'ticket-seats' do
+              member do
+                post :lock
+                post :unlock
+              end
+            end
+          end
+        end
+      end
+    end
+
     # Business Matching Availability
     namespace :business_matching do
       post 'receive', to: 'callbacks#receive'

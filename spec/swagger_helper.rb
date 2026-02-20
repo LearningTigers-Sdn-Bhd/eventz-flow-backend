@@ -30,6 +30,57 @@ RSpec.configure do |config|
             scheme: :bearer,
             bearerFormat: :JWT
           }
+        },
+        schemas: {
+          EventSeatSession: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              event_id: { type: :integer },
+              name: { type: :string },
+              status: { type: :string, example: 'draft' },
+              location: { type: :string },
+              start_datetime: { type: :string, format: :date_time },
+              end_datetime: { type: :string, format: :date_time },
+              deleted_at: { type: :string, format: :date_time, nullable: true },
+              archived: { type: :boolean, nullable: true }
+            }
+          },
+          EventSeatVenue: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              name: { type: :string },
+              total_row: { type: :integer },
+              total_column: { type: :integer },
+              image_url: { type: :string, nullable: true }
+            }
+          },
+          EventSeatSection: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              name: { type: :string },
+              price: { type: :string, example: "50.0" },
+              start_row: { type: :integer },
+              start_column: { type: :integer },
+              seat_row: { type: :integer },
+              seat_column: { type: :integer },
+              row_span: { type: :integer },
+              col_span: { type: :integer }
+            }
+          },
+          EventTicketSeat: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              name: { type: :string },
+              extra_price: { type: :string, example: "0.0" },
+              row_set: { type: :integer },
+              col_set: { type: :integer },
+              ticket_id: { type: :integer, nullable: true }
+            }
+          }
         }
       },
       servers: [

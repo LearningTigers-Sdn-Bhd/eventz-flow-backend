@@ -283,6 +283,10 @@ puts "\n--- 5. Generating Resource CMS Data ---"
 # Load professional resource content via rake task
 Rake::Task['db:seed:resources'].invoke
 
+puts "\n--- 6. Seeding Seat Ticketing Events + Occupancy ---"
+Rake::Task['db:seed:event_with_seat_ticketing'].reenable
+Rake::Task['db:seed:event_with_seat_ticketing'].invoke
+
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"
 puts "  Total Users: #{User.count}"
