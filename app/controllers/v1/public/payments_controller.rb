@@ -29,24 +29,39 @@ module V1
           }, status: :unprocessable_content
         end
 
+        # For group registrations, find all sibling tickets via registered_by_email
+        group_tickets = if ticket.registered_by_email.present?
+                          event.tickets.where(
+                            registered_by_email: ticket.registered_by_email,
+                            payment_status: :pending,
+                            status: :pending_payment,
+                          )
+                        else
+                          [ticket]
+                        end
+
         payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: "razorpay")
         existing_order_id = payment.gateway_response&.dig("id") || payment.gateway_response&.dig("order_id")
 
         order = if existing_order_id.present?
                   payment.gateway_response
                 else
-                  amount_subunits = (ticket.ticket_type.current_price.to_f * 100).round
+                  total_amount = group_tickets.sum { |t| t.ticket_type.current_price.to_f }
+                  amount_subunits = (total_amount * 100).round
+                  notes = {
+                    event_slug: event.slug,
+                    ticket_public_id: ticket.public_id,
+                  }
+                  notes[:registered_by_email] = ticket.registered_by_email if ticket.registered_by_email.present?
+
                   created_order = Payments::RazorpayGateway.create_order(
                     amount_subunits: amount_subunits,
                     receipt: ticket.public_id,
-                    notes: {
-                      event_slug: event.slug,
-                      ticket_public_id: ticket.public_id,
-                    },
+                    notes: notes,
                   )
 
                   payment.assign_attributes(
-                    amount: ticket.ticket_type.current_price.to_f,
+                    amount: total_amount,
                     status: "pending",
                     gateway_response: created_order,
                   )
@@ -100,8 +115,9 @@ module V1
           return render json: { success: false, message: "Invalid payment signature" }, status: :unprocessable_content
         end
 
-        mark_ticket_paid!(
+        mark_tickets_paid!(
           ticket: ticket,
+          event: event,
           payment_id: payment_id,
           order_id: order_id,
           signature: signature,
@@ -111,8 +127,8 @@ module V1
           success: true,
           data: {
             ticket_public_id: ticket.public_id,
-            payment_status: ticket.payment_status,
-            status: ticket.status,
+            payment_status: ticket.reload.payment_status,
+            status: ticket.reload.status,
           },
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -141,8 +157,11 @@ module V1
 
         case payload["event"].to_s
         when "payment.captured"
-          mark_ticket_paid!(
+          registered_by_email = notes["registered_by_email"].to_s.presence
+          mark_tickets_paid!(
             ticket: ticket,
+            event: ticket.event,
+            registered_by_email: registered_by_email,
             payment_id: payment_entity["id"].to_s,
             order_id: payment_entity["order_id"].to_s,
             signature: signature,
@@ -162,28 +181,41 @@ module V1
 
       private
 
-      def mark_ticket_paid!(ticket:, payment_id:, order_id:, signature:)
+      def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil)
+        # Collect all tickets to mark paid: the representative ticket plus any group siblings
+        email = registered_by_email || ticket.registered_by_email
+        tickets_to_mark = if email.present?
+                            event.tickets.where(
+                              registered_by_email: email,
+                              payment_status: :pending,
+                              status: :pending_payment,
+                            ).to_a
+                          else
+                            [ticket]
+                          end
+        # Always include the representative ticket in case it wasn't caught by the query
+        tickets_to_mark |= [ticket]
+
+        gateway_response = { order_id: order_id, payment_id: payment_id, signature: signature }
+
         Ticket.transaction do
-          ticket.lock!
+          tickets_to_mark.each do |t|
+            t.lock!
+            next if t.paid? && t.purchased?
 
-          return if ticket.paid? && ticket.purchased?
+            payment_record = t.ticket_payment || TicketPayment.find_or_initialize_by(ticket: t, gateway: "razorpay")
+            payment_record.assign_attributes(
+              amount: t.ticket_type.current_price.to_f,
+              status: "paid",
+              paid_at: Time.current,
+              gateway_payment_id: payment_id,
+              payment_method: "fpx",
+              gateway_response: gateway_response,
+            )
+            payment_record.save!
 
-          payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: "razorpay")
-          payment.assign_attributes(
-            amount: ticket.ticket_type.current_price.to_f,
-            status: "paid",
-            paid_at: Time.current,
-            gateway_payment_id: payment_id,
-            payment_method: "fpx",
-            gateway_response: {
-              order_id: order_id,
-              payment_id: payment_id,
-              signature: signature,
-            },
-          )
-          payment.save!
-
-          ticket.update!(payment_status: :paid, status: :purchased)
+            t.update!(payment_status: :paid, status: :purchased)
+          end
         end
       end
 

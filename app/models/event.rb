@@ -1,6 +1,10 @@
 class Event < ApplicationRecord
   extend FriendlyId
   friendly_id :title, use: :slugged
+
+  # --- Active Storage ---
+  has_one_attached :logo, dependent: :purge_later
+
   # --- Associations (Refactored) ---
 
   # Unified event staff assignment
@@ -114,6 +118,16 @@ class Event < ApplicationRecord
     Visitor.where(event_id: id).destroy_all
     # Now destroy the event itself (unscoped to find soft-deleted events)
     Event.unscoped.find(id).destroy!
+  end
+
+  def logo_url
+    return nil unless logo.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(logo, only_path: true)
+  end
+
+  def as_json(options = {})
+    super(options).merge('logo_url' => logo_url)
   end
 
   def send_webhook_notification

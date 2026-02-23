@@ -36,7 +36,10 @@ module V1
           }, status: :unprocessable_content
         end
 
-        tickets = event.tickets.where("LOWER(attendee_email) = ?", email)
+        tickets = event.tickets.where(
+          "LOWER(attendee_email) = :email OR LOWER(registered_by_email) = :email",
+          email: email
+        )
         if form_slug.present?
           tickets = tickets.where("custom_fields_data ->> 'registration_mode' = ?", form_slug)
         end
@@ -189,6 +192,7 @@ module V1
           :attendee_email,
           :attendee_phone,
           :role,
+          :registered_by_email,
           custom_fields_data: {}
         )
       end
