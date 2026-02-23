@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_13_013239) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -937,9 +937,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_13_013239) do
     t.string "attendee_name_norm"
     t.datetime "deleted_at"
     t.string "role"
+    t.string "registered_by_email"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
+    t.index ["event_id", "registered_by_email"], name: "idx_tickets_event_registered_by_email", where: "(registered_by_email IS NOT NULL)"
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"

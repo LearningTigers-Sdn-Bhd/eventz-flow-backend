@@ -70,8 +70,10 @@ module V1
       flag_toggled_on = !@event.allow_contractor_printing_services &&
                         ActiveModel::Type::Boolean.new.cast(event_params[:allow_contractor_printing_services])
 
+      handle_logo
+
       # @event is set and authorized by before_actions
-      if @event.update(event_params)
+      if @event.update(event_params.except(:logo, :remove_logo))
         # Auto-link contractor printing services if flag was toggled ON
         ContractorPrintingServiceLinker.new(event: @event).link_if_needed if flag_toggled_on
 
@@ -194,8 +196,20 @@ module V1
         :business_matching_webhook_url,
         :use_sponsorship,
         :skip_webhooks,
+        :logo,
+        :remove_logo,
         labels_data: {} # Allows JSONB hash updates
       )
+    end
+
+    def handle_logo
+      event_p = params[:event] || {}
+
+      if event_p[:logo].present? && event_p[:logo].respond_to?(:read)
+        @event.logo.attach(event_p[:logo])
+      elsif ActiveModel::Type::Boolean.new.cast(event_p[:remove_logo])
+        @event.logo.purge_later if @event.logo.attached?
+      end
     end
 
     def find_organizer_payment_detail(event)
