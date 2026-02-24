@@ -48,7 +48,8 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
   # Configuration for production
   allow do
     origins 'https://eventzflow.com',
-            'https://www.eventzflow.com'
+            'https://www.eventzflow.com',
+            'https://ogsesabah.eventzflow.com'
 
     resource '*',
       headers: :any,
