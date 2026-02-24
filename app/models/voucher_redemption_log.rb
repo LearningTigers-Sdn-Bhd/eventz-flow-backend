@@ -49,7 +49,7 @@ class VoucherRedemptionLog < ApplicationRecord
       voucher_title: voucher.title,
       voucher_code: voucher.voucher_code,
       vendor_name: voucher.vendor&.full_name || voucher.vendor&.email || "Unknown",
-      redeemer_name: redeemer.try(:full_name) || redeemer.try(:email) || "Unknown",
+      redeemer_name: redeemer.try(:full_name) || redeemer.try(:attendee_name) || redeemer.try(:email) || redeemer.try(:attendee_email) || "Unknown",
       redeemer_type: redeemer_type
     )
   end

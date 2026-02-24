@@ -30,7 +30,9 @@ class TicketPolicy < ApplicationPolicy
 
   # Staff can view any single ticket for their event.
   def show?
-    user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
+    user.is_event_admin?(record.event) ||
+    user.is_event_team_member?(record.event) ||
+    user.is_event_vendor?(record.event)
   end
 
   def check_in?

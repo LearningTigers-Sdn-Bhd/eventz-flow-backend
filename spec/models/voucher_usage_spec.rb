@@ -14,7 +14,7 @@ RSpec.describe VoucherUsage, type: :model do
   end
 
   describe 'enums' do
-    it { should define_enum_for(:redeemer_type).with_values(User: 0, Visitor: 1) }
+    it { should define_enum_for(:redeemer_type).with_values(User: 0, Visitor: 1, Ticket: 2) }
   end
 
   describe 'callbacks' do

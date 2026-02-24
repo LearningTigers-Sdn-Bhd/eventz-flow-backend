@@ -15,6 +15,8 @@ class Ticket < ApplicationRecord
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
   has_one :ticket_payment, dependent: :destroy
+  has_many :voucher_usages, as: :redeemer, dependent: :destroy
+  has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
 
   # --- Enums ---
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4 }
