@@ -41,16 +41,19 @@ module V1
           email: email
         )
         if form_slug.present?
-          tickets = tickets.where("custom_fields_data ->> 'registration_mode' = ?", form_slug)
+          form = event.registration_forms.find_by(slug: form_slug)
+          tickets = tickets.where(ticket_type_id: form.ticket_type_ids) if form
         end
 
         pending_tickets = tickets
           .where(status: :pending_payment, payment_status: [:pending, :failed])
+          .includes(:ticket_type)
           .order(created_at: :desc)
 
         paid_tickets = tickets
           .where(payment_status: :paid)
           .where.not(status: [:canceled, :refunded])
+          .includes(:ticket_type)
           .order(created_at: :desc)
 
         render json: {
@@ -59,24 +62,10 @@ module V1
             has_pending_payment: pending_tickets.exists?,
             has_paid_ticket: paid_tickets.exists?,
             pending_tickets: pending_tickets.limit(5).map { |ticket|
-              {
-                id: ticket.id,
-                public_id: ticket.public_id,
-                attendee_name: ticket.attendee_name,
-                payment_status: ticket.payment_status,
-                status: ticket.status,
-                created_at: ticket.created_at,
-              }
+              serialize_status_ticket(ticket)
             },
             paid_tickets: paid_tickets.limit(5).map { |ticket|
-              {
-                id: ticket.id,
-                public_id: ticket.public_id,
-                attendee_name: ticket.attendee_name,
-                payment_status: ticket.payment_status,
-                status: ticket.status,
-                created_at: ticket.created_at,
-              }
+              serialize_status_ticket(ticket)
             }
           }
         }
@@ -210,6 +199,21 @@ module V1
           payment_status: ticket.payment_status,
           custom_fields_data: ticket.custom_fields_data,
           qr_code_data: ticket.public_id
+        }
+      end
+
+      def serialize_status_ticket(ticket)
+        {
+          public_id: ticket.public_id,
+          attendee_name: ticket.attendee_name,
+          attendee_email: ticket.attendee_email,
+          attendee_phone: ticket.attendee_phone,
+          ticket_type: ticket.ticket_type&.name,
+          price: ticket.ticket_type&.current_price || 0,
+          payment_status: ticket.payment_status,
+          status: ticket.status,
+          custom_fields_data: ticket.custom_fields_data || {},
+          qr_code_data: ticket.public_id,
         }
       end
     end
