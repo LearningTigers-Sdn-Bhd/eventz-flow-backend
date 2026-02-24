@@ -14,6 +14,13 @@ class TicketType < ApplicationRecord
   has_one :event_ticket_seat, foreign_key: :ticket_type_id
   has_one :event_seat_group, foreign_key: :ticket_type_id
 
+  # --- Seat Ticketing Sync ---
+  enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }
+  
+  has_one :event_seat_section, foreign_key: :ticket_type_id
+  has_one :event_ticket_seat, foreign_key: :ticket_type_id
+  has_one :event_seat_group, foreign_key: :ticket_type_id
+
   # --- Callbacks ---
   after_commit :sync_map_elements, on: :update
   after_commit :send_webhook_notification, on: [:create, :update]
