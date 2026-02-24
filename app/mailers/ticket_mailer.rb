@@ -5,7 +5,7 @@ class TicketMailer < ApplicationMailer
     @ticket_type = ticket.ticket_type
 
     # Generate QR code and attach inline
-    qr_png = QrCodeService.generate_png(ticket.public_id)
+    qr_png = QrCodeService.generate_png(ticket.public_id, size: 600)
     attachments.inline['qr_code.png'] = qr_png
 
     mail(

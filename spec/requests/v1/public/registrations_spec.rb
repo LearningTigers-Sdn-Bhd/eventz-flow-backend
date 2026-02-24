@@ -83,6 +83,16 @@ RSpec.describe "V1::Public::Registrations", type: :request do
   end
 
   describe "GET /v1/public/events/:event_slug/registration_status" do
+    let!(:other_ticket_type) do
+      create(:ticket_type, event: event, name: "Other", price: 50.00, status: :published, hidden: false)
+    end
+
+    let!(:delegate_form) do
+      form = create(:registration_form, event: event, name: "Delegate", slug: "delegate")
+      form.ticket_types << ticket_type
+      form
+    end
+
     let!(:pending_ticket) do
       create(
         :ticket,
@@ -111,7 +121,7 @@ RSpec.describe "V1::Public::Registrations", type: :request do
       create(
         :ticket,
         event: event,
-        ticket_type: ticket_type,
+        ticket_type: other_ticket_type,
         attendee_email: "john@example.com",
         status: :pending_payment,
         payment_status: :pending,

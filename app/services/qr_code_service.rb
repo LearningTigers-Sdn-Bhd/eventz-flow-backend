@@ -4,8 +4,8 @@ class QrCodeService
     qr.as_png(
       size: size,
       border_modules: 2,
-      color: "000",
-      fill: "fff"
+      color: "black",
+      fill: "white"
     ).to_s
   end
 
