@@ -14,9 +14,10 @@ class Ticket < ApplicationRecord
   belongs_to :user, optional: true
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
+  has_one :ticket_payment, dependent: :destroy
 
   # --- Enums ---
-  enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3 }
+  enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4 }
   enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
   # --- Soft Delete Scopes ---
@@ -48,6 +49,7 @@ class Ticket < ApplicationRecord
   scope :within_date_range, ->(range) { where(created_at: range) }
 
   after_commit :send_webhook_notification, on: [:create, :update]
+  after_commit :send_confirmation_email, if: :should_send_confirmation?
 
   attr_accessor :skip_webhooks
 
@@ -193,8 +195,6 @@ class Ticket < ApplicationRecord
       payload[:ticket].merge!(
         checked_in: self.checked_in,
         check_in_at: self.check_in_at&.iso8601,
-        payment_method: self.payment_method,
-        transaction_id: self.transaction_id,
         created_at: self.created_at.iso8601
       )
 
@@ -229,5 +229,21 @@ class Ticket < ApplicationRecord
   def significant_changes?
     significant_fields = %w[status payment_status attendee_name attendee_email attendee_phone checked_in]
     (previous_changes.keys & significant_fields).any?
+  end
+
+  def should_send_confirmation?
+    return false if attendee_email.blank?
+
+    # Free ticket - send on create
+    if ticket_type&.current_price&.zero?
+      return previously_new_record?
+    end
+
+    # Paid ticket - send when payment confirmed
+    saved_change_to_payment_status? && payment_status == "paid"
+  end
+
+  def send_confirmation_email
+    TicketMailer.confirmation_email(self).deliver_later
   end
 end

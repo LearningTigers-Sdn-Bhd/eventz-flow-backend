@@ -3,6 +3,9 @@ class TicketType < ApplicationRecord
   # Made optional to support global ticket types (templates)
   belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
+  has_many :ticket_type_price_tiers, dependent: :destroy
+  has_many :registration_form_ticket_types, dependent: :destroy
+  has_many :registration_forms, through: :registration_form_ticket_types
 
   # --- Seat Ticketing Sync ---
   enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }
@@ -36,6 +39,18 @@ class TicketType < ApplicationRecord
   # Helper method to check if the ticket type is currently available for purchase
   def available?
     published? && !hidden? && on_sale?
+  end
+
+  def current_price
+    active_tier&.price || price
+  end
+
+  def active_tier
+    ticket_type_price_tiers.active.order(:starts_at).first
+  end
+
+  def current_tier_label
+    active_tier&.label
   end
 
   def send_webhook_notification

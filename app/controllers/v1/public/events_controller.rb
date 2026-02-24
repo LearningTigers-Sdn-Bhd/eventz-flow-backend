@@ -15,21 +15,23 @@ module V1
         @event = Event.friendly.find(params[:slug])
 
         # Return only public-safe event information
-        success_response(
-          data: @event.as_json(only: [
-            :id,
-            :title,
-            :slug,
-            :description,
-            :start_date,
-            :end_date,
-            :start_time,
-            :end_time,
-            :venue_name,
-            :venue_address,
-            :status
-          ])
-        )
+        event_json = @event.as_json(only: [
+          :id,
+          :title,
+          :slug,
+          :description,
+          :start_date,
+          :end_date,
+          :start_time,
+          :end_time,
+          :venue_name,
+          :venue_address,
+          :status
+        ])
+
+        event_json['logo_url'] = @event.logo_url
+
+        success_response(data: event_json)
       rescue ActiveRecord::RecordNotFound
         error_response(message: 'Event not found', status: :not_found)
       end

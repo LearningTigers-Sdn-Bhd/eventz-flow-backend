@@ -434,9 +434,6 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
-        :payment_screenshot_url,
-        :transaction_id,
-        :payment_method,
         :role,
         :skip_webhooks,
         custom_fields_data: {}

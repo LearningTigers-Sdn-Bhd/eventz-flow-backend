@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -165,6 +165,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_event_printing_services_on_event_id"
     t.index ["printing_service_id"], name: "index_event_printing_services_on_printing_service_id"
+  end
+
+  create_table "event_reminder_logs", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "ticket_id", null: false
+    t.string "reminder_type", null: false
+    t.string "status", default: "sent"
+    t.datetime "sent_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_reminder_logs_on_event_id"
+    t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_id_and_reminder_type", unique: true
+    t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -435,6 +448,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "reminders_enabled", default: true
+    t.boolean "reminder_7_day", default: true
+    t.boolean "reminder_1_day", default: true
     t.boolean "use_seat_ticketing", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
@@ -719,6 +735,36 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.index ["user_id"], name: "index_printing_services_on_user_id"
   end
 
+  create_table "registration_form_ticket_types", force: :cascade do |t|
+    t.bigint "registration_form_id", null: false
+    t.bigint "ticket_type_id", null: false
+    t.integer "registration_mode", default: 0, null: false
+    t.integer "min_attendees", default: 1, null: false
+    t.integer "max_attendees"
+    t.jsonb "custom_labels_data", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id", "ticket_type_id"], name: "idx_reg_form_ticket_types_unique", unique: true
+    t.index ["registration_form_id"], name: "index_registration_form_ticket_types_on_registration_form_id"
+    t.index ["ticket_type_id"], name: "index_registration_form_ticket_types_on_ticket_type_id"
+    t.check_constraint "max_attendees IS NULL OR max_attendees >= min_attendees", name: "chk_reg_form_ticket_types_max_attendees"
+    t.check_constraint "min_attendees >= 1", name: "chk_reg_form_ticket_types_min_attendees"
+  end
+
+  create_table "registration_forms", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "slug", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.jsonb "custom_labels_data", default: {}, null: false
+    t.integer "status", default: 0, null: false
+    t.integer "position"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "slug"], name: "index_registration_forms_on_event_id_and_slug", unique: true
+    t.index ["event_id"], name: "index_registration_forms_on_event_id"
+  end
+
   create_table "rentable_items", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -920,6 +966,38 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "ticket_payments", force: :cascade do |t|
+    t.bigint "ticket_id", null: false
+    t.bigint "received_by_id"
+    t.string "gateway"
+    t.string "gateway_payment_id"
+    t.decimal "amount", precision: 10, scale: 2, null: false
+    t.string "currency", default: "MYR"
+    t.string "status", default: "pending"
+    t.string "payment_method"
+    t.json "gateway_response", default: {}
+    t.text "notes"
+    t.datetime "paid_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["gateway_payment_id"], name: "index_ticket_payments_on_gateway_payment_id"
+    t.index ["received_by_id"], name: "index_ticket_payments_on_received_by_id"
+    t.index ["ticket_id", "gateway"], name: "index_ticket_payments_on_ticket_id_and_gateway", unique: true, where: "(gateway IS NOT NULL)"
+    t.index ["ticket_id"], name: "index_ticket_payments_on_ticket_id"
+  end
+
+  create_table "ticket_type_price_tiers", force: :cascade do |t|
+    t.bigint "ticket_type_id", null: false
+    t.string "label", null: false
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.datetime "starts_at", null: false
+    t.datetime "ends_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ticket_type_id", "starts_at"], name: "idx_price_tiers_on_ticket_type_and_start"
+    t.index ["ticket_type_id"], name: "index_ticket_type_price_tiers_on_ticket_type_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false
@@ -953,9 +1031,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.bigint "scanned_by_id"
     t.integer "status", default: 0, null: false
     t.integer "payment_status", default: 0, null: false
-    t.string "payment_screenshot_url"
-    t.string "transaction_id"
-    t.string "payment_method"
     t.jsonb "custom_fields_data", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -964,9 +1039,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
     t.string "attendee_name_norm"
     t.datetime "deleted_at"
     t.string "role"
+    t.string "registered_by_email"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
+    t.index ["event_id", "registered_by_email"], name: "idx_tickets_event_registered_by_email", where: "(registered_by_email IS NOT NULL)"
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"
@@ -1136,6 +1213,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "event_printing_service_price_tiers", "event_printing_services"
   add_foreign_key "event_printing_services", "events"
   add_foreign_key "event_printing_services", "printing_services"
+  add_foreign_key "event_reminder_logs", "events"
+  add_foreign_key "event_reminder_logs", "tickets"
   add_foreign_key "event_rentable_item_price_tiers", "event_rentable_items"
   add_foreign_key "event_rentable_items", "events"
   add_foreign_key "event_rentable_items", "rentable_items"
@@ -1205,6 +1284,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "payment_details", "users"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
+  add_foreign_key "registration_form_ticket_types", "registration_forms"
+  add_foreign_key "registration_form_ticket_types", "ticket_types"
+  add_foreign_key "registration_forms", "events"
   add_foreign_key "rentable_items", "item_categories"
   add_foreign_key "rentable_items", "users"
   add_foreign_key "resource_changelogs", "resources"
@@ -1226,6 +1308,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_10_040000) do
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
+  add_foreign_key "ticket_payments", "tickets"
+  add_foreign_key "ticket_payments", "users", column: "received_by_id"
+  add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"
