@@ -2,64 +2,94 @@
 <html>
 <head>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #2563eb; color: white; padding: 20px; text-align: center; }
-    .content { padding: 20px; background: #f9fafb; }
-    .ticket-info { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
-    .ticket-info table { width: 100%; }
-    .ticket-info td { padding: 8px 0; }
-    .ticket-info td:first-child { font-weight: bold; width: 120px; }
-    .qr-section { text-align: center; padding: 20px; background: white; border-radius: 8px; margin: 15px 0; }
-    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; padding: 40px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.85; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 16px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 24px; line-height: 1.7; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 12px; }
+    .ticket-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .ticket-info table { width: 100%; border-collapse: collapse; }
+    .ticket-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
+    .ticket-info td:first-child { font-weight: bold; color: #374151; width: 130px; }
+    .ticket-info td:last-child { color: #555; }
+    .qr-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
+    .qr-section h3 { margin: 0 0 8px; font-size: 16px; color: #1e40af; }
+    .qr-section p { margin: 0 0 16px; font-size: 14px; color: #666; }
+    .qr-section img { border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-radius: 4px; }
+    .ticket-id { margin-top: 12px; font-size: 12px; color: #999; letter-spacing: 0.5px; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; margin-bottom: 8px; }
+    .signature { font-size: 15px; color: #333; font-weight: bold; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>You're Registered!</h1>
-    </div>
-
-    <div class="content">
-      <p>Hi <%= @ticket.attendee_name %>,</p>
-
-      <p>Your registration is confirmed. Here are your ticket details:</p>
-
-      <div class="ticket-info">
-        <table>
-          <tr>
-            <td>Event:</td>
-            <td><%= @event.title %></td>
-          </tr>
-          <tr>
-            <td>Date:</td>
-            <td><%= @event.start_date.strftime("%B %d, %Y") %></td>
-          </tr>
-          <% if @event.event_locations.any? %>
-          <tr>
-            <td>Venue:</td>
-            <td><%= @event.event_locations.first.name %></td>
-          </tr>
-          <% end %>
-          <tr>
-            <td>Ticket Type:</td>
-            <td><%= @ticket_type.name %></td>
-          </tr>
-        </table>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Registration Confirmed!</h1>
+        <p>We're excited to have you with us</p>
       </div>
 
-      <div class="qr-section">
-        <h3>Your QR Code</h3>
-        <p>Show this at check-in:</p>
-        <%= image_tag attachments['qr_code.png'].url, alt: "QR Code", width: 200, height: 200 %>
-        <p style="color: #666; font-size: 12px;">Ticket ID: <%= @ticket.public_id %></p>
+      <div class="content">
+        <p class="greeting">Dear <strong><%= @ticket.attendee_name %></strong>,</p>
+
+        <p class="message">
+          Thank you for registering for <strong><%= @event.title %></strong>. We are delighted to confirm your participation and look forward to seeing you at the event. Please find your ticket details and QR code below — kindly present this at the registration counter upon arrival.
+        </p>
+
+        <div class="section-title">Event Details</div>
+        <div class="ticket-info">
+          <table>
+            <tr>
+              <td>Event:</td>
+              <td><%= @event.title %></td>
+            </tr>
+            <tr>
+              <td>Date:</td>
+              <td>
+                <%= @event.start_date.strftime("%B %d, %Y") %>
+                <% if @event.end_date.present? && @event.end_date.to_date != @event.start_date.to_date %>
+                  &ndash; <%= @event.end_date.strftime("%B %d, %Y") %>
+                <% end %>
+              </td>
+            </tr>
+            <% if @event.event_locations.any? %>
+            <tr>
+              <td>Venue:</td>
+              <td><%= @event.event_locations.first.name %></td>
+            </tr>
+            <% end %>
+            <tr>
+              <td>Ticket Type:</td>
+              <td><%= @ticket_type.name %></td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="section-title">Your Entry QR Code</div>
+        <div class="qr-section">
+          <h3>Scan at Check-In</h3>
+          <p>Please present this QR code at the registration counter</p>
+          <%= image_tag attachments['qr_code.png'].url, alt: "QR Code", width: 200, height: 200 %>
+          <p class="ticket-id">Ticket ID: <%= @ticket.public_id %></p>
+        </div>
+
+        <p class="closing">
+          Should you have any questions or require further assistance, please don't hesitate to reach out to us. We wish you a wonderful and memorable experience at the event.
+        </p>
+
+        <p class="closing">Warm regards,</p>
+        <p class="signature">The EventzFlow Team</p>
       </div>
 
-      <p>See you at the event!</p>
-    </div>
-
-    <div class="footer">
-      <p>This email was sent by EventzFlow</p>
+      <div class="footer">
+        <p>This is an automated confirmation email from EventzFlow. Please do not reply to this email.</p>
+      </div>
     </div>
   </div>
 </body>
