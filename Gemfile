@@ -29,8 +29,8 @@ gem "pundit"
 
 
 # --- API Serialization (Performance) ---
-# fast_jsonapi is a high-performance serializer (fork of Netflix's)
-gem "fast_jsonapi"
+# jsonapi-serializer is the maintained fork of Netflix's fast_jsonapi
+gem "jsonapi-serializer"
 
 # --- Background Processing (Webhooks, Notifications) ---
 gem "sidekiq"

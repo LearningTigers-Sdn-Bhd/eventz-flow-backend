@@ -127,8 +127,6 @@ GEM
       railties (>= 6.1.0)
     faker (3.5.2)
       i18n (>= 1.8.11, < 2)
-    fast_jsonapi (1.5)
-      activesupport (>= 4.2)
     ffi (1.17.3-aarch64-linux-gnu)
     ffi (1.17.3-aarch64-linux-musl)
     ffi (1.17.3-arm-linux-gnu)
@@ -168,6 +166,8 @@ GEM
     json-schema (6.0.0)
       addressable (~> 2.8)
       bigdecimal (~> 3.1)
+    jsonapi-serializer (2.2.0)
+      activesupport (>= 4.2)
     jwt (3.1.2)
       base64
     launchy (3.1.1)
@@ -424,11 +424,11 @@ DEPENDENCIES
   dotenv-rails
   factory_bot_rails
   faker
-  fast_jsonapi
   fiddle
   friendly_id (~> 5.5)
   groupdate
   image_processing (~> 1.2)
+  jsonapi-serializer
   jwt
   letter_opener_web
   ostruct
