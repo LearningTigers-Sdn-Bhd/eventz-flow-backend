@@ -43,6 +43,14 @@ module V1
         payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: "razorpay")
         existing_order_id = payment.gateway_response&.dig("id") || payment.gateway_response&.dig("order_id")
 
+        callback_url = url_for(
+          controller: 'v1/public/payments',
+          action: 'callback',
+          event_slug: event.slug,
+          ticket_public_id: ticket.public_id,
+          only_path: false,
+        )
+
         order = if existing_order_id.present?
                   payment.gateway_response
                 else
@@ -77,6 +85,7 @@ module V1
             order_id: order["id"] || order["order_id"],
             amount: order["amount"],
             currency: order["currency"] || "MYR",
+            callback_url: callback_url,
           }
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -85,6 +94,56 @@ module V1
         render json: { success: false, message: "Payment config missing: #{e.message}" }, status: :unprocessable_content
       rescue StandardError => e
         render json: { success: false, message: e.message }, status: :unprocessable_content
+      end
+
+      def callback
+        require "cgi"
+        event = Event.friendly.find(params[:event_slug])
+        ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
+
+        # Get form slug from ticket's ticket type association
+        form_slug = ticket.ticket_type.registration_forms.first&.slug || "standard"
+
+        # FPX redirects here after payment attempt
+        order_id = params[:razorpay_order_id].to_s
+        payment_id = params[:razorpay_payment_id].to_s
+        signature = params[:razorpay_signature].to_s
+        frontend_url = ENV.fetch("FRONTEND_URL", "https://ogse-sabah.eventzflow.com")
+
+        # Check if payment was already processed (webhook might have handled it)
+        if ticket.paid? && ticket.purchased?
+          redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}", allow_other_host: true
+          return
+        end
+
+        # Validate signature
+        unless Payments::RazorpayGateway.valid_signature?(
+          order_id: order_id,
+          payment_id: payment_id,
+          signature: signature,
+        )
+          redirect_to "#{frontend_url}/register/#{form_slug}?step=payment&error=invalid_signature&ticket=#{ticket.public_id}", allow_other_host: true
+          return
+        end
+
+        # Mark tickets as paid
+        mark_tickets_paid!(
+          ticket: ticket,
+          event: event,
+          payment_id: payment_id,
+          order_id: order_id,
+          signature: signature,
+        )
+
+        redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}", allow_other_host: true
+      rescue ActiveRecord::RecordNotFound => e
+        # Try to get form_slug from the ticket if it was loaded, otherwise use 'standard'
+        redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=not_found"
+        redirect_to redirect_url, allow_other_host: true
+      rescue StandardError => e
+        redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=#{CGI.escape(e.message)}"
+        redirect_url += "&ticket=#{ticket.public_id}" if defined?(ticket) && ticket&.public_id
+        redirect_to redirect_url, allow_other_host: true
       end
 
       def verify

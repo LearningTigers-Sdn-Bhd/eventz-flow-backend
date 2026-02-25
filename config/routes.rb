@@ -42,6 +42,7 @@ Rails.application.routes.draw do
         get 'registration_status', to: 'registrations#registration_status'
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
+        match 'payments/callback', to: 'payments#callback', via: [:get, :post]
         post 'register', to: 'registrations#create'
       end
     end
