@@ -10,7 +10,7 @@ class TicketMailer < ApplicationMailer
 
     mail(
       to: ticket.attendee_email,
-      from: "OGSE Sabah 2026 Secretariat <ogsesabah.secretariat@eventzflow.com>",
+      from: "OGSE Sabah 2026 Secretariat <ogsesabah.secretariat@updates.eventzflow.com>",
       subject: "Your ticket for #{@event.title}"
     )
   end
