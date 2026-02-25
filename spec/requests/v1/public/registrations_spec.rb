@@ -58,10 +58,10 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         event: event,
         name: "Delegate",
         slug: "delegate",
-        custom_labels_data: {
-          "company_name" => "Company Name",
-          "dietary_requirements" => "Dietary Requirements"
-        }
+        custom_labels_data: [
+          { "key" => "company_name", "label" => "Company Name" },
+          { "key" => "dietary_requirements", "label" => "Dietary Requirements" }
+        ]
       )
     end
 
@@ -74,10 +74,10 @@ RSpec.describe "V1::Public::Registrations", type: :request do
 
       expect(matching_form).to be_present
       expect(matching_form["custom_labels_data"]).to eq(
-        {
-          "company_name" => "Company Name",
-          "dietary_requirements" => "Dietary Requirements"
-        }
+        [
+          { "key" => "company_name", "label" => "Company Name" },
+          { "key" => "dietary_requirements", "label" => "Dietary Requirements" }
+        ]
       )
     end
   end
@@ -265,9 +265,9 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         registration_mode: :group,
         min_attendees: 3,
         max_attendees: 10,
-        custom_labels_data: {
-          "member_id" => "Member ID"
-        },
+        custom_labels_data: [
+          { "key" => "member_id", "label" => "Member ID" }
+        ],
       )
       form
     end
@@ -292,9 +292,9 @@ RSpec.describe "V1::Public::Registrations", type: :request do
         expect(conference_response['min_attendees']).to eq(3)
         expect(conference_response['max_attendees']).to eq(10)
         expect(conference_response['custom_labels_data']).to eq(
-          {
-            "member_id" => "Member ID"
-          }
+          [
+            { "key" => "member_id", "label" => "Member ID" }
+          ]
         )
       end
 

@@ -18,7 +18,7 @@ module V1
               slug: f.slug,
               name: f.name,
               description: f.description,
-              custom_labels_data: f.custom_labels_data || {},
+              custom_labels_data: f.custom_labels_data || [],
             }
           }
         }
@@ -163,7 +163,7 @@ module V1
             current_tier: tt.active_tier&.label,
             available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
             custom_fields_data: tt.custom_fields_data,
-            custom_labels_data: rule&.custom_labels_data || {},
+            custom_labels_data: rule&.custom_labels_data || [],
             registration_mode: rule&.registration_mode || 'single',
             min_attendees: rule&.min_attendees || 1,
             max_attendees: rule&.max_attendees

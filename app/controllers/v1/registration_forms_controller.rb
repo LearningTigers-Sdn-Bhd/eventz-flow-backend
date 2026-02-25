@@ -118,14 +118,14 @@ module V1
         :description,
         :status,
         :position,
-        custom_labels_data: {},
+        custom_labels_data: [:key, :label],
         ticket_type_ids: [],
         ticket_type_rules: [
           :ticket_type_id,
           :registration_mode,
           :min_attendees,
           :max_attendees,
-          { custom_labels_data: {} },
+          { custom_labels_data: [:key, :label] },
         ],
       )
     end
@@ -162,7 +162,7 @@ module V1
           registration_mode: 'single',
           min_attendees: 1,
           max_attendees: nil,
-          custom_labels_data: {},
+          custom_labels_data: [],
         }
       end
     end
@@ -199,7 +199,7 @@ module V1
             registration_mode: rule[:registration_mode],
             min_attendees: rule[:min_attendees],
             max_attendees: rule[:max_attendees],
-            custom_labels_data: rule[:custom_labels_data] || {},
+            custom_labels_data: rule[:custom_labels_data] || [],
           )
 
           unless mapping.save
@@ -221,7 +221,7 @@ module V1
         name: form.name,
         slug: form.slug,
         description: form.description,
-        custom_labels_data: form.custom_labels_data || {},
+        custom_labels_data: form.custom_labels_data || [],
         status: form.status,
         position: form.position,
         created_at: form.created_at,
@@ -237,28 +237,33 @@ module V1
             registration_mode: mapping.registration_mode,
             min_attendees: mapping.min_attendees,
             max_attendees: mapping.max_attendees,
-            custom_labels_data: mapping.custom_labels_data || {},
+            custom_labels_data: mapping.custom_labels_data || [],
           }
         }
       }
     end
 
     def normalize_custom_labels_data(value)
-      labels_hash = if value.respond_to?(:to_unsafe_h)
-                      value.to_unsafe_h
-                    elsif value.respond_to?(:to_h)
-                      value.to_h
-                    else
-                      nil
-                    end
+      return [] if value.blank?
 
-      return {} unless labels_hash.is_a?(Hash)
+      items = if value.respond_to?(:to_a)
+                value.to_a
+              else
+                []
+              end
 
-      labels_hash.each_with_object({}) do |(key, label), result|
-        next if key.blank?
-        next if label.blank?
+      return [] unless items.is_a?(Array)
 
-        result[key.to_s] = label.to_s
+      items.filter_map do |item|
+        next unless item.is_a?(Hash) || item.respond_to?(:to_h)
+
+        item = item.to_h if item.respond_to?(:to_h)
+        key = item["key"].presence || item[:key].presence
+        label = item["label"].presence || item[:label].presence
+
+        next if key.blank? || label.blank?
+
+        { "key" => key.to_s, "label" => label.to_s }
       end
     end
   end

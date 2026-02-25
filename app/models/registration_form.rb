@@ -7,4 +7,13 @@ class RegistrationForm < ApplicationRecord
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: { scope: :event_id }
+  validate :custom_labels_data_must_be_array
+
+  private
+
+  def custom_labels_data_must_be_array
+    return if custom_labels_data.is_a?(Array)
+
+    errors.add(:custom_labels_data, 'must be an array')
+  end
 end

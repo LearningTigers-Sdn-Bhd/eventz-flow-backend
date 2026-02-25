@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -741,7 +741,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
     t.integer "registration_mode", default: 0, null: false
     t.integer "min_attendees", default: 1, null: false
     t.integer "max_attendees"
-    t.jsonb "custom_labels_data", default: {}, null: false
+    t.jsonb "custom_labels_data", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["registration_form_id", "ticket_type_id"], name: "idx_reg_form_ticket_types_unique", unique: true
@@ -756,7 +756,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_23_025508) do
     t.string "slug", null: false
     t.string "name", null: false
     t.text "description"
-    t.jsonb "custom_labels_data", default: {}, null: false
+    t.jsonb "custom_labels_data", default: [], null: false
     t.integer "status", default: 0, null: false
     t.integer "position"
     t.datetime "created_at", null: false

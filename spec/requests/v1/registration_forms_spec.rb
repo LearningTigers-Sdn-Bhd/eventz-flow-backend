@@ -48,15 +48,15 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
             registration_mode: 'single',
             min_attendees: 1,
             max_attendees: nil,
-            custom_labels_data: {
-              "member_id" => "Member ID"
-            }
+            custom_labels_data: [
+              { "key" => "member_id", "label" => "Member ID" }
+            ]
           }
         ],
-        custom_labels_data: {
-          "company_name" => "Company Name",
-          "dietary_requirements" => "Dietary Requirements"
-        }
+        custom_labels_data: [
+          { "key" => "company_name", "label" => "Company Name" },
+          { "key" => "dietary_requirements", "label" => "Dietary Requirements" }
+        ]
       }
     }
   end
@@ -71,18 +71,18 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
             ticket_type_id: ticket_type_1.id,
             registration_mode: 'single',
             min_attendees: 1,
-            custom_labels_data: {
-              "member_id" => "Member ID"
-            }
+            custom_labels_data: [
+              { "key" => "member_id", "label" => "Member ID" }
+            ]
           },
           {
             ticket_type_id: ticket_type_2.id,
             registration_mode: 'group',
             min_attendees: 2,
             max_attendees: 5,
-            custom_labels_data: {
-              "invitation_code" => "Invitation Code"
-            }
+            custom_labels_data: [
+              { "key" => "invitation_code", "label" => "Invitation Code" }
+            ]
           }
         ]
       }
@@ -170,15 +170,15 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
           expect(json['ticket_types'].length).to eq(1)
           expect(json['ticket_types'].first['id']).to eq(ticket_type_3.id)
           expect(json['ticket_types'].first['custom_labels_data']).to eq(
-            {
-              "member_id" => "Member ID"
-            }
+            [
+              { "key" => "member_id", "label" => "Member ID" }
+            ]
           )
           expect(json['custom_labels_data']).to eq(
-            {
-              "company_name" => "Company Name",
-              "dietary_requirements" => "Dietary Requirements"
-            }
+            [
+              { "key" => "company_name", "label" => "Company Name" },
+              { "key" => "dietary_requirements", "label" => "Dietary Requirements" }
+            ]
           )
         end
       end
@@ -268,14 +268,14 @@ RSpec.describe 'V1::RegistrationForms', type: :request do
           ticket_type_2_payload = json['ticket_types'].find { |t| t['id'] == ticket_type_2.id }
 
           expect(ticket_type_1_payload['custom_labels_data']).to eq(
-            {
-              "member_id" => "Member ID"
-            }
+            [
+              { "key" => "member_id", "label" => "Member ID" }
+            ]
           )
           expect(ticket_type_2_payload['custom_labels_data']).to eq(
-            {
-              "invitation_code" => "Invitation Code"
-            }
+            [
+              { "key" => "invitation_code", "label" => "Invitation Code" }
+            ]
           )
         end
       end
