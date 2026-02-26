@@ -207,6 +207,33 @@ module V1
         payload = JSON.parse(raw_payload)
         payment_entity = payload.dig("payload", "payment", "entity") || {}
         notes = payment_entity["notes"] || {}
+        payment_type = notes["type"].to_s
+
+        if payment_type == "exhibitor_registration"
+          exhibitor_kit = ExhibitorKit.find_by(id: notes["exhibitor_kit_id"])
+          return render json: { success: true }, status: :ok if exhibitor_kit.blank?
+
+          case payload["event"].to_s
+          when "payment.captured"
+            mark_exhibitor_registration_paid!(
+              exhibitor_kit: exhibitor_kit,
+              payment_id: payment_entity["id"].to_s,
+              order_id: payment_entity["order_id"].to_s,
+              signature: signature,
+              gateway_response: payment_entity,
+            )
+          when "payment.failed"
+            mark_exhibitor_registration_failed!(
+              exhibitor_kit: exhibitor_kit,
+              payment_id: payment_entity["id"].to_s,
+              order_id: payment_entity["order_id"].to_s,
+              gateway_response: payment_entity,
+            )
+          end
+
+          return render json: { success: true }, status: :ok
+        end
+
         ticket_public_id = notes["ticket_public_id"].to_s
 
         return render json: { success: true }, status: :ok if ticket_public_id.blank?
@@ -299,6 +326,42 @@ module V1
 
           ticket.update!(payment_status: :failed, status: :pending_payment)
         end
+      end
+
+      def mark_exhibitor_registration_paid!(exhibitor_kit:, payment_id:, order_id:, signature:, gateway_response:)
+        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: "razorpay")
+
+        payment.update!(
+          amount: exhibitor_kit.amount_paid.to_f,
+          status: "paid",
+          paid_at: Time.current,
+          gateway_payment_id: payment_id,
+          payment_method: "fpx",
+          gateway_response: gateway_response.presence || {
+            order_id: order_id,
+            payment_id: payment_id,
+            signature: signature,
+          },
+        )
+
+        exhibitor_kit.update!(payment_status: :paid)
+      end
+
+      def mark_exhibitor_registration_failed!(exhibitor_kit:, payment_id:, order_id:, gateway_response:)
+        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: "razorpay")
+
+        payment.update!(
+          amount: exhibitor_kit.amount_paid.to_f,
+          status: "failed",
+          gateway_payment_id: payment_id,
+          payment_method: "fpx",
+          gateway_response: gateway_response.presence || {
+            order_id: order_id,
+            payment_id: payment_id,
+          },
+        )
+
+        exhibitor_kit.update!(payment_status: :unpaid)
       end
     end
   end

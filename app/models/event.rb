@@ -27,6 +27,7 @@ class Event < ApplicationRecord
   has_many :event_exhibition_contractors, dependent: :destroy
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
+  has_many :exhibitor_booth_prices, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy

@@ -1,6 +1,8 @@
 class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kit
+  belongs_to :exhibitor_booth_price, optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
+  has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy
   has_many :exhibitor_team_members, dependent: :destroy
   has_many :exhibitor_kit_items, dependent: :destroy
@@ -28,6 +30,9 @@ class ExhibitorKit < ApplicationRecord
   validates :pic_contact_number, presence: true
   validates :pic_email_address, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+
+  after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
+  after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
 
   # --- Team Member Limit Methods ---
 
@@ -82,5 +87,23 @@ class ExhibitorKit < ApplicationRecord
   # Charges for unpaid excess team members
   def extra_team_member_charges
     unpaid_excess_team_member_count * extra_team_member_fee
+  end
+
+  private
+
+  def should_send_registration_received_email?
+    pic_email_address.present?
+  end
+
+  def should_send_payment_confirmed_email?
+    pic_email_address.present? && saved_change_to_payment_status? && paid?
+  end
+
+  def send_registration_received_email
+    ExhibitorRegistrationMailer.registration_received_email(self).deliver_later
+  end
+
+  def send_payment_confirmed_email
+    ExhibitorRegistrationMailer.payment_confirmed_email(self).deliver_later
   end
 end
