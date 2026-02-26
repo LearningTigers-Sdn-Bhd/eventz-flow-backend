@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_26_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -476,8 +476,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
     t.decimal "price", precision: 10, scale: 2, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["event_id", "booth_type", "label"], name: "idx_exhibitor_booth_prices_unique", unique: true
+    t.bigint "exhibitor_zone_quota_id"
+    t.index ["event_id", "booth_type", "exhibitor_zone_quota_id", "label"], name: "idx_exhibitor_booth_prices_unique", unique: true
     t.index ["event_id"], name: "index_exhibitor_booth_prices_on_event_id"
+    t.index ["exhibitor_zone_quota_id"], name: "index_exhibitor_booth_prices_on_exhibitor_zone_quota_id"
   end
 
   create_table "exhibitor_kit_admin_notes", force: :cascade do |t|
@@ -625,6 +627,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_members_on_exhibitor_kit_id"
+  end
+
+  create_table "exhibitor_zone_quotas", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "zone", null: false
+    t.integer "quota", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "zone"], name: "idx_exhibitor_zone_quotas_unique", unique: true
+    t.index ["event_id"], name: "index_exhibitor_zone_quotas_on_event_id"
   end
 
   create_table "export_logs", force: :cascade do |t|
@@ -1284,6 +1296,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
   add_foreign_key "event_vendors", "users", column: "vendor_id"
   add_foreign_key "exhibition_contractor_profiles", "users"
   add_foreign_key "exhibitor_booth_prices", "events"
+  add_foreign_key "exhibitor_booth_prices", "exhibitor_zone_quotas"
   add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_admin_notes", "users"
   add_foreign_key "exhibitor_kit_items", "exhibitor_kit_payments"
@@ -1301,6 +1314,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
   add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_payments", "users", column: "payee_id"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
+  add_foreign_key "exhibitor_zone_quotas", "events"
   add_foreign_key "export_logs", "events"
   add_foreign_key "gift_winners", "gifts"
   add_foreign_key "gift_winners", "tickets", on_delete: :cascade

@@ -6,7 +6,7 @@ module V1
 
     def index
       booth_prices = policy_scope(@event.exhibitor_booth_prices)
-      render json: booth_prices
+      render json: booth_prices.map { |booth_price| serialize_booth_price(booth_price) }
     end
 
     def create
@@ -14,7 +14,7 @@ module V1
       authorize booth_price
 
       if booth_price.save
-        render json: booth_price, status: :created
+        render json: serialize_booth_price(booth_price), status: :created
       else
         render json: booth_price.errors, status: :unprocessable_content
       end
@@ -24,7 +24,7 @@ module V1
       authorize @exhibitor_booth_price
 
       if @exhibitor_booth_price.update(exhibitor_booth_price_params)
-        render json: @exhibitor_booth_price
+        render json: serialize_booth_price(@exhibitor_booth_price)
       else
         render json: @exhibitor_booth_price.errors, status: :unprocessable_content
       end
@@ -47,7 +47,11 @@ module V1
     end
 
     def exhibitor_booth_price_params
-      params.require(:exhibitor_booth_price).permit(:booth_type, :label, :price)
+      params.require(:exhibitor_booth_price).permit(:booth_type, :exhibitor_zone_quota_id, :label, :price)
+    end
+
+    def serialize_booth_price(booth_price)
+      booth_price.as_json.merge("zone" => booth_price.zone)
     end
   end
 end

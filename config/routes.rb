@@ -116,6 +116,7 @@ Rails.application.routes.draw do
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
       resources :registration_forms, only: [:index, :show, :create, :update, :destroy]
       resources :exhibitor_booth_prices, only: [:index, :create]
+      resources :exhibitor_zone_quotas, only: [:index, :create]
 
       # Vendor invitations
       resources :vendor_invitations, only: [] do
@@ -512,5 +513,6 @@ Rails.application.routes.draw do
     end
 
     resources :exhibitor_booth_prices, only: [:update, :destroy]
+    resources :exhibitor_zone_quotas, only: [:update, :destroy]
   end
 end

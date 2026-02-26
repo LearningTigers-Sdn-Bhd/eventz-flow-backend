@@ -2,10 +2,12 @@ require "rails_helper"
 
 RSpec.describe "V1::Public::ExhibitorRegistrations", type: :request do
   let(:event) { create(:event, status: :published, use_exhibitor_kit: true) }
+  let!(:zone_quota) { create(:exhibitor_zone_quota, event: event, zone: "zone_d", quota: 103) }
   let!(:booth_price) do
     create(
       :exhibitor_booth_price,
       event: event,
+      exhibitor_zone_quota: zone_quota,
       booth_type: "shell_scheme",
       label: "Malaysian",
       price: 1500.00,
@@ -22,6 +24,11 @@ RSpec.describe "V1::Public::ExhibitorRegistrations", type: :request do
       expect(json["data"]).to be_an(Array)
       expect(json["data"].first["label"]).to eq("Malaysian")
       expect(json["data"].first["price"].to_f).to eq(1500.0)
+      expect(json["data"].first["zone"]).to eq("zone_d")
+      expect(json["data"].first["zone_quota"]).to eq(103)
+      expect(json["data"].first["zone_sold_count"]).to eq(0)
+      expect(json["data"].first["zone_remaining"]).to eq(103)
+      expect(json["data"].first["zone_available"]).to eq(true)
     end
   end
 
@@ -99,6 +106,23 @@ RSpec.describe "V1::Public::ExhibitorRegistrations", type: :request do
       expect(json["data"]["already_registered"]).to be(true)
       expect(json["data"]["exhibitor_kit_id"]).to eq(existing_kit.id)
       expect(existing_kit.reload.company_name).to eq("Acme Energy")
+    end
+
+    it "returns 422 when the selected zone quota is full" do
+      zone_quota.update!(quota: 1)
+      create(
+        :exhibitor_kit,
+        event_vendor: create(:exhibitor, event: event),
+        exhibitor_booth_price: booth_price,
+        payment_status: :unpaid,
+      )
+
+      post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json["success"]).to be(false)
+      expect(json["message"]).to eq("Selected zone is sold out")
     end
   end
 
