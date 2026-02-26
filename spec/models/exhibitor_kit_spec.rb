@@ -15,7 +15,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
 
 
-  it { should validate_length_of(:name_on_fascia).is_at_most(25) }
+  it { should validate_length_of(:name_on_fascia).is_at_most(30) }
 
 
   it { should validate_presence_of(:pic_full_name) }

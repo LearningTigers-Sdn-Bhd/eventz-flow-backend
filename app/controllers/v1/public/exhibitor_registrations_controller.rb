@@ -85,14 +85,21 @@ module V1
         ActiveRecord::Base.transaction do
           user = find_or_create_vendor_user!
           upsert_vendor_profile!(user)
-          exhibitor = Exhibitor.find_or_create_by!(event: event, vendor: user)
 
-          if exhibitor.exhibitor_kit.present?
-            exhibitor.exhibitor_kit.update!(build_exhibitor_kit_attributes(booth_price))
-            exhibitor.exhibitor_kit
-          else
-            exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+          exhibitor = Exhibitor.find_by(event: event, vendor: user)
+
+          if exhibitor&.exhibitor_kit.present?
+            return exhibitor.exhibitor_kit
           end
+
+          if exhibitor.present?
+            return exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+          end
+
+          exhibitor = Exhibitor.new(event: event, vendor: user)
+          exhibitor.build_exhibitor_kit(build_exhibitor_kit_attributes(booth_price))
+          exhibitor.save!
+          exhibitor.exhibitor_kit
         end
       end
 

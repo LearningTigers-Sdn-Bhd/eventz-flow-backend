@@ -21,7 +21,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Booth/company info - optional but validated if provided
   validates :booth_number, presence: true, allow_blank: true
-  validates :name_on_fascia, length: { maximum: 25 }, allow_blank: true
+  validates :name_on_fascia, length: { maximum: 30 }, allow_blank: true
   validates :company_name, presence: true, allow_blank: true
   validates :company_address, presence: true, allow_blank: true
   
