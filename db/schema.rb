@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
+ActiveRecord::Schema[8.0].define(version: 2026_02_26_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -469,6 +469,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
     t.index ["user_id"], name: "index_exhibition_contractor_profiles_on_user_id"
   end
 
+  create_table "exhibitor_booth_prices", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "booth_type", null: false
+    t.string "label", null: false
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "booth_type", "label"], name: "idx_exhibitor_booth_prices_unique", unique: true
+    t.index ["event_id"], name: "index_exhibitor_booth_prices_on_event_id"
+  end
+
   create_table "exhibitor_kit_admin_notes", force: :cascade do |t|
     t.bigint "exhibitor_kit_id", null: false
     t.bigint "user_id", null: false
@@ -549,7 +560,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
     t.decimal "amount_paid", precision: 10, scale: 2
     t.text "payment_note"
     t.string "indemnity_link"
+    t.string "country"
+    t.string "pic_position"
+    t.jsonb "custom_fields_data", default: {}, null: false
+    t.bigint "exhibitor_booth_price_id"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
   end
 
   create_table "exhibitor_owners", force: :cascade do |t|
@@ -560,6 +576,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_exhibitor_owners_on_name"
+  end
+
+  create_table "exhibitor_registration_payments", force: :cascade do |t|
+    t.bigint "exhibitor_kit_id", null: false
+    t.decimal "amount", precision: 10, scale: 2, null: false
+    t.string "status", default: "pending", null: false
+    t.string "gateway"
+    t.string "gateway_payment_id"
+    t.string "payment_method"
+    t.jsonb "gateway_response", default: {}, null: false
+    t.datetime "paid_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_registration_payments_on_exhibitor_kit_id", unique: true
+    t.index ["gateway_payment_id"], name: "index_exhibitor_registration_payments_on_gateway_payment_id"
   end
 
   create_table "exhibitor_team_member_limits", force: :cascade do |t|
@@ -816,7 +847,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
-    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -828,6 +858,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -1252,6 +1283,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
   add_foreign_key "exhibition_contractor_profiles", "users"
+  add_foreign_key "exhibitor_booth_prices", "events"
   add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_admin_notes", "users"
   add_foreign_key "exhibitor_kit_items", "exhibitor_kit_payments"
@@ -1263,6 +1295,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_25_032055) do
   add_foreign_key "exhibitor_kit_printings", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
+  add_foreign_key "exhibitor_kits", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_registration_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_limits", "events"
   add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_payments", "users", column: "payee_id"

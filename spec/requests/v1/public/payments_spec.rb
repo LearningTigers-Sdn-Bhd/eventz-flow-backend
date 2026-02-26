@@ -119,5 +119,49 @@ RSpec.describe "V1::Public::Payments", type: :request do
       expect(pending_ticket.payment_status).to eq("pending")
       expect(pending_ticket.status).to eq("pending_payment")
     end
+
+    it "marks exhibitor registration payment as paid for exhibitor webhook notes" do
+      vendor = create(:user, :vendor, email: "exhibitor@example.com")
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      booth_price = create(:exhibitor_booth_price, event: event, booth_type: "shell_scheme", label: "Malaysian", price: 1500)
+      exhibitor_kit = exhibitor.exhibitor_kit
+      exhibitor_kit.update!(
+        exhibitor_booth_price: booth_price,
+        amount_paid: 1500,
+        payment_status: :unpaid,
+      )
+
+      payload = {
+        event: "payment.captured",
+        payload: {
+          payment: {
+            entity: {
+              id: "pay_exhibitor_webhook_123",
+              order_id: "order_exhibitor_webhook_123",
+              notes: {
+                type: "exhibitor_registration",
+                exhibitor_kit_id: exhibitor_kit.id,
+              },
+            },
+          },
+        },
+      }
+
+      allow(Payments::RazorpayGateway).to receive(:valid_webhook_signature?).and_return(true)
+
+      post "/v1/public/payments/webhook", params: payload.to_json, headers: {
+        "CONTENT_TYPE" => "application/json",
+        "X-Razorpay-Signature" => "valid_webhook_signature",
+      }
+
+      expect(response).to have_http_status(:ok)
+      exhibitor_kit.reload
+      payment = exhibitor_kit.exhibitor_registration_payment
+
+      expect(exhibitor_kit.payment_status).to eq("paid")
+      expect(payment).to be_present
+      expect(payment.status).to eq("paid")
+      expect(payment.gateway_payment_id).to eq("pay_exhibitor_webhook_123")
+    end
   end
 end

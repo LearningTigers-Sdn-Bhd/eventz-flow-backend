@@ -41,11 +41,12 @@ class ExhibitorKitPolicy < ApplicationPolicy
   def exhibitor_kit_attributes
     [
       :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required, :side_wall_right_required,
-      :name_on_fascia, :fascia_upgrade_required, :company_name, :company_address, :pic_full_name,
-      :pic_contact_number, :pic_email_address, :special_requirements,
+      :name_on_fascia, :fascia_upgrade_required, :company_name, :company_address, :country, :pic_full_name,
+      :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :qr_code_url, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
+      { custom_fields_data: {} },
       { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
       { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
       { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
@@ -69,10 +70,11 @@ class ExhibitorKitPolicy < ApplicationPolicy
   def exhibitor_update_attributes
     [
       :booth_dimensions, :side_wall_left_required, :side_wall_right_required,
-      :name_on_fascia, :fascia_upgrade_required, :company_address, :pic_full_name,
-      :pic_contact_number, :pic_email_address, :special_requirements,
+      :name_on_fascia, :fascia_upgrade_required, :company_address, :country, :pic_full_name,
+      :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
+      { custom_fields_data: {} },
       { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
       { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
       { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },

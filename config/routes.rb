@@ -40,9 +40,15 @@ Rails.application.routes.draw do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
+        post 'register_exhibitor', to: 'exhibitor_registrations#create'
+        get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
         match 'payments/callback', to: 'payments#callback', via: [:get, :post]
+        post 'exhibitor_payments/create_order', to: 'exhibitor_payments#create_order'
+        post 'exhibitor_payments/verify', to: 'exhibitor_payments#verify'
+        match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: [:get, :post]
         post 'register', to: 'registrations#create'
       end
     end
@@ -109,6 +115,7 @@ Rails.application.routes.draw do
       end
       resources :event_locations, only: [:index, :show, :create, :update, :destroy]
       resources :registration_forms, only: [:index, :show, :create, :update, :destroy]
+      resources :exhibitor_booth_prices, only: [:index, :create]
 
       # Vendor invitations
       resources :vendor_invitations, only: [] do
@@ -503,5 +510,7 @@ Rails.application.routes.draw do
     resources :event_printing_services, only: [] do
       resources :event_printing_service_prices, controller: 'event_printing_service_prices'
     end
+
+    resources :exhibitor_booth_prices, only: [:update, :destroy]
   end
 end
