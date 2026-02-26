@@ -1,71 +1,66 @@
 class AutoDistributeService
   def initialize(plan)
     @plan = plan
-    # Fetch tables, ordered by z_index for consistent filling order
     @tables = plan.plan_objects.object_type_table.order(z_index: :asc)
     
-    # Fetch unassigned tickets for the event
-    # Using 'active' scope to ensure we don't assign canceled/refunded tickets
+    # Fetch all unassigned participants (both tickets and visitors)
     @unassigned_tickets = plan.event.tickets.active.unassigned
+    @unassigned_visitors = plan.event.visitors.unassigned
   end
 
   def call
-    # 1. Group tickets by transaction_id (to keep purchases together)
-    # Tickets without transaction_id are treated as individual groups
-    grouped_tickets = @unassigned_tickets.group_by { |t| t.transaction_id || "single_#{t.id}" }
-                                         .values
-                                         .sort_by { |members| -members.size }
+    # Combine tickets and visitors into a single list of assignables
+    all_unassigned = @unassigned_tickets.to_a + @unassigned_visitors.to_a
+    
+    # Group tickets by transaction_id, visitors are treated as single-member groups
+    grouped_participants = all_unassigned.group_by do |participant|
+      if participant.is_a?(Ticket) && participant.transaction_id.present?
+        "ticket_group_#{participant.transaction_id}"
+      else
+        "single_#{participant.class.name}_#{participant.id}"
+      end
+    end.values.sort_by { |members| -members.size }
     
     ActiveRecord::Base.transaction do
-      grouped_tickets.each do |members|
-        # 2. Try to find a single table that fits the WHOLE group
+      grouped_participants.each do |members|
         target_table = find_perfect_fit_table(members.size)
         
         if target_table
-          assign_tickets_to_table(members, target_table)
+          assign_participants_to_table(members, target_table)
         else
-          # 3. If no single table fits, split the group across the emptiest available tables
           split_group_across_tables(members)
         end
       end
     end
     
-    # Return result summary
     {
-      assigned_count: @plan.plan_objects.sum { |po| po.table_assignments.count },
-      remaining_unassigned: @plan.event.tickets.active.unassigned.count
+      assigned_count: @plan.table_assignments.count,
+      remaining_unassigned: @plan.event.tickets.active.unassigned.count + @plan.event.visitors.unassigned.count
     }
   end
 
   private
 
-  # Find first table with enough *remaining* capacity
   def find_perfect_fit_table(needed_seats)
-    @tables.each do |table|
-      # We must calculate remaining capacity dynamically as we fill tables
-      remaining_capacity = table.capacity - table.table_assignments.count
-      return table if remaining_capacity >= needed_seats
+    @tables.find do |table|
+      (table.capacity - table.table_assignments.count) >= needed_seats
     end
-    nil
   end
 
-  # Distribute members one-by-one into the first available table
-  # This maximizes group cohesion (fills one table before moving to next)
   def split_group_across_tables(members)
-    members.each do |ticket|
-      # Re-calculate best table for every ticket in case capacity shifted
-      # Find first table with ANY space
+    members.each do |participant|
       best_table = @tables.find { |t| (t.capacity - t.table_assignments.count) > 0 }
-      
-      if best_table
-        assign_tickets_to_table([ticket], best_table)
-      end
+      assign_participants_to_table([participant], best_table) if best_table
     end
   end
 
-  def assign_tickets_to_table(tickets, table)
-    tickets.each do |ticket|
-      TableAssignment.create!(ticket: ticket, plan_object: table)
+  def assign_participants_to_table(participants, table)
+    participants.each do |participant|
+      if participant.is_a?(Ticket)
+        TableAssignment.create!(ticket: participant, plan_object: table)
+      elsif participant.is_a?(Visitor)
+        TableAssignment.create!(visitor: participant, plan_object: table)
+      end
     end
   end
 end

@@ -24,9 +24,6 @@ class PlanPdfGenerator
       offset_x = (pdf_w - (cw * scale)) / 2
       offset_y = (pdf_h - (ch * scale)) / 2
 
-      # Draw border for canvas
-      pdf.stroke_rectangle [offset_x, pdf_h - offset_y], cw * scale, ch * scale
-
       @plan.plan_objects.includes(table_assignments: :ticket).each do |obj|
         # Coords: Web (Top-Left) -> PDF (Bottom-Left)
         # Web: (x, y) is top-left of object
@@ -59,6 +56,29 @@ class PlanPdfGenerator
              pdf.text_box obj.label || "", at: [0, h], width: w, height: h, align: :center, valign: :center, size: [8, w/4].min
           end
           
+        elsif obj.object_type_floor?
+          if obj.path.present?
+            begin
+              # Construct a minimal SVG for the path
+              svg_content = <<~SVG
+                <svg width="#{obj.width}" height="#{obj.height}" viewBox="0 0 #{obj.width} #{obj.height}" xmlns="http://www.w3.org/2000/svg">
+                  <path d="#{obj.path}" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+                </svg>
+              SVG
+              pdf.svg svg_content, at: [draw_x, draw_y], width: w, height: h
+            rescue => e
+              # Fallback to rectangle if SVG parsing fails
+              pdf.fill_color "FFFFFF"
+              pdf.stroke_color "E2E8F0"
+              pdf.fill_and_stroke_rectangle [draw_x, draw_y], w, h
+            end
+          else
+            pdf.fill_color "FFFFFF"
+            pdf.stroke_color "E2E8F0"
+            pdf.fill_and_stroke_rectangle [draw_x, draw_y], w, h
+          end
+          pdf.fill_color "000000"
+          pdf.stroke_color "000000"
         elsif obj.object_type_wall?
            pdf.fill_color "CCCCCC"
            pdf.fill_rectangle [draw_x, draw_y], w, h

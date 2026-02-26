@@ -24,7 +24,7 @@ module V1
       ActiveRecord::Base.transaction do
         if params[:plan_objects].present?
           params[:plan_objects].each do |obj_params|
-            permitted = obj_params.permit(:id, :object_type, :layer, :x, :y, :rotation, :width, :height, :label, :capacity, :locked, :z_index)
+            permitted = obj_params.permit(:id, :object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index)
             # Find object ensuring it belongs to the plan
             obj = @plan.plan_objects.find_by(id: permitted[:id])
             if obj
@@ -59,7 +59,7 @@ module V1
     end
 
     def plan_object_params
-      params.require(:plan_object).permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :label, :capacity, :locked, :z_index)
+      params.require(:plan_object).permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index)
     end
   end
 end

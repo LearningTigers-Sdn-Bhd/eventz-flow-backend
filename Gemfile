@@ -107,3 +107,5 @@ gem "rqrcode", "~> 2.0"
 # .env for development
 gem "dotenv-rails", groups: [:development, :test]
 gem "prawn", "~> 2.5"
+
+gem "prawn-svg", "~> 0.38.1"

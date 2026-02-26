@@ -5,6 +5,7 @@ class Plan < ApplicationRecord
   has_secure_token :share_token
 
   validates :name, presence: true
-  validates :canvas_width, numericality: { greater_than: 0 }, allow_nil: true
-  validates :canvas_height, numericality: { greater_than: 0 }, allow_nil: true
+  validates :canvas_width, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :canvas_height, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :pixels_per_unit, numericality: { greater_than: 0 }, allow_nil: true
 end

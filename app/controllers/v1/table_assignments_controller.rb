@@ -29,10 +29,10 @@ module V1
     end
 
     def destroy
-      if params[:ticket_id].present?
-        @assignment = TableAssignment.find_by!(ticket_id: params[:ticket_id])
-      elsif params[:visitor_id].present?
+      if params[:visitor_id].present?
         @assignment = TableAssignment.find_by!(visitor_id: params[:visitor_id])
+      elsif params[:ticket_id].present?
+        @assignment = TableAssignment.find_by!(ticket_id: params[:ticket_id])
       else
         return render json: { error: "ticket_id or visitor_id is required" }, status: :unprocessable_entity
       end

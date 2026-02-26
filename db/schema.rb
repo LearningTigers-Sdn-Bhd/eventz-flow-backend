@@ -807,14 +807,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.integer "z_index", default: 0
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "path"
     t.index ["plan_id"], name: "index_plan_objects_on_plan_id"
   end
 
   create_table "plans", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "name"
-    t.float "canvas_width"
-    t.float "canvas_height"
+    t.float "canvas_width", default: 0.0
+    t.float "canvas_height", default: 0.0
     t.float "pixels_per_unit", default: 20.0
     t.boolean "public_enabled", default: false
     t.string "share_token"
