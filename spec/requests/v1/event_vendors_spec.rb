@@ -498,7 +498,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
           run_test! do |response|
             data = JSON.parse(response.body)
-            expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 25 characters)')
+            expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 30 characters)')
           end
         end
       end 
