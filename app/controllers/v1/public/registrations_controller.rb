@@ -13,14 +13,14 @@ module V1
 
         render json: {
           success: true,
-          data: forms.map { |f|
+          data: forms.map do |f|
             {
               slug: f.slug,
               name: f.name,
               description: f.description,
-              custom_labels_data: f.custom_labels_data || [],
+              custom_labels_data: f.custom_labels_data || []
             }
-          }
+          end
         }
       end
 
@@ -32,12 +32,12 @@ module V1
         if email.blank?
           return render json: {
             success: false,
-            message: "Email is required"
+            message: 'Email is required'
           }, status: :unprocessable_content
         end
 
         tickets = event.tickets.where(
-          "LOWER(attendee_email) = :email OR LOWER(registered_by_email) = :email",
+          'LOWER(attendee_email) = :email OR LOWER(registered_by_email) = :email',
           email: email
         )
         if form_slug.present?
@@ -46,27 +46,27 @@ module V1
         end
 
         pending_tickets = tickets
-          .where(status: :pending_payment, payment_status: [:pending, :failed])
-          .includes(:ticket_type)
-          .order(created_at: :desc)
+                          .where(status: :pending_payment, payment_status: %i[pending failed])
+                          .includes(:ticket_type)
+                          .order(created_at: :desc)
 
         paid_tickets = tickets
-          .where(payment_status: :paid)
-          .where.not(status: [:canceled, :refunded])
-          .includes(:ticket_type)
-          .order(created_at: :desc)
+                       .where(payment_status: :paid)
+                       .where.not(status: %i[canceled refunded])
+                       .includes(:ticket_type)
+                       .order(created_at: :desc)
 
         render json: {
           success: true,
           data: {
             has_pending_payment: pending_tickets.exists?,
             has_paid_ticket: paid_tickets.exists?,
-            pending_tickets: pending_tickets.limit(5).map { |ticket|
+            pending_tickets: pending_tickets.limit(5).map do |ticket|
               serialize_status_ticket(ticket)
-            },
-            paid_tickets: paid_tickets.limit(5).map { |ticket|
+            end,
+            paid_tickets: paid_tickets.limit(5).map do |ticket|
               serialize_status_ticket(ticket)
-            }
+            end
           }
         }
       end
@@ -77,7 +77,7 @@ module V1
         unless event.published?
           return render json: {
             success: false,
-            message: "Registration is not open for this event"
+            message: 'Registration is not open for this event'
           }, status: :unprocessable_content
         end
 
@@ -89,7 +89,7 @@ module V1
           unless form
             return render json: {
               success: false,
-              message: "Registration form not found"
+              message: 'Registration form not found'
             }, status: :not_found
           end
 
@@ -97,7 +97,7 @@ module V1
           unless allowed_ticket_type_ids.include?(params[:ticket_type_id].to_i)
             return render json: {
               success: false,
-              message: "Ticket type is not allowed for the selected registration form"
+              message: 'Ticket type is not allowed for the selected registration form'
             }, status: :unprocessable_content
           end
 
@@ -110,11 +110,11 @@ module V1
         ticket.ticket_type = ticket_type
 
         if ticket_type.current_price.zero?
-          ticket.status = "purchased"
-          ticket.payment_status = "paid"
+          ticket.status = 'purchased'
+          ticket.payment_status = 'paid'
         else
-          ticket.status = "pending_payment"
-          ticket.payment_status = "pending"
+          ticket.status = 'pending_payment'
+          ticket.payment_status = 'pending'
         end
 
         if ticket.save
@@ -142,12 +142,12 @@ module V1
           unless form
             return render json: {
               success: false,
-              message: "Registration form not found"
+              message: 'Registration form not found'
             }, status: :not_found
           end
 
           mappings = form.registration_form_ticket_types
-            .where(ticket_type_id: available_ticket_types.select(:id))
+                         .where(ticket_type_id: available_ticket_types.select(:id))
 
           rule_by_ticket_type_id = mappings.index_by(&:ticket_type_id)
           available_ticket_types = available_ticket_types.where(id: rule_by_ticket_type_id.keys)
@@ -160,6 +160,7 @@ module V1
             id: tt.id,
             name: tt.name,
             price: tt.current_price,
+            original_price: tt.price,
             current_tier: tt.active_tier&.label,
             available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
             custom_fields_data: tt.custom_fields_data,
@@ -213,7 +214,7 @@ module V1
           payment_status: ticket.payment_status,
           status: ticket.status,
           custom_fields_data: ticket.custom_fields_data || {},
-          qr_code_data: ticket.public_id,
+          qr_code_data: ticket.public_id
         }
       end
     end

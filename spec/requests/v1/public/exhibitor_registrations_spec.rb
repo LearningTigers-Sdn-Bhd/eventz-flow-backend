@@ -158,6 +158,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']['payment_status']).to eq('paid')
       expect(json['data']['company_name']).to eq(exhibitor_kit.company_name)
       expect(json['data']['pic_email_address']).to eq('amin@example.com')
+      expect(json['data']['zone']).to eq('zone_d')
     end
   end
 end

@@ -233,7 +233,8 @@ module V1
             preferred_booth_location: nil,
             other_services: [],
             booth_label: nil,
-            price: nil
+            price: nil,
+            zone: nil
           }
         end
 
@@ -251,7 +252,8 @@ module V1
           preferred_booth_location: exhibitor_kit.custom_fields_data&.dig('preferred_booth_location'),
           other_services: exhibitor_kit.custom_fields_data&.dig('other_services') || [],
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
-          price: exhibitor_kit.amount_paid
+          price: exhibitor_kit.amount_paid,
+          zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone
         }
       end
 
