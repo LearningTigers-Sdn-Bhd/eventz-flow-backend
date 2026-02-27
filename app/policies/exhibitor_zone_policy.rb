@@ -1,4 +1,4 @@
-class ExhibitorZoneQuotaPolicy < ApplicationPolicy
+class ExhibitorZonePolicy < ApplicationPolicy
   def create?
     user.org_owner? || user.organizer? || user.is_event_staff?(record.event)
   end
@@ -17,8 +17,9 @@ class ExhibitorZoneQuotaPolicy < ApplicationPolicy
 
       scope.joins(:event)
            .where(events: { id: user.event_assignments
-             .where(role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]])
-             .select(:event_id) })
+                                .where(role: [EventAssignment.roles[:event_admin],
+                                              EventAssignment.roles[:event_team_member]])
+                                .select(:event_id) })
     end
   end
 end

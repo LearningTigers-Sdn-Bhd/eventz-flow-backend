@@ -4,7 +4,7 @@ Rails.application.routes.draw do
   # Mount LetterOpenerWeb for email preview in development
   if Rails.env.development?
     require 'letter_opener_web' # Explicitly require the gem
-    mount LetterOpenerWeb::Engine, at: "/letter_opener"
+    mount LetterOpenerWeb::Engine, at: '/letter_opener'
   end
 
   # Rswag Documentation Endpoints
@@ -13,7 +13,7 @@ Rails.application.routes.draw do
     mount Rswag::Api::Engine => '/api-docs'
   end
 
-  get "up" => "rails/health#show", as: :rails_health_check
+  get 'up' => 'rails/health#show', as: :rails_health_check
 
   # ====================================================================
   # API Namespace V1
@@ -25,12 +25,12 @@ Rails.application.routes.draw do
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
         # Public check-in endpoint - scoped to event
-        resource :check_in, only: [:show, :create], controller: 'check_ins'
+        resource :check_in, only: %i[show create], controller: 'check_ins'
         # Public check-in display settings
         resource :check_in_display, only: [:show], controller: 'check_in_displays'
       end
       # Public voucher showcase - accessible without login
-      resources :vouchers, only: [:index, :show]
+      resources :vouchers, only: %i[index show]
       # Public booking details
       resources :bookings, only: [:show]
 
@@ -45,10 +45,10 @@ Rails.application.routes.draw do
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
-        match 'payments/callback', to: 'payments#callback', via: [:get, :post]
+        match 'payments/callback', to: 'payments#callback', via: %i[get post]
         post 'exhibitor_payments/create_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_payments/verify', to: 'exhibitor_payments#verify'
-        match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: [:get, :post]
+        match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
       end
     end
@@ -74,12 +74,11 @@ Rails.application.routes.draw do
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
-
       # GET /v1/users/profile  <- Maps to users#show
       # PUT /v1/users/profile  <- Maps to users#update
       # This replaces the singular resource :profile to fix the RSpec routing error
       collection do
-        # Note: If your controller uses a dedicated action (e.g., profile_show)
+        # NOTE: If your controller uses a dedicated action (e.g., profile_show)
         # you would update the 'to:' parameter here. Assuming users#show/update work with current_user.
         get :profile, to: 'users#show'
         put :profile, to: 'users#update'
@@ -93,7 +92,7 @@ Rails.application.routes.draw do
 
     resources :item_categories
     # 3. GLOBAL TICKET TYPES (Templates - event_id is null)
-    resources :ticket_types, only: [:index, :show, :create, :update, :destroy] do
+    resources :ticket_types, only: %i[index show create update destroy] do
       resources :price_tiers, controller: 'ticket_type_price_tiers'
     end
 
@@ -103,20 +102,20 @@ Rails.application.routes.draw do
         delete :force_delete
         patch :restore
       end
-      resources :ticket_types, only: [:index, :show, :create, :update, :destroy] do
+      resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
       end
-      resources :tickets, only: [:index, :show, :create, :update, :destroy] do
+      resources :tickets, only: %i[index show create update destroy] do
         member do
           delete :force_delete
           patch :cancel_ticket
           patch :restore
         end
       end
-      resources :event_locations, only: [:index, :show, :create, :update, :destroy]
-      resources :registration_forms, only: [:index, :show, :create, :update, :destroy]
-      resources :exhibitor_booth_prices, only: [:index, :create]
-      resources :exhibitor_zone_quotas, only: [:index, :create]
+      resources :event_locations, only: %i[index show create update destroy]
+      resources :registration_forms, only: %i[index show create update destroy]
+      resources :exhibitor_booth_prices, only: %i[index create]
+      resources :exhibitor_zones, only: %i[index create]
 
       # Vendor invitations
       resources :vendor_invitations, only: [] do
@@ -127,12 +126,12 @@ Rails.application.routes.draw do
       end
 
       # New: Event Staff Management (GET/POST/DELETE)
-      resources :staff, only: [:index, :create], controller: 'event_staff' do
+      resources :staff, only: %i[index create], controller: 'event_staff' do
         # DELETE /v1/events/:event_id/staff/:user_id
         delete ':user_id', to: 'event_staff#destroy', on: :collection, as: :remove_member
       end
 
-      resources :vendors, controller: 'event_vendors', only: [:index, :create, :update, :destroy] do
+      resources :vendors, controller: 'event_vendors', only: %i[index create update destroy] do
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
@@ -140,7 +139,7 @@ Rails.application.routes.draw do
         end
       end
 
-      resources :visitors, only: [:index, :show, :create, :update, :destroy]
+      resources :visitors, only: %i[index show create update destroy]
 
       resources :voucher_analytics, only: [:index], controller: 'voucher_analytics' do
         collection do
@@ -151,9 +150,9 @@ Rails.application.routes.draw do
       resources :vouchers, only: [:index]
 
       # Nested resource for Event Exhibition Contractor
-      resource :event_exhibition_contractor, only: [:show, :create, :destroy]
+      resource :event_exhibition_contractor, only: %i[show create destroy]
 
-      resources :event_printing_services, only: [:index, :show, :create, :update, :destroy] do
+      resources :event_printing_services, only: %i[index show create update destroy] do
         resources :event_printing_service_prices, controller: 'event_printing_service_prices'
       end
 
@@ -162,23 +161,23 @@ Rails.application.routes.draw do
 
       # NOTE: Create action disabled - items are now auto-linked when contractor is assigned to event
       # resources :event_rentable_items do
-      resources :event_rentable_items, only: [:index, :show, :update, :destroy] do
+      resources :event_rentable_items, only: %i[index show update destroy] do
         resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
       end
 
-      resources :exhibitor_kits, only: [:index, :show, :create, :update, :destroy] do
+      resources :exhibitor_kits, only: %i[index show create update destroy] do
         member do
           post :submit_order
         end
-        resources :exhibitor_kit_payments, only: [:index, :show, :update]
-        resources :exhibitor_team_member_payments, only: [:index, :show, :create, :update]
+        resources :exhibitor_kit_payments, only: %i[index show update]
+        resources :exhibitor_team_member_payments, only: %i[index show create update]
       end
 
       # Exhibitor team member limit settings (singular - one per event)
-      resource :exhibitor_team_member_limit, only: [:show, :create, :update, :destroy]
+      resource :exhibitor_team_member_limit, only: %i[show create update destroy]
 
       # Check-in display settings (singular - one per event)
-      resource :check_in_display, only: [:show, :update] do
+      resource :check_in_display, only: %i[show update] do
         post :announce, on: :member
       end
 
@@ -192,8 +191,8 @@ Rails.application.routes.draw do
             get :background_manager, path: 'background-manager'
             post :background_manager, path: 'background-manager'
           end
-          resources :gifts, only: [:index, :show, :create, :update, :destroy] do
-            resources :winners, only: [:create, :destroy], controller: 'gift_winners' do
+          resources :gifts, only: %i[index show create update destroy] do
+            resources :winners, only: %i[create destroy], controller: 'gift_winners' do
               member do
                 post :notify
               end
@@ -203,7 +202,7 @@ Rails.application.routes.draw do
             end
           end
           resources :participants, only: [:index], controller: 'lucky_draw_participants'
-          resources :invalid_participants, only: [:index, :create, :destroy] do
+          resources :invalid_participants, only: %i[index create destroy] do
             member do
               post :notify
             end
@@ -221,9 +220,9 @@ Rails.application.routes.draw do
             get :background_manager, path: 'background-manager'
             post :background_manager, path: 'background-manager'
           end
-          resources :assigns, only: [:index, :create, :destroy], controller: 'roulette_assigns'
-          resources :prizes, only: [:index, :show, :create, :update, :destroy], controller: 'roulette_prizes'
-          resources :winners, only: [:index, :create, :destroy], controller: 'roulette_winners' do
+          resources :assigns, only: %i[index create destroy], controller: 'roulette_assigns'
+          resources :prizes, only: %i[index show create update destroy], controller: 'roulette_prizes'
+          resources :winners, only: %i[index create destroy], controller: 'roulette_winners' do
             member do
               post :notify
             end
@@ -235,9 +234,9 @@ Rails.application.routes.draw do
       # Event Metrics moved outside to avoid impacting event resources
     end
 
-      # Seat Ticketing
+    # Seat Ticketing
     namespace :seat_ticketing do
-      resources :public_sessions, only: [:index, :show] do
+      resources :public_sessions, only: %i[index show] do
         member do
           get :section_seats
           post :checkout
@@ -283,10 +282,10 @@ Rails.application.routes.draw do
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'
-        resources :bookings, only: [:index, :create, :update] do
-            collection do
-                get :generate_report
-            end
+        resources :bookings, only: %i[index create update] do
+          collection do
+            get :generate_report
+          end
         end
       end
 
@@ -332,14 +331,14 @@ Rails.application.routes.draw do
     post 'imports/visitors', to: 'imports#visitors' # POST /v1/imports/visitors
 
     # 5b. TICKET EXPORTS (separate resource for export management)
-    resources :ticket_exports, only: [:index, :show, :create], path: 'tickets/exports' do
+    resources :ticket_exports, only: %i[index show create], path: 'tickets/exports' do
       # GET /v1/tickets/exports?event_id=1 - List all exports for an event
       # GET /v1/tickets/exports/:id - Download a specific export file
       # POST /v1/tickets/exports - Create new export (generates file)
     end
 
     # 6. TEAM MEMBERS MANAGEMENT
-    resources :team_members, only: [:index, :show, :create, :update, :destroy] do
+    resources :team_members, only: %i[index show create update destroy] do
       collection do
         get 'organizer/:organizer_id', to: 'team_members#organizer_members'
       end
@@ -349,15 +348,15 @@ Rails.application.routes.draw do
     end
 
     resources :groups do
-      resources :members, controller: 'group_members', only: [:index, :create, :update, :destroy]
-      resources :affiliates, controller: 'group_affiliates', only: [:index, :create, :destroy]
+      resources :members, controller: 'group_members', only: %i[index create update destroy]
+      resources :affiliates, controller: 'group_affiliates', only: %i[index create destroy]
     end
 
     # Vendor profile management (vendor-centric, not group-specific)
-    resource :vendor_profile, only: [:show, :update]
+    resource :vendor_profile, only: %i[show update]
 
     # Payment details (bank account info for payees)
-    resource :payment_detail, only: [:show, :create, :update, :destroy] do
+    resource :payment_detail, only: %i[show create update destroy] do
       get :me, on: :collection
     end
 
@@ -367,7 +366,7 @@ Rails.application.routes.draw do
     # Contractor dashboard
     get 'contractor/dashboard', to: 'contractor_dashboard#index'
 
-    resources :vendors, only: [:index, :show, :create, :update, :destroy] do
+    resources :vendors, only: %i[index show create update destroy] do
       member do
         patch :toggle_status
         get :profile, to: 'vendor_profiles#show'
@@ -375,7 +374,7 @@ Rails.application.routes.draw do
       end
     end
 
-    resources :vouchers, only: [:index, :show, :create, :update, :destroy]
+    resources :vouchers, only: %i[index show create update destroy]
     resources :voucher_redemptions, only: [:create]
 
     # 7. GLOBAL METRICS
@@ -387,14 +386,14 @@ Rails.application.routes.draw do
     end
 
     resources :events do
-      resources :event_sponsorship_tiers, only: [:index, :create, :update, :destroy]
-      resources :event_sponsorships, only: [:index, :create, :show, :update, :destroy]
+      resources :event_sponsorship_tiers, only: %i[index create update destroy]
+      resources :event_sponsorships, only: %i[index create show update destroy]
     end
 
     resources :event_sponsorships, only: [] do
-      resources :event_sponsorship_payments, only: [:index, :create, :update, :destroy]
-      resources :event_sponsorship_attachments, only: [:index, :create, :destroy]
-      resources :event_sponsorship_items, only: [:index, :create, :update, :destroy]
+      resources :event_sponsorship_payments, only: %i[index create update destroy]
+      resources :event_sponsorship_attachments, only: %i[index create destroy]
+      resources :event_sponsorship_items, only: %i[index create update destroy]
     end
 
     scope :metrics do
@@ -425,13 +424,13 @@ Rails.application.routes.draw do
     end
 
     # 8. API KEYS MANAGEMENT
-    resources :api_keys, only: [:index, :create, :destroy]
+    resources :api_keys, only: %i[index create destroy]
 
     # 9. GENERIC UPLOADS
     resources :uploads, only: [:create]
 
     # Exhibition Contractors (user accounts with exhibition_contractor role)
-    resources :exhibition_contractors, only: [:index, :show, :create, :update, :destroy] do
+    resources :exhibition_contractors, only: %i[index show create update destroy] do
       collection do
         get :available
       end
@@ -442,7 +441,7 @@ Rails.application.routes.draw do
     end
 
     # Exhibition Contractor Profiles (profile data only)
-    resources :exhibition_contractor_profiles, only: [:show, :update]
+    resources :exhibition_contractor_profiles, only: %i[show update]
 
     resources :rentable_items
     resources :printing_services
@@ -460,10 +459,10 @@ Rails.application.routes.draw do
       get 'owner', to: 'resources#index_owner', as: 'owner_resources'
 
       # /v1/resources/permissions
-      resources :permissions, controller: 'resources_permissions', except: [:new, :edit], as: 'resources_permissions'
+      resources :permissions, controller: 'resources_permissions', except: %i[new edit], as: 'resources_permissions'
 
       # /v1/resources/topics
-      resources :topics, controller: 'resources_topics', except: [:new, :edit], as: 'resources_topics' do
+      resources :topics, controller: 'resources_topics', except: %i[new edit], as: 'resources_topics' do
         member do
           post :restore
           delete :force_destroy
@@ -471,7 +470,7 @@ Rails.application.routes.draw do
       end
 
       # /v1/resources/categories
-      resources :categories, controller: 'resources_categories', except: [:new, :edit], as: 'resources_categories' do
+      resources :categories, controller: 'resources_categories', except: %i[new edit], as: 'resources_categories' do
         member do
           post :restore
           delete :force_destroy
@@ -479,7 +478,7 @@ Rails.application.routes.draw do
       end
 
       # /v1/resources/media_types
-      resources :media_types, controller: 'resources_media_types', except: [:new, :edit], as: 'resources_media_types' do
+      resources :media_types, controller: 'resources_media_types', except: %i[new edit], as: 'resources_media_types' do
         member do
           post :restore
           delete :force_destroy
@@ -487,7 +486,7 @@ Rails.application.routes.draw do
       end
 
       # /v1/resources/leads
-      resources :leads, controller: 'resources_leads', only: [:index, :show, :create], as: 'resources_leads' do
+      resources :leads, controller: 'resources_leads', only: %i[index show create], as: 'resources_leads' do
         get :metrics, on: :collection
       end
 
@@ -497,7 +496,7 @@ Rails.application.routes.draw do
 
     # This is separate to avoid nesting under /resources
     # /v1/resources
-    resources :resources, controller: 'resources', except: [:new, :edit] do
+    resources :resources, controller: 'resources', except: %i[new edit] do
       member do
         get :public, action: :show_public
         post :restore
@@ -512,7 +511,7 @@ Rails.application.routes.draw do
       resources :event_printing_service_prices, controller: 'event_printing_service_prices'
     end
 
-    resources :exhibitor_booth_prices, only: [:update, :destroy]
-    resources :exhibitor_zone_quotas, only: [:update, :destroy]
+    resources :exhibitor_booth_prices, only: %i[update destroy]
+    resources :exhibitor_zones, only: %i[update destroy]
   end
 end

@@ -28,7 +28,7 @@ class Event < ApplicationRecord
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
   has_many :exhibitor_booth_prices, dependent: :destroy
-  has_many :exhibitor_zone_quotas, dependent: :destroy
+  has_many :exhibitor_zones, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
@@ -44,7 +44,7 @@ class Event < ApplicationRecord
   has_many :event_reminder_logs, dependent: :destroy
 
   # --- Callbacks ---
-  after_commit :send_webhook_notification, on: [:create, :update]
+  after_commit :send_webhook_notification, on: %i[create update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
 
   attr_accessor :skip_webhooks
@@ -69,12 +69,12 @@ class Event < ApplicationRecord
   # --- Scopes for specific event staff roles ---
 
   has_many :admins, -> { where(event_assignments: { role: :event_admin }) },
-         through: :event_assignments,
-         source: :user
+           through: :event_assignments,
+           source: :user
 
   has_many :team_members, -> { where(event_assignments: { role: :event_team_member }) },
-         through: :event_assignments,
-         source: :user
+           through: :event_assignments,
+           source: :user
 
   def waived_fees?
     # This assumes 'waived' is a payment_status enum value,
@@ -137,7 +137,7 @@ class Event < ApplicationRecord
     return unless webhook_url.present?
 
     event_type = determine_event_type
-    return if event_type.nil?  # Skip if no significant change
+    return if event_type.nil? # Skip if no significant change
 
     WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
   end
@@ -157,9 +157,7 @@ class Event < ApplicationRecord
     old_keys.each_with_index do |old_key, index|
       new_key = new_keys[index]
       # If there's a new key at this position and it's different, it's a rename
-      if new_key.present? && old_key != new_key
-        key_mapping[old_key] = new_key
-      end
+      key_mapping[old_key] = new_key if new_key.present? && old_key != new_key
     end
 
     # Update tickets and visitors if there are key changes
@@ -190,15 +188,15 @@ class Event < ApplicationRecord
     end
 
     # Only update if data actually changed
-    if updated_data != record.custom_fields_data
-      record.update_columns(custom_fields_data: updated_data)
-    end
+    return unless updated_data != record.custom_fields_data
+
+    record.update_columns(custom_fields_data: updated_data)
   end
 
   def end_date_must_be_after_start_date
-    if start_date.present? && end_date.present? && end_date < start_date
-      errors.add(:end_date, 'must be after the start date')
-    end
+    return unless start_date.present? && end_date.present? && end_date < start_date
+
+    errors.add(:end_date, 'must be after the start date')
   end
 
   def determine_event_type
@@ -207,7 +205,7 @@ class Event < ApplicationRecord
     return 'event.canceled' if previous_changes[:status]&.last == 2
     return 'event.updated' if significant_changes?
 
-    nil  # No webhook for minor changes
+    nil # No webhook for minor changes
   end
 
   def significant_changes?
@@ -221,15 +219,15 @@ class Event < ApplicationRecord
       event_type: event_type,
       webhook_id: SecureRandom.uuid,
       timestamp: Time.now.utc.iso8601,
-      api_version: "v1",
+      api_version: 'v1',
 
       # === EVENT DATA (Basic info only) ===
       event: {
-        id: self.id,
-        title: self.title,
-        status: self.status,
-        start_date: self.start_date&.iso8601,
-        end_date: self.end_date&.iso8601
+        id: id,
+        title: title,
+        status: status,
+        start_date: start_date&.iso8601,
+        end_date: end_date&.iso8601
       },
 
       # === CHANGES (what actually changed) ===
@@ -238,7 +236,7 @@ class Event < ApplicationRecord
   end
 
   def format_changes
-    self.previous_changes.except('updated_at').transform_values do |change|
+    previous_changes.except('updated_at').transform_values do |change|
       {
         from: change[0],
         to: change[1]

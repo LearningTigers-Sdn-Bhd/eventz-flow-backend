@@ -47,11 +47,11 @@ module V1
     end
 
     def exhibitor_booth_price_params
-      params.require(:exhibitor_booth_price).permit(:booth_type, :exhibitor_zone_quota_id, :label, :price)
+      params.require(:exhibitor_booth_price).permit(:booth_type, :exhibitor_zone_id, :label, :price)
     end
 
     def serialize_booth_price(booth_price)
-      booth_price.as_json.merge("zone" => booth_price.zone)
+      booth_price.as_json.merge('zone' => booth_price.zone)
     end
   end
 end
