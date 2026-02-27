@@ -8,6 +8,7 @@ class ExhibitorKit < ApplicationRecord
   has_many :exhibitor_kit_items, dependent: :destroy
   has_many :exhibitor_kit_printings, dependent: :destroy
   has_many :custom_requests, dependent: :destroy
+  has_one_attached :payment_proof, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true
@@ -24,7 +25,7 @@ class ExhibitorKit < ApplicationRecord
   validates :name_on_fascia, length: { maximum: 30 }, allow_blank: true
   validates :company_name, presence: true, allow_blank: true
   validates :company_address, presence: true, allow_blank: true
-  
+
   # PIC info - required
   validates :pic_full_name, presence: true
   validates :pic_contact_number, presence: true
@@ -71,7 +72,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
-    exhibitor_team_member_payments.where(status: [:pending, :submitted]).sum(:extra_member_count)
+    exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)
   end
 
   # Unpaid excess count (excludes members with verified or in-progress payments)

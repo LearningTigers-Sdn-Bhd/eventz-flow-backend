@@ -94,6 +94,69 @@ module V1
         render json: { success: false, message: 'Event or booth price not found' }, status: :not_found
       end
 
+      def upload_payment_proof
+        event = Event.friendly.find(params[:event_slug])
+        exhibitor_kit = find_exhibitor_kit_for_event!(event: event, exhibitor_kit_id: params[:exhibitor_kit_id])
+
+        zone = exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone
+        unless manual_payment_zone?(zone)
+          return render json: {
+            success: false,
+            message: 'Payment proof upload is only required for Zone A, B, or C'
+          }, status: :unprocessable_content
+        end
+
+        payment_proof = params[:payment_proof]
+        if payment_proof.blank?
+          return render json: { success: false, message: 'Payment proof is required' }, status: :unprocessable_content
+        end
+
+        unless allowed_payment_proof_type?(payment_proof)
+          return render json: {
+            success: false,
+            message: 'Payment proof must be a JPEG, PNG, GIF, WebP, or PDF'
+          }, status: :unprocessable_content
+        end
+
+        if payment_proof.size.to_i > 20.megabytes
+          return render json: {
+            success: false,
+            message: 'Payment proof is too large (max 20MB)'
+          }, status: :unprocessable_content
+        end
+
+        exhibitor_kit.payment_proof.attach(payment_proof)
+
+        render json: {
+          success: true,
+          data: {
+            exhibitor_kit_id: exhibitor_kit.id,
+            payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
+            payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil
+          }
+        }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { success: false, message: 'Event or exhibitor registration not found' }, status: :not_found
+      end
+
+      def remove_payment_proof
+        event = Event.friendly.find(params[:event_slug])
+        exhibitor_kit = find_exhibitor_kit_for_event!(event: event, exhibitor_kit_id: params[:exhibitor_kit_id])
+
+        exhibitor_kit.payment_proof.purge_later if exhibitor_kit.payment_proof.attached?
+
+        render json: {
+          success: true,
+          data: {
+            exhibitor_kit_id: exhibitor_kit.id,
+            payment_proof_uploaded: false,
+            payment_proof_url: nil
+          }
+        }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { success: false, message: 'Event or exhibitor registration not found' }, status: :not_found
+      end
+
       private
 
       def create_registration!(event:, booth_price:)
@@ -212,6 +275,8 @@ module V1
           amount_paid: exhibitor_kit.amount_paid,
           payment_status: exhibitor_kit.payment_status,
           payment_option: exhibitor_kit.custom_fields_data&.dig('payment_option') || 'now',
+          payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
+          payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil,
           exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
           custom_fields_data: exhibitor_kit.custom_fields_data || {}
         }
@@ -234,7 +299,9 @@ module V1
             other_services: [],
             booth_label: nil,
             price: nil,
-            zone: nil
+            zone: nil,
+            payment_proof_uploaded: false,
+            payment_proof_url: nil
           }
         end
 
@@ -253,7 +320,9 @@ module V1
           other_services: exhibitor_kit.custom_fields_data&.dig('other_services') || [],
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
           price: exhibitor_kit.amount_paid,
-          zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone
+          zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone,
+          payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
+          payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil
         }
       end
 
@@ -301,6 +370,22 @@ module V1
           .joins(:event_vendor, :exhibitor_booth_price)
           .where(exhibitor_booth_prices: { exhibitor_zone_id: zone_id })
           .count
+      end
+
+      def manual_payment_zone?(zone)
+        zone_value = zone.to_s.downcase.gsub(/[^a-z0-9]/, '')
+        %w[zonea zoneb zonec].include?(zone_value)
+      end
+
+      def allowed_payment_proof_type?(payment_proof)
+        payment_proof.content_type.in?(%w[image/jpeg image/png image/gif image/webp application/pdf])
+      end
+
+      def find_exhibitor_kit_for_event!(event:, exhibitor_kit_id:)
+        ExhibitorKit
+          .joins(:event_vendor)
+          .where(id: exhibitor_kit_id, event_vendors: { event_id: event.id, type: 'Exhibitor' })
+          .first!
       end
     end
   end

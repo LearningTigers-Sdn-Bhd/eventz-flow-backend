@@ -159,6 +159,139 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']['company_name']).to eq(exhibitor_kit.company_name)
       expect(json['data']['pic_email_address']).to eq('amin@example.com')
       expect(json['data']['zone']).to eq('zone_d')
+      expect(json['data']['payment_proof_uploaded']).to eq(false)
+      expect(json['data']['payment_proof_url']).to be_nil
+    end
+  end
+
+  describe 'POST /v1/public/events/:event_slug/exhibitor_payment_proof' do
+    let!(:manual_zone) { create(:exhibitor_zone, event: event, zone: 'zone_a', quota: 10) }
+    let!(:manual_booth_price) do
+      create(
+        :exhibitor_booth_price,
+        event: event,
+        exhibitor_zone: manual_zone,
+        booth_type: 'raw_space',
+        label: 'Diamond Package',
+        price: 100_000.00
+      )
+    end
+    let!(:manual_vendor) { create(:user, :vendor, email: 'manual@example.com') }
+    let!(:manual_exhibitor) { create(:exhibitor, event: event, vendor: manual_vendor) }
+    let!(:manual_kit) do
+      create(
+        :exhibitor_kit,
+        event_vendor: manual_exhibitor,
+        exhibitor_booth_price: manual_booth_price,
+        pic_email_address: 'manual@example.com',
+        custom_fields_data: { zone: 'zone_a' }
+      )
+    end
+
+    it 'uploads payment proof for manual payment zones' do
+      post "/v1/public/events/#{event.slug}/exhibitor_payment_proof",
+           params: {
+             exhibitor_kit_id: manual_kit.id,
+             payment_proof: fixture_file_upload(Rails.root.join('spec', 'fixtures', 'test_image.png'), 'image/png')
+           }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(true)
+      expect(json['data']['exhibitor_kit_id']).to eq(manual_kit.id)
+      expect(json['data']['payment_proof_uploaded']).to eq(true)
+      expect(json['data']['payment_proof_url']).to be_present
+      expect(manual_kit.reload.payment_proof).to be_attached
+    end
+
+    it 'rejects upload for non-manual payment zones' do
+      non_manual_vendor = create(:user, :vendor, email: 'zoned@example.com')
+      non_manual_exhibitor = create(:exhibitor, event: event, vendor: non_manual_vendor)
+      non_manual_kit = create(
+        :exhibitor_kit,
+        event_vendor: non_manual_exhibitor,
+        exhibitor_booth_price: booth_price,
+        pic_email_address: 'zoned@example.com',
+        custom_fields_data: { zone: 'zone_d' }
+      )
+
+      post "/v1/public/events/#{event.slug}/exhibitor_payment_proof",
+           params: {
+             exhibitor_kit_id: non_manual_kit.id,
+             payment_proof: fixture_file_upload(Rails.root.join('spec', 'fixtures', 'test_image.png'), 'image/png')
+           }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(false)
+      expect(json['message']).to eq('Payment proof upload is only required for Zone A, B, or C')
+    end
+
+    it 'rejects payment proof larger than 20MB' do
+      temp_file = Tempfile.new(['large-receipt', '.pdf'])
+      temp_file.binmode
+      temp_file.write('a' * (20.megabytes + 1))
+      temp_file.rewind
+
+      uploaded_file = Rack::Test::UploadedFile.new(temp_file.path, 'application/pdf')
+
+      post "/v1/public/events/#{event.slug}/exhibitor_payment_proof",
+           params: {
+             exhibitor_kit_id: manual_kit.id,
+             payment_proof: uploaded_file
+           }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(false)
+      expect(json['message']).to eq('Payment proof is too large (max 20MB)')
+    ensure
+      temp_file.close
+      temp_file.unlink
+    end
+  end
+
+  describe 'DELETE /v1/public/events/:event_slug/exhibitor_payment_proof' do
+    let!(:manual_zone) { create(:exhibitor_zone, event: event, zone: 'zone_b', quota: 10) }
+    let!(:manual_booth_price) do
+      create(
+        :exhibitor_booth_price,
+        event: event,
+        exhibitor_zone: manual_zone,
+        booth_type: 'raw_space',
+        label: 'Platinum Package',
+        price: 75_000.00
+      )
+    end
+    let!(:manual_vendor) { create(:user, :vendor, email: 'remove-proof@example.com') }
+    let!(:manual_exhibitor) { create(:exhibitor, event: event, vendor: manual_vendor) }
+    let!(:manual_kit) do
+      create(
+        :exhibitor_kit,
+        event_vendor: manual_exhibitor,
+        exhibitor_booth_price: manual_booth_price,
+        pic_email_address: 'remove-proof@example.com',
+        custom_fields_data: { zone: 'zone_b' }
+      )
+    end
+
+    before do
+      manual_kit.payment_proof.attach(
+        io: File.open(Rails.root.join('spec', 'fixtures', 'test_image.png')),
+        filename: 'test_image.png',
+        content_type: 'image/png'
+      )
+    end
+
+    it 'removes uploaded payment proof' do
+      delete "/v1/public/events/#{event.slug}/exhibitor_payment_proof", params: { exhibitor_kit_id: manual_kit.id }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(true)
+      expect(json['data']['payment_proof_uploaded']).to eq(false)
+      expect(json['data']['payment_proof_url']).to be_nil
+      expect(manual_kit.reload.payment_proof).not_to be_attached
     end
   end
 end

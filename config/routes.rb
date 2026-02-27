@@ -43,6 +43,8 @@ Rails.application.routes.draw do
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
+        post 'exhibitor_payment_proof', to: 'exhibitor_registrations#upload_payment_proof'
+        delete 'exhibitor_payment_proof', to: 'exhibitor_registrations#remove_payment_proof'
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
         match 'payments/callback', to: 'payments#callback', via: %i[get post]
