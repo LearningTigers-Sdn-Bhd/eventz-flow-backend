@@ -17,7 +17,7 @@ module V1
               already_paid: true,
               ticket_public_id: ticket.public_id,
               payment_status: ticket.payment_status,
-              status: ticket.status,
+              status: ticket.status
             }
           }, status: :ok
         end
@@ -25,7 +25,7 @@ module V1
         unless ticket.pending? && ticket.pending_payment?
           return render json: {
             success: false,
-            message: "Ticket is not eligible for payment"
+            message: 'Ticket is not eligible for payment'
           }, status: :unprocessable_content
         end
 
@@ -34,21 +34,21 @@ module V1
                           event.tickets.where(
                             registered_by_email: ticket.registered_by_email,
                             payment_status: :pending,
-                            status: :pending_payment,
+                            status: :pending_payment
                           )
                         else
                           [ticket]
                         end
 
-        payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: "razorpay")
-        existing_order_id = payment.gateway_response&.dig("id") || payment.gateway_response&.dig("order_id")
+        payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
+        existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
 
         callback_url = url_for(
           controller: 'v1/public/payments',
           action: 'callback',
           event_slug: event.slug,
           ticket_public_id: ticket.public_id,
-          only_path: false,
+          only_path: false
         )
 
         order = if existing_order_id.present?
@@ -58,20 +58,20 @@ module V1
                   amount_subunits = (total_amount * 100).round
                   notes = {
                     event_slug: event.slug,
-                    ticket_public_id: ticket.public_id,
+                    ticket_public_id: ticket.public_id
                   }
                   notes[:registered_by_email] = ticket.registered_by_email if ticket.registered_by_email.present?
 
                   created_order = Payments::RazorpayGateway.create_order(
                     amount_subunits: amount_subunits,
                     receipt: ticket.public_id,
-                    notes: notes,
+                    notes: notes
                   )
 
                   payment.assign_attributes(
                     amount: total_amount,
-                    status: "pending",
-                    gateway_response: created_order,
+                    status: 'pending',
+                    gateway_response: created_order
                   )
                   payment.save!
                   created_order
@@ -82,14 +82,14 @@ module V1
           data: {
             ticket_public_id: ticket.public_id,
             key_id: Payments::RazorpayGateway.key_id,
-            order_id: order["id"] || order["order_id"],
-            amount: order["amount"],
-            currency: order["currency"] || "MYR",
-            callback_url: callback_url,
+            order_id: order['id'] || order['order_id'],
+            amount: order['amount'],
+            currency: order['currency'] || 'MYR',
+            callback_url: callback_url
           }
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
-        render json: { success: false, message: "Ticket not found" }, status: :not_found
+        render json: { success: false, message: 'Ticket not found' }, status: :not_found
       rescue KeyError => e
         render json: { success: false, message: "Payment config missing: #{e.message}" }, status: :unprocessable_content
       rescue StandardError => e
@@ -97,22 +97,23 @@ module V1
       end
 
       def callback
-        require "cgi"
+        require 'cgi'
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
 
         # Get form slug from ticket's ticket type association
-        form_slug = ticket.ticket_type.registration_forms.first&.slug || "standard"
+        form_slug = ticket.ticket_type.registration_forms.first&.slug || 'standard'
 
         # FPX redirects here after payment attempt
         order_id = params[:razorpay_order_id].to_s
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
-        frontend_url = ENV.fetch("FRONTEND_URL", "https://ogse-sabah.eventzflow.com")
+        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
 
         # Check if payment was already processed (webhook might have handled it)
         if ticket.paid? && ticket.purchased?
-          redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}", allow_other_host: true
+          redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
+                      allow_other_host: true
           return
         end
 
@@ -120,9 +121,10 @@ module V1
         unless Payments::RazorpayGateway.valid_signature?(
           order_id: order_id,
           payment_id: payment_id,
-          signature: signature,
+          signature: signature
         )
-          redirect_to "#{frontend_url}/register/#{form_slug}?step=payment&error=invalid_signature&ticket=#{ticket.public_id}", allow_other_host: true
+          redirect_to "#{frontend_url}/register/#{form_slug}?step=payment&error=invalid_signature&ticket=#{ticket.public_id}",
+                      allow_other_host: true
           return
         end
 
@@ -132,11 +134,12 @@ module V1
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature,
+          signature: signature
         )
 
-        redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}", allow_other_host: true
-      rescue ActiveRecord::RecordNotFound => e
+        redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
+                    allow_other_host: true
+      rescue ActiveRecord::RecordNotFound
         # Try to get form_slug from the ticket if it was loaded, otherwise use 'standard'
         redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=not_found"
         redirect_to redirect_url, allow_other_host: true
@@ -157,8 +160,8 @@ module V1
               ticket_public_id: ticket.public_id,
               payment_status: ticket.payment_status,
               status: ticket.status,
-              already_paid: true,
-            },
+              already_paid: true
+            }
           }, status: :ok
         end
 
@@ -169,9 +172,9 @@ module V1
         unless Payments::RazorpayGateway.valid_signature?(
           order_id: order_id,
           payment_id: payment_id,
-          signature: signature,
+          signature: signature
         )
-          return render json: { success: false, message: "Invalid payment signature" }, status: :unprocessable_content
+          return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
 
         mark_tickets_paid!(
@@ -179,7 +182,7 @@ module V1
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature,
+          signature: signature
         )
 
         render json: {
@@ -187,80 +190,81 @@ module V1
           data: {
             ticket_public_id: ticket.public_id,
             payment_status: ticket.reload.payment_status,
-            status: ticket.reload.status,
-          },
+            status: ticket.reload.status
+          }
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
-        render json: { success: false, message: "Ticket not found" }, status: :not_found
+        render json: { success: false, message: 'Ticket not found' }, status: :not_found
       rescue StandardError => e
         render json: { success: false, message: e.message }, status: :unprocessable_content
       end
 
       def webhook
-        signature = request.headers["X-Razorpay-Signature"].to_s
+        signature = request.headers['X-Razorpay-Signature'].to_s
         raw_payload = request.raw_post.to_s
 
         unless Payments::RazorpayGateway.valid_webhook_signature?(payload: raw_payload, signature: signature)
-          return render json: { success: false, message: "Invalid webhook signature" }, status: :unprocessable_content
+          return render json: { success: false, message: 'Invalid webhook signature' }, status: :unprocessable_content
         end
 
         payload = JSON.parse(raw_payload)
-        payment_entity = payload.dig("payload", "payment", "entity") || {}
-        notes = payment_entity["notes"] || {}
-        payment_type = notes["type"].to_s
+        payment_entity = payload.dig('payload', 'payment', 'entity') || {}
+        notes = payment_entity['notes'] || {}
+        payment_type = notes['type'].to_s
 
-        if payment_type == "exhibitor_registration"
-          exhibitor_kit = ExhibitorKit.find_by(id: notes["exhibitor_kit_id"])
+        if payment_type == 'exhibitor_registration'
+          exhibitor_kit = ExhibitorKit.find_by(id: notes['exhibitor_kit_id'])
           return render json: { success: true }, status: :ok if exhibitor_kit.blank?
 
-          case payload["event"].to_s
-          when "payment.captured"
+          case payload['event'].to_s
+          when 'payment.captured'
             mark_exhibitor_registration_paid!(
               exhibitor_kit: exhibitor_kit,
-              payment_id: payment_entity["id"].to_s,
-              order_id: payment_entity["order_id"].to_s,
+              payment_id: payment_entity['id'].to_s,
+              order_id: payment_entity['order_id'].to_s,
               signature: signature,
-              gateway_response: payment_entity,
+              gateway_response: payment_entity
             )
-          when "payment.failed"
+          when 'payment.failed'
             mark_exhibitor_registration_failed!(
               exhibitor_kit: exhibitor_kit,
-              payment_id: payment_entity["id"].to_s,
-              order_id: payment_entity["order_id"].to_s,
-              gateway_response: payment_entity,
+              payment_id: payment_entity['id'].to_s,
+              order_id: payment_entity['order_id'].to_s,
+              gateway_response: payment_entity
             )
           end
 
           return render json: { success: true }, status: :ok
         end
 
-        ticket_public_id = notes["ticket_public_id"].to_s
+        ticket_public_id = notes['ticket_public_id'].to_s
 
         return render json: { success: true }, status: :ok if ticket_public_id.blank?
 
         ticket = Ticket.find_by(public_id: ticket_public_id)
         return render json: { success: true }, status: :ok if ticket.blank?
 
-        case payload["event"].to_s
-        when "payment.captured"
-          registered_by_email = notes["registered_by_email"].to_s.presence
+        case payload['event'].to_s
+        when 'payment.captured'
+          registered_by_email = notes['registered_by_email'].to_s.presence
           mark_tickets_paid!(
             ticket: ticket,
             event: ticket.event,
             registered_by_email: registered_by_email,
-            payment_id: payment_entity["id"].to_s,
-            order_id: payment_entity["order_id"].to_s,
-            signature: signature,
+            payment_id: payment_entity['id'].to_s,
+            order_id: payment_entity['order_id'].to_s,
+            signature: signature
           )
-        when "payment.failed"
-          mark_ticket_failed!(ticket: ticket, payment_id: payment_entity["id"].to_s, order_id: payment_entity["order_id"].to_s)
+        when 'payment.failed'
+          mark_ticket_failed!(ticket: ticket, payment_id: payment_entity['id'].to_s,
+                              order_id: payment_entity['order_id'].to_s)
         end
 
         render json: { success: true }, status: :ok
       rescue KeyError => e
         render json: { success: false, message: "Payment config missing: #{e.message}" }, status: :unprocessable_content
       rescue JSON::ParserError
-        render json: { success: false, message: "Invalid webhook payload" }, status: :unprocessable_content
+        render json: { success: false, message: 'Invalid webhook payload' }, status: :unprocessable_content
       rescue StandardError => e
         render json: { success: false, message: e.message }, status: :unprocessable_content
       end
@@ -274,7 +278,7 @@ module V1
                             event.tickets.where(
                               registered_by_email: email,
                               payment_status: :pending,
-                              status: :pending_payment,
+                              status: :pending_payment
                             ).to_a
                           else
                             [ticket]
@@ -289,14 +293,14 @@ module V1
             t.lock!
             next if t.paid? && t.purchased?
 
-            payment_record = t.ticket_payment || TicketPayment.find_or_initialize_by(ticket: t, gateway: "razorpay")
+            payment_record = t.ticket_payment || TicketPayment.find_or_initialize_by(ticket: t, gateway: 'razorpay')
             payment_record.assign_attributes(
               amount: t.ticket_type.current_price.to_f,
-              status: "paid",
+              status: 'paid',
               paid_at: Time.current,
               gateway_payment_id: payment_id,
-              payment_method: "fpx",
-              gateway_response: gateway_response,
+              payment_method: 'fpx',
+              gateway_response: gateway_response
             )
             payment_record.save!
 
@@ -311,16 +315,16 @@ module V1
 
           return if ticket.paid? && ticket.purchased?
 
-          payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: "razorpay")
+          payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
           payment.assign_attributes(
             amount: ticket.ticket_type.current_price.to_f,
-            status: "failed",
+            status: 'failed',
             gateway_payment_id: payment_id,
-            payment_method: "fpx",
+            payment_method: 'fpx',
             gateway_response: {
               order_id: order_id,
-              payment_id: payment_id,
-            },
+              payment_id: payment_id
+            }
           )
           payment.save!
 
@@ -329,36 +333,36 @@ module V1
       end
 
       def mark_exhibitor_registration_paid!(exhibitor_kit:, payment_id:, order_id:, signature:, gateway_response:)
-        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: "razorpay")
+        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
 
         payment.update!(
           amount: exhibitor_kit.amount_paid.to_f,
-          status: "paid",
+          status: 'paid',
           paid_at: Time.current,
           gateway_payment_id: payment_id,
-          payment_method: "fpx",
+          payment_method: 'fpx',
           gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id,
-            signature: signature,
-          },
+            signature: signature
+          }
         )
 
         exhibitor_kit.update!(payment_status: :paid)
       end
 
       def mark_exhibitor_registration_failed!(exhibitor_kit:, payment_id:, order_id:, gateway_response:)
-        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: "razorpay")
+        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
 
         payment.update!(
           amount: exhibitor_kit.amount_paid.to_f,
-          status: "failed",
+          status: 'failed',
           gateway_payment_id: payment_id,
-          payment_method: "fpx",
+          payment_method: 'fpx',
           gateway_response: gateway_response.presence || {
             order_id: order_id,
-            payment_id: payment_id,
-          },
+            payment_id: payment_id
+          }
         )
 
         exhibitor_kit.update!(payment_status: :unpaid)

@@ -13,6 +13,16 @@ Ticket Type: <%= @ticket_type.name %>
 
 Your Ticket ID: <%= @ticket.public_id %>
 
+<% if @show_payment_receipt %>
+Payment Receipt
+- Receipt No: <%= @ticket.public_id %>
+- Payment Status: Paid
+- Payment Date: <%= @ticket_payment&.paid_at.present? ? @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") : 'Not available' %>
+- Amount Paid: <%= (@ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
+- Transaction ID: <%= @ticket_payment&.gateway_payment_id.presence || 'Not available' %>
+- Order ID: <%= @ticket_payment&.gateway_response&.dig('order_id').presence || 'Not available' %>
+<% end %>
+
 Please show this ticket ID or the attached QR code at check-in.
 
 Should you have any questions, please reach out to us at enquiry@ogsesabah.com.

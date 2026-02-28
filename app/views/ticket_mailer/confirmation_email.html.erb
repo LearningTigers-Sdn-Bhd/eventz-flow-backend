@@ -13,10 +13,15 @@
     .message { font-size: 15px; color: #555; margin-bottom: 24px; line-height: 1.7; }
     .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 12px; }
     .ticket-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .receipt-info { background: #f7fafc; border: 1px solid #dbeafe; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
     .ticket-info table { width: 100%; border-collapse: collapse; }
+    .receipt-info table { width: 100%; border-collapse: collapse; }
     .ticket-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
+    .receipt-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
     .ticket-info td:first-child { font-weight: bold; color: #374151; width: 130px; }
+    .receipt-info td:first-child { font-weight: bold; color: #1e3a8a; width: 150px; }
     .ticket-info td:last-child { color: #555; }
+    .receipt-info td:last-child { color: #334155; }
     .qr-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
     .qr-section h3 { margin: 0 0 8px; font-size: 16px; color: #1e40af; }
     .qr-section p { margin: 0 0 16px; font-size: 14px; color: #666; }
@@ -71,6 +76,47 @@
           </table>
         </div>
 
+        <% if @show_payment_receipt %>
+          <div class="section-title">Payment Receipt</div>
+          <div class="receipt-info">
+            <table>
+              <tr>
+                <td>Receipt No:</td>
+                <td><%= @ticket.public_id %></td>
+              </tr>
+              <tr>
+                <td>Payment Status:</td>
+                <td>Paid</td>
+              </tr>
+              <tr>
+                <td>Payment Date:</td>
+                <td>
+                  <% if @ticket_payment&.paid_at.present? %>
+                    <%= @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
+                  <% else %>
+                    Not available
+                  <% end %>
+                </td>
+              </tr>
+              <tr>
+                <td>Amount Paid:</td>
+                <td>
+                  <%= (@ticket_payment&.currency.presence || 'MYR') %>
+                  <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
+                </td>
+              </tr>
+              <tr>
+                <td>Transaction ID:</td>
+                <td><%= @ticket_payment&.gateway_payment_id.presence || 'Not available' %></td>
+              </tr>
+              <tr>
+                <td>Order ID:</td>
+                <td><%= @ticket_payment&.gateway_response&.dig('order_id').presence || 'Not available' %></td>
+              </tr>
+            </table>
+          </div>
+        <% end %>
+
         <div class="section-title">Your Entry QR Code</div>
         <div class="qr-section">
           <h3>Scan at Check-In</h3>
@@ -85,6 +131,11 @@
 
         <p class="closing">Warm regards,</p>
         <p class="signature">OGSE Sabah 2026 Secretariat</p>
+        <% if @show_payment_receipt %>
+          <p class="closing" style="margin-top: 18px; font-size: 13px; color: #6b7280;">
+            This email confirms your successful payment and registration.
+          </p>
+        <% end %>
       </div>
 
       <div class="footer">
