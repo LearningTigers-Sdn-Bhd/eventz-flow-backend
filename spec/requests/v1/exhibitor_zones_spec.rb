@@ -50,6 +50,33 @@ RSpec.describe 'V1::ExhibitorZones', type: :request do
       expect(response).to have_http_status(:ok)
       expect(zone.reload.quota).to eq(120)
     end
+
+    it 'rejects lowering zone quota below total booth price quotas' do
+      create(
+        :exhibitor_booth_price,
+        event: event,
+        booth_type: 'shell_scheme',
+        exhibitor_zone: zone,
+        label: 'Local',
+        quota: 50
+      )
+      create(
+        :exhibitor_booth_price,
+        event: event,
+        booth_type: 'shell_scheme',
+        exhibitor_zone: zone,
+        label: 'International',
+        quota: 40
+      )
+
+      patch "/v1/exhibitor_zones/#{zone.id}",
+            params: { exhibitor_zone: { quota: 80 } },
+            headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json['quota']).to include('must be greater than or equal to total booth price quotas')
+    end
   end
 
   describe 'DELETE /v1/exhibitor_zones/:id' do

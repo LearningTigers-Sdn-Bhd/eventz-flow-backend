@@ -4,6 +4,7 @@ module V1
   module Public
     class ExhibitorRegistrationsController < ApplicationController
       class ZoneSoldOutError < StandardError; end
+      class BoothPriceSoldOutError < StandardError; end
 
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
@@ -13,6 +14,7 @@ module V1
 
         prices = event.exhibitor_booth_prices.includes(:exhibitor_zone).order(:booth_type, :label)
         zone_sold_map = zone_sold_counts(event)
+        booth_price_sold_map = booth_price_sold_counts(event)
 
         render json: {
           success: true,
@@ -20,6 +22,11 @@ module V1
             zone_quota = price.exhibitor_zone&.quota
             zone_sold_count = zone_sold_map[price.exhibitor_zone_id].to_i
             zone_remaining = zone_quota.nil? ? nil : [zone_quota - zone_sold_count, 0].max
+            booth_price_quota = price.quota
+            booth_price_sold_count = booth_price_sold_map[price.id].to_i
+            booth_price_remaining = booth_price_quota.nil? ? nil : [booth_price_quota - booth_price_sold_count, 0].max
+            zone_available = zone_quota.nil? || zone_remaining.positive?
+            booth_quota_available = booth_price_quota.nil? || booth_price_remaining.positive?
 
             {
               id: price.id,
@@ -31,7 +38,11 @@ module V1
               zone_quota: zone_quota,
               zone_sold_count: zone_sold_count,
               zone_remaining: zone_remaining,
-              zone_available: zone_quota.nil? || zone_remaining.positive?
+              zone_available: zone_available,
+              booth_price_quota: booth_price_quota,
+              booth_price_sold_count: booth_price_sold_count,
+              booth_price_remaining: booth_price_remaining,
+              booth_price_available: zone_available && booth_quota_available
             }
           end
         }
@@ -90,6 +101,8 @@ module V1
         render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_content
       rescue ZoneSoldOutError
         render json: { success: false, message: 'Selected zone is sold out' }, status: :unprocessable_content
+      rescue BoothPriceSoldOutError
+        render json: { success: false, message: 'Selected booth package is sold out' }, status: :unprocessable_content
       rescue ActiveRecord::RecordNotFound
         render json: { success: false, message: 'Event or booth price not found' }, status: :not_found
       end
@@ -349,26 +362,46 @@ module V1
 
       def ensure_zone_capacity!(booth_price:)
         zone = booth_price.exhibitor_zone
-        return if zone.nil?
+        if zone.present?
+          sold_count = zone_sold_count(zone_id: zone.id, event_id: booth_price.event_id)
+          raise ZoneSoldOutError if zone.quota.present? && sold_count >= zone.quota
+        end
 
-        sold_count = zone_sold_count(zone.id)
-        return if zone.quota.nil?
+        sold_count = booth_price_sold_count(booth_price_id: booth_price.id, event_id: booth_price.event_id)
+        raise BoothPriceSoldOutError if booth_price.quota.present? && sold_count >= booth_price.quota
+      end
 
-        raise ZoneSoldOutError if sold_count >= zone.quota
+      def exhibitor_sales_scope
+        ExhibitorKit
+          .joins(:event_vendor, :exhibitor_booth_price)
+          .where(event_vendors: { type: 'Exhibitor' })
       end
 
       def zone_sold_counts(event)
-        ExhibitorKit
-          .joins(:event_vendor, :exhibitor_booth_price)
-          .where(event_vendors: { event_id: event.id, type: 'Exhibitor' })
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event.id })
           .group('exhibitor_booth_prices.exhibitor_zone_id')
           .count
       end
 
-      def zone_sold_count(zone_id)
-        ExhibitorKit
-          .joins(:event_vendor, :exhibitor_booth_price)
+      def zone_sold_count(zone_id:, event_id:)
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event_id })
           .where(exhibitor_booth_prices: { exhibitor_zone_id: zone_id })
+          .count
+      end
+
+      def booth_price_sold_counts(event)
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event.id })
+          .group('exhibitor_kits.exhibitor_booth_price_id')
+          .count
+      end
+
+      def booth_price_sold_count(booth_price_id:, event_id:)
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event_id })
+          .where(exhibitor_kits: { exhibitor_booth_price_id: booth_price_id })
           .count
       end
 

@@ -10,7 +10,8 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       exhibitor_zone: zone,
       booth_type: 'shell_scheme',
       label: 'Malaysian',
-      price: 1500.00
+      price: 1500.00,
+      quota: 30
     )
   end
 
@@ -29,6 +30,42 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data'].first['zone_sold_count']).to eq(0)
       expect(json['data'].first['zone_remaining']).to eq(103)
       expect(json['data'].first['zone_available']).to eq(true)
+      expect(json['data'].first['booth_price_quota']).to eq(30)
+      expect(json['data'].first['booth_price_sold_count']).to eq(0)
+      expect(json['data'].first['booth_price_remaining']).to eq(30)
+      expect(json['data'].first['booth_price_available']).to eq(true)
+    end
+
+    it 'marks booth price unavailable when zone quota is full even if booth quota remains' do
+      booth_price.update!(quota: 8)
+      zone.update!(quota: 10)
+      other_price = create(
+        :exhibitor_booth_price,
+        event: event,
+        exhibitor_zone: zone,
+        booth_type: 'shell_scheme',
+        label: 'International',
+        price: 1800.00,
+        quota: nil
+      )
+
+      10.times do
+        create(
+          :exhibitor_kit,
+          event_vendor: create(:exhibitor, event: event),
+          exhibitor_booth_price: other_price,
+          payment_status: :unpaid
+        )
+      end
+
+      get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      malaysian = json['data'].find { |item| item['id'] == booth_price.id }
+      expect(malaysian['zone_available']).to eq(false)
+      expect(malaysian['booth_price_remaining']).to eq(8)
+      expect(malaysian['booth_price_available']).to eq(false)
     end
   end
 
@@ -110,6 +147,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
 
     it 'returns 422 when the selected zone quota is full' do
+      booth_price.update!(quota: nil)
       zone.update!(quota: 1)
       create(
         :exhibitor_kit,
@@ -124,6 +162,23 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       json = JSON.parse(response.body)
       expect(json['success']).to be(false)
       expect(json['message']).to eq('Selected zone is sold out')
+    end
+
+    it 'returns 422 when the selected booth price quota is full' do
+      booth_price.update!(quota: 1)
+      create(
+        :exhibitor_kit,
+        event_vendor: create(:exhibitor, event: event),
+        exhibitor_booth_price: booth_price,
+        payment_status: :unpaid
+      )
+
+      post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(false)
+      expect(json['message']).to eq('Selected booth package is sold out')
     end
   end
 
