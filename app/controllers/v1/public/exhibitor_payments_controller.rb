@@ -26,10 +26,12 @@ module V1
         payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
         existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
 
+        gateway = Payments::RazorpayGateway.for_event(event)
+
         order = if existing_order_id.present?
                   payment.gateway_response
                 else
-                  created_order = Payments::RazorpayGateway.create_order(
+                  created_order = gateway.create_order(
                     amount_subunits: (exhibitor_kit.amount_paid.to_f * 100).round,
                     receipt: "exhibitor_kit_#{exhibitor_kit.id}",
                     notes: {
@@ -60,7 +62,7 @@ module V1
           success: true,
           data: {
             exhibitor_kit_id: exhibitor_kit.id,
-            key_id: Payments::RazorpayGateway.key_id,
+            key_id: gateway.key_id,
             order_id: order['id'] || order['order_id'],
             amount: order['amount'],
             currency: order['currency'] || 'MYR',
@@ -94,7 +96,9 @@ module V1
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
 
-        unless Payments::RazorpayGateway.valid_signature?(order_id: order_id, payment_id: payment_id,
+        gateway = Payments::RazorpayGateway.for_event(event)
+
+        unless gateway.valid_signature?(order_id: order_id, payment_id: payment_id,
                                                           signature: signature)
           return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
@@ -129,7 +133,9 @@ module V1
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
 
-        unless Payments::RazorpayGateway.valid_signature?(order_id: order_id, payment_id: payment_id,
+        gateway = Payments::RazorpayGateway.for_event(event)
+
+        unless gateway.valid_signature?(order_id: order_id, payment_id: payment_id,
                                                           signature: signature)
           return redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=invalid_signature&kit=#{exhibitor_kit.id}",
                              allow_other_host: true

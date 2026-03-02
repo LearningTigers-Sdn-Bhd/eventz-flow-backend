@@ -16,16 +16,22 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     )
   end
 
+  let(:gateway_instance) { instance_double(Payments::RazorpayGateway, key_id: 'rzp_test_key') }
+
+  before do
+    allow(Payments::RazorpayGateway).to receive(:for_event).and_return(gateway_instance)
+    allow(Payments::RazorpayGateway).to receive(:default).and_return(gateway_instance)
+  end
+
   describe 'POST /v1/public/events/:event_slug/payments/create_order' do
     it 'returns payment order payload for pending ticket' do
-      allow(Payments::RazorpayGateway).to receive(:create_order).and_return(
+      allow(gateway_instance).to receive(:create_order).and_return(
         {
           'id' => 'order_sandbox_123',
           'amount' => 12_000,
           'currency' => 'MYR'
         }
       )
-      allow(Payments::RazorpayGateway).to receive(:key_id).and_return('rzp_test_key')
 
       post "/v1/public/events/#{event.slug}/payments/create_order", params: {
         ticket_public_id: pending_ticket.public_id
@@ -41,7 +47,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
 
   describe 'POST /v1/public/events/:event_slug/payments/verify' do
     it 'marks pending ticket as paid and purchased when signature valid' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
 
       post "/v1/public/events/#{event.slug}/payments/verify", params: {
         ticket_public_id: pending_ticket.public_id,
@@ -58,7 +64,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     end
 
     it 'rejects invalid signature' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(false)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(false)
 
       post "/v1/public/events/#{event.slug}/payments/verify", params: {
         ticket_public_id: pending_ticket.public_id,
@@ -76,7 +82,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
 
   describe 'POST /v1/public/events/:event_slug/payments/callback' do
     it 'redirects to FRONTEND_FORM_URL on successful callback' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       original = ENV['FRONTEND_FORM_URL']
       ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 
@@ -113,7 +119,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     end
 
     it 'marks ticket paid when webhook signature is valid' do
-      allow(Payments::RazorpayGateway).to receive(:valid_webhook_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
 
       post '/v1/public/payments/webhook', params: captured_payload.to_json, headers: {
         'CONTENT_TYPE' => 'application/json',
@@ -127,7 +133,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     end
 
     it 'rejects invalid webhook signature' do
-      allow(Payments::RazorpayGateway).to receive(:valid_webhook_signature?).and_return(false)
+      allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(false)
 
       post '/v1/public/payments/webhook', params: captured_payload.to_json, headers: {
         'CONTENT_TYPE' => 'application/json',
@@ -168,7 +174,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
         }
       }
 
-      allow(Payments::RazorpayGateway).to receive(:valid_webhook_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
 
       post '/v1/public/payments/webhook', params: payload.to_json, headers: {
         'CONTENT_TYPE' => 'application/json',

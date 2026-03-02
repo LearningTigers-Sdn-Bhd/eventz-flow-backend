@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_02_28_113000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_02_014153) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -145,6 +145,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_28_113000) do
     t.index ["event_id", "name"], name: "index_event_locations_on_event_id_and_name", unique: true
     t.index ["event_id"], name: "index_event_locations_on_event_id"
     t.index ["location_details"], name: "index_event_locations_on_location_details", using: :gin
+  end
+
+  create_table "event_payment_gateways", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "provider", default: "razorpay", null: false
+    t.string "key_id", null: false
+    t.text "key_secret", null: false
+    t.text "webhook_secret"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "provider"], name: "index_event_payment_gateways_on_event_id_and_provider", unique: true
+    t.index ["event_id"], name: "index_event_payment_gateways_on_event_id"
   end
 
   create_table "event_printing_service_price_tiers", force: :cascade do |t|
@@ -1254,6 +1266,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_02_28_113000) do
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
+  add_foreign_key "event_payment_gateways", "events"
   add_foreign_key "event_printing_service_price_tiers", "event_printing_services"
   add_foreign_key "event_printing_services", "events"
   add_foreign_key "event_printing_services", "printing_services"

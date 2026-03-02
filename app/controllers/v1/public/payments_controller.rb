@@ -43,6 +43,8 @@ module V1
         payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
         existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
 
+        gateway = Payments::RazorpayGateway.for_event(event)
+
         callback_url = url_for(
           controller: 'v1/public/payments',
           action: 'callback',
@@ -62,7 +64,7 @@ module V1
                   }
                   notes[:registered_by_email] = ticket.registered_by_email if ticket.registered_by_email.present?
 
-                  created_order = Payments::RazorpayGateway.create_order(
+                  created_order = gateway.create_order(
                     amount_subunits: amount_subunits,
                     receipt: ticket.public_id,
                     notes: notes
@@ -81,7 +83,7 @@ module V1
           success: true,
           data: {
             ticket_public_id: ticket.public_id,
-            key_id: Payments::RazorpayGateway.key_id,
+            key_id: gateway.key_id,
             order_id: order['id'] || order['order_id'],
             amount: order['amount'],
             currency: order['currency'] || 'MYR',
@@ -117,8 +119,10 @@ module V1
           return
         end
 
+        gateway = Payments::RazorpayGateway.for_event(event)
+
         # Validate signature
-        unless Payments::RazorpayGateway.valid_signature?(
+        unless gateway.valid_signature?(
           order_id: order_id,
           payment_id: payment_id,
           signature: signature
@@ -169,7 +173,9 @@ module V1
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
 
-        unless Payments::RazorpayGateway.valid_signature?(
+        gateway = Payments::RazorpayGateway.for_event(event)
+
+        unless gateway.valid_signature?(
           order_id: order_id,
           payment_id: payment_id,
           signature: signature
@@ -203,13 +209,19 @@ module V1
         signature = request.headers['X-Razorpay-Signature'].to_s
         raw_payload = request.raw_post.to_s
 
-        unless Payments::RazorpayGateway.valid_webhook_signature?(payload: raw_payload, signature: signature)
-          return render json: { success: false, message: 'Invalid webhook signature' }, status: :unprocessable_content
-        end
-
+        # Parse payload first to determine which event's gateway to use
         payload = JSON.parse(raw_payload)
         payment_entity = payload.dig('payload', 'payment', 'entity') || {}
         notes = payment_entity['notes'] || {}
+
+        # Resolve the event to get the correct gateway credentials
+        event = resolve_event_from_notes(notes)
+        gateway = event ? Payments::RazorpayGateway.for_event(event) : Payments::RazorpayGateway.default
+
+        unless gateway.valid_webhook_signature?(payload: raw_payload, signature: signature)
+          return render json: { success: false, message: 'Invalid webhook signature' }, status: :unprocessable_content
+        end
+
         payment_type = notes['type'].to_s
 
         if payment_type == 'exhibitor_registration'
@@ -270,6 +282,18 @@ module V1
       end
 
       private
+
+      def resolve_event_from_notes(notes)
+        event_slug = notes['event_slug'].to_s.presence
+        return Event.friendly.find(event_slug) if event_slug.present?
+
+        ticket_public_id = notes['ticket_public_id'].to_s.presence
+        return Ticket.find_by(public_id: ticket_public_id)&.event if ticket_public_id.present?
+
+        nil
+      rescue ActiveRecord::RecordNotFound
+        nil
+      end
 
       def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil)
         # Collect all tickets to mark paid: the representative ticket plus any group siblings

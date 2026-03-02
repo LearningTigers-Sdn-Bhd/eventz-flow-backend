@@ -119,6 +119,9 @@ Rails.application.routes.draw do
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_zones, only: %i[index create]
 
+      # Payment gateway settings (singular - one per event)
+      resource :event_payment_gateway, only: %i[show create update destroy]
+
       # Vendor invitations
       resources :vendor_invitations, only: [] do
         collection do

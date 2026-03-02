@@ -17,16 +17,21 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
     end
   end
 
+  let(:gateway_instance) { instance_double(Payments::RazorpayGateway, key_id: 'rzp_test_key') }
+
+  before do
+    allow(Payments::RazorpayGateway).to receive(:for_event).and_return(gateway_instance)
+  end
+
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/create_order' do
     it 'creates a razorpay order for unpaid exhibitor kit' do
-      allow(Payments::RazorpayGateway).to receive(:create_order).and_return(
+      allow(gateway_instance).to receive(:create_order).and_return(
         {
           'id' => 'order_exhibitor_123',
           'amount' => 150_000,
           'currency' => 'MYR'
         }
       )
-      allow(Payments::RazorpayGateway).to receive(:key_id).and_return('rzp_test_key')
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/create_order",
            params: { exhibitor_kit_id: exhibitor_kit.id }
@@ -41,7 +46,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/verify' do
     it 'marks exhibitor payment as paid when signature is valid' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/verify", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -57,7 +62,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
     end
 
     it 'rejects invalid payment signature' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(false)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(false)
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/verify", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -73,7 +78,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/callback' do
     it 'redirects to FRONTEND_FORM_URL on successful callback' do
-      allow(Payments::RazorpayGateway).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       original = ENV['FRONTEND_FORM_URL']
       ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 

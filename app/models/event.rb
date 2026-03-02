@@ -34,6 +34,7 @@ class Event < ApplicationRecord
   has_many :event_seat_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
+  has_one :event_payment_gateway, dependent: :destroy
 
   # --- Sponsorships ---
   has_many :event_sponsorship_tiers, dependent: :destroy
