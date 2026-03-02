@@ -29,7 +29,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       id: { type: :integer, nullable: true },
       event_vendor_id: { type: :integer },
       booth_number: { type: :string, example: 'A101' },
-      booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'shell_scheme' },
+      booth_type: { type: :string, example: 'shell_scheme' },
       booth_dimensions: { type: :string, nullable: true, example: '10x10' },
       side_wall_left_required: { type: :boolean, example: false },
       side_wall_right_required: { type: :boolean, example: false },
@@ -177,7 +177,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
                 type: :object,
                 properties: {
                   booth_number: { type: :string, example: 'A101' },
-                  booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'shell_scheme' },
+                  booth_type: { type: :string, example: 'shell_scheme' },
                   name_on_fascia: { type: :string, example: 'Company Name' },
                   company_name: { type: :string, example: 'Exhibitor Co.' },
                   company_address: { type: :string, example: '123 Exhibitor St.' },
@@ -537,7 +537,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
                 properties: {
                   id: { type: :integer, description: 'ID of existing exhibitor kit' },
                   booth_number: { type: :string, example: 'D404' },
-                  booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'], example: 'raw_space' },
+                  booth_type: { type: :string, example: 'raw_space' },
                   name_on_fascia: { type: :string, example: 'Updated Name' },
                   exhibitor_team_members_attributes: {
                     type: :array,

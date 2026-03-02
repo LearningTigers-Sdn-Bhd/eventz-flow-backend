@@ -56,7 +56,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
         properties: {
           event_vendor_id: { type: :integer },
           booth_number: { type: :string },
-          booth_type: { type: :string, enum: ['shell_scheme', 'raw_space'] },
+          booth_type: { type: :string },
           name_on_fascia: { type: :string },
           company_name: { type: :string },
           company_address: { type: :string },

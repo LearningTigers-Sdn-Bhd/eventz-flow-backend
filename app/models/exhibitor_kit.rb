@@ -17,7 +17,7 @@ class ExhibitorKit < ApplicationRecord
 
   delegate :event, to: :event_vendor
 
-  enum :booth_type, { shell_scheme: 0, raw_space: 1 }
+  validates :booth_type, presence: true
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
 
   # Booth/company info - optional but validated if provided

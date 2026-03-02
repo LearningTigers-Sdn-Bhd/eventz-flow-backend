@@ -200,7 +200,8 @@ module V1
         :skip_webhooks,
         :logo,
         :remove_logo,
-        labels_data: {} # Allows JSONB hash updates
+        labels_data: {}, # Allows JSONB hash updates
+        booth_types: [] # Allows JSONB array updates
       )
     end
 

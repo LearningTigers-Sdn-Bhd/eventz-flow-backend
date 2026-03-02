@@ -10,7 +10,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
   it { should belong_to(:event_vendor) }
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
-  it { should define_enum_for(:booth_type).with_values([:shell_scheme, :raw_space]) }
+  it { should validate_presence_of(:booth_type) }
 
 
 
