@@ -471,6 +471,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
@@ -1071,6 +1072,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "table_assignments", force: :cascade do |t|
+    t.bigint "ticket_id"
+    t.bigint "plan_object_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "visitor_id"
+    t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
+    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id", unique: true
+    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
+  end
+
   create_table "ticket_payments", force: :cascade do |t|
     t.bigint "ticket_id", null: false
     t.bigint "received_by_id"
@@ -1101,18 +1114,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.index ["ticket_type_id", "starts_at"], name: "idx_price_tiers_on_ticket_type_and_start"
     t.index ["ticket_type_id"], name: "index_ticket_type_price_tiers_on_ticket_type_id"
-  end
-  
-  create_table "table_assignments", force: :cascade do |t|
-    t.bigint "ticket_id"
-    t.bigint "plan_object_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.bigint "visitor_id"
-    t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
-    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id", unique: true
-    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id", unique: true, where: "(visitor_id IS NOT NULL)"
-    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
   end
 
   create_table "ticket_types", force: :cascade do |t|
@@ -1439,12 +1440,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
-  add_foreign_key "ticket_payments", "tickets"
-  add_foreign_key "ticket_payments", "users", column: "received_by_id"
-  add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "table_assignments", "plan_objects"
   add_foreign_key "table_assignments", "tickets"
   add_foreign_key "table_assignments", "visitors"
+  add_foreign_key "ticket_payments", "tickets"
+  add_foreign_key "ticket_payments", "users", column: "received_by_id"
+  add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"

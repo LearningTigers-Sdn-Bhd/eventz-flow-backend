@@ -1,6 +1,7 @@
 class Plan < ApplicationRecord
   belongs_to :event
   has_many :plan_objects, dependent: :destroy
+  has_one_attached :background_image, dependent: :purge_later
   
   has_secure_token :share_token
 

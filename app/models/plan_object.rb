@@ -1,6 +1,7 @@
 class PlanObject < ApplicationRecord
   belongs_to :plan
   has_many :table_assignments, dependent: :destroy
+  has_one_attached :image, dependent: :purge_later
 
   enum :object_type, { table: 0, wall: 1, door: 2, stage: 3, label: 4, floor: 5 }, prefix: true
 

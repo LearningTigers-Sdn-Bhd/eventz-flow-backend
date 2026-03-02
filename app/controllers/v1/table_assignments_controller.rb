@@ -19,10 +19,11 @@ module V1
 
       plan_object = @plan.plan_objects.find(params[:plan_object_id])
 
-      @assignment = TableAssignment.new(participant_type => participant, plan_object: plan_object)
+      @assignment = TableAssignment.find_or_initialize_by(participant_type => participant)
+      @assignment.plan_object = plan_object
 
       if @assignment.save
-        render json: @assignment, status: :created
+        render json: @assignment, status: @assignment.previously_new_record? ? :created : :ok
       else
         render json: { errors: @assignment.errors }, status: :unprocessable_entity
       end
