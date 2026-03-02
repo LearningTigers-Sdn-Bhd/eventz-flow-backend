@@ -16,12 +16,17 @@
     .receipt-info { background: #f7fafc; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin-bottom: 22px; }
     .info table { width: 100%; border-collapse: collapse; }
     .receipt-info table { width: 100%; border-collapse: collapse; }
-    .info td { padding: 7px 0; font-size: 14px; vertical-align: top; }
-    .receipt-info td { padding: 7px 0; font-size: 14px; vertical-align: top; }
+    .info td { padding: 7px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
+    .receipt-info td { padding: 7px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
     .info td:first-child { font-weight: bold; color: #166534; width: 140px; }
     .receipt-info td:first-child { font-weight: bold; color: #166534; width: 150px; }
     .info td:last-child { color: #14532d; }
     .receipt-info td:last-child { color: #14532d; }
+    @media only screen and (max-width: 480px) {
+      .info td, .receipt-info td { display: block !important; width: 100% !important; }
+      .info td:first-child, .receipt-info td:first-child { padding-bottom: 0 !important; }
+      .info td:last-child, .receipt-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
     .notice { background: #ecfdf5; border: 1px solid #86efac; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #166534; margin-bottom: 22px; }
     .closing { font-size: 15px; color: #555; line-height: 1.7; }
     .signature { font-size: 15px; color: #333; font-weight: bold; margin-top: 8px; }

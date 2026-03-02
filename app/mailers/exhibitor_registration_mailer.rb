@@ -20,7 +20,7 @@ class ExhibitorRegistrationMailer < ApplicationMailer
     mail(
       to: exhibitor_kit.pic_email_address,
       from: 'OGSE Sabah 2026 Secretariat <ogsesabah.secretariat@updates.eventzflow.com>',
-      bcc: payment_receipt_bcc(additional: ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL']),
+      bcc: payment_receipt_bcc(additional: exhibitor_kit.event.payment_receipt_email),
       subject: "Exhibitor payment confirmed for #{@event.title}"
     )
   end

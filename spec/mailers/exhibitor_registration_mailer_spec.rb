@@ -64,14 +64,11 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
       expect(mail.bcc).to include('eventpayment@eventzflow.com')
     end
 
-    it 'adds organizer payment receipt bcc from env' do
-      original = ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL']
-      ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL'] = 'organizer@example.com'
+    it 'adds organizer payment receipt bcc from event' do
+      event.update!(payment_receipt_email: 'organizer@example.com')
 
       organizer_mail = described_class.payment_confirmed_email(exhibitor_kit)
       expect(organizer_mail.bcc).to include('organizer@example.com')
-    ensure
-      ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL'] = original
     end
 
     it 'includes payment receipt details' do
@@ -82,6 +79,10 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
       expect(mail.body.encoded).to include('MYR 9000.00')
       expect(mail.body.encoded).to include('pay_exhibitor_123')
       expect(mail.body.encoded).to include('order_exhibitor_123')
+    end
+
+    it 'styles payment receipt labels with distinct header color' do
+      expect(mail.body.encoded).to include('color: #166534;')
     end
   end
 end

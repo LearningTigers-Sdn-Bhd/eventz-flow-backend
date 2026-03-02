@@ -51,7 +51,9 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(paid_mail.bcc).to include('eventpayment@eventzflow.com')
     end
 
-    it 'adds organizer payment receipt bcc from env' do
+    it 'adds organizer payment receipt bcc from event' do
+      event.update!(payment_receipt_email: 'organizer@example.com')
+
       paid_ticket = create(
         :ticket,
         :paid,
@@ -61,13 +63,8 @@ RSpec.describe TicketMailer, type: :mailer do
         attendee_email: 'paid@example.com'
       )
 
-      original = ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL']
-      ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL'] = 'organizer@example.com'
-
       paid_mail = described_class.confirmation_email(paid_ticket)
       expect(paid_mail.bcc).to include('organizer@example.com')
-    ensure
-      ENV['ORGANIZER_PAYMENT_RECEIPT_EMAIL'] = original
     end
 
     it 'includes payment receipt details for paid tickets' do
@@ -99,6 +96,21 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(paid_mail.body.encoded).to include('MYR 120.00')
       expect(paid_mail.body.encoded).to include('pay_receipt_123')
       expect(paid_mail.body.encoded).to include('order_receipt_123')
+    end
+
+    it 'styles payment receipt labels with distinct header color' do
+      paid_ticket = create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Paid Attendee',
+        attendee_email: 'paid@example.com'
+      )
+
+      paid_mail = described_class.confirmation_email(paid_ticket)
+
+      expect(paid_mail.body.encoded).to include('color: #1e3a8a;')
     end
   end
 end

@@ -17,11 +17,16 @@
     .ticket-info table { width: 100%; border-collapse: collapse; }
     .receipt-info table { width: 100%; border-collapse: collapse; }
     .ticket-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
-    .receipt-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
+    .receipt-info td { padding: 8px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
     .ticket-info td:first-child { font-weight: bold; color: #374151; width: 130px; }
     .receipt-info td:first-child { font-weight: bold; color: #1e3a8a; width: 150px; }
     .ticket-info td:last-child { color: #555; }
     .receipt-info td:last-child { color: #334155; }
+    @media only screen and (max-width: 480px) {
+      .receipt-info td, .ticket-info td { display: block !important; width: 100% !important; }
+      .receipt-info td:first-child, .ticket-info td:first-child { padding-bottom: 0 !important; }
+      .receipt-info td:last-child, .ticket-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
     .qr-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
     .qr-section h3 { margin: 0 0 8px; font-size: 16px; color: #1e40af; }
     .qr-section p { margin: 0 0 16px; font-size: 14px; color: #666; }

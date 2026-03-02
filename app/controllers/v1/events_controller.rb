@@ -196,6 +196,7 @@ module V1
         :use_business_matching,
         :business_matching_webhook_url,
         :use_sponsorship,
+        :payment_receipt_email,
         :skip_webhooks,
         :logo,
         :remove_logo,
