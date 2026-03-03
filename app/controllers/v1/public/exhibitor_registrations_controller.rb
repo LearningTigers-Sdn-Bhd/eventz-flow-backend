@@ -230,6 +230,7 @@ module V1
         zone = booth_price.zone
 
         {
+          booth_number: registration_params[:booth_number],
           company_name: registration_params[:company_name],
           company_address: registration_params[:company_address],
           name_on_fascia: registration_params[:name_on_fascia],
@@ -250,6 +251,7 @@ module V1
         params.permit(
           :company_name,
           :company_address,
+          :booth_number,
           :name_on_fascia,
           :pic_full_name,
           :pic_position,
@@ -278,6 +280,7 @@ module V1
       def serialize_exhibitor_kit(exhibitor_kit)
         {
           id: exhibitor_kit.id,
+          booth_number: exhibitor_kit.booth_number,
           company_name: exhibitor_kit.company_name,
           name_on_fascia: exhibitor_kit.name_on_fascia,
           pic_full_name: exhibitor_kit.pic_full_name,
@@ -300,6 +303,7 @@ module V1
           return {
             has_registered: false,
             exhibitor_kit_id: nil,
+            booth_number: nil,
             payment_status: nil,
             company_name: nil,
             name_on_fascia: nil,
@@ -321,6 +325,7 @@ module V1
         {
           has_registered: true,
           exhibitor_kit_id: exhibitor_kit.id,
+          booth_number: exhibitor_kit.booth_number,
           payment_status: exhibitor_kit.payment_status,
           company_name: exhibitor_kit.company_name,
           name_on_fascia: exhibitor_kit.name_on_fascia,

@@ -76,6 +76,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       {
         company_name: 'Acme Energy',
         company_address: 'Kota Kinabalu',
+        booth_number: 'A-12',
         name_on_fascia: 'ACME ENERGY',
         pic_full_name: 'Amin Rahman',
         pic_position: 'Sales Manager',
@@ -109,6 +110,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       kit = ExhibitorKit.order(created_at: :desc).first
       user = User.find_by!(email: email)
       expect(kit.country).to eq('Malaysia')
+      expect(kit.booth_number).to eq('A-12')
       expect(kit.name_on_fascia).to eq('ACME ENERGY')
       expect(kit.pic_position).to eq('Sales Manager')
       expect(kit.exhibitor_booth_price_id).to eq(booth_price.id)
