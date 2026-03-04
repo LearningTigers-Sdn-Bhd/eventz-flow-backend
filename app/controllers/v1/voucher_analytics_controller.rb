@@ -48,7 +48,7 @@ module V1
 
       render json: logs.as_json(include: {
         voucher: { only: [:id, :title, :voucher_uuid, :voucher_code, :voucher_type] },
-        redeemer: { only: [:id, :full_name, :email, :phone, :public_id] },
+        redeemer: { only: [:id, :full_name, :email, :phone, :public_id, :attendee_name, :attendee_email, :attendee_phone] },
         redeemer_staff: { only: [:id, :full_name, :email] }
       })
     end
