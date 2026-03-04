@@ -42,6 +42,7 @@ Rails.application.routes.draw do
         get 'registration_status', to: 'registrations#registration_status'
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
+        patch 'register_exhibitor', to: 'exhibitor_registrations#update'
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
         post 'exhibitor_payment_proof', to: 'exhibitor_registrations#upload_payment_proof'
         delete 'exhibitor_payment_proof', to: 'exhibitor_registrations#remove_payment_proof'

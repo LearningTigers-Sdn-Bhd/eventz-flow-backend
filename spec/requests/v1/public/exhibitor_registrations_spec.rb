@@ -14,6 +14,17 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       quota: 30
     )
   end
+  let(:alternate_booth_price) do
+    create(
+      :exhibitor_booth_price,
+      event: event,
+      exhibitor_zone: zone,
+      booth_type: 'raw_space',
+      label: 'International',
+      price: 2500.00,
+      quota: 30
+    )
+  end
 
   describe 'GET /v1/public/events/:event_slug/exhibitor_booth_prices' do
     it 'returns published event booth prices' do
@@ -215,9 +226,63 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']['payment_status']).to eq('paid')
       expect(json['data']['company_name']).to eq(exhibitor_kit.company_name)
       expect(json['data']['pic_email_address']).to eq('amin@example.com')
+      expect(json['data']['exhibitor_booth_price_id']).to eq(booth_price.id)
       expect(json['data']['zone']).to eq('zone_d')
       expect(json['data']['payment_proof_uploaded']).to eq(false)
       expect(json['data']['payment_proof_url']).to be_nil
+    end
+  end
+
+  describe 'PATCH /v1/public/events/:event_slug/register_exhibitor' do
+    let(:email) { "amin-#{SecureRandom.hex(4)}@example.com" }
+    let(:existing_exhibitor) { create(:exhibitor, event: event) }
+    let!(:existing_kit) do
+      create(
+        :exhibitor_kit,
+        event_vendor: existing_exhibitor,
+        exhibitor_booth_price: booth_price,
+        company_name: 'Acme Energy',
+        booth_number: 'A-12',
+        pic_email_address: email,
+        custom_fields_data: { payment_option: 'later', zone: 'zone_d' }
+      )
+    end
+
+    let(:update_params) do
+      {
+        exhibitor_kit_id: existing_kit.id,
+        company_name: 'Updated Company',
+        company_address: 'Kota Kinabalu',
+        booth_number: 'B-01',
+        name_on_fascia: 'UPDATED CO',
+        pic_full_name: 'Amin Rahman',
+        pic_position: 'Sales Manager',
+        pic_contact_number: '0123456789',
+        pic_email_address: email,
+        country: 'Malaysia',
+        product_category: 'Oil & Gas Equipment',
+        payment_option: 'later',
+        exhibitor_booth_price_id: alternate_booth_price.id,
+        custom_fields_data: {
+          preferred_booth_location: 'Hall B',
+          other_services: ['Advertising Opportunities']
+        }
+      }
+    end
+
+    it 'updates existing registration details and booth package' do
+      patch "/v1/public/events/#{event.slug}/register_exhibitor", params: update_params
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['success']).to be(true)
+      expect(json['data']['already_registered']).to be(true)
+
+      existing_kit.reload
+      expect(existing_kit.exhibitor_booth_price_id).to eq(alternate_booth_price.id)
+      expect(existing_kit.company_name).to eq('Updated Company')
+      expect(existing_kit.booth_number).to eq('B-01')
+      expect(existing_kit.amount_paid.to_f).to eq(2500.0)
     end
   end
 

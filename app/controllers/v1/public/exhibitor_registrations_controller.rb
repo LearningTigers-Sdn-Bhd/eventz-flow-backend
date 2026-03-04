@@ -76,6 +76,8 @@ module V1
           return render json: { success: false, message: 'Email is required' }, status: :unprocessable_content
         end
 
+        booth_price = event.exhibitor_booth_prices.find(params[:exhibitor_booth_price_id])
+
         existing_kit = find_existing_registration(event: event, email: email)
         if existing_kit.present?
           return render json: {
@@ -84,7 +86,6 @@ module V1
           }, status: :ok
         end
 
-        booth_price = event.exhibitor_booth_prices.find(params[:exhibitor_booth_price_id])
         exhibitor_kit = create_registration!(event: event, booth_price: booth_price)
 
         render json: {
@@ -97,6 +98,44 @@ module V1
             exhibitor_kit: serialize_exhibitor_kit(exhibitor_kit)
           }
         }, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_content
+      rescue ZoneSoldOutError
+        render json: { success: false, message: 'Selected zone is sold out' }, status: :unprocessable_content
+      rescue BoothPriceSoldOutError
+        render json: { success: false, message: 'Selected booth package is sold out' }, status: :unprocessable_content
+      rescue ActiveRecord::RecordNotFound
+        render json: { success: false, message: 'Event or booth price not found' }, status: :not_found
+      end
+
+      def update
+        event = Event.friendly.find(params[:event_slug])
+
+        email = registration_params[:pic_email_address].to_s.strip.downcase
+        if email.blank?
+          return render json: { success: false, message: 'Email is required' }, status: :unprocessable_content
+        end
+
+        exhibitor_kit_id = params[:exhibitor_kit_id].to_i
+        if exhibitor_kit_id <= 0
+          return render json: { success: false, message: 'Exhibitor registration is required' },
+                        status: :unprocessable_content
+        end
+
+        booth_price = event.exhibitor_booth_prices.find(params[:exhibitor_booth_price_id])
+        existing_kit = find_exhibitor_kit_for_event!(event: event, exhibitor_kit_id: exhibitor_kit_id)
+
+        unless registration_email_matches?(exhibitor_kit: existing_kit, email: email)
+          return render json: { success: false, message: 'Exhibitor registration not found for this email' },
+                        status: :not_found
+        end
+
+        updated_kit = update_existing_registration!(existing_kit: existing_kit, booth_price: booth_price)
+
+        render json: {
+          success: true,
+          data: serialize_existing_registration(updated_kit)
+        }, status: :ok
       rescue ActiveRecord::RecordInvalid => e
         render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_content
       rescue ZoneSoldOutError
@@ -172,6 +211,22 @@ module V1
 
       private
 
+      def update_existing_registration!(existing_kit:, booth_price:)
+        ActiveRecord::Base.transaction do
+          user = find_or_create_vendor_user!
+          upsert_vendor_profile!(user)
+
+          existing_kit.event_vendor.event.with_lock do
+            unless existing_kit.exhibitor_booth_price_id == booth_price.id
+              ensure_zone_capacity!(booth_price: booth_price)
+            end
+
+            existing_kit.update!(build_exhibitor_kit_attributes(booth_price))
+            existing_kit
+          end
+        end
+      end
+
       def create_registration!(event:, booth_price:)
         ActiveRecord::Base.transaction do
           user = find_or_create_vendor_user!
@@ -239,7 +294,8 @@ module V1
           pic_contact_number: registration_params[:pic_contact_number],
           pic_email_address: registration_params[:pic_email_address],
           country: registration_params[:country],
-          custom_fields_data: custom_fields_data.merge(payment_option: payment_option, zone: zone),
+          custom_fields_data: custom_fields_data.merge(payment_option: payment_option, zone: zone,
+                                                       product_category: registration_params[:product_category]),
           exhibitor_booth_price: booth_price,
           booth_type: booth_price.booth_type,
           amount_paid: booth_price.price,
@@ -303,6 +359,7 @@ module V1
           return {
             has_registered: false,
             exhibitor_kit_id: nil,
+            exhibitor_booth_price_id: nil,
             booth_number: nil,
             payment_status: nil,
             company_name: nil,
@@ -325,22 +382,26 @@ module V1
         {
           has_registered: true,
           exhibitor_kit_id: exhibitor_kit.id,
+          exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
           booth_number: exhibitor_kit.booth_number,
           payment_status: exhibitor_kit.payment_status,
           company_name: exhibitor_kit.company_name,
+          company_address: exhibitor_kit.company_address,
           name_on_fascia: exhibitor_kit.name_on_fascia,
           pic_email_address: exhibitor_kit.pic_email_address,
           pic_full_name: exhibitor_kit.pic_full_name,
           pic_position: exhibitor_kit.pic_position,
           pic_contact_number: exhibitor_kit.pic_contact_number,
           country: exhibitor_kit.country,
+          product_category: exhibitor_kit.custom_fields_data&.dig('product_category') || exhibitor_kit.event_vendor&.vendor&.vendor_profile&.category,
           preferred_booth_location: exhibitor_kit.custom_fields_data&.dig('preferred_booth_location'),
           other_services: exhibitor_kit.custom_fields_data&.dig('other_services') || [],
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
           price: exhibitor_kit.amount_paid,
           zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone,
           payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
-          payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil
+          payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil,
+          custom_fields_data: exhibitor_kit.custom_fields_data || {}
         }
       end
 
@@ -424,6 +485,16 @@ module V1
           .joins(:event_vendor)
           .where(id: exhibitor_kit_id, event_vendors: { event_id: event.id, type: 'Exhibitor' })
           .first!
+      end
+
+      def registration_email_matches?(exhibitor_kit:, email:)
+        normalized_email = email.to_s.strip.downcase
+        return false if normalized_email.blank?
+
+        kit_email = exhibitor_kit.pic_email_address.to_s.strip.downcase
+        vendor_email = exhibitor_kit.event_vendor&.vendor&.email.to_s.strip.downcase
+
+        normalized_email == kit_email || normalized_email == vendor_email
       end
     end
   end
