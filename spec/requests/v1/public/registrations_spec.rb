@@ -223,6 +223,19 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         created_ticket = Ticket.order(created_at: :desc).first
         expect(created_ticket.status).to eq('purchased')
       end
+
+      it 'keeps ticket pending when it belongs to a group checkout' do
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          registered_by_email: 'leader@example.com'
+        )
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['data']['payment_status']).to eq('pending')
+
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('pending_payment')
+      end
     end
 
     context 'with missing required fields' do

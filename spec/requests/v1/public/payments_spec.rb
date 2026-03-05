@@ -43,6 +43,42 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(json['data']['order_id']).to eq('order_sandbox_123')
       expect(json['data']['key_id']).to eq('rzp_test_key')
     end
+
+    it 'charges group once when member tickets are free' do
+      free_member_ticket_type = create(:ticket_type, event: event, price: 0, status: :published, hidden: false)
+      leader_email = 'leader@golf.com'
+
+      pending_ticket.update!(registered_by_email: leader_email, attendee_email: leader_email)
+
+      create(
+        :ticket,
+        event: event,
+        ticket_type: free_member_ticket_type,
+        attendee_name: 'Member One',
+        attendee_email: 'member1@golf.com',
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      expect(gateway_instance).to receive(:create_order).with(
+        hash_including(amount_subunits: 12_000)
+      ).and_return(
+        {
+          'id' => 'order_sandbox_group_123',
+          'amount' => 12_000,
+          'currency' => 'MYR'
+        }
+      )
+
+      post "/v1/public/events/#{event.slug}/payments/create_order", params: {
+        ticket_public_id: pending_ticket.public_id
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['amount']).to eq(12_000)
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/payments/verify' do

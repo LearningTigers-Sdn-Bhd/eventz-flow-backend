@@ -109,7 +109,7 @@ module V1
         ticket = event.tickets.new(registration_params)
         ticket.ticket_type = ticket_type
 
-        if ticket_type.current_price.zero?
+        if ticket_type.current_price.zero? && ticket.registered_by_email.blank?
           ticket.status = 'purchased'
           ticket.payment_status = 'paid'
         else
