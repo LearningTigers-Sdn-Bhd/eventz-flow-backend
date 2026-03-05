@@ -23,7 +23,6 @@ RSpec.describe Ticket, type: :model do
   # Helper to easily create a valid ticket using the factory
   let(:valid_ticket) { build(:ticket, user: user, event: event, ticket_type: ticket_type) }
 
-
   # --- ASSOCIATIONS ---
   describe 'Associations' do
     it { is_expected.to belong_to(:event) }
@@ -42,8 +41,8 @@ RSpec.describe Ticket, type: :model do
     it { is_expected.to validate_presence_of(:attendee_name) }
     it { is_expected.to validate_presence_of(:status) }
     it { is_expected.to validate_presence_of(:payment_status) }
-    
-    # We rely on belongs_to validations for foreign keys in modern Rails, 
+
+    # We rely on belongs_to validations for foreign keys in modern Rails,
     # but explicit checks are fine if preferred:
     it { is_expected.to validate_presence_of(:event_id) }
     it { is_expected.to validate_presence_of(:ticket_type_id) }
@@ -65,14 +64,14 @@ RSpec.describe Ticket, type: :model do
       # Test using the raw attributes to check the model's logic directly
       it 'is set automatically on creation' do
         # Use the attributes hash to create the record
-        ticket = Ticket.create!(valid_attributes) 
+        ticket = Ticket.create!(valid_attributes)
         expect(ticket.public_id).to be_present
       end
 
       it 'validates presence on update' do
         # Use the Factory to create a clean, persisted record
         ticket = create(:ticket, user: user, event: event, ticket_type: ticket_type)
-        
+
         ticket.public_id = nil
         # Use `valid?(:update)` to trigger the conditional validation
         expect(ticket.valid?(:update)).to be false
@@ -83,8 +82,13 @@ RSpec.describe Ticket, type: :model do
 
   # --- ENUMS ---
   describe 'Enums' do
-    it { is_expected.to define_enum_for(:status).with_values(purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4) }
-    it { is_expected.to define_enum_for(:payment_status).with_values(pending: 0, paid: 1, failed: 2, refunded_payment: 3) }
+    it {
+      is_expected.to define_enum_for(:status).with_values(purchased: 0, scanned: 1, refunded: 2, canceled: 3,
+                                                          pending_payment: 4)
+    }
+    it {
+      is_expected.to define_enum_for(:payment_status).with_values(pending: 0, paid: 1, failed: 2, refunded_payment: 3)
+    }
   end
 
   # --- SCOPES ---
@@ -111,11 +115,59 @@ RSpec.describe Ticket, type: :model do
     it 'sets a public_id (UUID) before validation on create' do
       ticket = Ticket.new(valid_attributes.except(:public_id))
       ticket.valid?
-      
+
       expect(ticket.public_id).to be_present
       expect(ticket.public_id).to be_a(String)
       # Using a UUID regex is more robust than length check
       expect(ticket.public_id).to match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)
+    end
+
+    it 'does not send confirmation email for free group member while leader payment is pending' do
+      free_ticket_type = create(:ticket_type, event: event, price: 0)
+
+      expect do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: free_ticket_type,
+          attendee_email: 'member@example.com',
+          registered_by_email: 'leader@example.com',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+      end.not_to have_enqueued_mail(TicketMailer, :confirmation_email)
+    end
+
+    it 'sends confirmation email for free ticket when ticket is already paid' do
+      free_ticket_type = create(:ticket_type, event: event, price: 0)
+
+      expect do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: free_ticket_type,
+          attendee_email: 'free@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+    end
+
+    it 'sends confirmation email when free group member becomes paid after leader payment' do
+      free_ticket_type = create(:ticket_type, event: event, price: 0)
+      member_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: free_ticket_type,
+        attendee_email: 'member-afterpay@example.com',
+        registered_by_email: 'leader@example.com',
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      expect do
+        member_ticket.update!(status: :purchased, payment_status: :paid)
+      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
     end
   end
 end

@@ -40,28 +40,30 @@ class Ticket < ApplicationRecord
 
   validates :attendee_name, presence: true
   validates :attendee_email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-  validates :attendee_phone, format: { with: /\A[+]?[\d\s\-\(\)]+\z/, message: 'must be a valid phone number' }, allow_blank: true
+  validates :attendee_phone, format: { with: /\A[+]?[\d\s\-()]+\z/, message: 'must be a valid phone number' },
+                             allow_blank: true
   validates :status, presence: true # Although redundant with enum presence check, it's clear.
   validates :payment_status, presence: true
 
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
-  scope :active, -> { where(status: [:purchased, :scanned]) }
+  scope :active, -> { where(status: %i[purchased scanned]) }
   scope :unscanned, -> { active.where(checked_in: false) }
   scope :within_date_range, ->(range) { where(created_at: range) }
 
-  after_commit :send_webhook_notification, on: [:create, :update]
+  after_commit :send_webhook_notification, on: %i[create update]
   after_commit :send_confirmation_email, if: :should_send_confirmation?
 
   attr_accessor :skip_webhooks
 
   # --- Class Methods ---
   def self.total_revenue_cents
-    joins(:ticket_type).sum("(ticket_types.price * 100.0)")
+    joins(:ticket_type).sum('(ticket_types.price * 100.0)')
   end
 
   def send_webhook_notification
     return if skip_webhooks
+
     webhook_url = event.webhook_url
     return unless webhook_url.present?
 
@@ -102,15 +104,17 @@ class Ticket < ApplicationRecord
     # Title-case attendee_name for display while keeping a normalized key for dedupe/indexes
     self.attendee_name = titleize_name(attendee_name) if attendee_name.present?
 
-    if has_attribute?(:attendee_name_norm)
-      self.attendee_name_norm = normalize_name_key(attendee_name) if will_save_change_to_attendee_name? || attendee_name_norm.blank?
+    if has_attribute?(:attendee_name_norm) && (will_save_change_to_attendee_name? || attendee_name_norm.blank?)
+      self.attendee_name_norm = normalize_name_key(attendee_name)
     end
-    if has_attribute?(:attendee_email_norm)
-      self.attendee_email_norm = normalize_email_key(attendee_email) if will_save_change_to_attendee_email? || attendee_email_norm.blank?
+    if has_attribute?(:attendee_email_norm) && (will_save_change_to_attendee_email? || attendee_email_norm.blank?)
+      self.attendee_email_norm = normalize_email_key(attendee_email)
     end
-    if has_attribute?(:attendee_phone_norm)
-      self.attendee_phone_norm = normalize_phone_key(attendee_phone) if will_save_change_to_attendee_phone? || attendee_phone_norm.blank?
-    end
+    return unless has_attribute?(:attendee_phone_norm)
+
+    return unless will_save_change_to_attendee_phone? || attendee_phone_norm.blank?
+
+    self.attendee_phone_norm = normalize_phone_key(attendee_phone)
   end
 
   def titleize_name(value)
@@ -139,7 +143,7 @@ class Ticket < ApplicationRecord
     return 'ticket.scanned' if previous_changes[:checked_in] == [false, true]
     return 'ticket.refunded' if previous_changes[:status]&.last == 2  # refunded enum value
     return 'ticket.canceled' if previous_changes[:status]&.last == 3  # canceled enum value
-    return 'ticket.payment_confirmed' if previous_changes[:payment_status] == [0, 1]  # pending to paid
+    return 'ticket.payment_confirmed' if previous_changes[:payment_status] == [0, 1] # pending to paid
 
     'ticket.updated'
   end
@@ -152,58 +156,56 @@ class Ticket < ApplicationRecord
       event_type: event_type,
       webhook_id: SecureRandom.uuid,
       timestamp: Time.now.utc.iso8601,
-      api_version: "v1",
+      api_version: 'v1',
 
       ticket: {
-        id: self.id,
+        id: id,
         public_id: self.public_id,
-        role: self.role,
-        status: self.status,
-        payment_status: self.payment_status,
-        attendee_name: self.attendee_name,
-        attendee_email: self.attendee_email,
-        attendee_phone: self.attendee_phone,
-        custom_fields: self.custom_fields_data
+        role: role,
+        status: status,
+        payment_status: payment_status,
+        attendee_name: attendee_name,
+        attendee_email: attendee_email,
+        attendee_phone: attendee_phone,
+        custom_fields: custom_fields_data
       },
 
       ticket_type: {
-        id: self.ticket_type.id,
-        name: self.ticket_type.name,
-        price: self.ticket_type.price.to_f
+        id: ticket_type.id,
+        name: ticket_type.name,
+        price: ticket_type.price.to_f
       },
 
       event: {
-        id: self.event.id,
-        title: self.event.title
+        id: event.id,
+        title: event.title
       }
     }
 
     # Include check_in_url if provided (from Thread local storage set in controller)
-    if Thread.current[:check_in_url].present?
-      payload[:check_in_url] = Thread.current[:check_in_url]
-    end
+    payload[:check_in_url] = Thread.current[:check_in_url] if Thread.current[:check_in_url].present?
 
     # Add scanned_by information if ticket was scanned by a user
-    if self.scanned_by_id.present? && self.scanned_by
+    if scanned_by_id.present? && scanned_by
       payload[:scanned_by] = {
-        id: self.scanned_by.id,
-        full_name: self.scanned_by.full_name,
-        email: self.scanned_by.email
+        id: scanned_by.id,
+        full_name: scanned_by.full_name,
+        email: scanned_by.email
       }
     end
 
     # Add full context on creation
     if is_creation
       payload[:ticket].merge!(
-        checked_in: self.checked_in,
-        check_in_at: self.check_in_at&.iso8601,
-        created_at: self.created_at.iso8601
+        checked_in: checked_in,
+        check_in_at: check_in_at&.iso8601,
+        created_at: created_at.iso8601
       )
 
       payload[:event].merge!(
-        start_date: self.event.start_date&.iso8601,
-        end_date: self.event.end_date&.iso8601,
-        custom_labels: self.event.labels_data
+        start_date: event.start_date&.iso8601,
+        end_date: event.end_date&.iso8601,
+        custom_labels: event.labels_data
       )
     else
       # Add changes for updates
@@ -211,8 +213,8 @@ class Ticket < ApplicationRecord
 
       # Include check_in_at for scanned events
       if event_type == 'ticket.scanned'
-        payload[:ticket][:checked_in] = self.checked_in
-        payload[:ticket][:check_in_at] = self.check_in_at&.iso8601
+        payload[:ticket][:checked_in] = checked_in
+        payload[:ticket][:check_in_at] = check_in_at&.iso8601
       end
     end
 
@@ -220,7 +222,7 @@ class Ticket < ApplicationRecord
   end
 
   def format_changes
-    self.previous_changes.except('updated_at').transform_values do |change|
+    previous_changes.except('updated_at').transform_values do |change|
       {
         from: change[0],
         to: change[1]
@@ -236,13 +238,9 @@ class Ticket < ApplicationRecord
   def should_send_confirmation?
     return false if attendee_email.blank?
 
-    # Free ticket - send on create
-    if ticket_type&.current_price&.zero?
-      return previously_new_record?
-    end
+    return true if previously_new_record? && paid? && purchased?
 
-    # Paid ticket - send when payment confirmed
-    saved_change_to_payment_status? && payment_status == "paid"
+    saved_change_to_payment_status? && payment_status == 'paid' && purchased?
   end
 
   def send_confirmation_email

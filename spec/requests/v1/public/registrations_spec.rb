@@ -51,6 +51,36 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(json['data'].first['current_tier']).to eq('Early Bird')
       end
     end
+
+    context 'when quantity is limited' do
+      before { ticket_type.update!(quantity: 2) }
+
+      it 'calculates remaining_slots using paid tickets only' do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'paid@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'pending@example.com',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+
+        get "/v1/public/events/#{event.slug}/ticket_types"
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json['data'].first['remaining_slots']).to eq(1)
+      end
+    end
   end
 
   describe 'GET /v1/public/events/:event_slug/registration_forms' do
@@ -101,6 +131,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         event: event,
         ticket_type: ticket_type,
         attendee_email: 'john@example.com',
+        registered_by_email: 'leader@example.com',
         status: :pending_payment,
         payment_status: :pending,
         custom_fields_data: { 'registration_mode' => 'delegate' }
@@ -144,6 +175,9 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data']['has_pending_payment']).to be(true)
       expect(json['data']['has_paid_ticket']).to be(true)
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).to include(pending_ticket.public_id)
+      expect(json['data']['pending_tickets'].find do |t|
+        t['public_id'] == pending_ticket.public_id
+      end['registered_by_email']).to eq('leader@example.com')
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).not_to include(other_form_ticket.public_id)
       expect(json['data']['paid_tickets'].map { |t| t['public_id'] }).to include(paid_ticket.public_id)
     end
@@ -235,6 +269,32 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
 
         created_ticket = Ticket.order(created_at: :desc).first
         expect(created_ticket.status).to eq('pending_payment')
+      end
+
+      it 'marks rm0 group member as paid when leader is already paid' do
+        paid_leader_ticket_type = create(:ticket_type, event: event, price: 6000, status: :published, hidden: false)
+        create(
+          :ticket,
+          event: event,
+          ticket_type: paid_leader_ticket_type,
+          attendee_name: 'Leader',
+          attendee_email: 'leader@example.com',
+          registered_by_email: 'leader@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          attendee_email: 'member-new@example.com',
+          registered_by_email: 'leader@example.com'
+        )
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['data']['payment_status']).to eq('paid')
+
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('purchased')
       end
     end
 

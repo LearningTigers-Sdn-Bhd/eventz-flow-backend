@@ -109,7 +109,7 @@ module V1
         ticket = event.tickets.new(registration_params)
         ticket.ticket_type = ticket_type
 
-        if ticket_type.current_price.zero? && ticket.registered_by_email.blank?
+        if auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
           ticket.status = 'purchased'
           ticket.payment_status = 'paid'
         else
@@ -155,6 +155,7 @@ module V1
 
         ticket_types = available_ticket_types.map do |tt|
           rule = rule_by_ticket_type_id[tt.id]
+          sold_count = tt.tickets.where(payment_status: :paid).where.not(status: %i[canceled refunded]).count
 
           {
             id: tt.id,
@@ -162,7 +163,8 @@ module V1
             price: tt.current_price,
             original_price: tt.price,
             current_tier: tt.active_tier&.label,
-            available: tt.quantity.nil? || tt.tickets.count < tt.quantity,
+            available: tt.quantity.nil? || sold_count < tt.quantity,
+            remaining_slots: tt.quantity.nil? ? nil : [tt.quantity - sold_count, 0].max,
             custom_fields_data: tt.custom_fields_data,
             custom_labels_data: rule&.custom_labels_data || [],
             registration_mode: rule&.registration_mode || 'single',
@@ -208,14 +210,29 @@ module V1
           public_id: ticket.public_id,
           attendee_name: ticket.attendee_name,
           attendee_email: ticket.attendee_email,
+          registered_by_email: ticket.registered_by_email,
           attendee_phone: ticket.attendee_phone,
           ticket_type: ticket.ticket_type&.name,
+          ticket_type_id: ticket.ticket_type_id,
           price: ticket.ticket_type&.current_price || 0,
           payment_status: ticket.payment_status,
           status: ticket.status,
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id
         }
+      end
+
+      def auto_paid_ticket?(event:, ticket:, ticket_type:)
+        return false unless ticket_type.current_price.zero?
+        return true if ticket.registered_by_email.blank?
+
+        leader_email = ticket.registered_by_email.to_s.strip.downcase
+        return false if leader_email.blank?
+
+        event.tickets
+             .where(payment_status: :paid, status: :purchased)
+             .where('LOWER(attendee_email) = ? OR LOWER(registered_by_email) = ?', leader_email, leader_email)
+             .exists?
       end
     end
   end

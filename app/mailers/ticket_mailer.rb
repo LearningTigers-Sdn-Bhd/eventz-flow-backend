@@ -4,8 +4,9 @@ class TicketMailer < ApplicationMailer
     @event = ticket.event
     @ticket_type = ticket.ticket_type
     @ticket_payment = ticket.ticket_payment
-    @show_payment_receipt = ticket.paid?
-    bcc_recipients = ticket.paid? ? payment_receipt_bcc(additional: ticket.event.payment_receipt_email) : nil
+    amount_paid = (@ticket_payment&.amount || @ticket_type.current_price).to_f
+    @show_payment_receipt = ticket.paid? && amount_paid.positive?
+    bcc_recipients = @show_payment_receipt ? payment_receipt_bcc(additional: ticket.event.payment_receipt_email) : nil
 
     # Generate QR code and attach inline
     qr_png = QrCodeService.generate_png(ticket.public_id, size: 600)
