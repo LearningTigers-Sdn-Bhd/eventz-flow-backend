@@ -31,6 +31,7 @@ class ExhibitorKit < ApplicationRecord
   validates :pic_contact_number, presence: true
   validates :pic_email_address, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?

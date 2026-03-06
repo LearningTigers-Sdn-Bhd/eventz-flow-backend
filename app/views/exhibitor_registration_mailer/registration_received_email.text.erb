@@ -4,12 +4,19 @@ We have received your exhibitor registration for <%= @event.title %>.
 
 Company: <%= @exhibitor_kit.company_name %>
 Booth: <%= @booth_label %>
+<% if @exhibitor_kit.amount_paid.to_f > 0 %>
 Amount: RM <%= @exhibitor_kit.amount_paid %>
+<% end %>
 Payment Status: <%= @exhibitor_kit.payment_status.humanize %>
 
+<% if @exhibitor_kit.amount_paid.to_f > 0 %>
 If you selected pay later, please complete payment to secure your booth.
+<% else %>
+Your selected booth requires price negotiation. Please await further instructions regarding pricing.
+<% end %>
 
-If you need support, contact enquiry@ogsesabah.com.
-
+<% if @contact_email.present? %>
+If you need support, contact <%= @contact_email %>.
+<% end %>
 Warm regards,
-OGSE Sabah 2026 Secretariat
+<%= @sender_name %>

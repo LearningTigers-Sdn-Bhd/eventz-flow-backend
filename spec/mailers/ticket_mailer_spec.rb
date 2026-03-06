@@ -52,7 +52,7 @@ RSpec.describe TicketMailer, type: :mailer do
     end
 
     it 'adds organizer payment receipt bcc from event' do
-      event.update!(payment_receipt_email: 'organizer@example.com')
+      event.create_event_email_setting!(payment_receipt_email: 'organizer@example.com')
 
       paid_ticket = create(
         :ticket,

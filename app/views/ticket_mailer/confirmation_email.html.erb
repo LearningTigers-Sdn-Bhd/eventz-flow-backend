@@ -131,11 +131,15 @@
         </div>
 
         <p class="closing">
-          Should you have any questions or require further assistance, please don't hesitate to reach out to us at <a href="mailto:enquiry@ogsesabah.com" style="color: #2563eb; text-decoration: none; font-weight: bold;">enquiry@ogsesabah.com</a>. We wish you a wonderful and memorable experience at the event.
+          <% if @contact_email.present? %>
+            Should you have any questions or require further assistance, please don't hesitate to reach out to us at <a href="mailto:<%= @contact_email %>" style="color: #2563eb; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>. We wish you a wonderful and memorable experience at the event.
+          <% else %>
+            We wish you a wonderful and memorable experience at the event.
+          <% end %>
         </p>
 
         <p class="closing">Warm regards,</p>
-        <p class="signature">OGSE Sabah 2026 Secretariat</p>
+        <p class="signature"><%= @sender_name %></p>
         <% if @show_payment_receipt %>
           <p class="closing" style="margin-top: 18px; font-size: 13px; color: #6b7280;">
             This email confirms your successful payment and registration.

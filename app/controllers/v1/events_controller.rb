@@ -71,9 +71,10 @@ module V1
                         ActiveModel::Type::Boolean.new.cast(event_params[:allow_contractor_printing_services])
 
       handle_logo
+      normalize_email_setting_params
 
       # @event is set and authorized by before_actions
-      if @event.update(event_params.except(:logo, :remove_logo))
+      if @event.update(event_params.except(:logo, :remove_logo, :payment_receipt_email))
         # Auto-link contractor printing services if flag was toggled ON
         ContractorPrintingServiceLinker.new(event: @event).link_if_needed if flag_toggled_on
 
@@ -196,12 +197,13 @@ module V1
         :use_business_matching,
         :business_matching_webhook_url,
         :use_sponsorship,
-        :payment_receipt_email,
+        :payment_receipt_email, # backward compat — routed to event_email_setting
         :skip_webhooks,
         :logo,
         :remove_logo,
         labels_data: {}, # Allows JSONB hash updates
-        booth_types: [] # Allows JSONB array updates
+        booth_types: [], # Allows JSONB array updates
+        event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email]
       )
     end
 
@@ -213,6 +215,20 @@ module V1
       elsif ActiveModel::Type::Boolean.new.cast(event_p[:remove_logo])
         @event.logo.purge_later if @event.logo.attached?
       end
+    end
+
+    # Backward compat: if payment_receipt_email is sent at the top level,
+    # route it into event_email_setting_attributes so the admin panel
+    # doesn't need changes.
+    def normalize_email_setting_params
+      event_p = params[:event]
+      return unless event_p&.key?(:payment_receipt_email)
+
+      event_p[:event_email_setting_attributes] ||= {}
+      event_p[:event_email_setting_attributes][:payment_receipt_email] = event_p[:payment_receipt_email]
+
+      # Build the setting record if it doesn't exist yet
+      @event.build_event_email_setting unless @event.event_email_setting
     end
 
     def find_organizer_payment_detail(event)

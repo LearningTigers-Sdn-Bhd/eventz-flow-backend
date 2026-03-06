@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_02_111406) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -111,6 +111,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_02_111406) do
     t.index ["event_id", "user_id"], name: "index_event_assignments_on_event_id_and_user_id", unique: true
     t.index ["event_id"], name: "index_event_assignments_on_event_id"
     t.index ["user_id"], name: "index_event_assignments_on_user_id"
+  end
+
+  create_table "event_email_settings", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "sender_name"
+    t.string "sender_address"
+    t.string "contact_email"
+    t.string "payment_receipt_email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
 
   create_table "event_exhibition_contractors", force: :cascade do |t|
@@ -464,7 +475,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_02_111406) do
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
     t.boolean "use_seat_ticketing", default: false, null: false
-    t.string "payment_receipt_email"
     t.jsonb "booth_types", default: []
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
@@ -581,6 +591,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_02_111406) do
     t.jsonb "custom_fields_data", default: {}, null: false
     t.bigint "exhibitor_booth_price_id"
     t.string "booth_type"
+    t.integer "booth_quantity", default: 1, null: false
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
   end
@@ -1263,6 +1274,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_02_111406) do
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"
+  add_foreign_key "event_email_settings", "events"
   add_foreign_key "event_exhibition_contractors", "events"
   add_foreign_key "event_exhibition_contractors", "exhibition_contractor_profiles"
   add_foreign_key "event_location_members", "event_locations"

@@ -279,10 +279,16 @@ module V1
         user
       end
 
+      def booth_quantity
+        qty = params[:booth_quantity].to_i
+        qty > 0 ? qty : 1
+      end
+
       def build_exhibitor_kit_attributes(booth_price)
         custom_fields_data = (registration_params[:custom_fields_data] || {}).to_h
         payment_option = registration_params[:payment_option].to_s == 'later' ? 'later' : 'now'
         zone = booth_price.zone
+        qty = booth_quantity
 
         {
           booth_number: registration_params[:booth_number],
@@ -298,7 +304,8 @@ module V1
                                                        product_category: registration_params[:product_category]),
           exhibitor_booth_price: booth_price,
           booth_type: booth_price.booth_type,
-          amount_paid: booth_price.price,
+          booth_quantity: qty,
+          amount_paid: booth_price.price * qty,
           payment_status: :unpaid
         }
       end
@@ -317,6 +324,7 @@ module V1
           :product_category,
           :payment_option,
           :exhibitor_booth_price_id,
+          :booth_quantity,
           custom_fields_data: {}
         )
       end
@@ -344,6 +352,7 @@ module V1
           pic_email_address: exhibitor_kit.pic_email_address,
           country: exhibitor_kit.country,
           booth_type: exhibitor_kit.booth_type,
+          booth_quantity: exhibitor_kit.booth_quantity,
           amount_paid: exhibitor_kit.amount_paid,
           payment_status: exhibitor_kit.payment_status,
           payment_option: exhibitor_kit.custom_fields_data&.dig('payment_option') || 'now',
@@ -361,6 +370,7 @@ module V1
             exhibitor_kit_id: nil,
             exhibitor_booth_price_id: nil,
             booth_number: nil,
+            booth_quantity: nil,
             payment_status: nil,
             company_name: nil,
             name_on_fascia: nil,
@@ -384,6 +394,7 @@ module V1
           exhibitor_kit_id: exhibitor_kit.id,
           exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
           booth_number: exhibitor_kit.booth_number,
+          booth_quantity: exhibitor_kit.booth_quantity,
           payment_status: exhibitor_kit.payment_status,
           company_name: exhibitor_kit.company_name,
           company_address: exhibitor_kit.company_address,
@@ -427,14 +438,16 @@ module V1
       end
 
       def ensure_zone_capacity!(booth_price:)
+        qty = booth_quantity
+
         zone = booth_price.exhibitor_zone
         if zone.present?
           sold_count = zone_sold_count(zone_id: zone.id, event_id: booth_price.event_id)
-          raise ZoneSoldOutError if zone.quota.present? && sold_count >= zone.quota
+          raise ZoneSoldOutError if zone.quota.present? && sold_count + qty > zone.quota
         end
 
         sold_count = booth_price_sold_count(booth_price_id: booth_price.id, event_id: booth_price.event_id)
-        raise BoothPriceSoldOutError if booth_price.quota.present? && sold_count >= booth_price.quota
+        raise BoothPriceSoldOutError if booth_price.quota.present? && sold_count + qty > booth_price.quota
       end
 
       def exhibitor_sales_scope
@@ -447,28 +460,28 @@ module V1
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event.id })
           .group('exhibitor_booth_prices.exhibitor_zone_id')
-          .count
+          .sum(:booth_quantity)
       end
 
       def zone_sold_count(zone_id:, event_id:)
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event_id })
           .where(exhibitor_booth_prices: { exhibitor_zone_id: zone_id })
-          .count
+          .sum(:booth_quantity)
       end
 
       def booth_price_sold_counts(event)
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event.id })
           .group('exhibitor_kits.exhibitor_booth_price_id')
-          .count
+          .sum(:booth_quantity)
       end
 
       def booth_price_sold_count(booth_price_id:, event_id:)
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event_id })
           .where(exhibitor_kits: { exhibitor_booth_price_id: booth_price_id })
-          .count
+          .sum(:booth_quantity)
       end
 
       def manual_payment_zone?(zone)

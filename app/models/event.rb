@@ -33,6 +33,7 @@ class Event < ApplicationRecord
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
+  has_one :event_email_setting, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
   has_one :event_payment_gateway, dependent: :destroy
 
@@ -47,6 +48,8 @@ class Event < ApplicationRecord
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: %i[create update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
+
+  accepts_nested_attributes_for :event_email_setting, update_only: true
 
   attr_accessor :skip_webhooks
 
@@ -130,7 +133,11 @@ class Event < ApplicationRecord
   end
 
   def as_json(options = {})
-    super(options).merge('logo_url' => logo_url)
+    super(options).merge(
+      'logo_url' => logo_url,
+      'payment_receipt_email' => event_email_setting&.payment_receipt_email,
+      'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at])
+    )
   end
 
   def send_webhook_notification

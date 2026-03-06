@@ -17,7 +17,8 @@ Payment Receipt
 
 Your booth registration is now fully confirmed.
 
-If you need support, contact enquiry@ogsesabah.com.
-
+<% if @contact_email.present? %>
+If you need support, contact <%= @contact_email %>.
+<% end %>
 Warm regards,
-OGSE Sabah 2026 Secretariat
+<%= @sender_name %>

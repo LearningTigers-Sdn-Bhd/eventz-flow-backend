@@ -59,10 +59,12 @@
               <td>Booth:</td>
               <td><%= @booth_label %></td>
             </tr>
-            <tr>
-              <td>Amount:</td>
-              <td>RM <%= @exhibitor_kit.amount_paid %></td>
-            </tr>
+            <% if @exhibitor_kit.amount_paid.to_f > 0 %>
+              <tr>
+                <td>Amount:</td>
+                <td>RM <%= @exhibitor_kit.amount_paid %></td>
+              </tr>
+            <% end %>
             <tr>
               <td>Payment Status:</td>
               <td><%= @exhibitor_kit.payment_status.humanize %></td>
@@ -70,13 +72,21 @@
           </table>
         </div>
 
-        <div class="notice">
-          If your payment is still pending, please complete payment to secure and confirm your booth reservation.
-        </div>
+        <% if @exhibitor_kit.amount_paid.to_f > 0 %>
+          <div class="notice">
+            If your payment is still pending, please complete payment to secure and confirm your booth reservation.
+          </div>
+        <% else %>
+          <div class="notice">
+            Your selected booth requires price negotiation. Please await further instructions regarding pricing.
+          </div>
+        <% end %>
 
-        <p class="closing">If you need support, contact us at <a href="mailto:enquiry@ogsesabah.com" style="color: #2563eb; text-decoration: none; font-weight: bold;">enquiry@ogsesabah.com</a>.</p>
+        <% if @contact_email.present? %>
+          <p class="closing">If you need support, contact us at <a href="mailto:<%= @contact_email %>" style="color: #2563eb; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.</p>
+        <% end %>
         <p class="closing">Warm regards,</p>
-        <p class="signature">OGSE Sabah 2026 Secretariat</p>
+        <p class="signature"><%= @sender_name %></p>
       </div>
 
       <div class="footer">

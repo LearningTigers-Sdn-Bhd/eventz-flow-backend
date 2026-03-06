@@ -65,7 +65,7 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     end
 
     it 'adds organizer payment receipt bcc from event' do
-      event.update!(payment_receipt_email: 'organizer@example.com')
+      event.create_event_email_setting!(payment_receipt_email: 'organizer@example.com')
 
       organizer_mail = described_class.payment_confirmed_email(exhibitor_kit)
       expect(organizer_mail.bcc).to include('organizer@example.com')

@@ -25,12 +25,13 @@ Payment Receipt
 
 Please show this ticket ID or the attached QR code at check-in.
 
-Should you have any questions, please reach out to us at enquiry@ogsesabah.com.
-
+<% if @contact_email.present? %>
+Should you have any questions, please reach out to us at <%= @contact_email %>.
+<% end %>
 See you at the event!
 
 Warm regards,
-OGSE Sabah 2026 Secretariat
+<%= @sender_name %>
 
 ---
 This email was sent by EventzFlow
