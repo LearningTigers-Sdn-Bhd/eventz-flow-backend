@@ -37,6 +37,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       fascia_upgrade_required: { type: :boolean, example: false },
       company_name: { type: :string, example: 'Exhibitor Co.' },
       company_address: { type: :string, example: '123 Exhibitor St.' },
+      country: { type: :string, nullable: true, example: 'Malaysia' },
       pic_full_name: { type: :string, example: 'PIC Name' },
       pic_contact_number: { type: :string, example: '+1234567890' },
       pic_email_address: { type: :string, example: 'pic@example.com' },
@@ -44,9 +45,11 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       digital_brochure_link: { type: :string, nullable: true, example: 'http://brochure.com' },
       indemnity_signed: { type: :boolean, example: false },
       indemnity_document_url: { type: :string, nullable: true },
+      custom_fields_data: { type: :object, nullable: true },
       exhibitor_team_members: { type: :array, items: EXHIBITOR_TEAM_MEMBER_SCHEMA, nullable: true }
     },
-    required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address is_raw_space indemnity_signed]
+    required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name
+                 pic_contact_number pic_email_address is_raw_space indemnity_signed]
   }.freeze
 
   VENDOR_RESPONSE_SCHEMA = {
@@ -55,7 +58,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       id: { type: :integer },
       event_id: { type: :integer },
       vendor_id: { type: :integer },
-      type: { type: :string, enum: ['Exhibitor', 'Merchant'], description: 'Vendor type based on event.use_ticket' },
+      type: { type: :string, enum: %w[Exhibitor Merchant], description: 'Vendor type based on event.use_ticket' },
       redirect_url: { type: :string },
       poster_url: { type: :string, nullable: true },
       qr_url: { type: :string, nullable: true },
@@ -124,7 +127,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
       response '200', 'Returns list of vendors assigned to the event' do
         schema type: :array,
-          items: VENDOR_RESPONSE_SCHEMA
+               items: VENDOR_RESPONSE_SCHEMA
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -139,12 +142,12 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
       response '404', 'Event not found' do
         let(:Authorization) { auth_header_event_admin }
-        let(:event_id) { 99999 }
+        let(:event_id) { 99_999 }
         schema type: :object,
-          properties: {
-            error: { type: :string },
-            message: { type: :string }
-          }
+               properties: {
+                 error: { type: :string },
+                 message: { type: :string }
+               }
         run_test!
       end
     end
@@ -194,7 +197,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
                     }
                   }
                 },
-                required: %w[booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address]
+                required: %w[booth_number booth_type name_on_fascia company_name company_address pic_full_name
+                             pic_contact_number pic_email_address]
               }
             },
             required: %w[full_name password password_confirmation]
@@ -237,7 +241,9 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
       response '201', 'Vendor assigned when vendor_id provided' do
         let(:event) { create(:event, title: 'Tech Conference 2024', use_ticket: false) }
-        let!(:existing_vendor) { create(:user, role: :vendor, email: 'existing_vendor@example.com', full_name: 'Existing Vendor') }
+        let!(:existing_vendor) do
+          create(:user, role: :vendor, email: 'existing_vendor@example.com', full_name: 'Existing Vendor')
+        end
         let(:body) do
           {
             vendor: {
@@ -301,10 +307,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         end
 
         schema type: :object,
-          properties: {
-            error: { type: :string },
-            errors: { type: :array, items: { type: :string } }
-          }
+               properties: {
+                 error: { type: :string },
+                 errors: { type: :array, items: { type: :string } }
+               }
 
         run_test! do |response|
           data = JSON.parse(response.body)
@@ -316,7 +322,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         let(:event_admin_user) { create(:user, :organizer) }
         let(:auth_header_event_admin) { "Bearer #{JwtService.generate_tokens(event_admin_user)[:access_token]}" }
         let!(:existing_user) do
-          create(:user, role: :vendor, email: 'vendor_tech_conference_2024_john@eventzflow.com', full_name: 'Existing User')
+          create(:user, role: :vendor, email: 'vendor_tech_conference_2024_john@eventzflow.com',
+                        full_name: 'Existing User')
         end
         let(:body) do
           {
@@ -356,10 +363,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         end
 
         schema type: :object,
-          properties: {
-            error: { type: :string },
-            errors: { type: :array, items: { type: :string } }
-          }
+               properties: {
+                 error: { type: :string },
+                 errors: { type: :array, items: { type: :string } }
+               }
 
         run_test!
       end
@@ -385,7 +392,6 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
         run_test!
       end
-
 
       # ============================================================
       # Merchant Creation Tests (event.use_ticket = false)
@@ -491,19 +497,19 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
 
           schema type: :object,
-            properties: {
-              error: { type: :string },
-              errors: { type: :array, items: { type: :string } }
-            }
+                 properties: {
+                   error: { type: :string },
+                   errors: { type: :array, items: { type: :string } }
+                 }
 
           run_test! do |response|
             data = JSON.parse(response.body)
             expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 30 characters)')
           end
         end
-      end 
-    end 
-  end 
+      end
+    end
+  end
 
   # ============================================================
   # PATCH /v1/events/{event_id}/vendors/{id}
@@ -529,7 +535,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           vendor: {
             type: :object,
             properties: {
-              redirect_url: { type: :string, example: 'https://updated.com', description: 'Updated redirect URL for vendor' },
+              redirect_url: { type: :string, example: 'https://updated.com',
+                              description: 'Updated redirect URL for vendor' },
               poster_url: { type: :string, nullable: true },
               qr_url: { type: :string, nullable: true },
               exhibitor_kit_attributes: {
@@ -568,7 +575,6 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         end
         let!(:id) { event_vendor.id }
 
-
         response '200', 'Merchant updated successfully' do
           let(:body) do
             {
@@ -600,7 +606,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       end
 
       context 'when updating an Exhibitor' do
-        let!(:event) { create(:event, title: 'Exhibition Event, for patch', use_exhibitor_kit: true) } # This will be the specific event for this context
+        # This will be the specific event for this context
+        let!(:event) do
+          create(:event, title: 'Exhibition Event, for patch', use_exhibitor_kit: true)
+        end
         let(:event_id) { event.id } # Override event_id for this context
         let!(:event_admin_assignment) do # New assignment for this event
           create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
@@ -627,13 +636,24 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           )
         end
         let!(:existing_exhibitor) do
-          EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(service_result.data.id)
+          EventVendor.exhibitors.includes(:exhibitor_kit,
+                                          exhibitor_kit: [:exhibitor_team_members]).find(service_result.data.id)
         end
         let!(:existing_exhibitor_kit) { existing_exhibitor.exhibitor_kit }
-        let!(:team_member) { create(:exhibitor_team_member, exhibitor_kit: existing_exhibitor_kit, full_name: 'Original Member') }
+        before do
+          existing_exhibitor_kit.update!(custom_fields_data: {
+                                           'booth_setup_time' => '9:00 AM',
+                                           'requires_extra_power' => true
+                                         })
+        end
+        let!(:team_member) do
+          create(:exhibitor_team_member, exhibitor_kit: existing_exhibitor_kit, full_name: 'Original Member')
+        end
         let!(:id) { existing_exhibitor.id }
-        let(:auth_header_for_exhibitor_user) { "Bearer #{JwtService.generate_tokens(exhibitor_user)[:access_token]}" } # Use this for exhibitor's own actions
-
+        # Use this for exhibitor's own actions
+        let(:auth_header_for_exhibitor_user) do
+          "Bearer #{JwtService.generate_tokens(exhibitor_user)[:access_token]}"
+        end
         response '200', 'Exhibitor and exhibitor_kit updated successfully' do
           let(:body) do
             {
@@ -653,13 +673,20 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
 
           it 'returns a 200 response' do
-            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_event_admin }
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body,
+                                                          headers: { 'Authorization' => auth_header_event_admin }
             expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data['redirect_url']).to eq('https://new-exhibitor.com')
             expect(data['exhibitor_kit']['booth_number']).to eq('X101')
             expect(data['exhibitor_kit']['name_on_fascia']).to eq('New Name for Fascia')
             expect(data['exhibitor_kit']['exhibitor_team_members'].count).to eq(2)
+            expect(data['exhibitor_kit']['custom_fields_data']).to eq(
+              {
+                'booth_setup_time' => '9:00 AM',
+                'requires_extra_power' => true
+              }
+            )
             # expect(data['exhibitor_kit']['exhibitor_team_members'].first['full_name']).to eq('Updated Member')
             # expect(data['exhibitor_kit']['exhibitor_team_members'].last['full_name']).to eq('New Member')
           end
@@ -679,7 +706,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
 
           it 'returns a 200 response' do
-            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_for_exhibitor_user }
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body,
+                                                          headers: { 'Authorization' => auth_header_for_exhibitor_user }
             expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data['redirect_url']).to eq('https://exhibitor-updates-own.com')
@@ -702,7 +730,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
 
           it 'returns a 200 response' do
-            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_for_exhibitor_user }
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body,
+                                                          headers: { 'Authorization' => auth_header_for_exhibitor_user }
             expect(response).to have_http_status(:ok)
             data = JSON.parse(response.body)
             expect(data['exhibitor_kit']['exhibitor_team_members']).to be_empty
@@ -719,7 +748,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
 
           it 'returns a 403 response' do
-            patch "/v1/events/#{event_id}/vendors/#{id}", params: body, headers: { 'Authorization' => auth_header_non_admin }
+            patch "/v1/events/#{event_id}/vendors/#{id}", params: body,
+                                                          headers: { 'Authorization' => auth_header_non_admin }
             expect(response).to have_http_status(:forbidden)
           end
         end
