@@ -25,6 +25,10 @@ RSpec.describe Event, type: :model do
     it 'has use_sponsorship defaulting to false' do
       expect(Event.new.use_sponsorship).to be false
     end
+
+    it 'has use_wedding defaulting to false' do
+      expect(Event.new.use_wedding).to be false
+    end
   end
 
   describe 'validations' do

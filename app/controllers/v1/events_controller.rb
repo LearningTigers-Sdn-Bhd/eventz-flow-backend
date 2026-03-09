@@ -195,6 +195,7 @@ module V1
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
+        :use_wedding,
         :business_matching_webhook_url,
         :use_sponsorship,
         :payment_receipt_email, # backward compat — routed to event_email_setting

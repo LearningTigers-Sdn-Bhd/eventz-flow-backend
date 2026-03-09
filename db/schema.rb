@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_09_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -476,6 +476,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
     t.boolean "reminder_1_day", default: true
     t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
+    t.boolean "use_wedding", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
