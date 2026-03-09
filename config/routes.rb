@@ -319,6 +319,7 @@ Rails.application.routes.draw do
     # PATCH /v1/visitors/:public_id/check_in
     resources :visitors, only: [] do
       patch ':public_id/check_in', to: 'visitors#global_check_in', on: :collection
+      patch ':id/unscan', to: 'visitors#unscan', on: :collection
     end
 
     # 5. GLOBAL TICKET ACTIONS

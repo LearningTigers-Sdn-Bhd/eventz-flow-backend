@@ -1,10 +1,10 @@
 module V1
   class VisitorsController < ApplicationController
     # Load and Authorize the parent event before every action
-    before_action :set_event_and_authorize, except: [:global_check_in]
+    before_action :set_event_and_authorize, except: %i[global_check_in unscan]
 
     # Load the specific visitor for actions that require it
-    before_action :set_visitor, only: [:show, :update, :destroy]
+    before_action :set_visitor, only: %i[show update destroy]
 
     # GET /v1/events/:event_id/visitors
     def index
@@ -83,8 +83,8 @@ module V1
         broadcast_to_welcome_screen(@visitor)
         render json: @visitor.as_json(
           include: {
-            event: { only: [:id, :title] },
-            scanned_by: { only: [:id, :full_name] }
+            event: { only: %i[id title] },
+            scanned_by: { only: %i[id full_name] }
           }
         ), status: :ok
       else
@@ -92,6 +92,35 @@ module V1
       end
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Visitor not found' }, status: :not_found
+    end
+
+    # PATCH /v1/visitors/:id/unscan
+    # Org owner only - unscan a visitor (reset check-in status)
+    def unscan
+      @visitor = Visitor.find_by(id: params[:id]) || Visitor.find_by!(public_id: params[:id])
+
+      authorize @visitor, :unscan?
+
+      unless @visitor.checked_in?
+        render json: { error: 'Visitor is not checked in' }, status: :unprocessable_content and return
+      end
+
+      if @visitor.update(
+        checked_in: false,
+        check_in_at: nil,
+        scanned_by_id: nil
+      )
+        render json: {
+          message: 'Visitor successfully unscanned',
+          visitor: @visitor.as_json
+        }, status: :ok
+      else
+        render json: @visitor.errors, status: :unprocessable_content
+      end
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Visitor not found' }, status: :not_found
+    rescue Pundit::NotAuthorizedError
+      render json: { error: 'Only organization owners can unscan visitors' }, status: :forbidden
     end
 
     private
@@ -114,9 +143,9 @@ module V1
     # preventing the 403 test failure for unauthorized access.
     def set_event_and_authorize
       set_event
-      if action_name != 'create'
-         authorize @event, :show?
-      end
+      return unless action_name != 'create'
+
+      authorize @event, :show?
     end
 
     def set_visitor
@@ -150,7 +179,7 @@ module V1
         :age,
         :role,
         :skip_webhooks,
-        custom_fields_data: {}
+        { custom_fields_data: {} }
       ]
 
       params.require(:visitor).permit(*allowed_params)
