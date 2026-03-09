@@ -1,12 +1,20 @@
 module V1
   class PlansController < ApplicationController
     before_action :set_event, only: [:index, :create]
-    before_action :set_plan, only: [:show, :update, :destroy, :auto_distribute]
+    before_action :set_plan, only: [:show, :update, :destroy, :auto_distribute, :export]
     before_action :set_active_storage_host, only: [:show, :index]
 
     def index
       @plans = @event.plans
-      render json: @plans
+      plans_json = @plans.as_json.map do |plan_json|
+        plan = @plans.find(plan_json['id'])
+        plan_json.merge(
+          tables_count: plan.plan_objects.object_type_table.count,
+          total_capacity: plan.plan_objects.object_type_table.sum(:capacity),
+          assigned_guests_count: plan.table_assignments.count
+        )
+      end
+      render json: plans_json
     end
 
     def show
@@ -78,9 +86,9 @@ module V1
     end
 
     def export
-      pdf_data = PlanPdfGenerator.new(@plan).generate
+      pdf_data = PlanPdfGenerator.new(@plan).generate(type: params[:type])
       send_data pdf_data, 
-        filename: "plan_#{@plan.id}.pdf", 
+        filename: "plan_#{@plan.id}_#{params[:type] || 'map'}.pdf", 
         type: "application/pdf", 
         disposition: "inline"
     end

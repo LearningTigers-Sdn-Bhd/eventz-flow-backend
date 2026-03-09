@@ -120,7 +120,14 @@ Rails.application.routes.draw do
             patch :batch
           end
         end
-        resources :assignments, controller: 'table_assignments', only: %i[create destroy], param: :ticket_id
+        resources :assignments, controller: 'table_assignments', only: %i[create update destroy], param: :ticket_id
+        resources :seating_groups, controller: 'seating_groups', shallow: false, only: %i[index create update destroy] do
+          member do
+            post :members, action: :add_member
+            delete 'members/:member_id', action: :remove_member, as: :member
+            post :assign_to_table
+          end
+        end
         post :auto_distribute, on: :member
         get :export, on: :member
       end

@@ -77,6 +77,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "voice_enabled", default: true
     t.string "voice_type", default: "ms-MY-Wavenet-A"
     t.string "welcome_text", default: "Welcome"
+    t.string "idle_mode"
+    t.string "announcement_mode"
+    t.integer "announcement_duration"
+    t.boolean "show_seating_plan", default: false
+    t.integer "seating_plan_sidebar_position", default: 0
+    t.bigint "active_plan_id"
+    t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end
 
@@ -299,6 +306,31 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.string "aspect_ratio"
     t.index ["event_seat_session_id"], name: "index_event_seat_venues_on_event_seat_session_id"
+  end
+
+  create_table "event_seating_group_members", force: :cascade do |t|
+    t.bigint "event_seating_group_id", null: false
+    t.string "participant_type", null: false
+    t.bigint "participant_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seating_group_id", "participant_type"], name: "index_event_seating_group_members_on_group_and_type"
+    t.index ["event_seating_group_id"], name: "index_event_seating_group_members_on_event_seating_group_id"
+    t.index ["participant_type", "participant_id"], name: "index_event_seating_group_members_on_participant_unique", unique: true
+  end
+
+  create_table "event_seating_groups", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "plan_id"
+    t.integer "scope", default: 0, null: false
+    t.string "name", null: false
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "scope"], name: "index_event_seating_groups_on_event_id_and_scope"
+    t.index ["event_id"], name: "index_event_seating_groups_on_event_id"
+    t.index ["plan_id", "scope"], name: "index_event_seating_groups_on_plan_id_and_scope"
+    t.index ["plan_id"], name: "index_event_seating_groups_on_plan_id"
   end
 
   create_table "event_sponsorship_attachments", force: :cascade do |t|
@@ -1078,9 +1110,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "visitor_id"
+    t.text "notes"
+    t.datetime "arrived_at"
     t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
-    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id", unique: true
-    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id"
+    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id"
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
   end
 
@@ -1324,6 +1358,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "check_in_displays", "events"
+  add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
@@ -1352,6 +1387,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "event_seat_sections", "ticket_types"
   add_foreign_key "event_seat_sessions", "events"
   add_foreign_key "event_seat_venues", "event_seat_sessions"
+  add_foreign_key "event_seating_group_members", "event_seating_groups"
+  add_foreign_key "event_seating_groups", "events"
+  add_foreign_key "event_seating_groups", "plans"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorship_payments"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorships"
   add_foreign_key "event_sponsorship_attachments", "users", column: "uploaded_by_id"

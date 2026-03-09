@@ -9,12 +9,14 @@ class WelcomeScreenQueueService
   class << self
     def enqueue(event_id, name, custom_fields_data: nil)
       return if name.blank?
-      table_label = extract_table_label(custom_fields_data)
+      
+      seating_context = fetch_seating_context(event_id, name)
+      table_label = seating_context[:table_label] || extract_table_label(custom_fields_data)
 
       return if recently_enqueued?(event_id, name, table_label)
 
       mark_as_enqueued(event_id, name, table_label)
-      add_to_queue(event_id, name, table_label)
+      add_to_queue(event_id, name, table_label, seating_context)
       broadcast_queue_update(event_id)
       schedule_processing(event_id)
     end
@@ -29,6 +31,7 @@ class WelcomeScreenQueueService
           type: "state",
           name: active[:name],
           table_label: active[:table_label],
+          seating_context: active[:seating_context],
           remaining_ms: remaining_ms,
           queue_size: size
         }
@@ -70,9 +73,14 @@ class WelcomeScreenQueueService
       )
     end
 
-    def add_to_queue(event_id, name, table_label)
+    def add_to_queue(event_id, name, table_label, seating_context = {})
       queue = Rails.cache.read(queue_key(event_id)) || []
-      queue << { name: name, table_label: table_label, enqueued_at: Time.current.to_f }
+      queue << { 
+        name: name, 
+        table_label: table_label, 
+        seating_context: seating_context,
+        enqueued_at: Time.current.to_f 
+      }
       queue = queue.last(MAX_QUEUE_SIZE)
       Rails.cache.write(queue_key(event_id), queue, expires_in: TTL_SECONDS.seconds)
     end
@@ -118,7 +126,12 @@ class WelcomeScreenQueueService
 
       Rails.cache.write(
         active_key(event_id),
-        { name: entry[:name], table_label: entry[:table_label], expires_at: expires_at },
+        { 
+          name: entry[:name], 
+          table_label: entry[:table_label], 
+          seating_context: entry[:seating_context],
+          expires_at: expires_at 
+        },
         expires_in: (DISPLAY_DURATION_SECONDS + 1).seconds
       )
 
@@ -128,6 +141,7 @@ class WelcomeScreenQueueService
           type: "display",
           name: entry[:name],
           table_label: entry[:table_label],
+          seating_context: entry[:seating_context],
           display_duration_ms: DISPLAY_DURATION_MS,
           checked_in_at: Time.current.iso8601
         }
@@ -153,6 +167,52 @@ class WelcomeScreenQueueService
         "welcome_screen_event_#{event_id}",
         { type: "clear" }
       )
+    end
+
+    def fetch_seating_context(event_id, name)
+      normalized_name = name.to_s.strip.downcase
+      event = Event.find(event_id)
+      display_settings = event.check_in_display
+      
+      # Use active_plan_id if set, otherwise we don't have a context for specific sessions
+      active_plan_id = display_settings&.active_plan_id
+      return {} if active_plan_id.nil?
+
+      # Find the attendee
+      participant = event.tickets.where("LOWER(attendee_name) = ?", normalized_name).first ||
+                    event.visitors.where("LOWER(full_name) = ?", normalized_name).first
+      
+      return {} if participant.nil?
+
+      # Find assignment SPECIFIC to the active plan
+      assignment = participant.table_assignments.joins(:plan_object)
+                              .where(plan_objects: { plan_id: active_plan_id })
+                              .first
+      
+      return {} if assignment.nil?
+
+      # Mark this specific assignment as arrived for this session
+      assignment.update(arrived_at: Time.current) if assignment.arrived_at.nil?
+
+      table = assignment.plan_object
+      plan = table.plan
+
+      # Get all guests at this table
+      table_guests = table.table_assignments.includes(:ticket, :visitor).map do |asgn|
+        guest = asgn.ticket || asgn.visitor
+        {
+          name: guest.respond_to?(:attendee_name) ? guest.attendee_name : guest.full_name,
+          # Use arrived_at for this session instead of global checked_in
+          is_checked_in: asgn.arrived_at.present?
+        }
+      end
+
+      {
+        plan_id: plan.id,
+        table_id: table.id,
+        table_label: table.label || "Meja #{table.id}",
+        table_guests: table_guests
+      }
     end
 
     def processing_locked?(event_id)
