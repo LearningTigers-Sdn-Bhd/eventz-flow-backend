@@ -83,6 +83,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "show_seating_plan", default: false
     t.integer "seating_plan_sidebar_position", default: 0
     t.bigint "active_plan_id"
+    t.string "seating_announcement_template"
+    t.integer "seating_plan_duration"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end

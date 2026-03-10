@@ -49,6 +49,9 @@ class CheckInDisplay < ApplicationRecord
       # Seating Plan
       show_seating_plan: show_seating_plan,
       seating_plan_sidebar_position: seating_plan_sidebar_position,
+      seating_plan_duration: seating_plan_duration || 8000,
+      active_plan_id: active_plan_id,
+      seating_announcement_template: seating_announcement_template || 'Welcome, #{name}. You are at #{table_label}.',
       
       # URLs
       background_image_url: background_image_url,

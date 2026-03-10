@@ -59,7 +59,8 @@ module V1
         :font_family, :font_size, :animation_type, :is_bold, 
         :name_color, :voice_enabled, :voice_type, :welcome_text,
         :idle_mode, :announcement_mode, :announcement_duration,
-        :show_seating_plan, :seating_plan_sidebar_position, :active_plan_id
+        :show_seating_plan, :seating_plan_sidebar_position, :seating_plan_duration, :active_plan_id,
+        :seating_announcement_template
       )
     end
 

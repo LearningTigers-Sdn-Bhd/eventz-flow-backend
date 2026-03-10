@@ -31,6 +31,8 @@ Rails.application.routes.draw do
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
+      # Public seating plans
+      resources :plans, only: %i[show]
       # Public booking details
       resources :bookings, only: [:show]
 
@@ -118,6 +120,8 @@ Rails.application.routes.draw do
         resources :plan_objects, only: %i[create destroy] do
           collection do
             patch :batch
+            post :batch_create
+            delete :batch_destroy
           end
         end
         resources :assignments, controller: 'table_assignments', only: %i[create update destroy], param: :ticket_id

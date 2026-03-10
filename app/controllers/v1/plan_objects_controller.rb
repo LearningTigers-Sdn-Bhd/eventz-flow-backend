@@ -1,6 +1,6 @@
 module V1
   class PlanObjectsController < ApplicationController
-    before_action :set_plan, except: [:destroy]
+    before_action :set_plan, only: [:create, :batch, :batch_create, :batch_destroy]
     before_action :set_plan_object, only: [:destroy]
 
     def create
@@ -45,6 +45,45 @@ module V1
         render json: { errors: errors }, status: :unprocessable_entity
       else
         render json: updated_objects
+      end
+    end
+
+    def batch_create
+      created_objects = []
+      errors = []
+
+      ActiveRecord::Base.transaction do
+        if params[:plan_objects].present?
+          params[:plan_objects].each do |obj_params|
+            permitted = obj_params.permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index)
+            obj = @plan.plan_objects.new(permitted)
+            unless obj.save
+              errors << { label: obj.label, errors: obj.errors }
+            end
+            created_objects << obj
+          end
+        end
+
+        if errors.any?
+          raise ActiveRecord::Rollback
+        end
+      end
+
+      if errors.any?
+        render json: { errors: errors }, status: :unprocessable_entity
+      else
+        render json: created_objects, status: :created
+      end
+    end
+
+    def batch_destroy
+      ids = params[:ids]
+      if ids.present?
+        objects = @plan.plan_objects.where(id: ids)
+        objects.destroy_all
+        head :no_content
+      else
+        render json: { error: "No IDs provided" }, status: :bad_request
       end
     end
 

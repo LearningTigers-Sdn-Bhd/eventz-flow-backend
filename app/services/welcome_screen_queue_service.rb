@@ -11,7 +11,7 @@ class WelcomeScreenQueueService
       return if name.blank?
       
       seating_context = fetch_seating_context(event_id, name)
-      table_label = seating_context[:table_label] || extract_table_label(custom_fields_data)
+      table_label = seating_context&.dig(:table_label) || extract_table_label(custom_fields_data)
 
       return if recently_enqueued?(event_id, name, table_label)
 
@@ -176,20 +176,20 @@ class WelcomeScreenQueueService
       
       # Use active_plan_id if set, otherwise we don't have a context for specific sessions
       active_plan_id = display_settings&.active_plan_id
-      return {} if active_plan_id.nil?
+      return nil if active_plan_id.nil?
 
       # Find the attendee
       participant = event.tickets.where("LOWER(attendee_name) = ?", normalized_name).first ||
                     event.visitors.where("LOWER(full_name) = ?", normalized_name).first
       
-      return {} if participant.nil?
+      return nil if participant.nil?
 
       # Find assignment SPECIFIC to the active plan
       assignment = participant.table_assignments.joins(:plan_object)
                               .where(plan_objects: { plan_id: active_plan_id })
                               .first
       
-      return {} if assignment.nil?
+      return nil if assignment.nil?
 
       # Mark this specific assignment as arrived for this session
       assignment.update(arrived_at: Time.current) if assignment.arrived_at.nil?
