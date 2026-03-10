@@ -8,12 +8,14 @@ module V1
 
     # GET /v1/events/:event_id/visitors
     def index
-      # 1. Scope the visitors based on the authorized events and filter by the current event.
-      # policy_scope(Visitor) uses VisitorPolicy::Scope to filter visitors the user can see.
       @visitors = policy_scope(Visitor).where(event: @event)
-      # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
 
-      render json: @visitors.as_json, status: :ok
+      render json: @visitors.map { |v|
+        v.as_json.merge(
+          companion_count: v.added_by_id.nil? ? v.companions.count : nil,
+          added_by_name: v.added_by&.full_name
+        )
+      }, status: :ok
     end
 
     # GET /v1/events/:event_id/visitors/:id
@@ -179,6 +181,8 @@ module V1
         :age,
         :role,
         :skip_webhooks,
+        :rsvp_status,
+        :added_by_id,
         { custom_fields_data: {} }
       ]
 

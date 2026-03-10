@@ -5,8 +5,9 @@ module V1
     prepend_before_action :authenticate_user_if_token_present, only: [:show]
 
     # Authorize the event instance *after* it's set
-    before_action :set_event, except: [:index, :create]
-    before_action :authorize_event, except: [:index, :create, :business_matching_events, :show, :organizer_payment_detail]
+    before_action :set_event, except: %i[index create]
+    before_action :authorize_event,
+                  except: %i[index create business_matching_events show organizer_payment_detail]
 
     # Special authorization for the show action, as it can be public
     before_action -> { authorize @event, :show? if @event }, only: [:show]
@@ -14,7 +15,7 @@ module V1
     # Authorize the class for index/create (Pundit best practice)
     before_action -> { authorize Event, :index? }, only: [:index]
     before_action -> { authorize Event, :create? }, only: [:create]
-    
+
     # GET /v1/events
     # Query params:
     #   - archived=true: Show only archived (soft-deleted) events
@@ -51,10 +52,10 @@ module V1
         # Step 2: Assign event admin
         # If event_admin_id is provided, assign that user; otherwise assign current_user
         admin_user = if event_params[:event_admin_id].present?
-                      User.find(event_params[:event_admin_id])
-                    else
-                      current_user
-                    end
+                       User.find(event_params[:event_admin_id])
+                     else
+                       current_user
+                     end
 
         admin_user.assigned_event_admins.create!(event: @event)
 
@@ -113,13 +114,14 @@ module V1
     # GET /v1/events/:id/business_matching_events
     def business_matching_events
       unless @event.use_business_matching
-        return render json: { errors: "Business matching is not enabled for this event" }, status: :bad_request
+        return render json: { errors: 'Business matching is not enabled for this event' }, status: :bad_request
       end
 
       authorize @event, :business_matching_events?
 
       begin
-        service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id, force_refresh: params[:force_refresh] == 'true')
+        service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id,
+                                                                                force_refresh: params[:force_refresh] == 'true')
 
         if service_result.success?
           data = service_result.data
@@ -135,7 +137,7 @@ module V1
         else
           render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
         end
-      rescue => e
+      rescue StandardError => e
         # DEBUGGING: Render the actual error message
         render json: { error: e.message, backtrace: e.backtrace.first(5) }, status: :internal_server_error
       end
@@ -165,18 +167,17 @@ module V1
       # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which
       # the ApplicationController should rescue and convert to a 404 response.
       # For restore and force_delete actions, use unscoped to find soft-deleted events
-      if action_name.in?(['restore', 'force_delete'])
-        @event = Event.unscoped.find_by!(id: params[:id])
-      else
-        @event = Event.find_by!(id: params[:id])
-      end
+      @event = if action_name.in?(%w[restore force_delete])
+                 Event.unscoped.find_by!(id: params[:id])
+               else
+                 Event.find_by!(id: params[:id])
+               end
     end
 
     # DRY principle: Perform instance authorization
     def authorize_event
-        authorize @event
+      authorize @event
     end
-
 
     # Strong parameters for Event resource
     def event_params
@@ -195,6 +196,8 @@ module V1
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
+        :use_wedding,
+        :extra_guest_limit,
         :business_matching_webhook_url,
         :use_sponsorship,
         :payment_receipt_email, # backward compat — routed to event_email_setting

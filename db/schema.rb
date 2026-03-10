@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -476,6 +476,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
     t.boolean "reminder_1_day", default: true
     t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
+    t.boolean "use_wedding", default: false, null: false
+    t.integer "extra_guest_limit"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1198,8 +1200,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
     t.datetime "check_in_at"
     t.bigint "scanned_by_id"
     t.string "role"
+    t.integer "rsvp_status", default: 0
+    t.datetime "rsvp_responded_at"
+    t.bigint "added_by_id"
+    t.index ["added_by_id"], name: "index_visitors_on_added_by_id"
     t.index ["event_id"], name: "index_visitors_on_event_id"
     t.index ["public_id"], name: "index_visitors_on_public_id", unique: true
+    t.index ["rsvp_status"], name: "index_visitors_on_rsvp_status"
     t.index ["scanned_by_id"], name: "index_visitors_on_scanned_by_id"
   end
 
@@ -1399,6 +1406,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_06_110000) do
   add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
   add_foreign_key "visitors", "users", column: "scanned_by_id"
+  add_foreign_key "visitors", "visitors", column: "added_by_id"
   add_foreign_key "voucher_redemption_logs", "users", column: "redeemer_staff_id"
   add_foreign_key "voucher_redemption_logs", "vouchers"
   add_foreign_key "voucher_usages", "vouchers"
