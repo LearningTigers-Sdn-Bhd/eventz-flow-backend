@@ -22,6 +22,7 @@ class Event < ApplicationRecord
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
+  has_many :wishes, dependent: :destroy
   has_many :vouchers, dependent: :destroy
   has_one :event_exhibition_contractor, dependent: :destroy
   has_many :event_exhibition_contractors, dependent: :destroy
@@ -125,6 +126,7 @@ class Event < ApplicationRecord
     EventVendor.where(event_id: id).destroy_all
     EventAssignment.where(event_id: id).destroy_all
     Visitor.where(event_id: id).destroy_all
+    Wish.where(event_id: id).destroy_all
     # Now destroy the event itself (unscoped to find soft-deleted events)
     Event.unscoped.find(id).destroy!
   end
