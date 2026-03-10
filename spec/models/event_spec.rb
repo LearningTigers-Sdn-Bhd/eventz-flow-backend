@@ -29,6 +29,10 @@ RSpec.describe Event, type: :model do
     it 'has use_wedding defaulting to false' do
       expect(Event.new.use_wedding).to be false
     end
+
+    it 'has extra_guest_limit defaulting to nil for unlimited guests' do
+      expect(Event.new.extra_guest_limit).to be_nil
+    end
   end
 
   describe 'validations' do
@@ -154,8 +158,13 @@ RSpec.describe Event, type: :model do
     let(:ticket_type) { create(:ticket_type, event: event) }
 
     context 'when renaming a single label' do
-      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' }) }
-      let!(:visitor) { create(:visitor, event: event, custom_fields_data: { 'position' => 'Speaker', 'company' => 'TechCorp' }) }
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+      let!(:visitor) do
+        create(:visitor, event: event, custom_fields_data: { 'position' => 'Speaker', 'company' => 'TechCorp' })
+      end
 
       it 'updates ticket custom_fields_data keys when label is renamed' do
         event.update!(labels_data: { 'occupation' => 'Occupation', 'company' => 'Company' })
@@ -173,7 +182,10 @@ RSpec.describe Event, type: :model do
     end
 
     context 'when renaming multiple labels' do
-      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' }) }
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
 
       it 'updates all renamed keys' do
         event.update!(labels_data: { 'occupation' => 'Occupation', 'organization' => 'Organization' })
@@ -184,7 +196,10 @@ RSpec.describe Event, type: :model do
     end
 
     context 'when labels are not renamed' do
-      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' }) }
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
 
       it 'does not change ticket custom_fields_data' do
         event.update!(labels_data: { 'position' => 'Position Title', 'company' => 'Company Name' })
@@ -198,14 +213,17 @@ RSpec.describe Event, type: :model do
       let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: nil) }
 
       it 'does not raise an error' do
-        expect {
+        expect do
           event.update!(labels_data: { 'occupation' => 'Occupation', 'company' => 'Company' })
-        }.not_to raise_error
+        end.not_to raise_error
       end
     end
 
     context 'when adding a new label' do
-      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' }) }
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
 
       it 'does not affect existing keys' do
         event.update!(labels_data: { 'position' => 'Position', 'company' => 'Company', 'department' => 'Department' })
@@ -216,7 +234,10 @@ RSpec.describe Event, type: :model do
     end
 
     context 'when removing a label' do
-      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' }) }
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
 
       it 'does not remove the key from ticket (data preserved)' do
         event.update!(labels_data: { 'position' => 'Position' })

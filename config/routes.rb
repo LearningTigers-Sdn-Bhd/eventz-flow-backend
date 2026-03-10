@@ -54,6 +54,12 @@ Rails.application.routes.draw do
         match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
       end
+
+      # RSVP endpoints for wedding invitations
+      scope 'events/:slug' do
+        get 'rsvp/:public_id', to: 'rsvp#show'
+        post 'rsvp/:public_id/respond', to: 'rsvp#respond_rsvp'
+      end
     end
 
     # Authentication endpoints
