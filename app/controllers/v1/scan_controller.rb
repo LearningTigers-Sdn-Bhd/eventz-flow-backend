@@ -137,6 +137,7 @@ module V1
       check_in_params[:status] = :scanned if @record.is_a?(Ticket)
 
       if @record.update(check_in_params)
+        broadcast_to_welcome_screen
         render json: build_response, status: :ok
       else
         render json: @record.errors, status: :unprocessable_content
@@ -204,6 +205,15 @@ module V1
       end
 
       base_response.compact
+    end
+
+    def broadcast_to_welcome_screen
+      attendee_name = @record.is_a?(Ticket) ? @record.attendee_name : @record.full_name
+      WelcomeScreenQueueService.enqueue(
+        @record.event_id,
+        attendee_name,
+        custom_fields_data: @record.custom_fields_data
+      )
     end
   end
 end

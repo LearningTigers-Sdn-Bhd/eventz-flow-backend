@@ -22,7 +22,9 @@ EVENT_SCHEMA = {
     payment_status: { type: :string, example: 'paid' },
     price: { type: :string, example: '100.0' },
     published: { type: :boolean, example: true },
-    visibility: { type: :boolean, example: true }
+    visibility: { type: :boolean, example: true },
+    use_seat_ticketing: { type: :boolean, example: false },
+    use_wedding: { type: :boolean, example: false }
   },
   required: ['id', 'title', 'status', 'start_date', 'end_date', 'payment_status', 'price', 'published', 'visibility']
 }.freeze
@@ -135,6 +137,8 @@ RSpec.describe 'V1::Events', type: :request do
           start_date: { type: :string, format: :date_time },
           end_date: { type: :string, format: :date_time },
           visibility: { type: :boolean },
+          use_seat_ticketing: { type: :boolean },
+          use_wedding: { type: :boolean },
           event_admin_id: { type: :integer, description: 'Optional: User ID to assign as event admin. Defaults to current user if not provided.' }
         },
         required: ['title', 'start_date', 'end_date']
@@ -143,9 +147,13 @@ RSpec.describe 'V1::Events', type: :request do
       # 1. Success (Org Owner JWT)
       response '201', 'Event created successfully' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
-        let(:event) { valid_create_params }
+        let(:event) { valid_create_params.deep_merge(event: { use_wedding: true }) }
         schema EVENT_SCHEMA
-        run_test!
+        run_test! do |response|
+          json = JSON.parse(response.body)
+          expect(json['use_wedding']).to be true
+          expect(Event.find(json['id']).use_wedding).to be true
+        end
       end
 
       # 2. Success (API Key)
@@ -380,7 +388,9 @@ RSpec.describe 'V1::Events', type: :request do
           location: { type: :string },
           status: { type: :string, enum: ['draft', 'published', 'canceled'] },
           visibility: { type: :boolean },
-          use_sponsorship: { type: :boolean }
+          use_seat_ticketing: { type: :boolean },
+          use_sponsorship: { type: :boolean },
+          use_wedding: { type: :boolean }
         }
       }
 
@@ -388,12 +398,14 @@ RSpec.describe 'V1::Events', type: :request do
       response '200', 'Update successful (Organizer)' do
         let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
-        let(:event) { { event: { title: 'New Title', use_sponsorship: true } } }
+        let(:event) { { event: { title: 'New Title', use_sponsorship: true, use_wedding: true } } }
 
         schema EVENT_SCHEMA
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['use_sponsorship']).to be true
+          expect(json['use_wedding']).to be true
+          expect(event_paid.reload.use_wedding).to be true
         end
       end
 

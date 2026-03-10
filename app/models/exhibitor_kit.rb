@@ -1,11 +1,14 @@
 class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kit
+  belongs_to :exhibitor_booth_price, optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
+  has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy
   has_many :exhibitor_team_members, dependent: :destroy
   has_many :exhibitor_kit_items, dependent: :destroy
   has_many :exhibitor_kit_printings, dependent: :destroy
   has_many :custom_requests, dependent: :destroy
+  has_one_attached :payment_proof, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true
@@ -14,20 +17,24 @@ class ExhibitorKit < ApplicationRecord
 
   delegate :event, to: :event_vendor
 
-  enum :booth_type, { shell_scheme: 0, raw_space: 1 }
+  validates :booth_type, presence: true
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
 
   # Booth/company info - optional but validated if provided
   validates :booth_number, presence: true, allow_blank: true
-  validates :name_on_fascia, length: { maximum: 25 }, allow_blank: true
+  validates :name_on_fascia, length: { maximum: 30 }, allow_blank: true
   validates :company_name, presence: true, allow_blank: true
   validates :company_address, presence: true, allow_blank: true
-  
+
   # PIC info - required
   validates :pic_full_name, presence: true
   validates :pic_contact_number, presence: true
   validates :pic_email_address, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
+
+  after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
+  after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
 
   # --- Team Member Limit Methods ---
 
@@ -66,7 +73,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
-    exhibitor_team_member_payments.where(status: [:pending, :submitted]).sum(:extra_member_count)
+    exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)
   end
 
   # Unpaid excess count (excludes members with verified or in-progress payments)
@@ -82,5 +89,23 @@ class ExhibitorKit < ApplicationRecord
   # Charges for unpaid excess team members
   def extra_team_member_charges
     unpaid_excess_team_member_count * extra_team_member_fee
+  end
+
+  private
+
+  def should_send_registration_received_email?
+    pic_email_address.present?
+  end
+
+  def should_send_payment_confirmed_email?
+    pic_email_address.present? && saved_change_to_payment_status? && paid?
+  end
+
+  def send_registration_received_email
+    ExhibitorRegistrationMailer.registration_received_email(self).deliver_later
+  end
+
+  def send_payment_confirmed_email
+    ExhibitorRegistrationMailer.payment_confirmed_email(self).deliver_later
   end
 end

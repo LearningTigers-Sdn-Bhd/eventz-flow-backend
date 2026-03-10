@@ -254,7 +254,6 @@ all_events.each_with_index do |event, i|
 
     # Determine payment status (0: pending, 1: paid, 2: failed)
     payment_status = j.even? ? 1 : (j % 3 == 0 ? 2 : 0)
-    payment_methods = ['credit_card', 'bank_transfer', 'e-wallet', 'cash']
 
     ticket_attributes = {
       event: event,
@@ -267,10 +266,7 @@ all_events.each_with_index do |event, i|
       checked_in: status == 'scanned',
       scanned_by: status == 'scanned' ? scanner : nil,
       check_in_at: status == 'scanned' ? Time.current - rand(1..10).hours : nil,
-      payment_status: payment_status,
-      payment_screenshot_url: payment_status == 1 ? "https://example.com/screenshots/payment_#{rand(10000..99999)}.jpg" : nil,
-      transaction_id: payment_status == 1 ? "TXN#{rand(100000..999999)}" : nil,
-      payment_method: payment_status == 1 ? payment_methods.sample : nil
+      payment_status: payment_status
     }
 
     # Use Ticket.create! to ensure all models and validations are run
@@ -282,6 +278,10 @@ puts "\n--- 5. Generating Resource CMS Data ---"
 
 # Load professional resource content via rake task
 Rake::Task['db:seed:resources'].invoke
+
+puts "\n--- 6. Seeding Seat Ticketing Events + Occupancy ---"
+Rake::Task['db:seed:event_with_seat_ticketing'].reenable
+Rake::Task['db:seed:event_with_seat_ticketing'].invoke
 
 puts "\n-------------------- Seeding Complete --------------------"
 puts "Summary:"

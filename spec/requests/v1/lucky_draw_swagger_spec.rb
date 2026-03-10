@@ -749,4 +749,126 @@ RSpec.describe 'V1::LuckyDraw', type: :request, openapi_spec: 'v1/swagger.yaml' 
       end
     end
   end
+
+  # ============================================================
+  # WINNER NOTIFICATIONS
+  # ============================================================
+  path '/v1/events/{event_id}/lucky_draw/sessions/{session_id}/gifts/{gift_id}/winners/{id}/notify' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'session_id', in: :path, type: :integer, required: true, description: 'Session ID'
+    parameter name: 'gift_id', in: :path, type: :integer, required: true, description: 'Gift ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Winner ID'
+
+    post 'Sends notification for a gift winner' do
+      tags 'Lucky Draw Winners'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Manually triggers webhook notification for a specific gift winner. Useful for resending notifications if the initial webhook failed.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Notification sent successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Notification sent successfully' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let!(:event_with_webhook) do
+          event = create(:event, title: 'Event with Webhook', payment_status: :paid, use_ticket: false, webhook_url: 'https://example.com/webhook')
+          EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+          event
+        end
+        let!(:session_with_gifts) { create(:lucky_draw_session, event: event_with_webhook, use_gifts: true) }
+        let!(:gift_with_winner) { create(:gift, lucky_draw_session: session_with_gifts, winner_counts: 3) }
+        let!(:visitor_winner) { create(:visitor, event: event_with_webhook) }
+        let!(:winner) { create(:gift_winner, gift: gift_with_winner, visitor: visitor_winner, drawn_at: Time.current) }
+        
+        let(:event_id) { event_with_webhook.id }
+        let(:session_id) { session_with_gifts.id }
+        let(:gift_id) { gift_with_winner.id }
+        let(:id) { winner.id }
+
+        run_test!
+      end
+
+      response '422', 'No webhook URL configured' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let!(:event_no_webhook) do
+          event = create(:event, title: 'Event without Webhook', payment_status: :paid, use_ticket: false, webhook_url: nil)
+          EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+          event
+        end
+        let!(:session_no_webhook) { create(:lucky_draw_session, event: event_no_webhook, use_gifts: true) }
+        let!(:gift_no_webhook) { create(:gift, lucky_draw_session: session_no_webhook, winner_counts: 3) }
+        let!(:visitor_no_webhook) { create(:visitor, event: event_no_webhook) }
+        let!(:winner_no_webhook) { create(:gift_winner, gift: gift_no_webhook, visitor: visitor_no_webhook, drawn_at: Time.current) }
+        
+        let(:event_id) { event_no_webhook.id }
+        let(:session_id) { session_no_webhook.id }
+        let(:gift_id) { gift_no_webhook.id }
+        let(:id) { winner_no_webhook.id }
+
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/lucky_draw/sessions/{session_id}/invalid_participants/{id}/notify' do
+    parameter name: 'event_id', in: :path, type: :integer, required: true, description: 'Event ID'
+    parameter name: 'session_id', in: :path, type: :integer, required: true, description: 'Session ID'
+    parameter name: 'id', in: :path, type: :integer, required: true, description: 'Invalid Participant ID'
+
+    post 'Sends notification for an invalid participant (winner without gifts)' do
+      tags 'Lucky Draw Invalid Participants'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+      description 'Manually triggers webhook notification for a specific invalid participant (winner in sessions without gifts). Useful for resending notifications if the initial webhook failed.'
+
+      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT token'
+
+      response '200', 'Notification sent successfully' do
+        schema type: :object,
+               properties: {
+                 success: { type: :boolean, example: true },
+                 message: { type: :string, example: 'Notification sent successfully' }
+               }
+
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let!(:event_with_webhook) do
+          event = create(:event, title: 'Event with Webhook', payment_status: :paid, use_ticket: false, webhook_url: 'https://example.com/webhook')
+          EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+          event
+        end
+        let!(:session_no_gifts) { create(:lucky_draw_session, event: event_with_webhook, use_gifts: false) }
+        let!(:visitor_invalid) { create(:visitor, event: event_with_webhook) }
+        let!(:invalid_participant) { create(:invalid_participant, lucky_draw_session: session_no_gifts, visitor: visitor_invalid) }
+        
+        let(:event_id) { event_with_webhook.id }
+        let(:session_id) { session_no_gifts.id }
+        let(:id) { invalid_participant.id }
+
+        run_test!
+      end
+
+      response '422', 'No webhook URL configured' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let!(:event_no_webhook) do
+          event = create(:event, title: 'Event without Webhook', payment_status: :paid, use_ticket: false, webhook_url: nil)
+          EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
+          event
+        end
+        let!(:session_no_webhook_no_gifts) { create(:lucky_draw_session, event: event_no_webhook, use_gifts: false) }
+        let!(:visitor_no_webhook) { create(:visitor, event: event_no_webhook) }
+        let!(:invalid_no_webhook) { create(:invalid_participant, lucky_draw_session: session_no_webhook_no_gifts, visitor: visitor_no_webhook) }
+        
+        let(:event_id) { event_no_webhook.id }
+        let(:session_id) { session_no_webhook_no_gifts.id }
+        let(:id) { invalid_no_webhook.id }
+
+        run_test!
+      end
+    end
+  end
 end

@@ -11,5 +11,11 @@ Rails.application.config.after_initialize do
       cron: '0 3 * * *',
       class: 'CleanupExpiredSessionsJob'
     )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send event reminders - daily at 9am',
+      cron: '0 9 * * *',
+      class: 'EventReminderJob'
+    )
   end
 end

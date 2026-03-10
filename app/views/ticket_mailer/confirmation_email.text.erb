@@ -1,0 +1,37 @@
+You're Registered!
+
+Hi <%= @ticket.attendee_name %>,
+
+Your registration is confirmed. Here are your ticket details:
+
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+Ticket Type: <%= @ticket_type.name %>
+
+Your Ticket ID: <%= @ticket.public_id %>
+
+<% if @show_payment_receipt %>
+Payment Receipt
+- Receipt No: <%= @ticket.public_id %>
+- Payment Status: Paid
+- Payment Date: <%= @ticket_payment&.paid_at.present? ? @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") : 'Not available' %>
+- Amount Paid: <%= (@ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
+- Transaction ID: <%= @ticket_payment&.gateway_payment_id.presence || 'Not available' %>
+- Order ID: <%= @ticket_payment&.gateway_response&.dig('order_id').presence || 'Not available' %>
+<% end %>
+
+Please show this ticket ID or the attached QR code at check-in.
+
+<% if @contact_email.present? %>
+Should you have any questions, please reach out to us at <%= @contact_email %>.
+<% end %>
+See you at the event!
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

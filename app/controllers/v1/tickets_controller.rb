@@ -136,7 +136,8 @@ module V1
       end
 
       if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
-        render json: @ticket.as_json(include: { 
+        broadcast_to_welcome_screen(@ticket)
+        render json: @ticket.as_json(include: {
           ticket_type: { only: [:id, :name, :price] },
           event: { only: [:id, :title] }
         }), status: :ok
@@ -331,6 +332,7 @@ module V1
         # Clear the thread-local variable after update
         Thread.current[:check_in_url] = nil
 
+        broadcast_to_welcome_screen(@ticket)
         render json: @ticket.as_json(
           include: {
             ticket_type: { only: [:id, :name, :price] },
@@ -386,6 +388,14 @@ module V1
 
     private
 
+    def broadcast_to_welcome_screen(ticket)
+      WelcomeScreenQueueService.enqueue(
+        ticket.event_id,
+        ticket.attendee_name,
+        custom_fields_data: ticket.custom_fields_data
+      )
+    end
+
     def set_event
       # Allow accessing archived events for record-keeping
       @event = Event.with_deleted.find(params[:event_id])
@@ -424,9 +434,6 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
-        :payment_screenshot_url,
-        :transaction_id,
-        :payment_method,
         :role,
         :skip_webhooks,
         custom_fields_data: {}

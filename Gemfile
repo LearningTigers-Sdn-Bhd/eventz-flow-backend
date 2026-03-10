@@ -15,7 +15,7 @@ gem "puma", ">= 5.0"
 # gem "jbuilder"
 
 # Use Redis adapter to run Action Cable in production
-# gem "redis", ">= 4.0.1"
+gem "redis", ">= 4.0.1"
 
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
@@ -29,8 +29,8 @@ gem "pundit"
 
 
 # --- API Serialization (Performance) ---
-# fast_jsonapi is a high-performance serializer (fork of Netflix's)
-gem "fast_jsonapi"
+# jsonapi-serializer is the maintained fork of Netflix's fast_jsonapi
+gem "jsonapi-serializer"
 
 # --- Background Processing (Webhooks, Notifications) ---
 gem "sidekiq"
@@ -100,3 +100,9 @@ gem "sidekiq-cron", "~> 2.3"
 gem "pagy", "~> 43.2"
 
 gem "rack-attack", "~> 6.8"
+
+# QR Code generation
+gem "rqrcode", "~> 2.0"
+
+# .env for development
+gem "dotenv-rails", groups: [:development, :test]

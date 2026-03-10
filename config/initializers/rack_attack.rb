@@ -51,6 +51,22 @@ class Rack::Attack
     end
   end
 
+  # 8. Public Registration Protection (Walk-in spam)
+  # Limit public registration to 5 per hour per IP
+  throttle("public_registration/ip", limit: 5, period: 1.hour) do |req|
+    if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
+      req.ip
+    end
+  end
+
+  # 9. Public Registration by Email (prevent same email spam)
+  # Limit by email to 3 per hour per email
+  throttle("public_registration/email", limit: 3, period: 1.hour) do |req|
+    if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
+      req.params['attendee_email'].presence
+    end
+  end
+
   # Response for throttled requests
   self.throttled_responder = lambda do |env|
     match_data = env['rack.attack.match_data']

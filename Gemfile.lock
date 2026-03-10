@@ -88,6 +88,7 @@ GEM
       rubyzip (>= 2.4, < 4)
     childprocess (5.1.0)
       logger (~> 1.5)
+    chunky_png (1.4.0)
     coderay (1.1.3)
     concurrent-ruby (1.3.5)
     connection_pool (2.5.5)
@@ -110,6 +111,10 @@ GEM
       irb (~> 1.10)
       reline (>= 0.3.8)
     diff-lcs (1.6.2)
+    dotenv (3.2.0)
+    dotenv-rails (3.2.0)
+      dotenv (= 3.2.0)
+      railties (>= 6.1)
     drb (2.2.3)
     erb (6.0.0)
     erubi (1.13.1)
@@ -122,8 +127,6 @@ GEM
       railties (>= 6.1.0)
     faker (3.5.2)
       i18n (>= 1.8.11, < 2)
-    fast_jsonapi (1.5)
-      activesupport (>= 4.2)
     ffi (1.17.3-aarch64-linux-gnu)
     ffi (1.17.3-aarch64-linux-musl)
     ffi (1.17.3-arm-linux-gnu)
@@ -163,6 +166,8 @@ GEM
     json-schema (6.0.0)
       addressable (~> 2.8)
       bigdecimal (~> 3.1)
+    jsonapi-serializer (2.2.0)
+      activesupport (>= 4.2)
     jwt (3.1.2)
       base64
     launchy (3.1.1)
@@ -306,6 +311,8 @@ GEM
       erb
       psych (>= 4.0.0)
       tsort
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
     redis-client (0.26.1)
       connection_pool
     reline (0.6.3)
@@ -319,6 +326,10 @@ GEM
       logger (~> 1)
       nokogiri (~> 1)
       rubyzip (>= 3.0.0, < 4.0.0)
+    rqrcode (2.2.0)
+      chunky_png (~> 1.0)
+      rqrcode_core (~> 1.0)
+    rqrcode_core (1.2.0)
     rspec-core (3.13.6)
       rspec-support (~> 3.13.0)
     rspec-expectations (3.13.5)
@@ -410,13 +421,14 @@ DEPENDENCIES
   caxlsx
   database_cleaner
   debug
+  dotenv-rails
   factory_bot_rails
   faker
-  fast_jsonapi
   fiddle
   friendly_id (~> 5.5)
   groupdate
   image_processing (~> 1.2)
+  jsonapi-serializer
   jwt
   letter_opener_web
   ostruct
@@ -430,8 +442,10 @@ DEPENDENCIES
   rack-attack (~> 6.8)
   rack-cors
   rails (~> 8.0.3)
+  redis (>= 4.0.1)
   resend
   roo
+  rqrcode (~> 2.0)
   rspec-rails (~> 6.0)
   rswag
   shoulda-matchers

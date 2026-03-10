@@ -2,13 +2,13 @@ module V1
   class EventVendorsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event
-    before_action :set_event_vendor, only: [:update, :destroy]
+    before_action :set_event_vendor, only: %i[update destroy]
 
     # GET /v1/events/:event_id/vendors
     def index
       # Authorization is handled by event show policy
       authorize @event, :show?
-      
+
       merchants = @event.event_vendors.merchants.includes(:vendor)
       exhibitors = @event.event_vendors.exhibitors.includes(
         :vendor,
@@ -19,9 +19,9 @@ module V1
           :exhibitor_kit_printings,
           :custom_requests,
           :exhibitor_team_member_payments,
-          exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
-          exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
-          exhibitor_team_member_payments: { payment_proof_attachment: :blob }
+          { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
+            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
+            exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
         ]
       )
       event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
@@ -35,18 +35,19 @@ module V1
       # Build a temporary event_vendor for authorization
       event_vendor = @event.event_vendors.build
       authorize event_vendor, policy_class: EventVendorPolicy
-      
+
       result = EventVendorService.create(event: @event, params: vendor_params, current_user: current_user)
 
       if result.success?
         # Reload to get associations
         event_vendor = EventVendor.find(result.data.id) # Find the record
         if event_vendor.is_a?(Exhibitor)
-          event_vendor = EventVendor.includes(:vendor, :exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(result.data.id)
+          event_vendor = EventVendor.includes(:vendor, :exhibitor_kit,
+                                              exhibitor_kit: [:exhibitor_team_members]).find(result.data.id)
         else # Merchant
           event_vendor = EventVendor.includes(:vendor).find(result.data.id)
         end
-        # Note: exhibitor_owner is lazy-loaded in format_event_vendor only for Exhibitor types
+        # NOTE: exhibitor_owner is lazy-loaded in format_event_vendor only for Exhibitor types
         render json: format_event_vendor(event_vendor), status: :created
       else
         render json: { error: 'Validation Error', errors: result.errors },
@@ -57,7 +58,7 @@ module V1
     # PATCH /v1/events/:event_id/vendors/:id
     def update
       authorize @event_vendor, policy_class: EventVendorPolicy
-      
+
       vendor_attributes = params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
 
       # Update main event_vendor attributes
@@ -68,7 +69,7 @@ module V1
 
           # Use permit on the raw exhibitor_kit_attributes to get only permitted data
           strong_exhibitor_kit_params = params[:vendor][:exhibitor_kit_attributes].permit(*permitted_attrs_structure_for_kit)
-          
+
           # Only update if there are permitted attributes to update
           if strong_exhibitor_kit_params.present?
             if @event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
@@ -96,7 +97,7 @@ module V1
     # DELETE /v1/events/:event_id/vendors/:id
     def destroy
       authorize @event_vendor, policy_class: EventVendorPolicy
-      
+
       if @event_vendor.destroy
         head :no_content
       else
@@ -125,9 +126,9 @@ module V1
             :exhibitor_kit_items,
             :exhibitor_kit_printings,
             :exhibitor_team_member_payments,
-            exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
-            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
-            exhibitor_team_member_payments: { payment_proof_attachment: :blob }
+            { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
+              exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
+              exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
           ]
         ).find(params[:id])
       end
@@ -137,8 +138,8 @@ module V1
 
     def vendor_params
       params.require(:vendor).permit(
-        :full_name, :email, :phone, 
-        :password, :password_confirmation, :vendor_id, 
+        :full_name, :email, :phone,
+        :password, :password_confirmation, :vendor_id,
         :redirect_url, :poster_url, :qr_url,
         exhibitor_kit_attributes: [
           :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
@@ -147,7 +148,7 @@ module V1
           :pic_email_address, :special_requirements,
           :digital_brochure_link, :qr_code_url, :is_raw_space,
           :indemnity_signed, :indemnity_document_url, :_destroy,
-          exhibitor_team_members_attributes: [:id, :full_name, :_destroy]
+          { exhibitor_team_members_attributes: %i[id full_name _destroy] }
         ]
       )
     end
@@ -189,11 +190,11 @@ module V1
         # Contractors only see items where rentable_item belongs to them
         items = items.select { |item| item.rentable_item&.user_id == current_user.id }
         # Contractors only see printings if event allows contractor printing services and printing service belongs to them
-        if @event.allow_contractor_printing_services?
-          printings = printings.select { |printing| printing.printing_service&.user_id == current_user.id }
-        else
-          printings = []
-        end
+        printings = if @event.allow_contractor_printing_services?
+                      printings.select { |printing| printing.printing_service&.user_id == current_user.id }
+                    else
+                      []
+                    end
       end
 
       {
@@ -208,6 +209,7 @@ module V1
         fascia_upgrade_required: exhibitor_kit.fascia_upgrade_required,
         company_name: exhibitor_kit.company_name,
         company_address: exhibitor_kit.company_address,
+        country: exhibitor_kit.country,
         pic_full_name: exhibitor_kit.pic_full_name,
         pic_contact_number: exhibitor_kit.pic_contact_number,
         pic_email_address: exhibitor_kit.pic_email_address,
@@ -219,7 +221,9 @@ module V1
         amount_paid: exhibitor_kit.amount_paid,
         payment_note: exhibitor_kit.payment_note,
         indemnity_link: exhibitor_kit.indemnity_link,
-        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: [:id, :exhibitor_kit_id, :full_name, :created_at, :updated_at]),
+        custom_fields_data: exhibitor_kit.custom_fields_data,
+        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name
+                                                                                      created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,
         team_member_limit: exhibitor_kit.team_member_limit,
         excess_team_member_count: exhibitor_kit.excess_team_member_count,
@@ -230,8 +234,11 @@ module V1
         extra_team_member_charges: exhibitor_kit.extra_team_member_charges,
         exhibitor_kit_items: items.map { |item| format_exhibitor_kit_item(item) },
         exhibitor_kit_printings: printings.map { |printing| format_exhibitor_kit_printing(printing) },
-        custom_requests: exhibitor_kit.custom_requests.as_json(only: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :created_at, :updated_at]),
-        exhibitor_team_member_payments: exhibitor_kit.exhibitor_team_member_payments.map { |payment| format_exhibitor_team_member_payment(payment) }
+        custom_requests: exhibitor_kit.custom_requests.as_json(only: %i[id description quantity status
+                                                                        resolved_price response_notes created_at updated_at]),
+        exhibitor_team_member_payments: exhibitor_kit.exhibitor_team_member_payments.map do |payment|
+          format_exhibitor_team_member_payment(payment)
+        end
       }
     end
 
@@ -243,16 +250,18 @@ module V1
         quantity: item.quantity,
         agreed_price: item.agreed_price,
         notes: item.notes,
-        rentable_item: item.rentable_item ? {
-          id: item.rentable_item.id,
-          name: item.rentable_item.name,
-          unit_of_measure: item.rentable_item.unit_of_measure,
-          default_price: item.rentable_item.default_price,
-          image_url: item.rentable_item.image.attached? ? url_for(item.rentable_item.image) : nil
-        } : nil
+        rentable_item: if item.rentable_item
+                         {
+                           id: item.rentable_item.id,
+                           name: item.rentable_item.name,
+                           unit_of_measure: item.rentable_item.unit_of_measure,
+                           default_price: item.rentable_item.default_price,
+                           image_url: item.rentable_item.image.attached? ? url_for(item.rentable_item.image) : nil
+                         }
+                       end
       }
     end
-    
+
     def format_exhibitor_kit_printing(printing)
       {
         id: printing.id,
@@ -262,13 +271,15 @@ module V1
         agreed_price: printing.agreed_price,
         file_reference: printing.file_reference,
         notes: printing.notes,
-        printing_service: printing.printing_service ? {
-          id: printing.printing_service.id,
-          name: printing.printing_service.name,
-          unit_of_measure: printing.printing_service.unit_of_measure,
-          default_price: printing.printing_service.default_price,
-          image_url: printing.printing_service.image.attached? ? url_for(printing.printing_service.image) : nil
-        } : nil
+        printing_service: if printing.printing_service
+                            {
+                              id: printing.printing_service.id,
+                              name: printing.printing_service.name,
+                              unit_of_measure: printing.printing_service.unit_of_measure,
+                              default_price: printing.printing_service.default_price,
+                              image_url: printing.printing_service.image.attached? ? url_for(printing.printing_service.image) : nil
+                            }
+                          end
       }
     end
 
@@ -289,6 +300,6 @@ module V1
         created_at: payment.created_at,
         updated_at: payment.updated_at
       }
-    end    
+    end
   end
 end

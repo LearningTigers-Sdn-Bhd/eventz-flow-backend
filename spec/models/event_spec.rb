@@ -25,6 +25,14 @@ RSpec.describe Event, type: :model do
     it 'has use_sponsorship defaulting to false' do
       expect(Event.new.use_sponsorship).to be false
     end
+
+    it 'has use_wedding defaulting to false' do
+      expect(Event.new.use_wedding).to be false
+    end
+
+    it 'has extra_guest_limit defaulting to nil for unlimited guests' do
+      expect(Event.new.extra_guest_limit).to be_nil
+    end
   end
 
   describe 'validations' do
@@ -142,6 +150,102 @@ RSpec.describe Event, type: :model do
 
     it 'returns false for non-staff user' do
       expect(event.staff_role_grants_update?(non_staff_user)).to be false
+    end
+  end
+
+  describe '#sync_custom_labels_to_attendees' do
+    let(:event) { create(:event, labels_data: { 'position' => 'Position', 'company' => 'Company' }) }
+    let(:ticket_type) { create(:ticket_type, event: event) }
+
+    context 'when renaming a single label' do
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+      let!(:visitor) do
+        create(:visitor, event: event, custom_fields_data: { 'position' => 'Speaker', 'company' => 'TechCorp' })
+      end
+
+      it 'updates ticket custom_fields_data keys when label is renamed' do
+        event.update!(labels_data: { 'occupation' => 'Occupation', 'company' => 'Company' })
+
+        ticket.reload
+        expect(ticket.custom_fields_data).to eq({ 'occupation' => 'Manager', 'company' => 'Acme' })
+      end
+
+      it 'updates visitor custom_fields_data keys when label is renamed' do
+        event.update!(labels_data: { 'occupation' => 'Occupation', 'company' => 'Company' })
+
+        visitor.reload
+        expect(visitor.custom_fields_data).to eq({ 'occupation' => 'Speaker', 'company' => 'TechCorp' })
+      end
+    end
+
+    context 'when renaming multiple labels' do
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+
+      it 'updates all renamed keys' do
+        event.update!(labels_data: { 'occupation' => 'Occupation', 'organization' => 'Organization' })
+
+        ticket.reload
+        expect(ticket.custom_fields_data).to eq({ 'occupation' => 'Manager', 'organization' => 'Acme' })
+      end
+    end
+
+    context 'when labels are not renamed' do
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+
+      it 'does not change ticket custom_fields_data' do
+        event.update!(labels_data: { 'position' => 'Position Title', 'company' => 'Company Name' })
+
+        ticket.reload
+        expect(ticket.custom_fields_data).to eq({ 'position' => 'Manager', 'company' => 'Acme' })
+      end
+    end
+
+    context 'when ticket has no custom_fields_data' do
+      let!(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: nil) }
+
+      it 'does not raise an error' do
+        expect do
+          event.update!(labels_data: { 'occupation' => 'Occupation', 'company' => 'Company' })
+        end.not_to raise_error
+      end
+    end
+
+    context 'when adding a new label' do
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+
+      it 'does not affect existing keys' do
+        event.update!(labels_data: { 'position' => 'Position', 'company' => 'Company', 'department' => 'Department' })
+
+        ticket.reload
+        expect(ticket.custom_fields_data).to eq({ 'position' => 'Manager', 'company' => 'Acme' })
+      end
+    end
+
+    context 'when removing a label' do
+      let!(:ticket) do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                        custom_fields_data: { 'position' => 'Manager', 'company' => 'Acme' })
+      end
+
+      it 'does not remove the key from ticket (data preserved)' do
+        event.update!(labels_data: { 'position' => 'Position' })
+
+        ticket.reload
+        # The 'company' key remains in ticket data even though label was removed
+        expect(ticket.custom_fields_data).to eq({ 'position' => 'Manager', 'company' => 'Acme' })
+      end
     end
   end
 end

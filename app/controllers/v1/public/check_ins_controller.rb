@@ -70,7 +70,7 @@ module V1
 
       def find_attendee_by_public_id
         attendee = if @event.use_ticket
-                     @event.tickets.find_by(public_id: @value, payment_status: :paid)
+                     @event.tickets.find_by(public_id: @value)
                    else
                      @event.visitors.find_by(public_id: @value)
                    end
@@ -87,6 +87,16 @@ module V1
           attendee.update(checked_in: true, check_in_at: Time.current, status: :scanned)
         else
           attendee.update(checked_in: true, check_in_at: Time.current)
+        end
+
+        # Broadcast to welcome screen after successful check-in
+        if result
+          attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
+          WelcomeScreenQueueService.enqueue(
+            @event.id,
+            attendee_name,
+            custom_fields_data: attendee.custom_fields_data
+          )
         end
 
         # Clear thread-local variable after update
@@ -117,7 +127,7 @@ module V1
 
       def search_tickets
         search_attendees_by(
-          @event.tickets.where(payment_status: :paid),
+          @event.tickets,
           name_col: 'attendee_name',
           email_col: 'attendee_email',
           phone_col: 'attendee_phone'

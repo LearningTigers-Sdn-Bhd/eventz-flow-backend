@@ -3,7 +3,7 @@ FactoryBot.define do
     event_vendor { association :exhibitor }
 
     booth_number { 'A123' }
-    booth_type { :shell_scheme }
+    booth_type { 'shell_scheme' }
     name_on_fascia { 'Test Company Fascia' }
     company_name { 'Test Company Pte Ltd' }
     company_address { Faker::Address.full_address }

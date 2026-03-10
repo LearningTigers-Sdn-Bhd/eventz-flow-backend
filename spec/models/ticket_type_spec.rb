@@ -4,6 +4,7 @@ RSpec.describe TicketType, type: :model do
   describe 'associations' do
     it { should belong_to(:event).optional }
     it { should have_many(:tickets) }
+    it { should have_many(:ticket_type_price_tiers).dependent(:destroy) }
   end
 
   describe 'validations' do
@@ -89,6 +90,72 @@ RSpec.describe TicketType, type: :model do
     it 'returns false for ticket types not yet on sale' do
       ticket_type = create(:ticket_type, event: event, status: :published, hidden: false, sale_starts_at: 1.day.from_now)
       expect(ticket_type.available?).to be false
+    end
+  end
+
+  describe '#current_price' do
+    let(:ticket_type) { create(:ticket_type, price: 100.00) }
+
+    context 'with no active tier' do
+      it 'returns the base price' do
+        expect(ticket_type.current_price).to eq(100.00)
+      end
+    end
+
+    context 'with active tier' do
+      before do
+        create(:ticket_type_price_tier,
+          ticket_type: ticket_type,
+          label: "Early Bird",
+          price: 80.00,
+          starts_at: 1.day.ago,
+          ends_at: 1.day.from_now
+        )
+      end
+
+      it 'returns the tier price' do
+        expect(ticket_type.current_price).to eq(80.00)
+      end
+    end
+
+    context 'with future tier only' do
+      before do
+        create(:ticket_type_price_tier,
+          ticket_type: ticket_type,
+          label: "Early Bird",
+          price: 80.00,
+          starts_at: 10.days.from_now,
+          ends_at: 20.days.from_now
+        )
+      end
+
+      it 'returns the base price' do
+        expect(ticket_type.current_price).to eq(100.00)
+      end
+    end
+  end
+
+  describe '#active_tier' do
+    let(:ticket_type) { create(:ticket_type) }
+
+    context 'with no tiers' do
+      it 'returns nil' do
+        expect(ticket_type.active_tier).to be_nil
+      end
+    end
+
+    context 'with active tier' do
+      let!(:tier) do
+        create(:ticket_type_price_tier,
+          ticket_type: ticket_type,
+          starts_at: 1.day.ago,
+          ends_at: 1.day.from_now
+        )
+      end
+
+      it 'returns the active tier' do
+        expect(ticket_type.active_tier).to eq(tier)
+      end
     end
   end
 end

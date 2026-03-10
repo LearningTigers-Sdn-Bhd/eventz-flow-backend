@@ -22,6 +22,21 @@ class TicketExcelService
     # Prefer sequential "Label N" keys when present
     label_keys = self.preferred_label_keys(event.labels_data)
 
+    # Also collect any extra custom field keys injected directly into tickets
+    # (e.g. from registration forms) that are not in event.labels_data
+    extra_keys = tickets.flat_map { |t| (t.custom_fields_data || {}).keys }
+                        .uniq
+                        .reject { |k| label_keys.include?(k) }
+
+    all_label_keys = label_keys + extra_keys
+
+    # Build a display name map: keys from labels_data use their configured name,
+    # injected keys are prettified (ic_no -> "Ic No", t_shirt_size -> "T Shirt Size")
+    label_display = (event.labels_data || {}).dup
+    extra_keys.each do |key|
+      label_display[key] = key.to_s.gsub('_', ' ').gsub(/\b\w/) { |c| c.upcase }
+    end
+
     # Create Excel workbook
     package = Axlsx::Package.new
     workbook = package.workbook
@@ -40,9 +55,9 @@ class TicketExcelService
         'Payment Status',
         'Checked In'
       ]
-      # Add label columns (using the display names from event.labels_data values)
-      label_keys.each do |key|
-        header_row << event.labels_data[key] # Use the value as column header (e.g., "Role", "Company")
+      # Add label columns (using display names)
+      all_label_keys.each do |key|
+        header_row << label_display[key]
       end
       sheet.add_row header_row
 
@@ -62,8 +77,8 @@ class TicketExcelService
         ]
 
         # Add values from ticket.custom_fields_data for each label key
-        label_keys.each do |key|
-          row_data << (ticket.custom_fields_data[key] || '')
+        all_label_keys.each do |key|
+          row_data << ((ticket.custom_fields_data || {})[key] || '')
         end
 
         sheet.add_row row_data

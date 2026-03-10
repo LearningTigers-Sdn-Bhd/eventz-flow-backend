@@ -4,7 +4,7 @@ class VoucherUsage < ApplicationRecord
   after_initialize :set_default_redemption_count, if: :new_record?
 
   # --- Enums ---
-  enum :redeemer_type, { User: 0, Visitor: 1 }
+  enum :redeemer_type, { User: 0, Visitor: 1, Ticket: 2 }
 
   # --- Associations ---
   belongs_to :voucher

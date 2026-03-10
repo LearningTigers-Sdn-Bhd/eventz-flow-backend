@@ -430,4 +430,69 @@ RSpec.describe 'V1::Roulette', type: :request do
       end
     end
   end
+
+  describe 'winner notification' do
+    let(:event_with_webhook) { create(:event, webhook_url: 'https://example.com/webhook') }
+    let!(:session) { create(:roulette_session, event: event_with_webhook, user: exhibitor, is_multiple: true) }
+    let!(:prize) { create(:roulette_prize, roulette_session: session, quantity: 2) }
+    let!(:ticket) { create(:ticket, event: event_with_webhook, attendee_phone: '+60123456789') }
+
+    before do
+      EventAssignment.find_or_create_by!(event: event_with_webhook, user: exhibitor, role: :event_team_member)
+      ticket.update!(public_id: SecureRandom.uuid) if ticket.public_id.blank?
+    end
+
+    context 'POST /v1/events/:event_id/roulette/sessions/:session_id/winners/:id/notify' do
+      let!(:winner) do
+        create(:roulette_winner,
+               roulette_session: session,
+               roulette_prize: prize,
+               ticket: ticket,
+               visitor: nil,
+               drawn_at: Time.current)
+      end
+
+      it 'successfully sends webhook notification' do
+        expect(WebhookSenderJob).to receive(:perform_later).with(
+          event_with_webhook.webhook_url,
+          hash_including(
+            event_type: 'roulette.winner_declared',
+            winner: hash_including(
+              id: winner.id
+            ),
+            prize: hash_including(
+              name: prize.name
+            )
+          )
+        )
+
+        post "/v1/events/#{event_with_webhook.id}/roulette/sessions/#{session.id}/winners/#{winner.id}/notify",
+             headers: auth_header(exhibitor)
+
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body['success']).to eq(true)
+        expect(body['message']).to eq('Notification sent successfully')
+      end
+
+      it 'returns error when event has no webhook_url' do
+        event_with_webhook.update!(webhook_url: nil)
+
+        post "/v1/events/#{event_with_webhook.id}/roulette/sessions/#{session.id}/winners/#{winner.id}/notify",
+             headers: auth_header(exhibitor)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        body = JSON.parse(response.body)
+        expect(body['success']).to eq(false)
+        expect(body['message']).to include('No webhook URL configured')
+      end
+
+      it 'denies unauthorized users' do
+        post "/v1/events/#{event_with_webhook.id}/roulette/sessions/#{session.id}/winners/#{winner.id}/notify",
+             headers: auth_header(member)
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+  end
 end

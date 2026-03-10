@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #059669; color: white; padding: 20px; text-align: center; }
+    .content { padding: 20px; background: #f9fafb; }
+    .countdown { text-align: center; font-size: 48px; font-weight: bold; color: #059669; padding: 20px; }
+    .ticket-info { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
+    .ticket-info table { width: 100%; }
+    .ticket-info td { padding: 8px 0; }
+    .ticket-info td:first-child { font-weight: bold; width: 120px; }
+    .qr-section { text-align: center; padding: 20px; background: white; border-radius: 8px; margin: 15px 0; }
+    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1><%= @days_until == 1 ? "See You Tomorrow!" : "Event Reminder" %></h1>
+    </div>
+
+    <div class="content">
+      <p>Hi <%= @ticket.attendee_name %>,</p>
+
+      <div class="countdown">
+        <%= @days_until %> day<%= @days_until > 1 ? 's' : '' %> to go!
+      </div>
+
+      <p><%= @event.title %> is coming up <%= @days_until == 1 ? 'tomorrow' : "in #{@days_until} days" %>. Here's a reminder of your ticket details:</p>
+
+      <div class="ticket-info">
+        <table>
+          <tr>
+            <td>Event:</td>
+            <td><%= @event.title %></td>
+          </tr>
+          <tr>
+            <td>Date:</td>
+            <td><%= @event.start_date.strftime("%B %d, %Y") %></td>
+          </tr>
+          <% if @event.event_locations.any? %>
+          <tr>
+            <td>Venue:</td>
+            <td><%= @event.event_locations.first.name %></td>
+          </tr>
+          <% end %>
+          <tr>
+            <td>Ticket Type:</td>
+            <td><%= @ticket.ticket_type.name %></td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="qr-section">
+        <h3>Your QR Code</h3>
+        <p>Have this ready for check-in:</p>
+        <%= image_tag attachments['qr_code.png'].url, alt: "QR Code", width: 200, height: 200 %>
+      </div>
+
+      <p>We look forward to seeing you!</p>
+    </div>
+
+    <div class="footer">
+      <p>This email was sent by EventzFlow</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe ExhibitorKit, type: :model do
+  include ActiveJob::TestHelper
   let(:event) { create(:event, use_ticket: true) }
   let(:vendor_user) { create(:user, :vendor) }
   let(:exhibitor) { create(:exhibitor, event: event, vendor: vendor_user) }
@@ -9,12 +10,12 @@ RSpec.describe ExhibitorKit, type: :model do
 
   it { should belong_to(:event_vendor) }
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
-  it { should define_enum_for(:booth_type).with_values([:shell_scheme, :raw_space]) }
+  it { should validate_presence_of(:booth_type) }
 
 
 
 
-  it { should validate_length_of(:name_on_fascia).is_at_most(25) }
+  it { should validate_length_of(:name_on_fascia).is_at_most(30) }
 
 
   it { should validate_presence_of(:pic_full_name) }
@@ -106,6 +107,44 @@ RSpec.describe ExhibitorKit, type: :model do
           expect(exhibitor_kit.extra_team_member_charges).to eq(100.00) # 2 excess * 50.00
         end
       end
+    end
+  end
+
+  describe 'email callbacks' do
+    before do
+      ActiveJob::Base.queue_adapter = :test
+      clear_enqueued_jobs
+    end
+
+    it 'enqueues registration received email on create' do
+      event_vendor = create(:exhibitor, event: event, vendor: vendor_user)
+      clear_enqueued_jobs
+
+      expect {
+        create(:exhibitor_kit, event_vendor: event_vendor, pic_email_address: 'new-exhibitor@example.com')
+      }.to have_enqueued_mail(ExhibitorRegistrationMailer, :registration_received_email)
+    end
+
+    it 'enqueues payment confirmed email when payment transitions to paid' do
+      event_vendor = create(:exhibitor, event: event, vendor: vendor_user)
+      clear_enqueued_jobs
+      exhibitor_kit = create(:exhibitor_kit, event_vendor: event_vendor, payment_status: :unpaid)
+      clear_enqueued_jobs
+
+      expect {
+        exhibitor_kit.update!(payment_status: :paid)
+      }.to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
+    end
+
+    it 'does not enqueue payment confirmed email when status stays paid' do
+      event_vendor = create(:exhibitor, event: event, vendor: vendor_user)
+      clear_enqueued_jobs
+      exhibitor_kit = create(:exhibitor_kit, event_vendor: event_vendor, payment_status: :paid)
+      clear_enqueued_jobs
+
+      expect {
+        exhibitor_kit.update!(company_name: 'Updated Co')
+      }.not_to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
     end
   end
 end

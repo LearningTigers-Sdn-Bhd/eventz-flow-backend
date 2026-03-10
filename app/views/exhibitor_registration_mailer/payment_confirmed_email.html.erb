@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #16a34a, #22c55e); color: white; padding: 36px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.9; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 14px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 22px; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #16a34a; margin-bottom: 10px; }
+    .info { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin-bottom: 22px; }
+    .receipt-info { background: #f7fafc; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin-bottom: 22px; }
+    .info table { width: 100%; border-collapse: collapse; }
+    .receipt-info table { width: 100%; border-collapse: collapse; }
+    .info td { padding: 7px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
+    .receipt-info td { padding: 7px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
+    .info td:first-child { font-weight: bold; color: #166534; width: 140px; }
+    .receipt-info td:first-child { font-weight: bold; color: #166534; width: 150px; }
+    .info td:last-child { color: #14532d; }
+    .receipt-info td:last-child { color: #14532d; }
+    @media only screen and (max-width: 480px) {
+      .info td, .receipt-info td { display: block !important; width: 100% !important; }
+      .info td:first-child, .receipt-info td:first-child { padding-bottom: 0 !important; }
+      .info td:last-child, .receipt-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
+    .notice { background: #ecfdf5; border: 1px solid #86efac; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #166534; margin-bottom: 22px; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; }
+    .signature { font-size: 15px; color: #333; font-weight: bold; margin-top: 8px; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Payment Confirmed</h1>
+        <p>Your exhibitor booth is now fully confirmed</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Hi <strong><%= @exhibitor_kit.pic_full_name %></strong>,</p>
+
+        <p class="message">
+          Great news - your exhibitor payment for <strong><%= @event.title %></strong> has been successfully confirmed.
+        </p>
+
+        <div class="section-title">Payment Details</div>
+        <div class="info">
+          <table>
+            <tr>
+              <td>Event:</td>
+              <td><%= @event.title %></td>
+            </tr>
+            <tr>
+              <td>Company:</td>
+              <td><%= @exhibitor_kit.company_name %></td>
+            </tr>
+            <tr>
+              <td>Booth:</td>
+              <td><%= @booth_label %></td>
+            </tr>
+            <tr>
+              <td>Amount Paid:</td>
+              <td>RM <%= @exhibitor_kit.amount_paid %></td>
+            </tr>
+            <tr>
+              <td>Payment Status:</td>
+              <td>Paid</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="section-title">Payment Receipt</div>
+        <div class="receipt-info">
+          <table>
+            <tr>
+              <td>Receipt No:</td>
+              <td>EXH-<%= @exhibitor_kit.id %></td>
+            </tr>
+            <tr>
+              <td>Payment Status:</td>
+              <td>Paid</td>
+            </tr>
+            <tr>
+              <td>Payment Date:</td>
+              <td>
+                <% if @exhibitor_payment&.paid_at.present? %>
+                  <%= @exhibitor_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
+                <% else %>
+                  Not available
+                <% end %>
+              </td>
+            </tr>
+            <tr>
+              <td>Amount Paid:</td>
+              <td>
+                <%= (@exhibitor_payment&.gateway_response&.dig('currency').presence || 'MYR') %>
+                <%= format('%.2f', (@exhibitor_payment&.amount || @exhibitor_kit.amount_paid).to_f) %>
+              </td>
+            </tr>
+            <tr>
+              <td>Transaction ID:</td>
+              <td><%= @exhibitor_payment&.gateway_payment_id.presence || 'Not available' %></td>
+            </tr>
+            <tr>
+              <td>Order ID:</td>
+              <td><%= @exhibitor_payment&.gateway_response&.dig('order_id').presence || 'Not available' %></td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="notice">
+          Your registration and booth reservation are fully confirmed. We look forward to welcoming you.
+        </div>
+
+        <% if @contact_email.present? %>
+          <p class="closing">If you need support, contact us at <a href="mailto:<%= @contact_email %>" style="color: #16a34a; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.</p>
+        <% end %>
+        <p class="closing">Warm regards,</p>
+        <p class="signature"><%= @sender_name %></p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated email from EventzFlow. Please do not reply directly to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

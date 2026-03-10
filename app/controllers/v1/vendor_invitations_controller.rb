@@ -155,7 +155,8 @@ module V1
             title: event.title,
             description: event.description,
             start_date: event.start_date&.iso8601,
-            end_date: event.end_date&.iso8601
+            end_date: event.end_date&.iso8601,
+            booth_types: event.booth_types || []
           },
           group: group_data
         },

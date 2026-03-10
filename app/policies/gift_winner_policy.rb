@@ -30,6 +30,11 @@ class GiftWinnerPolicy < ApplicationPolicy
     create?
   end
 
+  # notify? - same as create? (can notify if can manage winners)
+  def notify?
+    create?
+  end
+
   # bulk? - same as create? (for bulk winner assignment)
   def bulk?
     create?

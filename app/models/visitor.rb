@@ -13,6 +13,17 @@ class Visitor < ApplicationRecord
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
 
+  # --- RSVP Associations ---
+  has_many :companions, class_name: 'Visitor', foreign_key: 'added_by_id', dependent: :destroy
+  belongs_to :added_by, class_name: 'Visitor', optional: true
+
+  # --- Enums ---
+  enum :rsvp_status, { pending: 0, attending: 1, declined: 2 }
+
+  # --- RSVP Scopes ---
+  scope :primary_invitees, -> { where(added_by_id: nil) }
+  scope :companions_of, ->(visitor_id) { where(added_by_id: visitor_id) }
+
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
   scope :unscanned, -> { where(checked_in: false) }

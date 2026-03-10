@@ -1,0 +1,24 @@
+Hi <%= @exhibitor_kit.pic_full_name %>,
+
+Your exhibitor payment has been confirmed for <%= @event.title %>.
+
+Company: <%= @exhibitor_kit.company_name %>
+Booth: <%= @booth_label %>
+Amount Paid: RM <%= @exhibitor_kit.amount_paid %>
+Payment Status: Paid
+
+Payment Receipt
+- Receipt No: EXH-<%= @exhibitor_kit.id %>
+- Payment Status: Paid
+- Payment Date: <%= @exhibitor_payment&.paid_at.present? ? @exhibitor_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") : 'Not available' %>
+- Amount Paid: <%= (@exhibitor_payment&.gateway_response&.dig('currency').presence || 'MYR') %> <%= format('%.2f', (@exhibitor_payment&.amount || @exhibitor_kit.amount_paid).to_f) %>
+- Transaction ID: <%= @exhibitor_payment&.gateway_payment_id.presence || 'Not available' %>
+- Order ID: <%= @exhibitor_payment&.gateway_response&.dig('order_id').presence || 'Not available' %>
+
+Your booth registration is now fully confirmed.
+
+<% if @contact_email.present? %>
+If you need support, contact <%= @contact_email %>.
+<% end %>
+Warm regards,
+<%= @sender_name %>

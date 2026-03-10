@@ -21,7 +21,8 @@ RSpec.describe 'V1::Visitors', type: :request do
 
   # --- Setup Visitors ---
   let!(:existing_visitor) do
-    create(:visitor, event: organizer_event, full_name: 'Existing Visitor', email: 'existing@example.com', phone: '+1234567890')
+    create(:visitor, event: organizer_event, full_name: 'Existing Visitor', email: 'existing@example.com',
+                     phone: '+1234567890')
   end
 
   let(:valid_visitor_params) do
@@ -192,6 +193,59 @@ RSpec.describe 'V1::Visitors', type: :request do
 
         run_test!
       end
+    end
+  end
+
+  describe 'PATCH /v1/visitors/:id/unscan' do
+    let!(:scanned_visitor) do
+      create(
+        :visitor,
+        event: organizer_event,
+        full_name: 'Scanned Visitor',
+        checked_in: true,
+        check_in_at: Time.current,
+        scanned_by_id: staff_user.id
+      )
+    end
+
+    it 'allows org owners to unscan a checked-in visitor' do
+      patch "/v1/visitors/#{scanned_visitor.public_id}/unscan",
+            headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+
+      expect(response).to have_http_status(:ok)
+
+      scanned_visitor.reload
+      expect(scanned_visitor.checked_in).to be false
+      expect(scanned_visitor.check_in_at).to be_nil
+      expect(scanned_visitor.scanned_by_id).to be_nil
+
+      json = JSON.parse(response.body)
+      expect(json['message']).to eq('Visitor successfully unscanned')
+      expect(json.dig('visitor', 'id')).to eq(scanned_visitor.id)
+    end
+
+    it 'returns 422 when the visitor is not checked in' do
+      patch "/v1/visitors/#{existing_visitor.public_id}/unscan",
+            headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['error']).to eq('Visitor is not checked in')
+    end
+
+    it 'forbids non org owners from unscanning visitors' do
+      patch "/v1/visitors/#{scanned_visitor.public_id}/unscan",
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body)['error']).to eq('Only organization owners can unscan visitors')
+    end
+
+    it 'returns 404 when the visitor cannot be found' do
+      patch '/v1/visitors/00000000-0000-0000-0000-000000000000/unscan',
+            headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+
+      expect(response).to have_http_status(:not_found)
+      expect(JSON.parse(response.body)['error']).to eq('Visitor not found')
     end
   end
 end
