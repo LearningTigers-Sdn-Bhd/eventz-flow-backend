@@ -77,6 +77,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "voice_enabled", default: true
     t.string "voice_type", default: "ms-MY-Wavenet-A"
     t.string "welcome_text", default: "Welcome"
+    t.string "idle_mode"
+    t.string "announcement_mode"
+    t.integer "announcement_duration"
+    t.boolean "show_seating_plan", default: false
+    t.integer "seating_plan_sidebar_position", default: 0
+    t.bigint "active_plan_id"
+    t.string "seating_announcement_template"
+    t.integer "seating_plan_duration"
+    t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end
 
@@ -301,6 +310,31 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["event_seat_session_id"], name: "index_event_seat_venues_on_event_seat_session_id"
   end
 
+  create_table "event_seating_group_members", force: :cascade do |t|
+    t.bigint "event_seating_group_id", null: false
+    t.string "participant_type", null: false
+    t.bigint "participant_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seating_group_id", "participant_type"], name: "index_event_seating_group_members_on_group_and_type"
+    t.index ["event_seating_group_id"], name: "index_event_seating_group_members_on_event_seating_group_id"
+    t.index ["participant_type", "participant_id"], name: "index_event_seating_group_members_on_participant_unique", unique: true
+  end
+
+  create_table "event_seating_groups", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "plan_id"
+    t.integer "scope", default: 0, null: false
+    t.string "name", null: false
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "scope"], name: "index_event_seating_groups_on_event_id_and_scope"
+    t.index ["event_id"], name: "index_event_seating_groups_on_event_id"
+    t.index ["plan_id", "scope"], name: "index_event_seating_groups_on_plan_id_and_scope"
+    t.index ["plan_id"], name: "index_event_seating_groups_on_plan_id"
+  end
+
   create_table "event_sponsorship_attachments", force: :cascade do |t|
     t.bigint "event_sponsorship_id", null: false
     t.bigint "event_sponsorship_payment_id"
@@ -471,6 +505,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
@@ -792,6 +827,40 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
   end
 
+  create_table "plan_objects", force: :cascade do |t|
+    t.bigint "plan_id", null: false
+    t.integer "object_type"
+    t.string "layer"
+    t.float "x"
+    t.float "y"
+    t.float "rotation", default: 0.0
+    t.float "width"
+    t.float "height"
+    t.string "label"
+    t.integer "capacity"
+    t.boolean "locked", default: false
+    t.integer "z_index", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.text "path"
+    t.index ["plan_id"], name: "index_plan_objects_on_plan_id"
+  end
+
+  create_table "plans", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name"
+    t.float "canvas_width", default: 0.0
+    t.float "canvas_height", default: 0.0
+    t.float "pixels_per_unit", default: 20.0
+    t.boolean "public_enabled", default: false
+    t.string "share_token"
+    t.jsonb "settings_json"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_plans_on_event_id"
+    t.index ["share_token"], name: "index_plans_on_share_token", unique: true
+  end
+
   create_table "printing_services", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -1037,6 +1106,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "table_assignments", force: :cascade do |t|
+    t.bigint "ticket_id"
+    t.bigint "plan_object_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "visitor_id"
+    t.text "notes"
+    t.datetime "arrived_at"
+    t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
+    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id"
+    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
+  end
+
   create_table "ticket_payments", force: :cascade do |t|
     t.bigint "ticket_id", null: false
     t.bigint "received_by_id"
@@ -1277,6 +1360,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "check_in_displays", "events"
+  add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
@@ -1305,6 +1389,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "event_seat_sections", "ticket_types"
   add_foreign_key "event_seat_sessions", "events"
   add_foreign_key "event_seat_venues", "event_seat_sessions"
+  add_foreign_key "event_seating_group_members", "event_seating_groups"
+  add_foreign_key "event_seating_groups", "events"
+  add_foreign_key "event_seating_groups", "plans"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorship_payments"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorships"
   add_foreign_key "event_sponsorship_attachments", "users", column: "uploaded_by_id"
@@ -1365,6 +1452,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
+  add_foreign_key "plan_objects", "plans"
+  add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
   add_foreign_key "registration_form_ticket_types", "registration_forms"
@@ -1391,6 +1480,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
+  add_foreign_key "table_assignments", "plan_objects"
+  add_foreign_key "table_assignments", "tickets"
+  add_foreign_key "table_assignments", "visitors"
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"

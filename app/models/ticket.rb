@@ -17,6 +17,10 @@ class Ticket < ApplicationRecord
   has_one :ticket_payment, dependent: :destroy
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+  
+  has_many :table_assignments, dependent: :destroy
+  has_many :assigned_tables, through: :table_assignments, source: :plan_object
+  has_one :event_seating_group_member, as: :participant, dependent: :destroy
 
   # --- Enums ---
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4 }
@@ -49,6 +53,10 @@ class Ticket < ApplicationRecord
   scope :checked_in, -> { where(checked_in: true) }
   scope :active, -> { where(status: %i[purchased scanned]) }
   scope :unscanned, -> { active.where(checked_in: false) }
+  scope :unassigned, -> { left_outer_joins(:table_assignments).where(table_assignments: { id: nil }) }
+  scope :unassigned_in_plan, ->(plan) {
+    where.not(id: joins(:table_assignments).joins(table_assignments: :plan_object).where(plan_objects: { plan_id: plan.id }).select(:id))
+  }
   scope :within_date_range, ->(range) { where(created_at: range) }
 
   after_commit :send_webhook_notification, on: %i[create update]

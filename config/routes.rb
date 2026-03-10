@@ -31,6 +31,8 @@ Rails.application.routes.draw do
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
+      # Public seating plans
+      resources :plans, only: %i[show]
       # Public booking details
       resources :bookings, only: [:show]
 
@@ -113,6 +115,25 @@ Rails.application.routes.draw do
       end
       resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
+      end
+      resources :plans, shallow: true do
+        resources :plan_objects, only: %i[create destroy] do
+          collection do
+            patch :batch
+            post :batch_create
+            delete :batch_destroy
+          end
+        end
+        resources :assignments, controller: 'table_assignments', only: %i[create update destroy], param: :ticket_id
+        resources :seating_groups, controller: 'seating_groups', shallow: false, only: %i[index create update destroy] do
+          member do
+            post :members, action: :add_member
+            delete 'members/:member_id', action: :remove_member, as: :member
+            post :assign_to_table
+          end
+        end
+        post :auto_distribute, on: :member
+        get :export, on: :member
       end
       resources :tickets, only: %i[index show create update destroy] do
         member do
