@@ -9,6 +9,10 @@ module V1
     # GET /v1/events/:event_id/visitors
     def index
       @visitors = policy_scope(Visitor).where(event: @event)
+      
+      if params[:unassigned] == 'true'
+        @visitors = @visitors.unassigned
+      end
 
       render json: @visitors.map { |v|
         v.as_json.merge(

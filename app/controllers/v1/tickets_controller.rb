@@ -26,6 +26,10 @@ module V1
         # Show all tickets including archived
         @tickets = @tickets.with_deleted
       end
+
+      if params[:unassigned] == 'true'
+        @tickets = @tickets.unassigned
+      end
       # Default: only non-archived tickets (handled by default_scope)
 
       # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.

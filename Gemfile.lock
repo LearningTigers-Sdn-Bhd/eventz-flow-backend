@@ -192,6 +192,7 @@ GEM
       net-pop
       net-smtp
     marcel (1.1.0)
+    matrix (0.4.3)
     method_source (1.1.0)
     mini_magick (5.3.1)
       logger
@@ -235,6 +236,7 @@ GEM
     parallel (1.27.0)
     parallel_tests (5.5.0)
       parallel
+    pdf-core (0.10.0)
     pg (1.6.2)
     pg (1.6.2-aarch64-linux)
     pg (1.6.2-aarch64-linux-musl)
@@ -244,6 +246,10 @@ GEM
     pg (1.6.2-x86_64-linux-musl)
     pp (0.6.3)
       prettyprint
+    prawn (2.5.0)
+      matrix (~> 0.4)
+      pdf-core (~> 0.10.0)
+      ttfunk (~> 1.8)
     prettyprint (0.2.0)
     pry (0.15.2)
       coderay (~> 1.1)
@@ -384,6 +390,8 @@ GEM
     thor (1.4.0)
     timeout (0.4.4)
     tsort (0.2.0)
+    ttfunk (1.8.0)
+      bigdecimal (~> 3.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     tzinfo-data (1.2025.2)
@@ -435,6 +443,7 @@ DEPENDENCIES
   pagy (~> 43.2)
   parallel_tests
   pg (~> 1.1)
+  prawn (~> 2.5)
   pry
   puma (>= 5.0)
   pundit

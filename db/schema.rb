@@ -792,6 +792,39 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
   end
 
+  create_table "plan_objects", force: :cascade do |t|
+    t.bigint "plan_id", null: false
+    t.integer "object_type"
+    t.string "layer"
+    t.float "x"
+    t.float "y"
+    t.float "rotation", default: 0.0
+    t.float "width"
+    t.float "height"
+    t.string "label"
+    t.integer "capacity"
+    t.boolean "locked", default: false
+    t.integer "z_index", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["plan_id"], name: "index_plan_objects_on_plan_id"
+  end
+
+  create_table "plans", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name"
+    t.float "canvas_width"
+    t.float "canvas_height"
+    t.float "pixels_per_unit", default: 20.0
+    t.boolean "public_enabled", default: false
+    t.string "share_token"
+    t.jsonb "settings_json"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_plans_on_event_id"
+    t.index ["share_token"], name: "index_plans_on_share_token", unique: true
+  end
+
   create_table "printing_services", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -1067,6 +1100,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.index ["ticket_type_id", "starts_at"], name: "idx_price_tiers_on_ticket_type_and_start"
     t.index ["ticket_type_id"], name: "index_ticket_type_price_tiers_on_ticket_type_id"
+  end
+  
+  create_table "table_assignments", force: :cascade do |t|
+    t.bigint "ticket_id"
+    t.bigint "plan_object_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "visitor_id"
+    t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
+    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id", unique: true
+    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
   end
 
   create_table "ticket_types", force: :cascade do |t|
@@ -1365,6 +1410,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
+  add_foreign_key "plan_objects", "plans"
+  add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
   add_foreign_key "registration_form_ticket_types", "registration_forms"
@@ -1394,6 +1441,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
+  add_foreign_key "table_assignments", "plan_objects"
+  add_foreign_key "table_assignments", "tickets"
+  add_foreign_key "table_assignments", "visitors"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "ticket_types"

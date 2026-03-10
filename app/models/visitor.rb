@@ -12,6 +12,9 @@ class Visitor < ApplicationRecord
   has_many :visitor_vendor_stamps, dependent: :destroy
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+  
+  has_one :table_assignment, dependent: :destroy
+  has_one :assigned_table, through: :table_assignment, source: :plan_object
 
   # --- RSVP Associations ---
   has_many :companions, class_name: 'Visitor', foreign_key: 'added_by_id', dependent: :destroy
@@ -27,6 +30,7 @@ class Visitor < ApplicationRecord
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
   scope :unscanned, -> { where(checked_in: false) }
+  scope :unassigned, -> { left_outer_joins(:table_assignment).where(table_assignments: { id: nil }) }
 
   # --- Validations ---
   validates :event_id, presence: true

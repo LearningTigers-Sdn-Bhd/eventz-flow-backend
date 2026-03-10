@@ -114,6 +114,16 @@ Rails.application.routes.draw do
       resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
       end
+      resources :plans, shallow: true do
+        resources :plan_objects, only: %i[create destroy] do
+          collection do
+            patch :batch
+          end
+        end
+        resources :assignments, controller: 'table_assignments', only: %i[create destroy], param: :ticket_id
+        post :auto_distribute, on: :member
+        get :export, on: :member
+      end
       resources :tickets, only: %i[index show create update destroy] do
         member do
           delete :force_delete

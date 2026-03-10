@@ -41,6 +41,8 @@ class Event < ApplicationRecord
   has_many :event_sponsorship_tiers, dependent: :destroy
   has_many :event_sponsorships, dependent: :destroy
   has_many :sponsors, through: :event_sponsorships
+  
+  has_many :plans, dependent: :destroy
 
   # --- Reminders ---
   has_many :event_reminder_logs, dependent: :destroy
