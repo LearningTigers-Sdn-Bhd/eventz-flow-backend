@@ -61,33 +61,25 @@ module V1
 
       vendor_attributes = params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
 
-      # Update main event_vendor attributes
-      if @event_vendor.update(vendor_attributes)
-        # Handle exhibitor_kit_attributes separately if present in params and if exhibitor_kit exists
+      success = ActiveRecord::Base.transaction do
+        raise ActiveRecord::Rollback unless @event_vendor.update(vendor_attributes)
+
         if params[:vendor][:exhibitor_kit_attributes].present? && @event_vendor.is_a?(Exhibitor) && @event_vendor.exhibitor_kit
           permitted_attrs_structure_for_kit = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update
-
-          # Use permit on the raw exhibitor_kit_attributes to get only permitted data
           strong_exhibitor_kit_params = params[:vendor][:exhibitor_kit_attributes].permit(*permitted_attrs_structure_for_kit)
 
-          # Only update if there are permitted attributes to update
-          if strong_exhibitor_kit_params.present?
-            if @event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
-              # All good, continue
-            else
-              # If exhibitor kit update fails, add its errors to event_vendor for a combined response
-              @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
-            end
+          if strong_exhibitor_kit_params.present? && !@event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
+            @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
+            raise ActiveRecord::Rollback
           end
         end
 
-        if @event_vendor.errors.any? # Check if exhibitor_kit errors were added
-          render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
-                 status: :unprocessable_content
-        else
-          @event_vendor.reload # Reload to ensure all associations are fresh
-          render json: format_event_vendor(@event_vendor), status: :ok
-        end
+        true
+      end
+
+      if success && @event_vendor.errors.empty?
+        @event_vendor.reload
+        render json: format_event_vendor(@event_vendor), status: :ok
       else
         render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
                status: :unprocessable_content
@@ -148,7 +140,7 @@ module V1
           :pic_email_address, :special_requirements,
           :digital_brochure_link, :qr_code_url, :is_raw_space,
           :indemnity_signed, :indemnity_document_url, :_destroy,
-          { exhibitor_team_members_attributes: %i[id full_name _destroy] }
+          { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] }
         ]
       )
     end
@@ -222,7 +214,7 @@ module V1
         payment_note: exhibitor_kit.payment_note,
         indemnity_link: exhibitor_kit.indemnity_link,
         custom_fields_data: exhibitor_kit.custom_fields_data,
-        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name
+        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,
         team_member_limit: exhibitor_kit.team_member_limit,

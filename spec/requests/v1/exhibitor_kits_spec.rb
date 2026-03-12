@@ -10,13 +10,18 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     get('list exhibitor_kits') do
       tags 'Exhibitor Kits'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       let(:admin_user) { create(:user, :org_owner) }
       let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-      let!(:contractor_profile) { contractor_user.reload.exhibition_contractor_profile } # Use the one created with the user
-      let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
-      
+      # Use the one created with the user
+      let!(:contractor_profile) do
+        contractor_user.reload.exhibition_contractor_profile
+      end
+      let!(:event_contractor) do
+        create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+      end
+
       let(:exhibitor_user) { create(:user, :exhibitor) }
       let!(:exhibitor) { create(:exhibitor, event: event, vendor: exhibitor_user) } # Create exhibitor event_vendor
       let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) } # Create exhibitor kit
@@ -50,7 +55,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       tags 'Exhibitor Kits'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :exhibitor_kit, in: :body, schema: {
         type: :object,
         properties: {
@@ -64,7 +69,8 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
           pic_contact_number: { type: :string },
           pic_email_address: { type: :string }
         },
-        required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name pic_contact_number pic_email_address]
+        required: %w[event_vendor_id booth_number booth_type name_on_fascia company_name company_address pic_full_name
+                     pic_contact_number pic_email_address]
       }
 
       let(:admin_user) { create(:user, :org_owner) }
@@ -84,7 +90,6 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
         }
       end
       let(:exhibitor_kit) { { exhibitor_kit: exhibitor_kit_attributes } }
-
 
       response(201, 'created') do
         context 'as an exhibitor creating their own kit' do
@@ -107,8 +112,13 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
         context 'as a contractor (cannot create exhibitor kits)' do
           let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-          let!(:contractor_profile) { contractor_user.reload.exhibition_contractor_profile } # Use the one created with the user
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          # Use the one created with the user
+          let!(:contractor_profile) do
+            contractor_user.reload.exhibition_contractor_profile
+          end
+          let!(:event_contractor) do
+            create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+          end
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
           run_test!
         end
@@ -125,19 +135,21 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     let(:admin_user) { create(:user, :org_owner) }
     let(:exhibitor_user) { create(:user, :exhibitor) }
     let!(:exhibitor) { create(:exhibitor, event: event, vendor: exhibitor_user) }
-    let!(:exhibitor_kit_record) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, booth_number: 'A1') }
+    let!(:exhibitor_kit_record) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, booth_number: 'A1')
+    end
     let(:id) { exhibitor_kit_record.id }
 
     patch('update exhibitor_kit') do
       tags 'Exhibitor Kits'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :exhibitor_kit, in: :body, schema: {
         type: :object,
         properties: {
           booth_number: { type: :string },
-          payment_status: { type: :string, enum: ['unpaid', 'paid', 'waived', 'sponsored'] },
+          payment_status: { type: :string, enum: %w[unpaid paid waived sponsored] },
           company_name: { type: :string }
         }
       }
@@ -155,13 +167,78 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
         context 'as a contractor updating contractor-managed fields (e.g., payment_status)' do
           let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-          let!(:contractor_profile) { contractor_user.reload.exhibition_contractor_profile } # Use the one created with the user
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          # Use the one created with the user
+          let!(:contractor_profile) do
+            contractor_user.reload.exhibition_contractor_profile
+          end
+          let!(:event_contractor) do
+            create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+          end
           let(:exhibitor_kit) { { exhibitor_kit: { payment_status: 'paid' } } }
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
           run_test! do |response|
             data = JSON.parse(response.body)
             expect(data['payment_status']).to eq('paid')
+          end
+        end
+
+        context 'as an exhibitor adding and removing team members with contact details' do
+          let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
+
+          it 'creates a linked ticket when a member is added' do
+            patch "/v1/events/#{event_id}/exhibitor_kits/#{id}", params: {
+              exhibitor_kit: {
+                exhibitor_team_members_attributes: [
+                  {
+                    full_name: 'New Team Member',
+                    email: 'team.member@example.com',
+                    phone: '+60112233445'
+                  }
+                ]
+              }
+            }, headers: { 'Authorization' => "Bearer #{jwt_token(exhibitor_user)}" }
+
+            expect(response).to have_http_status(:ok)
+
+            data = JSON.parse(response.body)
+            created_member = data['exhibitor_team_members'].find { |member| member['full_name'] == 'New Team Member' }
+
+            expect(created_member['email']).to eq('team.member@example.com')
+            expect(created_member['phone']).to eq('+60112233445')
+            expect(created_member['attendee_type']).to eq('Ticket')
+            expect(created_member['attendee_id']).to be_present
+
+            ticket = Ticket.find(created_member['attendee_id'])
+            expect(ticket.attendee_email).to eq('team.member@example.com')
+            expect(ticket.role).to eq('Exhibitor')
+          end
+
+          it 'deletes the linked ticket when a member is removed' do
+            member = create(
+              :exhibitor_team_member,
+              exhibitor_kit: exhibitor_kit_record,
+              full_name: 'Existing Team Member',
+              email: 'existing.team.member@example.com',
+              phone: '+60119998877'
+            )
+
+            ticket_id = member.attendee_id
+
+            expect(ticket_id).to be_present
+
+            patch "/v1/events/#{event_id}/exhibitor_kits/#{id}", params: {
+              exhibitor_kit: {
+                exhibitor_team_members_attributes: [
+                  {
+                    id: member.id,
+                    _destroy: true
+                  }
+                ]
+              }
+            }, headers: { 'Authorization' => "Bearer #{jwt_token(exhibitor_user)}" }
+
+            expect(response).to have_http_status(:ok)
+            expect(Ticket.unscoped.find_by(id: ticket_id)).to be_nil
           end
         end
       end
@@ -183,8 +260,13 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
         context 'as a contractor attempting to update an exhibitor-managed field (e.g., company_name)' do
           let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-          let!(:contractor_profile) { contractor_user.reload.exhibition_contractor_profile } # Use the one created with the user
-          let!(:event_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+          # Use the one created with the user
+          let!(:contractor_profile) do
+            contractor_user.reload.exhibition_contractor_profile
+          end
+          let!(:event_contractor) do
+            create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+          end
           let(:exhibitor_kit) { { exhibitor_kit: { company_name: 'Contractor Changed Co.' } } }
           let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
           run_test! do |response|

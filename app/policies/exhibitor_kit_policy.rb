@@ -1,8 +1,8 @@
 class ExhibitorKitPolicy < ApplicationPolicy
   def index?
     user.is_org_owner_or_organizer? ||
-    (user.is_exhibition_contractor? && user.exhibition_contractor_profile.present?) || # Contractor can see all kits in their assigned events
-    (user.exhibitor? && user.event_vendor_assignments.where(type: 'Exhibitor').exists?) # Exhibitor can see their own kit
+      (user.is_exhibition_contractor? && user.exhibition_contractor_profile.present?) || # Contractor can see all kits in their assigned events
+      (user.exhibitor? && user.event_vendor_assignments.where(type: 'Exhibitor').exists?) # Exhibitor can see their own kit
   end
 
   def show?
@@ -47,11 +47,11 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :indemnity_signed, :indemnity_document_url,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
       { custom_fields_data: {} },
-      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
-      { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
-      { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
-      { custom_requests_attributes: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :_destroy] },
-      { exhibitor_kit_admin_notes_attributes: [:id, :note, :user_id, :_destroy] }
+      { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },
+      { exhibitor_kit_items_attributes: %i[id rentable_item_id quantity agreed_price notes _destroy] },
+      { exhibitor_kit_printings_attributes: %i[id printing_service_id quantity agreed_price file_reference notes _destroy] },
+      { custom_requests_attributes: %i[id description quantity status resolved_price response_notes _destroy] },
+      { exhibitor_kit_admin_notes_attributes: %i[id note user_id _destroy] }
     ]
   end
 
@@ -59,12 +59,12 @@ class ExhibitorKitPolicy < ApplicationPolicy
     %i[
       payment_status amount_paid payment_note indemnity_link
     ] + [
-      { custom_requests_attributes: [:id, :status, :resolved_price, :response_notes] }
+      { custom_requests_attributes: %i[id status resolved_price response_notes] }
     ]
   end
 
   def exhibitor_create_attributes
-    exhibitor_update_attributes + [:booth_number, :booth_type, :company_name]
+    exhibitor_update_attributes + %i[booth_number booth_type company_name]
   end
 
   def exhibitor_update_attributes
@@ -75,10 +75,10 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :digital_brochure_link, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
       { custom_fields_data: {} },
-      { exhibitor_team_members_attributes: [:id, :full_name, :_destroy] },
-      { exhibitor_kit_items_attributes: [:id, :rentable_item_id, :quantity, :agreed_price, :notes, :_destroy] },
-      { exhibitor_kit_printings_attributes: [:id, :printing_service_id, :quantity, :agreed_price, :file_reference, :notes, :_destroy] },
-      { custom_requests_attributes: [:id, :description, :quantity, :status, :resolved_price, :response_notes, :_destroy] }
+      { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },
+      { exhibitor_kit_items_attributes: %i[id rentable_item_id quantity agreed_price notes _destroy] },
+      { exhibitor_kit_printings_attributes: %i[id printing_service_id quantity agreed_price file_reference notes _destroy] },
+      { custom_requests_attributes: %i[id description quantity status resolved_price response_notes _destroy] }
     ]
   end
 

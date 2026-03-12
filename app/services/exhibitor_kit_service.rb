@@ -9,7 +9,10 @@ class ExhibitorKitService < BaseService
 
   def create
     event_vendor = event.event_vendors.find_by(id: params.dig(:exhibitor_kit, :event_vendor_id), type: 'Exhibitor')
-    return ServiceResult.new(success: false, errors: 'Exhibitor not found for this event', status: :not_found) if event_vendor.nil?
+    if event_vendor.nil?
+      return ServiceResult.new(success: false, errors: 'Exhibitor not found for this event',
+                               status: :not_found)
+    end
 
     permitted = create_params
 
@@ -41,6 +44,7 @@ class ExhibitorKitService < BaseService
     end
 
     if exhibitor_kit.update(permitted_params)
+      exhibitor_kit.reload
       ServiceResult.new(success: true, data: exhibitor_kit, status: :ok)
     else
       ServiceResult.new(success: false, errors: exhibitor_kit.errors.full_messages, status: :unprocessable_content)

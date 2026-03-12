@@ -12,11 +12,7 @@ RSpec.describe ExhibitorKit, type: :model do
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
   it { should validate_presence_of(:booth_type) }
 
-
-
-
   it { should validate_length_of(:name_on_fascia).is_at_most(30) }
-
 
   it { should validate_presence_of(:pic_full_name) }
   it { should validate_presence_of(:pic_contact_number) }
@@ -26,16 +22,45 @@ RSpec.describe ExhibitorKit, type: :model do
 
   describe 'nested attributes for exhibitor_team_members' do
     it 'accepts nested attributes for exhibitor_team_members' do
-      exhibitor_kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_team_members_attributes: [{ full_name: 'John Doe' }])
+      exhibitor_kit = create(
+        :exhibitor_kit,
+        event_vendor: exhibitor,
+        exhibitor_team_members_attributes: [{ full_name: 'John Doe', email: 'john@example.com', phone: '+60123456789' }]
+      )
+
       expect(exhibitor_kit.exhibitor_team_members.first.full_name).to eq('John Doe')
     end
 
     it 'destroys exhibitor_team_members' do
       exhibitor_kit = create(:exhibitor_kit, event_vendor: exhibitor)
-      member = create(:exhibitor_team_member, exhibitor_kit: exhibitor_kit)
-      expect {
+
+      member = create(
+        :exhibitor_team_member,
+        exhibitor_kit: exhibitor_kit,
+        email: 'member@example.com',
+        phone: '+60123456789'
+      )
+
+      expect do
         exhibitor_kit.update(exhibitor_team_members_attributes: [{ id: member.id, _destroy: '1' }])
-      }.to change(ExhibitorTeamMember, :count).by(-1)
+      end.to change(ExhibitorTeamMember, :count).by(-1)
+    end
+
+    it 'deletes the linked ticket when a team member is destroyed through nested attributes' do
+      exhibitor_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+      member = create(
+        :exhibitor_team_member,
+        exhibitor_kit: exhibitor_kit,
+        email: 'member@example.com',
+        phone: '+60123456789'
+      )
+      ticket_id = member.attendee_id
+
+      expect do
+        exhibitor_kit.update(exhibitor_team_members_attributes: [{ id: member.id, _destroy: '1' }])
+      end.to change(Ticket.unscoped, :count).by(-1)
+
+      expect(Ticket.unscoped.find_by(id: ticket_id)).to be_nil
     end
   end
 
@@ -71,7 +96,7 @@ RSpec.describe ExhibitorKit, type: :model do
       end
 
       context 'with team members within limit' do
-        # Note: exhibitor_kit factory creates 2 members by default
+        # NOTE: exhibitor_kit factory creates 2 members by default
         # Limit is 3, so with 2 members we are within limit
 
         it 'returns 0 for excess_team_member_count' do
@@ -88,7 +113,7 @@ RSpec.describe ExhibitorKit, type: :model do
       end
 
       context 'with team members exceeding limit' do
-        # Note: exhibitor_kit factory creates 2 members by default
+        # NOTE: exhibitor_kit factory creates 2 members by default
         # Adding 3 more = 5 total, limit is 3 → 2 excess
         before do
           create_list(:exhibitor_team_member, 3, exhibitor_kit: exhibitor_kit)
@@ -120,9 +145,9 @@ RSpec.describe ExhibitorKit, type: :model do
       event_vendor = create(:exhibitor, event: event, vendor: vendor_user)
       clear_enqueued_jobs
 
-      expect {
+      expect do
         create(:exhibitor_kit, event_vendor: event_vendor, pic_email_address: 'new-exhibitor@example.com')
-      }.to have_enqueued_mail(ExhibitorRegistrationMailer, :registration_received_email)
+      end.to have_enqueued_mail(ExhibitorRegistrationMailer, :registration_received_email)
     end
 
     it 'enqueues payment confirmed email when payment transitions to paid' do
@@ -131,9 +156,9 @@ RSpec.describe ExhibitorKit, type: :model do
       exhibitor_kit = create(:exhibitor_kit, event_vendor: event_vendor, payment_status: :unpaid)
       clear_enqueued_jobs
 
-      expect {
+      expect do
         exhibitor_kit.update!(payment_status: :paid)
-      }.to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
+      end.to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
     end
 
     it 'does not enqueue payment confirmed email when status stays paid' do
@@ -142,9 +167,9 @@ RSpec.describe ExhibitorKit, type: :model do
       exhibitor_kit = create(:exhibitor_kit, event_vendor: event_vendor, payment_status: :paid)
       clear_enqueued_jobs
 
-      expect {
+      expect do
         exhibitor_kit.update!(company_name: 'Updated Co')
-      }.not_to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
+      end.not_to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
     end
   end
 end
