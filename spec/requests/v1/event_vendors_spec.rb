@@ -452,8 +452,8 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
                   pic_contact_number: '+1987654321',
                   pic_email_address: 'kitpic@example.com',
                   exhibitor_team_members_attributes: [
-                    { full_name: 'Team Member Alpha' },
-                    { full_name: 'Team Member Beta' }
+                    { full_name: 'Team Member Alpha', email: 'alpha@example.com', phone: '+60111111111' },
+                    { full_name: 'Team Member Beta', email: 'beta@example.com', phone: '+60222222222' }
                   ]
                 }
               }
@@ -664,8 +664,9 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
                   booth_number: 'X101',
                   name_on_fascia: 'New Name for Fascia',
                   exhibitor_team_members_attributes: [
-                    { id: team_member.id, full_name: 'Updated Member' },
-                    { full_name: 'New Member' }
+                    { id: team_member.id, full_name: 'Updated Member', email: 'updated.member@example.com',
+                      phone: '+60123450000' },
+                    { full_name: 'New Member', email: 'new.member@example.com', phone: '+60123459999' }
                   ]
                 }
               }
