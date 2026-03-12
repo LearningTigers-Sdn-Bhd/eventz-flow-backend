@@ -168,7 +168,7 @@ Rails.application.routes.draw do
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
-          get :stamp_count, to: 'stamp_analytics#count'
+          get :lead_count, to: 'lead_analytics#count'
         end
       end
 
@@ -332,9 +332,10 @@ Rails.application.routes.draw do
       end
     end
 
-    # Visitors stamps
-    get 'events/:event_id/visitor-stamps', to: 'visitor_stamps#index'
-    post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
+    # Event Leads (exhibitor lead capture — replaces visitor stamps)
+    scope 'events/:event_id' do
+      resources :event_leads, only: [:index, :create, :update], path: 'event-leads'
+    end
 
     # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)
     # GET /v1/scan/recent_check_ins - Get recent check-ins for authorized events

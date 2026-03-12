@@ -2,7 +2,7 @@ class EventVendor < ApplicationRecord
   # --- Associations ---
   belongs_to :event
   belongs_to :vendor, class_name: 'User', foreign_key: 'vendor_id'
-  has_many :visitor_vendor_stamps, dependent: :destroy
+  has_many :event_leads, dependent: :destroy
 
   # --- Validations ---
   validates :event_id, presence: true

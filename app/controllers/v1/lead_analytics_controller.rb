@@ -1,22 +1,19 @@
 module V1
-  class StampAnalyticsController < ApplicationController
+  class LeadAnalyticsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event_and_authorize
     before_action :set_event_vendor_and_authorize
 
-    # GET /v1/events/:event_id/vendors/:id/stamp_count
+    # GET /v1/events/:event_id/vendors/:id/lead_count
     def count
-      # Count total stamps for this vendor in this event
-      total_count = VisitorVendorStamp.joins(:visitor)
-                                      .where(event_vendor: @event_vendor)
-                                      .where(visitors: { event_id: @event.id })
-                                      .count
+      # Count total leads for this vendor in this event
+      total_count = EventLead.where(event_vendor: @event_vendor).count
 
       render json: {
         event_id: @event.id,
         vendor_id: @event_vendor.vendor_id,
         event_vendor_id: @event_vendor.id,
-        stamp_count: total_count
+        lead_count: total_count
       }, status: :ok
     end
 

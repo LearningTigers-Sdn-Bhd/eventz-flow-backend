@@ -12,7 +12,7 @@ RSpec.describe Merchant, type: :model do
   describe 'associations' do
     it { should belong_to(:event) }
     it { should belong_to(:vendor).class_name('User') }
-    it { should have_many(:visitor_vendor_stamps).dependent(:destroy) }
+    it { should have_many(:event_leads).dependent(:destroy) }
   end
 
   describe 'validations' do

@@ -104,7 +104,7 @@ RSpec.describe "V1::SeatingGroups", type: :request do
 
       post assign_to_table_v1_plan_seating_group_path(plan, group), params: { plan_object_id: full_table.id }, headers: headers
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       body = JSON.parse(response.body)
       expect(body["error"]).to eq("insufficient_space")
       expect(body["needed_to_fit"]).to eq(2)

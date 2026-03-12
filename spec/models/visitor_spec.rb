@@ -20,7 +20,7 @@ RSpec.describe Visitor, type: :model do
   # --- Associations ---
   describe 'Associations' do
     it { is_expected.to belong_to(:event) }
-    it { is_expected.to have_many(:visitor_vendor_stamps).dependent(:destroy) }
+    it { is_expected.to have_many(:event_leads).dependent(:destroy) }
   end
 
   # --- Validations ---

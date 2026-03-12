@@ -9,7 +9,7 @@ class Visitor < ApplicationRecord
   # --- Associations ---
   belongs_to :event
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
-  has_many :visitor_vendor_stamps, dependent: :destroy
+  has_many :event_leads, as: :leadable, dependent: :destroy
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
   

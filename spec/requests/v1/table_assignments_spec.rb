@@ -19,7 +19,7 @@ RSpec.describe "V1::TableAssignments", type: :request do
     it "fails if ticket is in another event" do
       other_ticket = create(:ticket) # different event
       post v1_plan_assignments_path(plan), params: { ticket_id: other_ticket.id, plan_object_id: table.id }, headers: headers
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "blocks assignment with insufficient capacity payload" do
@@ -27,7 +27,7 @@ RSpec.describe "V1::TableAssignments", type: :request do
       create(:table_assignment, ticket: create(:ticket, event: event), plan_object: full_table)
 
       post v1_plan_assignments_path(plan), params: { ticket_id: ticket.id, plan_object_id: full_table.id }, headers: headers
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       body = JSON.parse(response.body)
       expect(body["error"]).to eq("insufficient_space")
       expect(body["needed_to_fit"]).to eq(1)
