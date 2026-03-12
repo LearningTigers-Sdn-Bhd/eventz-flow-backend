@@ -26,7 +26,7 @@ module V1
             unscanned_tickets: event.tickets.unscanned.count,
             total_revenue: tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i,
             total_visitors: 0,
-            total_stamps: 0,
+            total_leads: 0,
             last_activity: event.updated_at
           }
         else
@@ -42,7 +42,7 @@ module V1
             total_visitors: event.visitors.count,
             scanned_visitors: event.visitors.checked_in.count,
             unscanned_visitors: event.visitors.unscanned.count,
-            total_stamps: VisitorVendorStamp.joins(:visitor).where(visitors: { event_id: event.id }).count,
+            total_leads: EventLead.joins(:event_vendor).where(event_vendors: { event_id: event.id }).count,
             last_activity: event.updated_at
           }
         end

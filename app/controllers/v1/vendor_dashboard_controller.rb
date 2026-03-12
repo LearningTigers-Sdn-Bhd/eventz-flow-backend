@@ -9,11 +9,8 @@ module V1
       events_data = event_vendors.map do |ev|
         event = ev.event
 
-        # Stamp count for this vendor
-        stamp_count = VisitorVendorStamp.joins(:visitor)
-                                        .where(event_vendor: ev)
-                                        .where(visitors: { event_id: event.id })
-                                        .count
+        # Lead count for this vendor
+        lead_count = EventLead.where(event_vendor: ev).count
 
         # Voucher stats for this vendor (exclude unlimited vouchers from total count)
         vouchers = Voucher.where(event_id: event.id, vendor_id: current_user.id)
@@ -30,7 +27,7 @@ module V1
           start_date: event.start_date,
           end_date: event.end_date,
           event_vendor_id: ev.id,
-          stamp_count: stamp_count,
+          lead_count: lead_count,
           total_vouchers: total_vouchers,
           total_redeemed: total_redeemed,
           redemption_rate: total_vouchers.zero? ? 0 : (total_redeemed.to_f / total_vouchers * 100).round(1)
@@ -42,7 +39,7 @@ module V1
         summary: {
           total_events: events_data.count,
           active_events: events_data.count { |e| e[:status] == 'published' },
-          total_stamps: events_data.sum { |e| e[:stamp_count] },
+          total_leads: events_data.sum { |e| e[:lead_count] },
           total_vouchers: events_data.sum { |e| e[:total_vouchers] },
           total_redeemed: events_data.sum { |e| e[:total_redeemed] }
         },

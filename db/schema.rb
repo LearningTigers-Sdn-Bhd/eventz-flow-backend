@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_12_021619) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -140,6 +140,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_event_exhibition_contractors_on_event_id", unique: true
     t.index ["exhibition_contractor_profile_id"], name: "idx_on_exhibition_contractor_profile_id_13ae474f9f"
+  end
+
+  create_table "event_leads", force: :cascade do |t|
+    t.bigint "event_vendor_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "leadable_type", null: false
+    t.bigint "leadable_id", null: false
+    t.text "notes"
+    t.bigint "scanned_by_id"
+    t.index ["event_vendor_id"], name: "index_event_leads_on_event_vendor_id"
+    t.index ["leadable_type", "leadable_id", "event_vendor_id"], name: "index_event_leads_on_leadable_and_event_vendor", unique: true
+    t.index ["leadable_type", "leadable_id"], name: "index_event_leads_on_leadable"
   end
 
   create_table "event_location_members", force: :cascade do |t|
@@ -511,6 +524,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
+    t.boolean "use_event_leads", default: false, null: false
     t.boolean "auto_approve_wishes", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
@@ -1257,16 +1271,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
     t.index ["vendor_id"], name: "index_vendor_profiles_on_vendor_id", unique: true
   end
 
-  create_table "visitor_vendor_stamps", force: :cascade do |t|
-    t.bigint "visitor_id", null: false
-    t.bigint "event_vendor_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_vendor_id"], name: "index_visitor_vendor_stamps_on_event_vendor_id"
-    t.index ["visitor_id", "event_vendor_id"], name: "index_visitor_vendor_stamps_on_visitor_and_event_vendor", unique: true
-    t.index ["visitor_id"], name: "index_visitor_vendor_stamps_on_visitor_id"
-  end
-
   create_table "visitors", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
@@ -1381,6 +1385,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
   add_foreign_key "event_email_settings", "events"
   add_foreign_key "event_exhibition_contractors", "events"
   add_foreign_key "event_exhibition_contractors", "exhibition_contractor_profiles"
+  add_foreign_key "event_leads", "event_vendors"
+  add_foreign_key "event_leads", "users", column: "scanned_by_id", on_delete: :nullify
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
@@ -1507,8 +1513,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
-  add_foreign_key "visitor_vendor_stamps", "event_vendors"
-  add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
   add_foreign_key "visitors", "users", column: "scanned_by_id"
   add_foreign_key "visitors", "visitors", column: "added_by_id"
