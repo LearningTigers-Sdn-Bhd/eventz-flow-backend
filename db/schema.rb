@@ -508,7 +508,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
-    t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
@@ -956,6 +955,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
+    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -967,7 +967,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_020000) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
