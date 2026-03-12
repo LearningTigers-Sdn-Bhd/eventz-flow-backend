@@ -200,6 +200,7 @@ module V1
         :extra_guest_limit,
         :business_matching_webhook_url,
         :use_sponsorship,
+        :use_event_leads,
         :payment_receipt_email, # backward compat — routed to event_email_setting
         :skip_webhooks,
         :logo,

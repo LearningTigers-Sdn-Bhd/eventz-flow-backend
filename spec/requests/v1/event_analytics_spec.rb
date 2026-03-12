@@ -285,7 +285,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           create(:event_location_member, event_location: location, member: vendor_user)
 
           4.times do
-            create(:visitor_vendor_stamp, event_vendor: event_vendor, visitor: create(:visitor, event: event))
+            create(:event_lead, event_vendor: event_vendor, leadable: create(:visitor, event: event))
           end
         end
 
