@@ -9,7 +9,7 @@ RSpec.describe TableAssignment, type: :model do
 
   describe 'validations' do
     subject { create(:table_assignment) }
-    it { should validate_uniqueness_of(:ticket_id).with_message("is already assigned to a table") }
+    it { should validate_uniqueness_of(:ticket_id).with_message("is already assigned to a table in this plan") }
 
     it 'validates that plan_object is a table' do
       table = create(:plan_object, object_type: :table)

@@ -7,7 +7,7 @@ RSpec.describe PlanObject, type: :model do
   end
 
   describe 'enums' do
-    it { should define_enum_for(:object_type).with_values(table: 0, wall: 1, door: 2, stage: 3, label: 4).with_prefix }
+    it { should define_enum_for(:object_type).with_values(table: 0, wall: 1, door: 2, stage: 3, label: 4, floor: 5).with_prefix }
   end
 
   describe 'validations' do
