@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class ExhibitorTeamMemberPayment < ApplicationRecord
   belongs_to :exhibitor_kit
   belongs_to :payee, class_name: "User", optional: true
@@ -5,6 +7,8 @@ class ExhibitorTeamMemberPayment < ApplicationRecord
   has_one_attached :payment_proof, dependent: :purge_later
 
   enum :status, { pending: 0, submitted: 1, verified: 2, rejected: 3 }
+
+  after_commit :confirm_excess_member_tickets, if: :just_verified?
   enum :payment_source, { manual_bank_in: "manual_bank_in", payment_gateway: "payment_gateway" }
 
   validates :extra_member_count, presence: true, numericality: { only_integer: true, greater_than: 0 }
@@ -19,6 +23,15 @@ class ExhibitorTeamMemberPayment < ApplicationRecord
   delegate :event, to: :exhibitor_kit
 
   private
+
+  def just_verified?
+    saved_change_to_status? && verified?
+  end
+
+  def confirm_excess_member_tickets
+    ExhibitorTeamMemberPaymentVerificationService.new(self).call
+  end
+
 
   def acceptable_payment_proof
     return unless payment_proof.attached?

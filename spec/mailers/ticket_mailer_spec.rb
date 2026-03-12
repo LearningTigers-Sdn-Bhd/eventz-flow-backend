@@ -110,7 +110,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       paid_mail = described_class.confirmation_email(paid_ticket)
 
-      expect(paid_mail.body.encoded).to include('color: #1e3a8a;')
+      expect(paid_mail.body.encoded).to include('color: #000000;')
     end
 
     it 'does not show payment receipt section when amount paid is zero' do

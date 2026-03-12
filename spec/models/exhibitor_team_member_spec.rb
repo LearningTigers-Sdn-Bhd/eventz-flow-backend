@@ -70,5 +70,54 @@ RSpec.describe ExhibitorTeamMember, type: :model do
 
       expect(event.ticket_types.where(name: 'Exhibitor').count).to eq(1)
     end
+
+    context 'when a team member limit with extra fee is configured' do
+      let!(:team_member_limit) do
+        create(:exhibitor_team_member_limit, event: event, team_member_limit: 3, extra_team_member_fee: 50.00)
+      end
+
+      # exhibitor_kit factory creates 2 members already
+
+      it 'creates a paid ticket for a member within the free limit' do
+        member = nil
+
+        expect do
+          member = create(
+            :exhibitor_team_member,
+            exhibitor_kit: exhibitor_kit,
+            full_name: 'Within Limit',
+            email: 'within@example.com',
+            phone: '+60333333333'
+          )
+        end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+
+        ticket = member.reload.attendee
+        expect(ticket.status).to eq('purchased')
+        expect(ticket.payment_status).to eq('paid')
+      end
+
+      it 'creates a pending ticket for an excess member and does NOT send email' do
+        # 3rd member hits the limit exactly; 4th is excess
+        create(:exhibitor_team_member, exhibitor_kit: exhibitor_kit, email: 'third@example.com', phone: '+60333333333')
+        clear_enqueued_jobs
+
+        excess_member = nil
+
+        expect do
+          excess_member = create(
+            :exhibitor_team_member,
+            exhibitor_kit: exhibitor_kit,
+            full_name: 'Excess Member',
+            email: 'excess@example.com',
+            phone: '+60444444444'
+          )
+        end.not_to have_enqueued_mail(TicketMailer, :confirmation_email)
+
+        ticket = excess_member.reload.attendee
+        expect(ticket).to be_a(Ticket)
+        expect(ticket.status).to eq('pending_payment')
+        expect(ticket.payment_status).to eq('pending')
+      end
+    end
   end
 end
