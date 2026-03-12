@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class ExhibitorTeamMemberAttendeeSyncService
   EXHIBITOR_TICKET_TYPE_NAME = 'Exhibitor'.freeze
   TICKET_TYPE_QUANTITY = 99_999
@@ -16,28 +18,67 @@ class ExhibitorTeamMemberAttendeeSyncService
   private
 
   def create_ticket
-    Ticket.create!(
-      event: event,
-      ticket_type: exhibitor_ticket_type,
-      attendee_name: @team_member.full_name,
-      attendee_email: @team_member.email,
-      attendee_phone: @team_member.phone,
-      role: EXHIBITOR_TICKET_TYPE_NAME,
-      status: :purchased,
-      payment_status: :paid
-    )
+    if excess_member_requiring_payment?
+      Ticket.create!(
+        event: event,
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: @team_member.full_name,
+        attendee_email: @team_member.email,
+        attendee_phone: @team_member.phone,
+        role: EXHIBITOR_TICKET_TYPE_NAME,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+    else
+      Ticket.create!(
+        event: event,
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: @team_member.full_name,
+        attendee_email: @team_member.email,
+        attendee_phone: @team_member.phone,
+        role: EXHIBITOR_TICKET_TYPE_NAME,
+        status: :purchased,
+        payment_status: :paid
+      )
+    end
   end
 
   def update_ticket(ticket)
-    ticket.update!(
-      ticket_type: exhibitor_ticket_type,
-      attendee_name: @team_member.full_name,
-      attendee_email: @team_member.email,
-      attendee_phone: @team_member.phone,
-      role: EXHIBITOR_TICKET_TYPE_NAME,
-      status: :purchased,
-      payment_status: :paid
-    )
+    # If the ticket is already confirmed (purchased + paid), preserve its payment status.
+    # Only the payment verification flow should ever upgrade a pending ticket to paid,
+    # so we must never downgrade a paid ticket back to pending on a simple info update.
+    if ticket.purchased? && ticket.paid?
+      ticket.update!(
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: @team_member.full_name,
+        attendee_email: @team_member.email,
+        attendee_phone: @team_member.phone,
+        role: EXHIBITOR_TICKET_TYPE_NAME,
+        status: :purchased,
+        payment_status: :paid
+      )
+    elsif excess_member_requiring_payment?
+      ticket.update!(
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: @team_member.full_name,
+        attendee_email: @team_member.email,
+        attendee_phone: @team_member.phone,
+        role: EXHIBITOR_TICKET_TYPE_NAME,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+    else
+      ticket.update!(
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: @team_member.full_name,
+        attendee_email: @team_member.email,
+        attendee_phone: @team_member.phone,
+        role: EXHIBITOR_TICKET_TYPE_NAME,
+        status: :purchased,
+        payment_status: :paid
+      )
+    end
+
     ticket
   end
 
@@ -56,6 +97,31 @@ class ExhibitorTeamMemberAttendeeSyncService
       ticket_type.status = :published
       ticket_type.hidden = true
     end
+  end
+
+  # Returns true if this team member sits in an excess position (beyond the free limit)
+  # AND the event is configured to charge an extra fee for those members.
+  #
+  # Position is determined by ordering all team members for this kit by their database id
+  # (ascending), which preserves insertion order. The first `team_member_limit` members
+  # (0-indexed positions 0 … limit-1) are free; every member at position >= limit is excess.
+  def excess_member_requiring_payment?
+    kit = @team_member.exhibitor_kit
+
+    # No limit configured — all members are free
+    return false unless kit.has_team_member_limit?
+
+    # Limit is configured but no extra fee — excess members are still free
+    return false unless kit.extra_team_member_fee.to_f > 0
+
+    # Determine the 0-based position of this member among all members for this kit
+    all_member_ids = kit.exhibitor_team_members.order(:id).pluck(:id)
+    position = all_member_ids.index(@team_member.id)
+
+    # Guard against the member not being found (should not happen after commit)
+    return false if position.nil?
+
+    position >= kit.team_member_limit
   end
 
   def event
