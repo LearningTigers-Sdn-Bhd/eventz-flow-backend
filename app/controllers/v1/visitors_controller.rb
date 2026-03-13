@@ -111,11 +111,13 @@ module V1
         render json: { error: 'Visitor is not checked in' }, status: :unprocessable_content and return
       end
 
-      if @visitor.update(
+      @visitor.assign_attributes(
         checked_in: false,
         check_in_at: nil,
         scanned_by_id: nil
       )
+
+      if @visitor.save(validate: false)
         render json: {
           message: 'Visitor successfully unscanned',
           visitor: @visitor.as_json

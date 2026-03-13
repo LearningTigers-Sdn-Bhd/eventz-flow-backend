@@ -31,5 +31,26 @@ RSpec.describe 'Event vendor extra team member payment mode', type: :request do
       exhibitor_kit = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }['exhibitor_kit']
       expect(exhibitor_kit['extra_team_member_payment_mode']).to eq('manual_bank_in')
     end
+
+    it 'returns paid and in-use extra slot counters' do
+      create(:exhibitor_team_member_limit, event: event, team_member_limit: 3, extra_team_member_fee: 50.0)
+      create_list(:exhibitor_team_member, 3, exhibitor_kit: exhibitor.exhibitor_kit)
+      create(
+        :exhibitor_team_member_payment,
+        :verified,
+        exhibitor_kit: exhibitor.exhibitor_kit,
+        extra_member_count: 3,
+        fee_per_member: 50.0,
+        amount: 150.0,
+        payee: create(:user)
+      )
+
+      get "/v1/events/#{event.id}/vendors", headers: auth_headers(vendor_user)
+
+      expect(response).to have_http_status(:ok)
+      exhibitor_kit = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }['exhibitor_kit']
+      expect(exhibitor_kit['paid_extra_member_count']).to eq(3)
+      expect(exhibitor_kit['used_paid_extra_member_count']).to eq(2)
+    end
   end
 end
