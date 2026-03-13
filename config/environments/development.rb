@@ -1,9 +1,11 @@
-require "active_support/core_ext/integer/time"
+require 'active_support/core_ext/integer/time'
 
 Rails.application.configure do
+  ENV['LAUNCHY_DRY_RUN'] = 'true'
+
   # Allow requests from ngrok tunnels during development
-  config.hosts << "*.ngrok-free.app" # For future ngrok sessions
-  config.hosts << "local-backend.eventzflow.com" # For local development
+  config.hosts << '*.ngrok-free.app' # For future ngrok sessions
+  config.hosts << 'local-backend.eventzflow.com' # For local development
   # Settings specified here will take precedence over those in config/application.rb.
 
   # Make code changes take effect immediately without server restart.
@@ -20,8 +22,8 @@ Rails.application.configure do
 
   # Enable/disable Action Controller caching. By default Action Controller caching is disabled.
   # Run rails dev:cache to toggle Action Controller caching.
-  if Rails.root.join("tmp/caching-dev.txt").exist?
-    config.public_file_server.headers = { "cache-control" => "public, max-age=#{2.days.to_i}" }
+  if Rails.root.join('tmp/caching-dev.txt').exist?
+    config.public_file_server.headers = { 'cache-control' => "public, max-age=#{2.days.to_i}" }
   else
     config.action_controller.perform_caching = false
   end
@@ -39,7 +41,8 @@ Rails.application.configure do
   config.action_mailer.perform_caching = false
 
   # Set localhost to be used by links generated in mailer templates.
-  config.action_mailer.default_url_options = { host: ENV.fetch("MAIL_HOST", "localhost"), port: ENV.fetch("MAIL_PORT", 3000).to_i }
+  config.action_mailer.default_url_options = { host: ENV.fetch('MAIL_HOST', 'localhost'),
+                                               port: ENV.fetch('MAIL_PORT', 3000).to_i }
 
   # Use file delivery for development (or configure SMTP if needed)
   # config.action_mailer.delivery_method = :file
