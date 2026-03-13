@@ -84,6 +84,9 @@ RSpec.describe 'V1::Public::Payments', type: :request do
   describe 'POST /v1/public/events/:event_slug/payments/verify' do
     it 'marks pending ticket as paid and purchased when signature valid' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_sandbox_123').and_return(
+        { 'id' => 'pay_sandbox_123', 'order_id' => 'order_sandbox_123', 'method' => 'card' }
+      )
 
       post "/v1/public/events/#{event.slug}/payments/verify", params: {
         ticket_public_id: pending_ticket.public_id,
@@ -97,6 +100,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       pending_ticket.reload
       expect(pending_ticket.payment_status).to eq('paid')
       expect(pending_ticket.status).to eq('purchased')
+      expect(pending_ticket.ticket_payment.payment_method).to eq('card')
     end
 
     it 'rejects invalid signature' do
@@ -119,6 +123,9 @@ RSpec.describe 'V1::Public::Payments', type: :request do
   describe 'POST /v1/public/events/:event_slug/payments/callback' do
     it 'redirects to FRONTEND_FORM_URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_sandbox_123').and_return(
+        { 'id' => 'pay_sandbox_123', 'order_id' => 'order_sandbox_123', 'method' => 'fpx' }
+      )
       original = ENV['FRONTEND_FORM_URL']
       ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 
@@ -131,6 +138,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
 
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/register/standard?step=success')
+      expect(pending_ticket.reload.ticket_payment.payment_method).to eq('fpx')
     ensure
       ENV['FRONTEND_FORM_URL'] = original
     end
@@ -145,6 +153,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
             entity: {
               id: 'pay_webhook_123',
               order_id: 'order_webhook_123',
+              method: 'upi',
               notes: {
                 ticket_public_id: pending_ticket.public_id
               }
@@ -166,6 +175,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       pending_ticket.reload
       expect(pending_ticket.payment_status).to eq('paid')
       expect(pending_ticket.status).to eq('purchased')
+      expect(pending_ticket.ticket_payment.payment_method).to eq('upi')
     end
 
     it 'rejects invalid webhook signature' do
@@ -201,6 +211,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
             entity: {
               id: 'pay_exhibitor_webhook_123',
               order_id: 'order_exhibitor_webhook_123',
+              method: 'card',
               notes: {
                 type: 'exhibitor_registration',
                 exhibitor_kit_id: exhibitor_kit.id
@@ -225,6 +236,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(payment).to be_present
       expect(payment.status).to eq('paid')
       expect(payment.gateway_payment_id).to eq('pay_exhibitor_webhook_123')
+      expect(payment.payment_method).to eq('card')
     end
 
     context 'extra_team_member payment type' do
@@ -264,6 +276,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
               entity: {
                 id: 'pay_webhook_extra_123',
                 order_id: 'order_extra_webhook_123',
+                method: 'card',
                 notes: {
                   type: 'extra_team_member',
                   event_slug: extra_team_member_event.slug,
@@ -283,6 +296,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
         payment.reload
         expect(payment.status).to eq('verified')
         expect(payment.gateway_payment_id).to eq('pay_webhook_extra_123')
+        expect(payment.payment_method).to eq('card')
         expect(payment.paid_at).to be_present
       end
 

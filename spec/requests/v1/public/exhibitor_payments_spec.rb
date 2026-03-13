@@ -47,6 +47,9 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/verify' do
     it 'marks exhibitor payment as paid when signature is valid' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_exhibitor_123').and_return(
+        { 'id' => 'pay_exhibitor_123', 'order_id' => 'order_exhibitor_123', 'method' => 'fpx' }
+      )
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/verify", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -59,6 +62,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
       expect(exhibitor_kit.reload.payment_status).to eq('paid')
       expect(exhibitor_kit.exhibitor_registration_payment).to be_present
       expect(exhibitor_kit.exhibitor_registration_payment.status).to eq('paid')
+      expect(exhibitor_kit.exhibitor_registration_payment.payment_method).to eq('fpx')
     end
 
     it 'rejects invalid payment signature' do
@@ -79,6 +83,9 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/callback' do
     it 'redirects to FRONTEND_FORM_URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_exhibitor_123').and_return(
+        { 'id' => 'pay_exhibitor_123', 'order_id' => 'order_exhibitor_123', 'method' => 'card' }
+      )
       original = ENV['FRONTEND_FORM_URL']
       ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 
@@ -91,6 +98,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
 
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/exhibitor-registration?step=success')
+      expect(exhibitor_kit.reload.exhibitor_registration_payment.payment_method).to eq('card')
     ensure
       ENV['FRONTEND_FORM_URL'] = original
     end

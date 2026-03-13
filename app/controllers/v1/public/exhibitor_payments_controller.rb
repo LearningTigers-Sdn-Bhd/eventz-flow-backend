@@ -103,8 +103,10 @@ module V1
           return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature)
+                                 signature: signature, gateway_response: payment_entity)
 
         render json: {
           success: true,
@@ -141,8 +143,10 @@ module V1
                              allow_other_host: true
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature)
+                                 signature: signature, gateway_response: payment_entity)
         redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
                     allow_other_host: true
       rescue StandardError => e
@@ -158,7 +162,7 @@ module V1
           .find_by!(id: params[:exhibitor_kit_id], event_vendors: { event_id: event.id, type: 'Exhibitor' })
       end
 
-      def mark_exhibitor_kit_paid!(exhibitor_kit:, payment_id:, order_id:, signature:)
+      def mark_exhibitor_kit_paid!(exhibitor_kit:, payment_id:, order_id:, signature:, gateway_response: nil)
         payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
 
         payment.update!(
@@ -166,8 +170,8 @@ module V1
           status: 'paid',
           paid_at: Time.current,
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
-          gateway_response: {
+          payment_method: gateway_response&.dig('method').to_s.presence,
+          gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id,
             signature: signature
