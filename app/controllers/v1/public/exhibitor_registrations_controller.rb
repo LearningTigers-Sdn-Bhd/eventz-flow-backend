@@ -265,7 +265,7 @@ module V1
           return user
         end
 
-        password = 'OgseSabah123'
+        password = 'TempPass123!'
 
         user.assign_attributes(
           full_name: registration_params[:pic_full_name],

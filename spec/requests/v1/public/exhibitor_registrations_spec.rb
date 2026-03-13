@@ -129,7 +129,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(kit.payment_status).to eq('unpaid')
       expect(kit.custom_fields_data['preferred_booth_location']).to eq('Hall A')
       expect(kit.custom_fields_data['zone']).to eq('zone_d')
-      expect(user.authenticate('OgseSabah123')).to eq(user)
+      expect(user.authenticate('TempPass123!')).to eq(user)
       expect(user.vendor_profile.category).to eq('Oil & Gas Equipment')
       expect(user.vendor_profile.person_in_charge).to eq('Amin Rahman')
       expect(user.vendor_profile.address).to eq('Kota Kinabalu')
