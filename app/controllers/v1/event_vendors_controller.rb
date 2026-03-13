@@ -220,6 +220,7 @@ module V1
         team_member_limit: exhibitor_kit.team_member_limit,
         excess_team_member_count: exhibitor_kit.excess_team_member_count,
         paid_extra_member_count: exhibitor_kit.paid_extra_member_count,
+        used_paid_extra_member_count: exhibitor_kit.used_paid_extra_member_count,
         unpaid_excess_team_member_count: exhibitor_kit.unpaid_excess_team_member_count,
         has_unpaid_excess_team_members: exhibitor_kit.has_unpaid_excess_team_members?,
         extra_team_member_fee: exhibitor_kit.extra_team_member_fee,

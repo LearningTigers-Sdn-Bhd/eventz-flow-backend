@@ -224,6 +224,20 @@ RSpec.describe 'V1::Visitors', type: :request do
       expect(json.dig('visitor', 'id')).to eq(scanned_visitor.id)
     end
 
+    it 'allows org owners to unscan a checked-in visitor with legacy invalid contact data' do
+      scanned_visitor.update_columns(email: 'invalid email', phone: 'invalid phone')
+
+      patch "/v1/visitors/#{scanned_visitor.public_id}/unscan",
+            headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+
+      expect(response).to have_http_status(:ok)
+
+      scanned_visitor.reload
+      expect(scanned_visitor.checked_in).to be false
+      expect(scanned_visitor.check_in_at).to be_nil
+      expect(scanned_visitor.scanned_by_id).to be_nil
+    end
+
     it 'returns 422 when the visitor is not checked in' do
       patch "/v1/visitors/#{existing_visitor.public_id}/unscan",
             headers: { 'Authorization' => "Bearer #{org_owner_token}" }

@@ -6,27 +6,18 @@ class ExhibitorTeamMemberPaymentVerificationService
   end
 
   def call
-    pending_tickets.each do |ticket|
-      ticket.update!(status: :purchased, payment_status: :paid)
-    end
+    ExhibitorTeamMemberTicketReconciliationService.new(
+      @payment.exhibitor_kit,
+      verified_paid_slot_count: verified_paid_slot_count
+    ).call
   end
 
   private
 
-  # Find the oldest N pending tickets for this kit's excess team members,
-  # where N = the number of extra members covered by this payment.
-  #
-  # We order by ticket id ASC to match the insertion-order logic
-  # used by ExhibitorTeamMemberAttendeeSyncService#excess_member_requiring_payment?,
-  # ensuring the earliest excess members get confirmed first.
-  def pending_tickets
-    kit = @payment.exhibitor_kit
-
-    Ticket
-      .joins("INNER JOIN exhibitor_team_members ON exhibitor_team_members.attendee_type = 'Ticket' AND exhibitor_team_members.attendee_id = tickets.id")
-      .where(exhibitor_team_members: { exhibitor_kit_id: kit.id })
-      .where(status: :pending_payment, payment_status: :pending)
-      .order(id: :asc)
-      .limit(@payment.extra_member_count)
+  def verified_paid_slot_count
+    @payment.exhibitor_kit.exhibitor_team_member_payments
+            .verified
+            .where.not(id: @payment.id)
+            .sum(:extra_member_count) + @payment.extra_member_count
   end
 end

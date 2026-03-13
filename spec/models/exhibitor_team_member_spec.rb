@@ -118,6 +118,74 @@ RSpec.describe ExhibitorTeamMember, type: :model do
         expect(ticket.status).to eq('pending_payment')
         expect(ticket.payment_status).to eq('pending')
       end
+
+      it 'reuses a paid extra slot when a paid excess member is deleted and replaced' do
+        create(:exhibitor_team_member, exhibitor_kit: exhibitor_kit, email: 'third@example.com', phone: '+60333333333')
+        paid_excess_member = create(
+          :exhibitor_team_member,
+          exhibitor_kit: exhibitor_kit,
+          full_name: 'Paid Excess',
+          email: 'paid.excess@example.com',
+          phone: '+60444444444'
+        )
+
+        paid_payment = create(
+          :exhibitor_team_member_payment,
+          :verified,
+          exhibitor_kit: exhibitor_kit,
+          extra_member_count: 1,
+          fee_per_member: 50.0,
+          amount: 50.0,
+          payee: create(:user)
+        )
+
+        paid_excess_ticket = paid_excess_member.reload.attendee
+        expect(paid_excess_ticket.status).to eq('purchased')
+        expect(paid_excess_ticket.payment_status).to eq('paid')
+
+        paid_excess_member.destroy!
+        expect(Ticket.unscoped.find_by(id: paid_excess_ticket.id)).to be_nil
+
+        replacement_member = create(
+          :exhibitor_team_member,
+          exhibitor_kit: exhibitor_kit,
+          full_name: 'Replacement Excess',
+          email: 'replacement.excess@example.com',
+          phone: '+60555555555'
+        )
+
+        replacement_ticket = replacement_member.reload.attendee
+        expect(replacement_ticket.status).to eq('purchased')
+        expect(replacement_ticket.payment_status).to eq('paid')
+        expect(exhibitor_kit.reload.paid_extra_member_count).to eq(1)
+      end
+
+      it 'rebalances an excess member into a free slot when a free member is deleted' do
+        free_member = create(
+          :exhibitor_team_member,
+          exhibitor_kit: exhibitor_kit,
+          full_name: 'Free Member',
+          email: 'free.member@example.com',
+          phone: '+60333333333'
+        )
+        excess_member = create(
+          :exhibitor_team_member,
+          exhibitor_kit: exhibitor_kit,
+          full_name: 'Excess Member',
+          email: 'excess.member@example.com',
+          phone: '+60444444444'
+        )
+
+        excess_ticket = excess_member.reload.attendee
+        expect(excess_ticket.status).to eq('pending_payment')
+        expect(excess_ticket.payment_status).to eq('pending')
+
+        free_member.destroy!
+
+        excess_ticket.reload
+        expect(excess_ticket.status).to eq('purchased')
+        expect(excess_ticket.payment_status).to eq('paid')
+      end
     end
   end
 end

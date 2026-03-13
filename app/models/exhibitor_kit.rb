@@ -71,6 +71,11 @@ class ExhibitorKit < ApplicationRecord
     exhibitor_team_member_payments.verified.sum(:extra_member_count)
   end
 
+  # Count of paid extra slots currently used by existing excess members.
+  def used_paid_extra_member_count
+    [excess_team_member_count, paid_extra_member_count].min
+  end
+
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
     exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)

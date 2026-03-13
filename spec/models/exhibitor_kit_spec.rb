@@ -131,6 +131,36 @@ RSpec.describe ExhibitorKit, type: :model do
         it 'calculates extra charges correctly' do
           expect(exhibitor_kit.extra_team_member_charges).to eq(100.00) # 2 excess * 50.00
         end
+
+        it 'reports how many paid extra slots are currently in use' do
+          create(
+            :exhibitor_team_member_payment,
+            :verified,
+            exhibitor_kit: exhibitor_kit,
+            extra_member_count: 1,
+            fee_per_member: 50.0,
+            amount: 50.0,
+            payee: create(:user)
+          )
+
+          expect(exhibitor_kit.paid_extra_member_count).to eq(1)
+          expect(exhibitor_kit.used_paid_extra_member_count).to eq(1)
+        end
+
+        it 'does not count unused paid slots as in use' do
+          create(
+            :exhibitor_team_member_payment,
+            :verified,
+            exhibitor_kit: exhibitor_kit,
+            extra_member_count: 3,
+            fee_per_member: 50.0,
+            amount: 150.0,
+            payee: create(:user)
+          )
+
+          expect(exhibitor_kit.paid_extra_member_count).to eq(3)
+          expect(exhibitor_kit.used_paid_extra_member_count).to eq(2)
+        end
       end
     end
   end
