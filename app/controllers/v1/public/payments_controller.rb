@@ -132,12 +132,15 @@ module V1
         end
 
         # Mark tickets as paid
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_tickets_paid!(
           ticket: ticket,
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature
+          signature: signature,
+          payment_entity: payment_entity
         )
 
         redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
@@ -182,12 +185,15 @@ module V1
           return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_tickets_paid!(
           ticket: ticket,
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature
+          signature: signature,
+          payment_entity: payment_entity
         )
 
         render json: {
@@ -262,14 +268,15 @@ module V1
                 payment_record.update!(
                   status: :verified,
                   gateway_payment_id: payment_entity['id'].to_s,
-                  payment_method: 'razorpay',
+                  payment_method: payment_entity['method'].to_s.presence,
                   gateway_response: payment_record.gateway_response.merge(
+                    payment_entity,
                     'payment_id' => payment_entity['id'].to_s,
                     'order_id' => payment_entity['order_id'].to_s,
                     'webhook_event' => 'payment.captured'
                   ),
                   paid_at: Time.current,
-                  payee_id: payment_record.exhibitor_kit.event_vendor.vendor_id
+                  payee_id: nil
                 )
               end
             end
@@ -307,11 +314,12 @@ module V1
             registered_by_email: registered_by_email,
             payment_id: payment_entity['id'].to_s,
             order_id: payment_entity['order_id'].to_s,
-            signature: signature
+            signature: signature,
+            payment_entity: payment_entity
           )
         when 'payment.failed'
           mark_ticket_failed!(ticket: ticket, payment_id: payment_entity['id'].to_s,
-                              order_id: payment_entity['order_id'].to_s)
+                              order_id: payment_entity['order_id'].to_s, gateway_response: payment_entity)
         end
 
         render json: { success: true }, status: :ok
@@ -347,7 +355,7 @@ module V1
         stored_amount.present? && stored_amount.to_i == (payment_record.amount * 100).to_i
       end
 
-      def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil)
+      def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil, payment_entity: nil)
         # Collect all tickets to mark paid: the representative ticket plus any group siblings
         email = registered_by_email || ticket.registered_by_email
         tickets_to_mark = if email.present?
@@ -362,7 +370,7 @@ module V1
         # Always include the representative ticket in case it wasn't caught by the query
         tickets_to_mark |= [ticket]
 
-        gateway_response = { order_id: order_id, payment_id: payment_id, signature: signature }
+        gateway_response = (payment_entity || {}).merge(order_id: order_id, payment_id: payment_id, signature: signature)
 
         Ticket.transaction do
           tickets_to_mark.each do |t|
@@ -375,7 +383,7 @@ module V1
               status: 'paid',
               paid_at: Time.current,
               gateway_payment_id: payment_id,
-              payment_method: 'fpx',
+              payment_method: gateway_response['method'].to_s.presence,
               gateway_response: gateway_response
             )
             payment_record.save!
@@ -385,7 +393,7 @@ module V1
         end
       end
 
-      def mark_ticket_failed!(ticket:, payment_id:, order_id:)
+      def mark_ticket_failed!(ticket:, payment_id:, order_id:, gateway_response: nil)
         Ticket.transaction do
           ticket.lock!
 
@@ -396,8 +404,8 @@ module V1
             amount: ticket.ticket_type.current_price.to_f,
             status: 'failed',
             gateway_payment_id: payment_id,
-            payment_method: 'fpx',
-            gateway_response: {
+            payment_method: gateway_response&.dig('method').to_s.presence,
+            gateway_response: gateway_response.presence || {
               order_id: order_id,
               payment_id: payment_id
             }
@@ -416,7 +424,7 @@ module V1
           status: 'paid',
           paid_at: Time.current,
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
+          payment_method: gateway_response&.dig('method').to_s.presence,
           gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id,
@@ -434,7 +442,7 @@ module V1
           amount: exhibitor_kit.amount_paid.to_f,
           status: 'failed',
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
+          payment_method: gateway_response&.dig('method').to_s.presence,
           gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id

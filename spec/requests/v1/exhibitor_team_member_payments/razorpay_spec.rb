@@ -131,6 +131,9 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
 
     it 'verifies payment with valid Razorpay signature' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_extra_123').and_return(
+        { 'id' => 'pay_extra_123', 'order_id' => 'order_extra_123', 'method' => 'fpx' }
+      )
 
       post url, params: {
         payment_id: payment.id,
@@ -143,9 +146,10 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
       payment.reload
       expect(payment.status).to eq('verified')
       expect(payment.gateway_payment_id).to eq('pay_extra_123')
+      expect(payment.payment_method).to eq('fpx')
       expect(payment.gateway_response).to include('payment_id' => 'pay_extra_123')
       expect(payment.paid_at).to be_present
-      expect(payment.payee_id).to eq(vendor.id)
+      expect(payment.payee_id).to be_nil
     end
 
     it 'rejects invalid Razorpay signature' do
@@ -230,6 +234,9 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
       original = ENV['REDIRECT_BASE_URL']
       ENV['REDIRECT_BASE_URL'] = 'http://localhost:3001'
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_extra_123').and_return(
+        { 'id' => 'pay_extra_123', 'order_id' => 'order_extra_123', 'method' => 'card' }
+      )
 
       get url
 
@@ -241,7 +248,8 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
       payment.reload
       expect(payment.status).to eq('verified')
       expect(payment.gateway_payment_id).to eq('pay_extra_123')
-      expect(payment.payee_id).to eq(vendor.id)
+      expect(payment.payment_method).to eq('card')
+      expect(payment.payee_id).to be_nil
     ensure
       ENV['REDIRECT_BASE_URL'] = original
     end
@@ -285,6 +293,9 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
       original = ENV['REDIRECT_BASE_URL']
       ENV['REDIRECT_BASE_URL'] = 'http://localhost:3001'
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_extra_123').and_return(
+        { 'id' => 'pay_extra_123', 'order_id' => 'order_extra_123', 'method' => 'fpx' }
+      )
 
       post url, params: {
         payment_id: payment.id,
@@ -301,6 +312,8 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
       payment.reload
       expect(payment.status).to eq('verified')
       expect(payment.gateway_payment_id).to eq('pay_extra_123')
+      expect(payment.payment_method).to eq('fpx')
+      expect(payment.payee_id).to be_nil
     ensure
       ENV['REDIRECT_BASE_URL'] = original
     end

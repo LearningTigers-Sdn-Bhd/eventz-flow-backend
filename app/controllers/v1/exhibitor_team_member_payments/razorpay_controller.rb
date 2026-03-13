@@ -87,7 +87,7 @@ module V1
             }, status: :ok
           end
 
-          verify_gateway_payment!(payment, payee_id: current_user.id)
+          verify_gateway_payment!(payment)
         end
 
         render json: {
@@ -110,7 +110,7 @@ module V1
         payment.with_lock do
           return redirect_to success_redirect_url, allow_other_host: true if payment.verified?
 
-          verify_gateway_payment!(payment, payee_id: @exhibitor_kit.event_vendor.vendor_id)
+          verify_gateway_payment!(payment)
         end
 
         redirect_to success_redirect_url, allow_other_host: true
@@ -141,30 +141,33 @@ module V1
         )
       end
 
-      def verify_gateway_payment!(payment, payee_id:)
+      def verify_gateway_payment!(payment)
         gateway = Payments::RazorpayGateway.for_event(@exhibitor_kit.event)
         order_id = params[:razorpay_order_id].to_s
         gateway_payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
 
         unless gateway.valid_signature?(order_id: order_id, payment_id: gateway_payment_id, signature: signature)
-          raise PaymentValidationError, 'Invalid payment signature'
+        raise PaymentValidationError, 'Invalid payment signature'
         end
 
         raise PaymentValidationError, 'Payment order mismatch' unless order_matches_payment?(payment, order_id)
         raise PaymentValidationError, 'Payment amount mismatch' unless amount_matches_payment?(payment)
 
+        payment_entity = gateway.fetch_payment(gateway_payment_id)
+
         payment.update!(
           status: :verified,
           gateway_payment_id: gateway_payment_id,
-          payment_method: 'razorpay',
+          payment_method: payment_entity['method'].to_s.presence,
           gateway_response: payment.gateway_response.merge(
+            payment_entity,
             'payment_id' => gateway_payment_id,
             'order_id' => order_id,
             'signature' => signature
           ),
           paid_at: Time.current,
-          payee_id: payee_id
+          payee_id: nil
         )
       end
 
