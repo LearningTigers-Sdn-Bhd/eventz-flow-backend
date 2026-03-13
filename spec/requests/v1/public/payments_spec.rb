@@ -226,5 +226,95 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(payment.status).to eq('paid')
       expect(payment.gateway_payment_id).to eq('pay_exhibitor_webhook_123')
     end
+
+    context 'extra_team_member payment type' do
+      let(:extra_team_member_event) { create(:event, status: :published, use_exhibitor_kit: true) }
+      let(:vendor) { create(:user, :vendor) }
+      let(:exhibitor) { create(:exhibitor, event: extra_team_member_event, vendor: vendor) }
+      let(:kit) { exhibitor.exhibitor_kit }
+      let!(:payment) do
+        kit.exhibitor_team_member_payments.create!(
+          extra_member_count: 1,
+          fee_per_member: 50.0,
+          amount: 50.0,
+          status: :pending,
+          payment_source: :payment_gateway,
+          gateway: 'razorpay',
+          gateway_response: { 'id' => 'order_extra_webhook_123', 'amount' => 5000 }
+        )
+      end
+
+      before do
+        EventPaymentGateway.create!(
+          event: extra_team_member_event,
+          provider: 'razorpay',
+          key_id: 'rzp_extra_key',
+          key_secret: 'secret',
+          webhook_secret: 'webhook_secret'
+        )
+      end
+
+      it 'marks extra team member payment as verified on payment.captured webhook' do
+        allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
+
+        payload = {
+          event: 'payment.captured',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_webhook_extra_123',
+                order_id: 'order_extra_webhook_123',
+                notes: {
+                  type: 'extra_team_member',
+                  event_slug: extra_team_member_event.slug,
+                  payment_id: payment.id.to_s
+                }
+              }
+            }
+          }
+        }
+
+        post '/v1/public/payments/webhook', params: payload.to_json, headers: {
+          'CONTENT_TYPE' => 'application/json',
+          'X-Razorpay-Signature' => 'valid_sig'
+        }
+
+        expect(response).to have_http_status(:ok)
+        payment.reload
+        expect(payment.status).to eq('verified')
+        expect(payment.gateway_payment_id).to eq('pay_webhook_extra_123')
+        expect(payment.paid_at).to be_present
+      end
+
+      it 'marks extra team member payment as rejected on payment.failed webhook' do
+        allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
+
+        payload = {
+          event: 'payment.failed',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_webhook_extra_fail',
+                order_id: 'order_extra_webhook_123',
+                notes: {
+                  type: 'extra_team_member',
+                  event_slug: extra_team_member_event.slug,
+                  payment_id: payment.id.to_s
+                }
+              }
+            }
+          }
+        }
+
+        post '/v1/public/payments/webhook', params: payload.to_json, headers: {
+          'CONTENT_TYPE' => 'application/json',
+          'X-Razorpay-Signature' => 'valid_sig'
+        }
+
+        expect(response).to have_http_status(:ok)
+        payment.reload
+        expect(payment.status).to eq('rejected')
+      end
+    end
   end
 end

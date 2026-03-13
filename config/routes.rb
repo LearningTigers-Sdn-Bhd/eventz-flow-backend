@@ -125,7 +125,8 @@ Rails.application.routes.draw do
           end
         end
         resources :assignments, controller: 'table_assignments', only: %i[create update destroy], param: :ticket_id
-        resources :seating_groups, controller: 'seating_groups', shallow: false, only: %i[index create update destroy] do
+        resources :seating_groups, controller: 'seating_groups', shallow: false,
+                                   only: %i[index create update destroy] do
           member do
             post :members, action: :add_member
             delete 'members/:member_id', action: :remove_member, as: :member
@@ -204,6 +205,15 @@ Rails.application.routes.draw do
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]
+
+        namespace :exhibitor_team_member_payments do
+          resource :razorpay, only: [], controller: 'razorpay' do
+            post :create_order
+            post :verify
+            post :callback
+            get :callback
+          end
+        end
       end
 
       # Exhibitor team member limit settings (singular - one per event)
@@ -334,7 +344,7 @@ Rails.application.routes.draw do
 
     # Event Leads (exhibitor lead capture — replaces visitor stamps)
     scope 'events/:event_id' do
-      resources :event_leads, only: [:index, :create, :update], path: 'event-leads'
+      resources :event_leads, only: %i[index create update], path: 'event-leads'
     end
 
     # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)

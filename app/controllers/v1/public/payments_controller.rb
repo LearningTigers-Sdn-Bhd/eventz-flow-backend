@@ -100,6 +100,7 @@ module V1
 
       def callback
         require 'cgi'
+        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
 
@@ -110,8 +111,6 @@ module V1
         order_id = params[:razorpay_order_id].to_s
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
-        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
-
         # Check if payment was already processed (webhook might have handled it)
         if ticket.paid? && ticket.purchased?
           redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
@@ -249,6 +248,49 @@ module V1
           return render json: { success: true }, status: :ok
         end
 
+        if payment_type == 'extra_team_member'
+          payment_record = ExhibitorTeamMemberPayment.find_by(id: notes['payment_id'])
+          return render json: { success: true }, status: :ok if payment_record.blank?
+
+          case payload['event'].to_s
+          when 'payment.captured'
+            payment_record.with_lock do
+              unless payment_record.verified?
+                next unless extra_team_member_order_matches?(payment_record, payment_entity['order_id'].to_s)
+                next unless extra_team_member_amount_matches?(payment_record)
+
+                payment_record.update!(
+                  status: :verified,
+                  gateway_payment_id: payment_entity['id'].to_s,
+                  payment_method: 'razorpay',
+                  gateway_response: payment_record.gateway_response.merge(
+                    'payment_id' => payment_entity['id'].to_s,
+                    'order_id' => payment_entity['order_id'].to_s,
+                    'webhook_event' => 'payment.captured'
+                  ),
+                  paid_at: Time.current,
+                  payee_id: payment_record.exhibitor_kit.event_vendor.vendor_id
+                )
+              end
+            end
+          when 'payment.failed'
+            payment_record.with_lock do
+              unless payment_record.verified?
+                payment_record.update!(
+                  status: :rejected,
+                  note: 'Payment failed via Razorpay',
+                  gateway_response: payment_record.gateway_response.merge(
+                    'webhook_event' => 'payment.failed',
+                    'failed_payment_id' => payment_entity['id'].to_s
+                  )
+                )
+              end
+            end
+          end
+
+          return render json: { success: true }, status: :ok
+        end
+
         ticket_public_id = notes['ticket_public_id'].to_s
 
         return render json: { success: true }, status: :ok if ticket_public_id.blank?
@@ -293,6 +335,16 @@ module V1
         nil
       rescue ActiveRecord::RecordNotFound
         nil
+      end
+
+      def extra_team_member_order_matches?(payment_record, order_id)
+        stored_order_id = payment_record.gateway_response&.dig('id') || payment_record.gateway_response&.dig('order_id')
+        stored_order_id.present? && stored_order_id == order_id
+      end
+
+      def extra_team_member_amount_matches?(payment_record)
+        stored_amount = payment_record.gateway_response&.dig('amount')
+        stored_amount.present? && stored_amount.to_i == (payment_record.amount * 100).to_i
       end
 
       def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil)

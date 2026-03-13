@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_12_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -693,7 +693,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_12_120000) do
     t.datetime "paid_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "gateway"
+    t.string "gateway_payment_id"
+    t.string "payment_method"
+    t.jsonb "gateway_response", default: {}, null: false
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_member_payments_on_exhibitor_kit_id"
+    t.index ["gateway_payment_id"], name: "index_exhibitor_team_member_payments_on_gateway_payment_id"
     t.index ["payee_id"], name: "index_exhibitor_team_member_payments_on_payee_id"
   end
 

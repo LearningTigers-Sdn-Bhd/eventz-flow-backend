@@ -224,6 +224,7 @@ module V1
         has_unpaid_excess_team_members: exhibitor_kit.has_unpaid_excess_team_members?,
         extra_team_member_fee: exhibitor_kit.extra_team_member_fee,
         extra_team_member_charges: exhibitor_kit.extra_team_member_charges,
+        extra_team_member_payment_mode: extra_team_member_payment_mode(exhibitor_kit),
         exhibitor_kit_items: items.map { |item| format_exhibitor_kit_item(item) },
         exhibitor_kit_printings: printings.map { |printing| format_exhibitor_kit_printing(printing) },
         custom_requests: exhibitor_kit.custom_requests.as_json(only: %i[id description quantity status
@@ -292,6 +293,10 @@ module V1
         created_at: payment.created_at,
         updated_at: payment.updated_at
       }
+    end
+
+    def extra_team_member_payment_mode(exhibitor_kit)
+      exhibitor_kit.event.event_payment_gateway.present? ? 'payment_gateway' : 'manual_bank_in'
     end
   end
 end
