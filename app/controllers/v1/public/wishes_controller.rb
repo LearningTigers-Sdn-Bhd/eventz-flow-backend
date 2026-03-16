@@ -51,7 +51,18 @@ module V1
       end
 
       def initial_status_attributes(event)
-        return { status: :approved, approved_at: Time.current } if event.auto_approve_wishes?
+        return { status: :pending } unless event.auto_approve_wishes?
+
+        moderation_result = WishModerationService.new(
+          guest_name: wish_params[:guest_name],
+          message: wish_params[:message]
+        ).call
+
+        if moderation_result.success? && moderation_result.data[:decision] == 'approved'
+          return { status: :approved,
+                   approved_at: Time.current }
+        end
+        return { status: :rejected } if moderation_result.success? && moderation_result.data[:decision] == 'rejected'
 
         { status: :pending }
       end
