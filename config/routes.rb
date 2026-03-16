@@ -85,6 +85,7 @@ Rails.application.routes.draw do
 
     # 2. USER MANAGEMENT & PROFILE (Refactored to match /v1/users/profile test path)
     resources :users, only: [:create] do
+      resources :cloned_voices, only: [:index], controller: 'cloned_voices'
       # GET /v1/users/profile  <- Maps to users#show
       # PUT /v1/users/profile  <- Maps to users#update
       # This replaces the singular resource :profile to fix the RSpec routing error
@@ -181,6 +182,7 @@ Rails.application.routes.draw do
       end
 
       resources :vouchers, only: [:index]
+      resources :cloned_voices, only: [:index], controller: 'cloned_voices'
 
       # Nested resource for Event Exhibition Contractor
       resource :event_exhibition_contractor, only: %i[show create destroy]
@@ -379,6 +381,21 @@ Rails.application.routes.draw do
       member do
         patch :toggle_status
       end
+    end
+
+    post 'tts/synthesize', to: 'tts#synthesize'
+
+    resources :credits, only: [] do
+      collection do
+        get :stats
+        get :transaction_logs
+        get :deductions
+        get :consumption_charges
+      end
+    end
+
+    resources :cloned_voices, only: %i[index show create update destroy] do
+      post :attach, on: :member
     end
 
     resources :groups do

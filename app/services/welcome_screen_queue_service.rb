@@ -7,7 +7,7 @@ class WelcomeScreenQueueService
   TABLE_KEY_PRIORITY = %w[tablenumber tableno table].freeze
 
   class << self
-    def enqueue(event_id, name, custom_fields_data: nil)
+    def enqueue(event_id, name, role: nil, custom_fields_data: nil)
       return if name.blank?
       
       seating_context = fetch_seating_context(event_id, name)
@@ -16,7 +16,7 @@ class WelcomeScreenQueueService
       return if recently_enqueued?(event_id, name, table_label)
 
       mark_as_enqueued(event_id, name, table_label)
-      add_to_queue(event_id, name, table_label, seating_context)
+      add_to_queue(event_id, name, role, table_label, seating_context, custom_fields_data)
       broadcast_queue_update(event_id)
       schedule_processing(event_id)
     end
@@ -30,14 +30,16 @@ class WelcomeScreenQueueService
         return {
           type: "state",
           name: active[:name],
+          role: active[:role],
           table_label: active[:table_label],
           seating_context: active[:seating_context],
+          custom_fields_data: active[:custom_fields_data],
           remaining_ms: remaining_ms,
           queue_size: size
         }
       end
 
-      { type: "state", name: nil, table_label: nil, remaining_ms: 0, queue_size: size }
+      { type: "state", name: nil, role: nil, table_label: nil, remaining_ms: 0, queue_size: size }
     end
 
     def process_next(event_id)
@@ -73,12 +75,14 @@ class WelcomeScreenQueueService
       )
     end
 
-    def add_to_queue(event_id, name, table_label, seating_context = {})
+    def add_to_queue(event_id, name, role, table_label, seating_context = {}, custom_fields_data = {})
       queue = Rails.cache.read(queue_key(event_id)) || []
       queue << { 
         name: name, 
+        role: role,
         table_label: table_label, 
         seating_context: seating_context,
+        custom_fields_data: custom_fields_data,
         enqueued_at: Time.current.to_f 
       }
       queue = queue.last(MAX_QUEUE_SIZE)
@@ -123,14 +127,40 @@ class WelcomeScreenQueueService
 
     def set_active_and_broadcast(event_id, entry)
       expires_at = Time.current.to_f + DISPLAY_DURATION_SECONDS
+      event = Event.find(event_id)
+      display_settings = event.check_in_display
+      
+      global_voice_id = display_settings&.voice_type
+      voice_id = global_voice_id
+      voice_ids = []
+      
+      voice_rules = display_settings&.respond_to?(:voice_rules) ? display_settings.voice_rules : nil
+      
+      if voice_rules.present?
+        matched_rule = evaluate_voice_rules(voice_rules, entry)
+        
+        if matched_rule
+          # Support 'default' alias which points to the global voice_type
+          voice_id = matched_rule['voice_id'] if matched_rule['voice_id'].present?
+          voice_id = global_voice_id if voice_id == 'default'
+          
+          voice_ids = (matched_rule['voice_ids'] || []).map do |vid|
+            vid == 'default' ? global_voice_id : vid
+          end
+        end
+      end
 
       Rails.cache.write(
         active_key(event_id),
         { 
           name: entry[:name], 
+          role: entry[:role],
           table_label: entry[:table_label], 
           seating_context: entry[:seating_context],
-          expires_at: expires_at 
+          custom_fields_data: entry[:custom_fields_data],
+          expires_at: expires_at,
+          voice_id: voice_id,
+          voice_ids: voice_ids
         },
         expires_in: (DISPLAY_DURATION_SECONDS + 1).seconds
       )
@@ -140,16 +170,65 @@ class WelcomeScreenQueueService
         {
           type: "display",
           name: entry[:name],
-          table_label: entry[:table_label],
+          role: entry[:role],
+          table_label: entry[:table_label], 
           seating_context: entry[:seating_context],
+          custom_fields_data: entry[:custom_fields_data],
           display_duration_ms: DISPLAY_DURATION_MS,
-          checked_in_at: Time.current.iso8601
+          checked_in_at: Time.current.iso8601,
+          voice_id: voice_id,
+          voice_ids: voice_ids
         }
       )
 
       broadcast_queue_update(event_id)
     end
 
+    def evaluate_voice_rules(rules, entry)
+      Rails.logger.info "[TTS] Evaluating #{rules.size} rules for #{entry[:name]}"
+      # Sort by priority if we add it, for now first match wins
+      rules.each_with_index do |rule, index|
+        field = rule['field']
+        operator = rule['operator']
+        target_value = rule['value']
+        
+        actual_value = case field
+                       when 'role'
+                         entry[:role]
+                       when 'name'
+                         entry[:name]
+                       else
+                         # Check custom_fields_data - handle both string/symbol keys
+                         data = entry[:custom_fields_data] || {}
+                         data[field] || data[field.to_sym]
+                       end
+        
+        Rails.logger.info "[TTS] Rule #{index}: Field=#{field}, Actual=#{actual_value}, Target=#{target_value}, Op=#{operator}"
+
+        next if actual_value.nil? && operator != 'is_empty'
+
+        match = case operator
+                when 'equals'
+                  actual_value.to_s.downcase.strip == target_value.to_s.downcase.strip
+                when 'contains'
+                  actual_value.to_s.downcase.include?(target_value.to_s.downcase)
+                when 'is_empty'
+                  actual_value.blank?
+                when 'is_not_empty'
+                  actual_value.present?
+                else
+                  false
+                end
+        
+        if match
+          Rails.logger.info "[TTS] Rule MATCHED! Voice: #{rule['voice_id']}, Multiple: #{rule['voice_ids']}"
+          return rule
+        end
+      end
+      
+      Rails.logger.info "[TTS] No rules matched. Falling back to global default."
+      nil
+    end
     def schedule_processing(event_id)
       active = Rails.cache.read(active_key(event_id))
       WelcomeScreenBroadcastJob.perform_later(event_id) if active.blank?

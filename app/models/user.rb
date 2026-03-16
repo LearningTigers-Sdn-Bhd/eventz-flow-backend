@@ -220,7 +220,20 @@ class User < ApplicationRecord
 
   attr_accessor :skip_profile_creation
 
+  # --- Credits ---
+  has_one :credit_wallet, foreign_key: :owner_id, dependent: :destroy
+  after_create :ensure_credit_wallet
+
+  def credit_balance
+    credit_wallet&.balance || 0
+  end
+
   private
+
+  def ensure_credit_wallet
+    return unless org_owner? || organizer?
+    create_credit_wallet!(balance: 0) unless credit_wallet.present?
+  end
 
   # Use the Rails enum helper methods (org_owner?, organizer?, etc.) instead of string comparisons ('organizer')
   # when the methods are defined on the User class itself.

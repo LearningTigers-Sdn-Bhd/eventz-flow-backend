@@ -13,6 +13,7 @@ module V1
     def update
       authorize @check_in_display
 
+      handle_json_params
       handle_assets
 
       if @check_in_display.update(check_in_display_params)
@@ -32,7 +33,10 @@ module V1
       name = params[:name].to_s.strip
       return error_response(message: 'Name is required', status: :bad_request) if name.blank?
 
-      custom_fields_data = find_attendee_custom_fields(name) || {}
+      attendee = find_attendee(name)
+      custom_fields_data = attendee&.custom_fields_data || {}
+      role = attendee&.role
+      
       payload_custom_fields = params[:custom_fields_data]
       payload_custom_fields = payload_custom_fields.to_unsafe_h if payload_custom_fields.respond_to?(:to_unsafe_h)
 
@@ -40,7 +44,7 @@ module V1
         custom_fields_data = custom_fields_data.merge(payload_custom_fields) { |_key, existing, incoming| incoming.presence || existing }
       end
 
-      WelcomeScreenQueueService.enqueue(@event.id, name, custom_fields_data: custom_fields_data)
+      WelcomeScreenQueueService.enqueue(@event.id, name, role: role, custom_fields_data: custom_fields_data)
       success_response(data: { message: 'Guest announced', name: name })
     end
 
@@ -54,13 +58,28 @@ module V1
       @check_in_display = @event.check_in_display || @event.build_check_in_display
     end
 
+    def handle_json_params
+      return unless params[:check_in_display].present?
+
+      if params[:check_in_display][:voice_rules].is_a?(String)
+        params[:check_in_display][:voice_rules] = JSON.parse(params[:check_in_display][:voice_rules]) rescue []
+      end
+
+      if params[:check_in_display][:elevenlabs_settings].is_a?(String)
+        params[:check_in_display][:elevenlabs_settings] = JSON.parse(params[:check_in_display][:elevenlabs_settings]) rescue {}
+      end
+    end
+
     def check_in_display_params
       params.require(:check_in_display).permit(
         :font_family, :font_size, :animation_type, :is_bold, 
         :name_color, :voice_enabled, :voice_type, :welcome_text,
+        :script_tone,
         :idle_mode, :announcement_mode, :announcement_duration,
         :show_seating_plan, :seating_plan_sidebar_position, :seating_plan_duration, :active_plan_id,
-        :seating_announcement_template
+        :seating_announcement_template,
+        elevenlabs_settings: {},
+        voice_rules: [:id, :field, :operator, :value, :voice_id, voice_ids: []]
       )
     end
 
@@ -98,31 +117,33 @@ module V1
       end
     end
 
-    def find_attendee_custom_fields(name)
+    def find_attendee(name)
       normalized_name = name.to_s.strip.downcase
       return nil if normalized_name.blank?
 
       sources = @event.use_ticket ? [:ticket, :visitor] : [:visitor, :ticket]
 
       sources.each do |source|
-        custom_fields = if source == :ticket
+        attendee = if source == :ticket
           @event.tickets
                 .where('LOWER(attendee_name) = ?', normalized_name)
                 .order(Arel.sql('check_in_at DESC NULLS LAST, updated_at DESC'))
-                .limit(1)
-                .pick(:custom_fields_data)
+                .first
         else
           @event.visitors
                 .where('LOWER(full_name) = ?', normalized_name)
                 .order(Arel.sql('check_in_at DESC NULLS LAST, updated_at DESC'))
-                .limit(1)
-                .pick(:custom_fields_data)
+                .first
         end
 
-        return custom_fields if custom_fields.present?
+        return attendee if attendee.present?
       end
 
       nil
+    end
+
+    def find_attendee_custom_fields(name)
+      find_attendee(name)&.custom_fields_data
     end
   end
 end

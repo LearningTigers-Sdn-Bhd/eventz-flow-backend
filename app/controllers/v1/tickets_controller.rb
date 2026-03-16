@@ -396,6 +396,7 @@ module V1
       WelcomeScreenQueueService.enqueue(
         ticket.event_id,
         ticket.attendee_name,
+        role: ticket.role,
         custom_fields_data: ticket.custom_fields_data
       )
     end

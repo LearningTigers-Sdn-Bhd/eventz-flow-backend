@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_16_051226) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -85,8 +85,60 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.bigint "active_plan_id"
     t.string "seating_announcement_template"
     t.integer "seating_plan_duration"
+    t.jsonb "elevenlabs_settings", default: {}
+    t.jsonb "voice_rules", default: []
+    t.string "script_tone"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
+  end
+
+  create_table "cloned_voices", force: :cascade do |t|
+    t.bigint "event_id"
+    t.bigint "creator_id", null: false
+    t.string "elevenlabs_id"
+    t.string "name", null: false
+    t.integer "status", default: 0, null: false
+    t.jsonb "settings", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["creator_id"], name: "index_cloned_voices_on_creator_id"
+    t.index ["elevenlabs_id"], name: "index_cloned_voices_on_elevenlabs_id", unique: true
+    t.index ["event_id"], name: "index_cloned_voices_on_event_id"
+    t.index ["owner_id"], name: "index_cloned_voices_on_owner_id"
+  end
+
+  create_table "credit_deductions", force: :cascade do |t|
+    t.bigint "event_id"
+    t.string "channel", null: false
+    t.integer "credits", null: false
+    t.string "recipient"
+    t.integer "status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["event_id"], name: "index_credit_deductions_on_event_id"
+    t.index ["owner_id"], name: "index_credit_deductions_on_owner_id"
+  end
+
+  create_table "credit_transactions", force: :cascade do |t|
+    t.bigint "credit_wallet_id", null: false
+    t.integer "transaction_type", null: false
+    t.integer "amount", null: false
+    t.integer "balance_after", null: false
+    t.string "description"
+    t.jsonb "metadata", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["credit_wallet_id"], name: "index_credit_transactions_on_credit_wallet_id"
+  end
+
+  create_table "credit_wallets", force: :cascade do |t|
+    t.integer "balance", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["owner_id"], name: "index_credit_wallets_on_owner_id", unique: true
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -1360,6 +1412,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
+  add_foreign_key "cloned_voices", "events"
+  add_foreign_key "cloned_voices", "users", column: "creator_id"
+  add_foreign_key "cloned_voices", "users", column: "owner_id"
+  add_foreign_key "credit_deductions", "events"
+  add_foreign_key "credit_deductions", "users", column: "owner_id"
+  add_foreign_key "credit_transactions", "credit_wallets"
+  add_foreign_key "credit_wallets", "users", column: "owner_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"

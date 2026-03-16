@@ -135,6 +135,7 @@ module V1
       WelcomeScreenQueueService.enqueue(
         visitor.event_id,
         visitor.full_name,
+        role: visitor.role,
         custom_fields_data: visitor.custom_fields_data
       )
     end

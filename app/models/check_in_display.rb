@@ -3,7 +3,7 @@ class CheckInDisplay < ApplicationRecord
   belongs_to :active_plan, class_name: 'Plan', optional: true
   
   # Assets for Idle State
-  has_one_attached :background_image, dependent: :purge_later # Kept for backward compatibility/default
+  has_one_attached :background_image, dependent: :purge_later
   has_one_attached :idle_video, dependent: :purge_later
   
   # Assets for Announcement State
@@ -17,16 +17,37 @@ class CheckInDisplay < ApplicationRecord
     bounce: 3,
     typewriter: 4,
     no_animation: 5
-  }, default: :fade_in
+  }, default: :fade_in, prefix: true
 
   enum :seating_plan_sidebar_position, {
     left: 0,
     right: 1
   }, default: :left, prefix: :sidebar
 
+  # Script Presets - Using single quotes for lazy evaluation
+  SCRIPT_TONES = {
+    'neutral' => {
+      'welcome_text' => 'Welcome',
+      'seating_template' => 'Welcome, #{name}. You are at #{table_label}.'
+    },
+    'happy' => {
+      'welcome_text' => "We're so glad you're here!",
+      'seating_template' => "We're so thrilled to have you here, \#{name}! You are at \#{table_label}. Enjoy the event!"
+    },
+    'formal' => {
+      'welcome_text' => 'Welcome',
+      'seating_template' => 'Good evening #{name}. Your assigned seating is at #{table_label}. We wish you a pleasant evening.'
+    },
+    'warm' => {
+      'welcome_text' => 'Welcome home',
+      'seating_template' => 'It is wonderful to see you, #{name}. Please make yourself comfortable at #{table_label}.'
+    }
+  }.freeze
+
   validates :font_size, numericality: { greater_than: 0 }
   validates :idle_mode, inclusion: { in: %w[image video] }, allow_nil: true
   validates :announcement_mode, inclusion: { in: %w[image video] }, allow_nil: true
+  validates :script_tone, inclusion: { in: SCRIPT_TONES.keys }, allow_nil: true
 
   def as_json_for_api(include_event: false)
     data = {
@@ -40,6 +61,7 @@ class CheckInDisplay < ApplicationRecord
       voice_enabled: voice_enabled,
       voice_type: voice_type,
       welcome_text: welcome_text,
+      script_tone: script_tone || 'neutral',
       
       # Modes
       idle_mode: idle_mode || 'image',
@@ -51,7 +73,9 @@ class CheckInDisplay < ApplicationRecord
       seating_plan_sidebar_position: seating_plan_sidebar_position,
       seating_plan_duration: seating_plan_duration || 8000,
       active_plan_id: active_plan_id,
-      seating_announcement_template: seating_announcement_template || 'Welcome, #{name}. You are at #{table_label}.',
+      seating_announcement_template: seating_announcement_template,
+      elevenlabs_settings: elevenlabs_settings || {},
+      voice_rules: self[:voice_rules] || [],
       
       # URLs
       background_image_url: background_image_url,

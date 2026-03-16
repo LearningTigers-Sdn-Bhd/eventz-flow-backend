@@ -95,6 +95,7 @@ module V1
           WelcomeScreenQueueService.enqueue(
             @event.id,
             attendee_name,
+            role: attendee.role,
             custom_fields_data: attendee.custom_fields_data
           )
         end
