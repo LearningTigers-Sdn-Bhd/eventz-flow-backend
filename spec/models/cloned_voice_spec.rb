@@ -5,7 +5,7 @@ RSpec.describe ClonedVoice, type: :model do
     it { should belong_to(:owner).class_name('User') }
     it { should belong_to(:event).optional }
     it { should belong_to(:creator).class_name('User') }
-    it { should have_one_attached(:audio_sample) }
+    it { should have_many_attached(:audio_samples) }
   end
 
   describe 'validations' do
@@ -28,9 +28,9 @@ RSpec.describe ClonedVoice, type: :model do
     it 'sets default ElevenLabs settings on validation' do
       cloned_voice.validate
       expect(cloned_voice.settings).to include(
-        'stability' => 0.5,
+        'stability' => 0.4,
         'similarity_boost' => 0.75,
-        'style' => 0.0,
+        'style' => 0.2,
         'use_speaker_boost' => true
       )
     end

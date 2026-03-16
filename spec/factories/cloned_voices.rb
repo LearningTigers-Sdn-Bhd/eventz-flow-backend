@@ -6,9 +6,9 @@ FactoryBot.define do
     status { :pending }
     settings do
       {
-        stability: 0.5,
+        stability: 0.4,
         similarity_boost: 0.75,
-        style: 0.0,
+        style: 0.2,
         use_speaker_boost: true
       }
     end

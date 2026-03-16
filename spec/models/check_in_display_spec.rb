@@ -12,6 +12,7 @@ RSpec.describe CheckInDisplay, type: :model do
       is_expected.to define_enum_for(:animation_type)
         .with_values(fade_in: 0, slide_up: 1, zoom_in: 2, bounce: 3, typewriter: 4, no_animation: 5)
         .with_default(:fade_in)
+        .with_prefix
     end
   end
 

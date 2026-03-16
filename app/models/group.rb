@@ -10,6 +10,9 @@ class Group < ApplicationRecord
   has_many :event_sponsorship_tiers, dependent: :destroy
   has_many :event_sponsorships, dependent: :destroy
 
+  # --- Validations ---
+  validates :name, presence: true
+
   # --- Scopes ---
   scope :with_vendor, -> { joins(:group_affiliates).distinct }
   scope :managed_by, ->(user) { joins(:group_members).where(group_members: { user_id: user.id, has_manager_access: true }) }
