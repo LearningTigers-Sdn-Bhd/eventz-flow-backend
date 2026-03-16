@@ -7,5 +7,5 @@ class Wish < ApplicationRecord
   validates :guest_name, presence: true, length: { maximum: 100 }
   validates :message, presence: true, length: { maximum: 300 }
 
-  scope :for_display, -> { approved.order(approved_at: :desc).limit(6) }
+  scope :for_display, -> { approved.order(approved_at: :desc) }
 end
