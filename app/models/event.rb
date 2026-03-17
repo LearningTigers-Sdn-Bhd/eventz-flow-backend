@@ -23,6 +23,7 @@ class Event < ApplicationRecord
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
   has_many :wishes, dependent: :destroy
+  has_one :wish_wall_setting, dependent: :destroy
   has_many :vouchers, dependent: :destroy
   has_one :event_exhibition_contractor, dependent: :destroy
   has_many :event_exhibition_contractors, dependent: :destroy
@@ -42,7 +43,7 @@ class Event < ApplicationRecord
   has_many :event_sponsorship_tiers, dependent: :destroy
   has_many :event_sponsorships, dependent: :destroy
   has_many :sponsors, through: :event_sponsorships
-  
+
   has_many :plans, dependent: :destroy
   has_many :event_seating_groups, dependent: :destroy
 
@@ -54,6 +55,7 @@ class Event < ApplicationRecord
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
 
   accepts_nested_attributes_for :event_email_setting, update_only: true
+  accepts_nested_attributes_for :wish_wall_setting, update_only: true
 
   attr_accessor :skip_webhooks
 
@@ -62,7 +64,6 @@ class Event < ApplicationRecord
   validates :status, presence: true
   validates :start_date, presence: true
   validates :end_date, presence: true
-
   validate :end_date_must_be_after_start_date
 
   # --- Enums ---
@@ -137,12 +138,33 @@ class Event < ApplicationRecord
     Rails.application.routes.url_helpers.rails_blob_url(logo, only_path: true)
   end
 
+  def wish_wall_background_image_url
+    return nil unless wish_wall_setting&.background_image&.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(wish_wall_setting.background_image, only_path: true)
+  end
+
   def as_json(options = {})
     super(options).merge(
       'logo_url' => logo_url,
       'payment_receipt_email' => event_email_setting&.payment_receipt_email,
-      'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at])
+      'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at]),
+      'wish_wall_setting' => wish_wall_setting_payload
     )
+  end
+
+  def wish_wall_setting_payload
+    setting = wish_wall_setting
+
+    {
+      'display_mode' => setting&.display_mode || 'cards',
+      'animation_shape' => setting&.animation_shape,
+      'animation_text' => setting&.animation_text,
+      'accent_color' => setting&.accent_color,
+      'header_text_color' => setting&.header_text_color,
+      'card_background_color' => setting&.card_background_color,
+      'background_image_url' => wish_wall_background_image_url
+    }
   end
 
   def send_webhook_notification
