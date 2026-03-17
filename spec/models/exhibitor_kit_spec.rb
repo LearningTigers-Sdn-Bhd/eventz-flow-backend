@@ -202,4 +202,24 @@ RSpec.describe ExhibitorKit, type: :model do
       end.not_to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
     end
   end
+
+  describe 'payment option custom field cleanup' do
+    it 'removes payment_option from custom_fields_data when kit becomes paid' do
+      exhibitor_kit = create(
+        :exhibitor_kit,
+        event_vendor: exhibitor,
+        payment_status: :unpaid,
+        custom_fields_data: {
+          'payment_option' => 'later',
+          'preferred_booth_location' => 'Near entrance'
+        }
+      )
+
+      exhibitor_kit.update!(payment_status: :paid)
+
+      expect(exhibitor_kit.reload.custom_fields_data).to eq(
+        'preferred_booth_location' => 'Near entrance'
+      )
+    end
+  end
 end
