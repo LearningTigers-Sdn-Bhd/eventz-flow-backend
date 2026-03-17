@@ -24,7 +24,21 @@ EVENT_SCHEMA = {
     published: { type: :boolean, example: true },
     visibility: { type: :boolean, example: true },
     use_seat_ticketing: { type: :boolean, example: false },
-    use_wedding: { type: :boolean, example: false }
+    use_wedding: { type: :boolean, example: false },
+    wish_wall_setting: {
+      type: :object,
+      nullable: true,
+      properties: {
+        display_mode: { type: :string, example: 'cards' },
+        animation_shape: { type: :string, nullable: true, example: 'heart' },
+        animation_text: { type: :string, nullable: true, example: 'Aisyah & Faiz' },
+        accent_color: { type: :string, nullable: true, example: '#F59E0B' },
+        header_text_color: { type: :string, nullable: true, example: '#111827' },
+        card_background_color: { type: :string, nullable: true, example: '#FFFBEB' },
+        background_image_url: { type: :string, nullable: true,
+                                example: '/rails/active_storage/blobs/example/test_image.png' }
+      }
+    }
   },
   required: %w[id title status start_date end_date payment_status price published visibility]
 }.freeze
@@ -121,7 +135,7 @@ RSpec.describe 'V1::Events', type: :request do
     # --- POST - Create ---
     post 'Creates a new event (ORG_OWNER or ORGANIZER ONLY)' do
       tags 'Events'
-      consumes 'application/json'
+      consumes 'application/json', 'multipart/form-data'
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
@@ -405,7 +419,9 @@ RSpec.describe 'V1::Events', type: :request do
           visibility: { type: :boolean },
           use_seat_ticketing: { type: :boolean },
           use_sponsorship: { type: :boolean },
-          use_wedding: { type: :boolean }
+          use_wedding: { type: :boolean },
+          wish_wall_background_image: { type: :string, format: :binary },
+          remove_wish_wall_background_image: { type: :boolean }
         }
       }
 
@@ -419,7 +435,15 @@ RSpec.describe 'V1::Events', type: :request do
               title: 'New Title',
               use_sponsorship: true,
               use_wedding: true,
-              auto_approve_wishes: true
+              auto_approve_wishes: true,
+              wish_wall_setting_attributes: {
+                display_mode: 'animation',
+                animation_shape: 'butterfly',
+                animation_text: 'Aisyah & Faiz',
+                accent_color: '#F59E0B',
+                header_text_color: '#111827',
+                card_background_color: '#FFFBEB'
+              }
             }
           }
         end
@@ -430,8 +454,23 @@ RSpec.describe 'V1::Events', type: :request do
           expect(json['use_sponsorship']).to be true
           expect(json['use_wedding']).to be true
           expect(json['auto_approve_wishes']).to be true
+          expect(json.dig('wish_wall_setting', 'display_mode')).to eq('animation')
+          expect(json.dig('wish_wall_setting', 'animation_shape')).to eq('butterfly')
+          expect(json.dig('wish_wall_setting', 'animation_text')).to eq('Aisyah & Faiz')
+          expect(json.dig('wish_wall_setting', 'accent_color')).to eq('#F59E0B')
+          expect(json.dig('wish_wall_setting', 'header_text_color')).to eq('#111827')
+          expect(json.dig('wish_wall_setting', 'card_background_color')).to eq('#FFFBEB')
+          expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
           expect(event_paid.reload.use_wedding).to be true
           expect(event_paid.reload.auto_approve_wishes).to be true
+          expect(event_paid.reload.wish_wall_setting).to have_attributes(
+            display_mode: 'animation',
+            animation_shape: 'butterfly',
+            animation_text: 'Aisyah & Faiz',
+            accent_color: '#F59E0B',
+            header_text_color: '#111827',
+            card_background_color: '#FFFBEB'
+          )
         end
       end
 
@@ -663,6 +702,199 @@ RSpec.describe 'V1::Events', type: :request do
 
         expect(response).to have_http_status(:ok)
       end
+    end
+  end
+
+  describe 'wish wall style settings API' do
+    let(:event) do
+      create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
+        create(:event_assignment, role: :event_admin, event: record, user: organizer_user)
+      end
+    end
+
+    it 'saves wish wall style colors in the response payload' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_setting_attributes: {
+                display_mode: 'animation',
+                animation_shape: 'heart',
+                animation_text: 'Styled Wall',
+                accent_color: '#F59E0B',
+                header_text_color: '#111827',
+                card_background_color: '#FFFBEB'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig('wish_wall_setting', 'display_mode')).to eq('animation')
+      expect(json.dig('wish_wall_setting', 'animation_shape')).to eq('heart')
+      expect(json.dig('wish_wall_setting', 'animation_text')).to eq('Styled Wall')
+      expect(json.dig('wish_wall_setting', 'accent_color')).to eq('#F59E0B')
+      expect(json.dig('wish_wall_setting', 'header_text_color')).to eq('#111827')
+      expect(json.dig('wish_wall_setting', 'card_background_color')).to eq('#FFFBEB')
+      expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
+
+      expect(event.reload.wish_wall_setting).to have_attributes(
+        display_mode: 'animation',
+        animation_shape: 'heart',
+        animation_text: 'Styled Wall',
+        accent_color: '#F59E0B',
+        header_text_color: '#111827',
+        card_background_color: '#FFFBEB'
+      )
+    end
+
+    it 'updates an existing wish wall setting record' do
+      create(
+        :wish_wall_setting,
+        event: event,
+        display_mode: 'animation',
+        animation_shape: 'heart',
+        accent_color: '#D4A373'
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_setting_attributes: {
+                display_mode: 'cards',
+                animation_shape: '',
+                animation_text: '',
+                accent_color: '#E8B7C8',
+                header_text_color: '#C63D4F',
+                card_background_color: '#E8B7C8'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(event.reload.wish_wall_setting).to have_attributes(
+        display_mode: 'cards',
+        animation_shape: nil,
+        animation_text: nil,
+        accent_color: '#E8B7C8',
+        header_text_color: '#C63D4F',
+        card_background_color: '#E8B7C8'
+      )
+    end
+
+    it 'serializes the attached wish wall background image URL' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'image/png'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+
+      image_url = json.dig('wish_wall_setting', 'background_image_url')
+      expect(image_url).to be_present
+      expect(image_url).to include('/rails/active_storage/blobs/')
+      expect(event.reload.wish_wall_setting.background_image).to be_attached
+    end
+
+    it 'rejects invalid wish wall background image uploads without persisting them' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'application/pdf'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      reloaded_setting = event.reload.wish_wall_setting
+      expect(reloaded_setting.nil? || !reloaded_setting.background_image.attached?).to be(true)
+    end
+
+    it 'removes the attached wish wall background image' do
+      setting = create(:wish_wall_setting, event: event)
+      setting.background_image.attach(
+        fixture_file_upload(Rails.root.join('spec/fixtures/files/test_image.png'), 'image/png')
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              remove_wish_wall_background_image: true,
+              wish_wall_setting_attributes: {
+                display_mode: setting.display_mode
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
+      expect(event.reload.wish_wall_setting.background_image).not_to be_attached
+    end
+
+    it 'keeps the attached wish wall background image when the update fails during removal' do
+      setting = create(:wish_wall_setting, event: event)
+      setting.background_image.attach(
+        fixture_file_upload(Rails.root.join('spec/fixtures/files/test_image.png'), 'image/png')
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              title: nil,
+              remove_wish_wall_background_image: true,
+              wish_wall_setting_attributes: {
+                display_mode: setting.display_mode
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(event.reload.wish_wall_setting.background_image).to be_attached
+    end
+
+    it 'does not attach the wish wall background image when the update fails' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              title: nil,
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'image/png'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      reloaded_setting = event.reload.wish_wall_setting
+
+      expect(reloaded_setting.nil? || !reloaded_setting.background_image.attached?).to be(true)
     end
   end
 end
