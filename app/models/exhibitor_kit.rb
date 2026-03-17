@@ -33,6 +33,7 @@ class ExhibitorKit < ApplicationRecord
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
+  before_save :remove_payment_option_when_payment_is_settled
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
 
@@ -104,6 +105,14 @@ class ExhibitorKit < ApplicationRecord
 
   def should_send_payment_confirmed_email?
     pic_email_address.present? && saved_change_to_payment_status? && paid?
+  end
+
+  def remove_payment_option_when_payment_is_settled
+    return if unpaid?
+    return unless custom_fields_data.is_a?(Hash)
+    return unless custom_fields_data.key?('payment_option') || custom_fields_data.key?(:payment_option)
+
+    self.custom_fields_data = custom_fields_data.except('payment_option', :payment_option)
   end
 
   def send_registration_received_email
