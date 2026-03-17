@@ -24,9 +24,23 @@ EVENT_SCHEMA = {
     published: { type: :boolean, example: true },
     visibility: { type: :boolean, example: true },
     use_seat_ticketing: { type: :boolean, example: false },
-    use_wedding: { type: :boolean, example: false }
+    use_wedding: { type: :boolean, example: false },
+    wish_wall_setting: {
+      type: :object,
+      nullable: true,
+      properties: {
+        display_mode: { type: :string, example: 'cards' },
+        animation_shape: { type: :string, nullable: true, example: 'heart' },
+        animation_text: { type: :string, nullable: true, example: 'Aisyah & Faiz' },
+        accent_color: { type: :string, nullable: true, example: '#F59E0B' },
+        header_text_color: { type: :string, nullable: true, example: '#111827' },
+        card_background_color: { type: :string, nullable: true, example: '#FFFBEB' },
+        background_image_url: { type: :string, nullable: true,
+                                example: '/rails/active_storage/blobs/example/test_image.png' }
+      }
+    }
   },
-  required: ['id', 'title', 'status', 'start_date', 'end_date', 'payment_status', 'price', 'published', 'visibility']
+  required: %w[id title status start_date end_date payment_status price published visibility]
 }.freeze
 
 # The minimal schema for the index array response (/v1/events GET).
@@ -51,10 +65,9 @@ BUSINESS_MATCHING_EVENT_SCHEMA = {
       admin_email: { type: :string, example: 'match_admin@example.com' },
       admin_wa_number: { type: :string, example: '628123456789' }
     },
-    required: ['id', 'title', 'duration']
+    required: %w[id title duration]
   }
 }.freeze
-
 
 RSpec.describe 'V1::Events', type: :request do
   # --- Setup Users ---
@@ -91,25 +104,25 @@ RSpec.describe 'V1::Events', type: :request do
   # --- Create Events (Managed by organizer_user) ---
   # Note: The policy now allows the organizer to update both paid and unpaid events.
   let!(:event_unpaid) do
-    event = create(:event, title: "Unpaid Event", payment_status: :unpaid, published: false, visibility: true)
+    event = create(:event, title: 'Unpaid Event', payment_status: :unpaid, published: false, visibility: true)
     create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
   let!(:event_paid) do
-    event = create(:event, title: "Paid Event", payment_status: :paid, published: false, visibility: true)
+    event = create(:event, title: 'Paid Event', payment_status: :paid, published: false, visibility: true)
     create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
   let!(:event_public) do
-    event = create(:event, title: "Public Event", payment_status: :paid, published: true, visibility: true)
+    event = create(:event, title: 'Public Event', payment_status: :paid, published: true, visibility: true)
     create(:event_assignment, role: :event_admin, event: event, user: organizer_user)
     event
   end
 
   let!(:event_private) do
-    event = create(:event, title: "Private Event", payment_status: :paid, published: true, visibility: false)
+    event = create(:event, title: 'Private Event', payment_status: :paid, published: true, visibility: false)
     create(:event_assignment, role: :event_admin, event: event, user: org_owner_user)
     event
   end
@@ -119,15 +132,15 @@ RSpec.describe 'V1::Events', type: :request do
   # =========================================================================
 
   path '/v1/events' do
-
     # --- POST - Create ---
     post 'Creates a new event (ORG_OWNER or ORGANIZER ONLY)' do
       tags 'Events'
-      consumes 'application/json'
+      consumes 'application/json', 'multipart/form-data'
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
       parameter name: :event, in: :body, schema: {
         type: :object,
         properties: {
@@ -139,9 +152,10 @@ RSpec.describe 'V1::Events', type: :request do
           visibility: { type: :boolean },
           use_seat_ticketing: { type: :boolean },
           use_wedding: { type: :boolean },
-          event_admin_id: { type: :integer, description: 'Optional: User ID to assign as event admin. Defaults to current user if not provided.' }
+          event_admin_id: { type: :integer,
+                            description: 'Optional: User ID to assign as event admin. Defaults to current user if not provided.' }
         },
-        required: ['title', 'start_date', 'end_date']
+        required: %w[title start_date end_date]
       }
 
       # 1. Success (Org Owner JWT)
@@ -184,7 +198,8 @@ RSpec.describe 'V1::Events', type: :request do
           json = JSON.parse(response.body)
           created_event = Event.find(json['id'])
           # Verify the organizer_user was assigned as event admin
-          expect(created_event.event_assignments.where(user_id: organizer_user.id, role: 'event_admin').exists?).to be true
+          expect(created_event.event_assignments.where(user_id: organizer_user.id,
+                                                       role: 'event_admin').exists?).to be true
         end
       end
 
@@ -209,15 +224,23 @@ RSpec.describe 'V1::Events', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
-      parameter name: :archived, in: :query, type: :string, required: false, description: 'Set to "true" to show only archived events'
-      parameter name: :full, in: :query, type: :string, required: false, description: 'Set to "true" to show all events including archived ones'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
+      parameter name: :archived, in: :query, type: :string, required: false,
+                description: 'Set to "true" to show only archived events'
+      parameter name: :full, in: :query, type: :string, required: false,
+                description: 'Set to "true" to show all events including archived ones'
 
       # 1. Success (Org Owner - sees ALL events)
       response '200', 'Org Owner sees all events' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
 
-        before { event_unpaid.reload; event_paid.reload; event_public.reload; event_private.reload }
+        before do
+          event_unpaid.reload
+          event_paid.reload
+          event_public.reload
+          event_private.reload
+        end
 
         schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA
 
@@ -232,7 +255,11 @@ RSpec.describe 'V1::Events', type: :request do
       response '200', 'Organizer sees only assigned visible events' do
         let(:Authorization) { "Bearer #{organizer_token}" }
 
-        before { event_unpaid.reload; event_paid.reload; event_public.reload }
+        before do
+          event_unpaid.reload
+          event_paid.reload
+          event_public.reload
+        end
 
         schema type: :array, items: EVENT_INDEX_ITEM_SCHEMA
 
@@ -312,7 +339,8 @@ RSpec.describe 'V1::Events', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
 
       # 1. Success (JWT)
       response '200', 'Event found' do
@@ -367,7 +395,7 @@ RSpec.describe 'V1::Events', type: :request do
       # 6. Not Found
       response '404', 'Event not found' do
         let(:Authorization) { "Bearer #{organizer_token}" }
-        let(:id) { 99999 }
+        let(:id) { 99_999 }
         run_test!
       end
     end
@@ -379,18 +407,21 @@ RSpec.describe 'V1::Events', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
       parameter name: :event, in: :body, schema: {
         type: :object,
         properties: {
           title: { type: :string, example: 'New Title' },
           description: { type: :string },
           location: { type: :string },
-          status: { type: :string, enum: ['draft', 'published', 'canceled'] },
+          status: { type: :string, enum: %w[draft published canceled] },
           visibility: { type: :boolean },
           use_seat_ticketing: { type: :boolean },
           use_sponsorship: { type: :boolean },
-          use_wedding: { type: :boolean }
+          use_wedding: { type: :boolean },
+          wish_wall_background_image: { type: :string, format: :binary },
+          remove_wish_wall_background_image: { type: :boolean }
         }
       }
 
@@ -398,14 +429,48 @@ RSpec.describe 'V1::Events', type: :request do
       response '200', 'Update successful (Organizer)' do
         let(:Authorization) { "Bearer #{organizer_token}" }
         let(:id) { event_paid.id }
-        let(:event) { { event: { title: 'New Title', use_sponsorship: true, use_wedding: true } } }
+        let(:event) do
+          {
+            event: {
+              title: 'New Title',
+              use_sponsorship: true,
+              use_wedding: true,
+              auto_approve_wishes: true,
+              wish_wall_setting_attributes: {
+                display_mode: 'animation',
+                animation_shape: 'butterfly',
+                animation_text: 'Aisyah & Faiz',
+                accent_color: '#F59E0B',
+                header_text_color: '#111827',
+                card_background_color: '#FFFBEB'
+              }
+            }
+          }
+        end
 
         schema EVENT_SCHEMA
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['use_sponsorship']).to be true
           expect(json['use_wedding']).to be true
+          expect(json['auto_approve_wishes']).to be true
+          expect(json.dig('wish_wall_setting', 'display_mode')).to eq('animation')
+          expect(json.dig('wish_wall_setting', 'animation_shape')).to eq('butterfly')
+          expect(json.dig('wish_wall_setting', 'animation_text')).to eq('Aisyah & Faiz')
+          expect(json.dig('wish_wall_setting', 'accent_color')).to eq('#F59E0B')
+          expect(json.dig('wish_wall_setting', 'header_text_color')).to eq('#111827')
+          expect(json.dig('wish_wall_setting', 'card_background_color')).to eq('#FFFBEB')
+          expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
           expect(event_paid.reload.use_wedding).to be true
+          expect(event_paid.reload.auto_approve_wishes).to be true
+          expect(event_paid.reload.wish_wall_setting).to have_attributes(
+            display_mode: 'animation',
+            animation_shape: 'butterfly',
+            animation_text: 'Aisyah & Faiz',
+            accent_color: '#F59E0B',
+            header_text_color: '#111827',
+            card_background_color: '#FFFBEB'
+          )
         end
       end
 
@@ -424,7 +489,8 @@ RSpec.describe 'V1::Events', type: :request do
       tags 'Events'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
 
       # 1. Success
       response '204', 'Deletion successful' do
@@ -450,7 +516,8 @@ RSpec.describe 'V1::Events', type: :request do
       tags 'Events'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
 
       # 1. Success
       response '204', 'Force deletion successful' do
@@ -476,7 +543,8 @@ RSpec.describe 'V1::Events', type: :request do
       tags 'Events'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
 
       # 1. Success
       response '200', 'Event successfully restored' do
@@ -501,7 +569,7 @@ RSpec.describe 'V1::Events', type: :request do
       # 3. Not Found (already active event)
       response '404', 'Event not found' do
         let(:Authorization) { "Bearer #{organizer_token}" }
-        let(:id) { 99999 }
+        let(:id) { 99_999 }
         run_test!
       end
     end
@@ -519,12 +587,15 @@ RSpec.describe 'V1::Events', type: :request do
       produces 'application/json'
       security [{ BearerAuth: [] }]
 
-      parameter name: :Authorization, in: :header, type: :string, required: true, description: 'Bearer JWT or Raw API Key'
+      parameter name: :Authorization, in: :header, type: :string, required: true,
+                description: 'Bearer JWT or Raw API Key'
 
       let(:bm_events_response_data) do
         [
-          { id: 1, title: "Match Session 1", duration: 30, location: "Virtual Link", admin_email: "a1@example.com", admin_wa_number: "111" },
-          { id: 2, title: "Match Session 2", duration: 60, location: "Physical Room", admin_email: "a2@example.com", admin_wa_number: "222" }
+          { id: 1, title: 'Match Session 1', duration: 30, location: 'Virtual Link', admin_email: 'a1@example.com',
+            admin_wa_number: '111' },
+          { id: 2, title: 'Match Session 2', duration: 60, location: 'Physical Room', admin_email: 'a2@example.com',
+            admin_wa_number: '222' }
         ]
       end
 
@@ -631,6 +702,199 @@ RSpec.describe 'V1::Events', type: :request do
 
         expect(response).to have_http_status(:ok)
       end
+    end
+  end
+
+  describe 'wish wall style settings API' do
+    let(:event) do
+      create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
+        create(:event_assignment, role: :event_admin, event: record, user: organizer_user)
+      end
+    end
+
+    it 'saves wish wall style colors in the response payload' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_setting_attributes: {
+                display_mode: 'animation',
+                animation_shape: 'heart',
+                animation_text: 'Styled Wall',
+                accent_color: '#F59E0B',
+                header_text_color: '#111827',
+                card_background_color: '#FFFBEB'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig('wish_wall_setting', 'display_mode')).to eq('animation')
+      expect(json.dig('wish_wall_setting', 'animation_shape')).to eq('heart')
+      expect(json.dig('wish_wall_setting', 'animation_text')).to eq('Styled Wall')
+      expect(json.dig('wish_wall_setting', 'accent_color')).to eq('#F59E0B')
+      expect(json.dig('wish_wall_setting', 'header_text_color')).to eq('#111827')
+      expect(json.dig('wish_wall_setting', 'card_background_color')).to eq('#FFFBEB')
+      expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
+
+      expect(event.reload.wish_wall_setting).to have_attributes(
+        display_mode: 'animation',
+        animation_shape: 'heart',
+        animation_text: 'Styled Wall',
+        accent_color: '#F59E0B',
+        header_text_color: '#111827',
+        card_background_color: '#FFFBEB'
+      )
+    end
+
+    it 'updates an existing wish wall setting record' do
+      create(
+        :wish_wall_setting,
+        event: event,
+        display_mode: 'animation',
+        animation_shape: 'heart',
+        accent_color: '#D4A373'
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_setting_attributes: {
+                display_mode: 'cards',
+                animation_shape: '',
+                animation_text: '',
+                accent_color: '#E8B7C8',
+                header_text_color: '#C63D4F',
+                card_background_color: '#E8B7C8'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(event.reload.wish_wall_setting).to have_attributes(
+        display_mode: 'cards',
+        animation_shape: nil,
+        animation_text: nil,
+        accent_color: '#E8B7C8',
+        header_text_color: '#C63D4F',
+        card_background_color: '#E8B7C8'
+      )
+    end
+
+    it 'serializes the attached wish wall background image URL' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'image/png'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+
+      image_url = json.dig('wish_wall_setting', 'background_image_url')
+      expect(image_url).to be_present
+      expect(image_url).to include('/rails/active_storage/blobs/')
+      expect(event.reload.wish_wall_setting.background_image).to be_attached
+    end
+
+    it 'rejects invalid wish wall background image uploads without persisting them' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'application/pdf'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      reloaded_setting = event.reload.wish_wall_setting
+      expect(reloaded_setting.nil? || !reloaded_setting.background_image.attached?).to be(true)
+    end
+
+    it 'removes the attached wish wall background image' do
+      setting = create(:wish_wall_setting, event: event)
+      setting.background_image.attach(
+        fixture_file_upload(Rails.root.join('spec/fixtures/files/test_image.png'), 'image/png')
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              remove_wish_wall_background_image: true,
+              wish_wall_setting_attributes: {
+                display_mode: setting.display_mode
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
+      expect(event.reload.wish_wall_setting.background_image).not_to be_attached
+    end
+
+    it 'keeps the attached wish wall background image when the update fails during removal' do
+      setting = create(:wish_wall_setting, event: event)
+      setting.background_image.attach(
+        fixture_file_upload(Rails.root.join('spec/fixtures/files/test_image.png'), 'image/png')
+      )
+
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              title: nil,
+              remove_wish_wall_background_image: true,
+              wish_wall_setting_attributes: {
+                display_mode: setting.display_mode
+              }
+            }
+          },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(event.reload.wish_wall_setting.background_image).to be_attached
+    end
+
+    it 'does not attach the wish wall background image when the update fails' do
+      put "/v1/events/#{event.id}",
+          params: {
+            event: {
+              title: nil,
+              wish_wall_background_image: fixture_file_upload(
+                Rails.root.join('spec/fixtures/files/test_image.png'),
+                'image/png'
+              ),
+              wish_wall_setting_attributes: {
+                display_mode: 'cards'
+              }
+            }
+          },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      reloaded_setting = event.reload.wish_wall_setting
+
+      expect(reloaded_setting.nil? || !reloaded_setting.background_image.attached?).to be(true)
     end
   end
 end

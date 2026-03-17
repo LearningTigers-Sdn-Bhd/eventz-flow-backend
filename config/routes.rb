@@ -61,6 +61,8 @@ Rails.application.routes.draw do
       scope 'events/:slug' do
         get 'rsvp/:public_id', to: 'rsvp#show'
         post 'rsvp/:public_id/respond', to: 'rsvp#respond_rsvp'
+        get 'wishes', to: 'wishes#index'
+        post 'wishes', to: 'wishes#create'
       end
     end
 
@@ -174,6 +176,13 @@ Rails.application.routes.draw do
       end
 
       resources :visitors, only: %i[index show create update destroy]
+
+      resources :wishes, only: %i[index destroy] do
+        member do
+          patch :approve
+          patch :reject
+        end
+      end
 
       resources :voucher_analytics, only: [:index], controller: 'voucher_analytics' do
         collection do

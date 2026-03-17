@@ -71,14 +71,31 @@ module V1
       flag_toggled_on = !@event.allow_contractor_printing_services &&
                         ActiveModel::Type::Boolean.new.cast(event_params[:allow_contractor_printing_services])
 
-      handle_logo
       normalize_email_setting_params
+      normalize_wish_wall_setting_params
+      ensure_wish_wall_setting_exists
+      remove_wish_wall_background_image = remove_wish_wall_background_image?
+      update_attributes = event_params.except(
+        :logo,
+        :remove_logo,
+        :payment_receipt_email,
+        :wish_wall_background_image,
+        :remove_wish_wall_background_image
+      )
 
-      # @event is set and authorized by before_actions
-      if @event.update(event_params.except(:logo, :remove_logo, :payment_receipt_email))
-        # Auto-link contractor printing services if flag was toggled ON
+      success = false
+
+      Event.transaction do
+        handle_logo
+        handle_wish_wall_background_image
+        success = @event.update(update_attributes)
+
+        raise ActiveRecord::Rollback unless success
+      end
+
+      if success
+        purge_wish_wall_background_image if remove_wish_wall_background_image
         ContractorPrintingServiceLinker.new(event: @event).link_if_needed if flag_toggled_on
-
         render json: @event, status: :ok
       else
         render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
@@ -197,6 +214,7 @@ module V1
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
         :use_wedding,
+        :auto_approve_wishes,
         :extra_guest_limit,
         :business_matching_webhook_url,
         :use_sponsorship,
@@ -205,9 +223,19 @@ module V1
         :skip_webhooks,
         :logo,
         :remove_logo,
+        :wish_wall_background_image,
+        :remove_wish_wall_background_image,
         labels_data: {}, # Allows JSONB hash updates
         booth_types: [], # Allows JSONB array updates
-        event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email]
+        event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email],
+        wish_wall_setting_attributes: %i[
+          display_mode
+          animation_shape
+          animation_text
+          accent_color
+          header_text_color
+          card_background_color
+        ]
       )
     end
 
@@ -233,6 +261,43 @@ module V1
 
       # Build the setting record if it doesn't exist yet
       @event.build_event_email_setting unless @event.event_email_setting
+    end
+
+    def normalize_wish_wall_setting_params
+      wish_wall_params = params.dig(:event, :wish_wall_setting_attributes)
+      return unless wish_wall_params
+
+      %i[animation_shape animation_text accent_color header_text_color card_background_color].each do |key|
+        wish_wall_params[key] = nil if wish_wall_params[key].is_a?(String) && wish_wall_params[key].blank?
+      end
+    end
+
+    def ensure_wish_wall_setting_exists
+      event_p = params[:event]
+      return unless event_p&.key?(:wish_wall_setting_attributes) || event_p&.key?(:wish_wall_background_image)
+      return if @event.wish_wall_setting
+
+      @event.build_wish_wall_setting
+    end
+
+    def handle_wish_wall_background_image
+      event_p = params[:event] || {}
+      return unless @event.wish_wall_setting
+
+      if event_p[:wish_wall_background_image].present? && event_p[:wish_wall_background_image].respond_to?(:read)
+        @event.wish_wall_setting.background_image.attach(event_p[:wish_wall_background_image])
+      end
+    end
+
+    def remove_wish_wall_background_image?
+      event_p = params[:event] || {}
+      ActiveModel::Type::Boolean.new.cast(event_p[:remove_wish_wall_background_image])
+    end
+
+    def purge_wish_wall_background_image
+      return unless @event.wish_wall_setting&.background_image&.attached?
+
+      @event.wish_wall_setting.background_image.purge_later
     end
 
     def find_organizer_payment_detail(event)

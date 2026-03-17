@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_16_001000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -495,6 +495,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
     t.index ["vendor_id"], name: "index_event_vendors_on_vendor_id"
   end
 
+  create_table "event_wish_wall_settings", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "display_mode", default: "cards", null: false
+    t.string "animation_shape"
+    t.string "animation_text"
+    t.string "accent_color"
+    t.string "header_text_color"
+    t.string "card_background_color"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_wish_wall_settings_on_event_id", unique: true
+  end
+
   create_table "events", force: :cascade do |t|
     t.string "title", null: false
     t.text "description"
@@ -518,14 +531,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
-    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
     t.boolean "use_event_leads", default: false, null: false
+    t.boolean "auto_approve_wishes", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -979,7 +993,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
-    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -991,6 +1004,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -1367,6 +1381,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
     t.index ["voucher_code"], name: "index_vouchers_on_voucher_code"
   end
 
+  create_table "wishes", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "visitor_id"
+    t.string "guest_name", null: false
+    t.text "message", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "approved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "status"], name: "index_wishes_on_event_id_and_status"
+    t.index ["event_id"], name: "index_wishes_on_event_id"
+    t.index ["visitor_id"], name: "index_wishes_on_visitor_id"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "api_keys", "users"
@@ -1431,6 +1459,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
+  add_foreign_key "event_wish_wall_settings", "events"
   add_foreign_key "exhibition_contractor_profiles", "users"
   add_foreign_key "exhibitor_booth_prices", "events"
   add_foreign_key "exhibitor_booth_prices", "exhibitor_zones"
@@ -1517,4 +1546,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_13_005719) do
   add_foreign_key "voucher_usages", "vouchers"
   add_foreign_key "vouchers", "events"
   add_foreign_key "vouchers", "users", column: "vendor_id"
+  add_foreign_key "wishes", "events"
+  add_foreign_key "wishes", "visitors"
 end
