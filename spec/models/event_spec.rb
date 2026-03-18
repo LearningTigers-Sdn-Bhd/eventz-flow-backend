@@ -26,6 +26,10 @@ RSpec.describe Event, type: :model do
       expect(Event.new.use_sponsorship).to be false
     end
 
+    it 'has enable_exhibitor_management defaulting to false' do
+      expect(Event.new.enable_exhibitor_management).to be false
+    end
+
     it 'has use_wedding defaulting to false' do
       expect(Event.new.use_wedding).to be false
     end

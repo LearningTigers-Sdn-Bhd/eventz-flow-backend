@@ -2,12 +2,13 @@ module V1
   class EventPrintingServicesController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event
+    before_action :ensure_exhibitor_management_enabled
     before_action :set_event_printing_service, only: %i[show update destroy]
 
     def index
       @event_printing_services = policy_scope(EventPrintingService)
-        .where(event_id: @event.id)
-        .includes(printing_service: [:item_category, :image_attachment, :image_blob])
+                                 .where(event_id: @event.id)
+                                 .includes(printing_service: %i[item_category image_attachment image_blob])
 
       render json: @event_printing_services.map { |eps| format_event_printing_service(eps) }
     end
@@ -47,6 +48,13 @@ module V1
 
     def set_event
       @event = Event.find(params[:event_id])
+    end
+
+    def ensure_exhibitor_management_enabled
+      return if current_user.org_owner? || @event.enable_exhibitor_management?
+
+      render json: { error: 'Forbidden', message: 'Exhibitor management is not enabled for this event.' },
+             status: :forbidden
     end
 
     def set_event_printing_service

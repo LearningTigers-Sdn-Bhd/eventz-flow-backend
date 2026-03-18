@@ -4,7 +4,7 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:api_key) { create(:api_key, user: org_owner) }
   let(:auth_header) { { 'Authorization' => api_key.raw_key } }
-  let(:event) { create(:event, use_exhibitor_kit: true) }
+  let(:event) { create(:event, use_exhibitor_kit: true, enable_exhibitor_management: true) }
   let(:event_id) { event.id }
   let(:rentable_item) { create(:rentable_item) } # Global rentable item
   let!(:event_rentable_item) { create(:event_rentable_item, event: event, rentable_item: rentable_item) }
@@ -15,7 +15,7 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
     get('list event rentable items') do
       tags 'Event Rentable Items'
       produces 'application/json'
-      security [api_key: []]
+      security [{ api_key: [] }]
 
       response(200, 'successful') do
         before { get v1_event_event_rentable_items_path(event_id: event_id), headers: auth_header }
@@ -29,8 +29,22 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
         end
       end
 
+      response(200, 'successful for org owner when exhibitor management is disabled') do
+        let(:event) { create(:event, use_exhibitor_kit: true, enable_exhibitor_management: false) }
+        let(:event_id) { event.id }
+
+        before { get v1_event_event_rentable_items_path(event_id: event_id), headers: auth_header }
+
+        it 'returns a 200 response' do
+          expect(response).to have_http_status(:ok)
+        end
+      end
+
       response(401, 'unauthorized') do
-        before { get v1_event_event_rentable_items_path(event_id: event_id), headers: { 'Authorization' => 'invalid_key_string' } }
+        before do
+          get v1_event_event_rentable_items_path(event_id: event_id),
+              headers: { 'Authorization' => 'invalid_key_string' }
+        end
         it 'returns a 401 response' do
           expect(response).to have_http_status(:unauthorized)
         end
@@ -45,14 +59,30 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
     get('show event rentable item') do
       tags 'Event Rentable Items'
       produces 'application/json'
-      security [api_key: []]
+      security [{ api_key: [] }]
 
       response(200, 'successful') do
-        before { get v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header }
+        before do
+          get v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header
+        end
         it 'returns a 200 response with the event rentable item' do
           expect(response).to have_http_status(:ok)
           data = JSON.parse(response.body)
           expect(data['id']).to eq(event_rentable_item.id)
+        end
+      end
+
+      response(200, 'successful for org owner when exhibitor management is disabled') do
+        let(:event) { create(:event, use_exhibitor_kit: true, enable_exhibitor_management: false) }
+        let(:event_id) { event.id }
+        let!(:event_rentable_item) { create(:event_rentable_item, event: event, rentable_item: rentable_item) }
+
+        before do
+          get v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header
+        end
+
+        it 'returns a 200 response' do
+          expect(response).to have_http_status(:ok)
         end
       end
     end
@@ -60,14 +90,30 @@ RSpec.describe 'V1::EventRentableItems', type: :request do
     delete('delete event rentable item') do
       tags 'Event Rentable Items'
       produces 'application/json'
-      security [api_key: []]
+      security [{ api_key: [] }]
 
       response(204, 'no content') do
-        before { delete v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header }
+        before do
+          delete v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header
+        end
 
         it 'deletes the event rentable item' do
           expect(response).to have_http_status(:no_content)
           expect(EventRentableItem.find_by(id: event_rentable_item.id)).to be_nil
+        end
+      end
+
+      response(204, 'successful delete for org owner when exhibitor management is disabled') do
+        let(:event) { create(:event, use_exhibitor_kit: true, enable_exhibitor_management: false) }
+        let(:event_id) { event.id }
+        let!(:event_rentable_item) { create(:event_rentable_item, event: event, rentable_item: rentable_item) }
+
+        before do
+          delete v1_event_event_rentable_item_path(event_id: event_id, id: event_rentable_item.id), headers: auth_header
+        end
+
+        it 'returns a 204 response' do
+          expect(response).to have_http_status(:no_content)
         end
       end
     end

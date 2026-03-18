@@ -28,6 +28,8 @@ class EventExhibitionContractorService < BaseService
   end
 
   def link_contractor_items_to_event(contractor)
+    return unless event.enable_exhibitor_management?
+
     contractor_user = contractor.exhibition_contractor_profile.user
 
     # Always link rentable items
@@ -36,10 +38,10 @@ class EventExhibitionContractorService < BaseService
     end
 
     # Only link printing services if allowed by event setting
-    if event.allow_contractor_printing_services
-      contractor_user.printing_services.find_each do |service|
-        EventPrintingService.find_or_create_by!(event: event, printing_service: service)
-      end
+    return unless event.allow_contractor_printing_services
+
+    contractor_user.printing_services.find_each do |service|
+      EventPrintingService.find_or_create_by!(event: event, printing_service: service)
     end
   end
 end

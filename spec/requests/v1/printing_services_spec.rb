@@ -4,13 +4,11 @@ RSpec.describe 'V1::PrintingServices', type: :request do
   let(:user) { create(:user) }
   let(:item_category) { create(:item_category) }
 
-
-
   path '/v1/printing_services' do
     get('list printing services') do
       tags 'Printing Services'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(200, 'successful') do
         context 'as an admin' do
@@ -39,9 +37,16 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         end
 
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
-          let!(:other_printing_service1) { create(:printing_service, item_category: item_category) } # Owned by a different user
-          let!(:other_printing_service2) { create(:printing_service, item_category: item_category) } # Owned by a different user
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
+          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
+          # Owned by a different user
+          let!(:other_printing_service1) do
+            create(:printing_service, item_category: item_category)
+          end
+          # Owned by a different user
+          let!(:other_printing_service2) do
+            create(:printing_service, item_category: item_category)
+          end
           let!(:contractor_printing_service) { create(:printing_service, item_category: item_category, user: user) }
 
           before { get v1_printing_services_path, headers: auth_headers(user) }
@@ -77,7 +82,7 @@ RSpec.describe 'V1::PrintingServices', type: :request do
       tags 'Printing Services'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :printing_service, in: :body, schema: {
         type: :object,
         properties: {
@@ -125,7 +130,26 @@ RSpec.describe 'V1::PrintingServices', type: :request do
         end
 
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
+          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
+
+          context 'with an assigned event that has exhibitor management disabled' do
+            let!(:disabled_event) do
+              create(:event, enable_exhibitor_management: false, allow_contractor_printing_services: true)
+            end
+            let!(:contractor_assignment) do
+              create(:event_exhibition_contractor, event: disabled_event,
+                                                   exhibition_contractor_profile: contractor_profile)
+            end
+
+            it 'creates the printing service without auto-linking it to the disabled event' do
+              expect do
+                post v1_printing_services_path, params: printing_service, headers: auth_headers(user)
+              end.to change(PrintingService, :count).by(1)
+                                                    .and change(EventPrintingService, :count).by(0)
+            end
+          end
+
           before { post v1_printing_services_path, params: printing_service, headers: auth_headers(user) }
           it 'returns a 201 response' do
             expect(response).to have_http_status(:created)
@@ -154,7 +178,7 @@ RSpec.describe 'V1::PrintingServices', type: :request do
     get('show printing service') do
       tags 'Printing Services'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(200, 'successful') do
         context 'as an admin' do
@@ -210,7 +234,7 @@ RSpec.describe 'V1::PrintingServices', type: :request do
       tags 'Printing Services'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :printing_service, in: :body, schema: {
         type: :object,
         properties: {
@@ -280,7 +304,7 @@ RSpec.describe 'V1::PrintingServices', type: :request do
     delete('delete printing service') do
       tags 'Printing Services'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(204, 'no content') do
         context 'as an admin' do

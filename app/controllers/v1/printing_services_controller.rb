@@ -48,13 +48,14 @@ module V1
     end
 
     def printing_service_params
-      params.require(:printing_service).permit(:name, :description, :unit_of_measure, :default_price, :status, :item_category_id, :image)
+      params.require(:printing_service).permit(:name, :description, :unit_of_measure, :default_price, :status,
+                                               :item_category_id, :image)
     end
 
     def handle_image_removal
-      if ActiveModel::Type::Boolean.new.cast(params[:remove_image])
-        @printing_service.image.purge_later if @printing_service.image.attached?
-      end
+      return unless ActiveModel::Type::Boolean.new.cast(params[:remove_image])
+
+      @printing_service.image.purge_later if @printing_service.image.attached?
     end
 
     def format_printing_service(service)
@@ -68,10 +69,10 @@ module V1
 
       # Only link to events that allow contractor printing services
       current_user.exhibition_contractor_profile.events
-        .where(allow_contractor_printing_services: true)
-        .find_each do |event|
-          EventPrintingService.find_or_create_by(event: event, printing_service: printing_service)
-        end
+                  .where(allow_contractor_printing_services: true, enable_exhibitor_management: true)
+                  .find_each do |event|
+                    EventPrintingService.find_or_create_by(event: event, printing_service: printing_service)
+                  end
     end
   end
 end
