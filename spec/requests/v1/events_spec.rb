@@ -23,6 +23,7 @@ EVENT_SCHEMA = {
     price: { type: :string, example: '100.0' },
     published: { type: :boolean, example: true },
     visibility: { type: :boolean, example: true },
+    enable_exhibitor_management: { type: :boolean, example: false },
     use_seat_ticketing: { type: :boolean, example: false },
     use_wedding: { type: :boolean, example: false },
     wish_wall_setting: {
@@ -150,6 +151,7 @@ RSpec.describe 'V1::Events', type: :request do
           start_date: { type: :string, format: :date_time },
           end_date: { type: :string, format: :date_time },
           visibility: { type: :boolean },
+          enable_exhibitor_management: { type: :boolean },
           use_seat_ticketing: { type: :boolean },
           use_wedding: { type: :boolean },
           event_admin_id: { type: :integer,
@@ -161,12 +163,19 @@ RSpec.describe 'V1::Events', type: :request do
       # 1. Success (Org Owner JWT)
       response '201', 'Event created successfully' do
         let(:Authorization) { "Bearer #{org_owner_token}" }
-        let(:event) { valid_create_params.deep_merge(event: { use_wedding: true }) }
+        let(:event) do
+          valid_create_params.deep_merge(event: {
+                                           use_wedding: true,
+                                           enable_exhibitor_management: true
+                                         })
+        end
         schema EVENT_SCHEMA
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['use_wedding']).to be true
+          expect(json['enable_exhibitor_management']).to be true
           expect(Event.find(json['id']).use_wedding).to be true
+          expect(Event.find(json['id']).enable_exhibitor_management).to be true
         end
       end
 
@@ -433,6 +442,7 @@ RSpec.describe 'V1::Events', type: :request do
           {
             event: {
               title: 'New Title',
+              enable_exhibitor_management: true,
               use_sponsorship: true,
               use_wedding: true,
               auto_approve_wishes: true,
@@ -451,6 +461,7 @@ RSpec.describe 'V1::Events', type: :request do
         schema EVENT_SCHEMA
         run_test! do |response|
           json = JSON.parse(response.body)
+          expect(json['enable_exhibitor_management']).to be true
           expect(json['use_sponsorship']).to be true
           expect(json['use_wedding']).to be true
           expect(json['auto_approve_wishes']).to be true
@@ -462,6 +473,7 @@ RSpec.describe 'V1::Events', type: :request do
           expect(json.dig('wish_wall_setting', 'card_background_color')).to eq('#FFFBEB')
           expect(json.dig('wish_wall_setting', 'background_image_url')).to be_nil
           expect(event_paid.reload.use_wedding).to be true
+          expect(event_paid.reload.enable_exhibitor_management).to be true
           expect(event_paid.reload.auto_approve_wishes).to be true
           expect(event_paid.reload.wish_wall_setting).to have_attributes(
             display_mode: 'animation',

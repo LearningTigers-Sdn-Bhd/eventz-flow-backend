@@ -4,13 +4,11 @@ RSpec.describe 'V1::RentableItems', type: :request do
   let(:user) { create(:user) }
   let(:item_category) { create(:item_category) }
 
-
-
   path '/v1/rentable_items' do
     get('list rentable items') do
       tags 'Rentable Items'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(200, 'successful') do
         context 'as an admin' do
@@ -39,9 +37,16 @@ RSpec.describe 'V1::RentableItems', type: :request do
         end
 
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
-          let!(:other_rentable_item1) { create(:rentable_item, item_category: item_category) } # Owned by a different user
-          let!(:other_rentable_item2) { create(:rentable_item, item_category: item_category) } # Owned by a different user
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
+          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
+          # Owned by a different user
+          let!(:other_rentable_item1) do
+            create(:rentable_item, item_category: item_category)
+          end
+          # Owned by a different user
+          let!(:other_rentable_item2) do
+            create(:rentable_item, item_category: item_category)
+          end
           let!(:contractor_rentable_item) { create(:rentable_item, item_category: item_category, user: user) }
 
           before { get v1_rentable_items_path, headers: auth_headers(user) }
@@ -77,7 +82,7 @@ RSpec.describe 'V1::RentableItems', type: :request do
       tags 'Rentable Items'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :rentable_item, in: :body, schema: {
         type: :object,
         properties: {
@@ -125,7 +130,24 @@ RSpec.describe 'V1::RentableItems', type: :request do
         end
 
         context 'as an exhibition contractor' do
-          let(:user) { create(:user, :exhibition_contractor) }
+          let(:user) { create(:user, :exhibition_contractor, with_profile: false) }
+          let!(:contractor_profile) { create(:exhibition_contractor_profile, user: user) }
+
+          context 'with an assigned event that has exhibitor management disabled' do
+            let!(:disabled_event) { create(:event, enable_exhibitor_management: false) }
+            let!(:contractor_assignment) do
+              create(:event_exhibition_contractor, event: disabled_event,
+                                                   exhibition_contractor_profile: contractor_profile)
+            end
+
+            it 'creates the rentable item without auto-linking it to the disabled event' do
+              expect do
+                post v1_rentable_items_path, params: rentable_item, headers: auth_headers(user)
+              end.to change(RentableItem, :count).by(1)
+                                                 .and change(EventRentableItem, :count).by(0)
+            end
+          end
+
           before { post v1_rentable_items_path, params: rentable_item, headers: auth_headers(user) }
           it 'returns a 201 response' do
             expect(response).to have_http_status(:created)
@@ -154,7 +176,7 @@ RSpec.describe 'V1::RentableItems', type: :request do
     get('show rentable item') do
       tags 'Rentable Items'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(200, 'successful') do
         context 'as an admin' do
@@ -210,7 +232,7 @@ RSpec.describe 'V1::RentableItems', type: :request do
       tags 'Rentable Items'
       consumes 'application/json'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
       parameter name: :rentable_item, in: :body, schema: {
         type: :object,
         properties: {
@@ -280,7 +302,7 @@ RSpec.describe 'V1::RentableItems', type: :request do
     delete('delete rentable item') do
       tags 'Rentable Items'
       produces 'application/json'
-      security [bearerAuth: []]
+      security [{ bearerAuth: [] }]
 
       response(204, 'no content') do
         context 'as an admin' do

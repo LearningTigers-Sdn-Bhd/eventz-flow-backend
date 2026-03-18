@@ -2,13 +2,14 @@ module V1
   class EventRentableItemsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event
+    before_action :ensure_exhibitor_management_enabled
     before_action :set_event_rentable_item, only: %i[show update destroy]
 
     def index
       # Apply policy scope and eager load the associated rentable_item and item_category
       @event_rentable_items = policy_scope(EventRentableItem)
-                                .where(event_id: @event.id)
-                                .includes(rentable_item: [:item_category, :image_attachment, :image_blob])
+                              .where(event_id: @event.id)
+                              .includes(rentable_item: %i[item_category image_attachment image_blob])
 
       render json: @event_rentable_items.map { |eri| format_event_rentable_item(eri) }
     end
@@ -49,6 +50,13 @@ module V1
 
     def set_event
       @event = Event.find(params[:event_id])
+    end
+
+    def ensure_exhibitor_management_enabled
+      return if current_user.org_owner? || @event.enable_exhibitor_management?
+
+      render json: { error: 'Forbidden', message: 'Exhibitor management is not enabled for this event.' },
+             status: :forbidden
     end
 
     def set_event_rentable_item

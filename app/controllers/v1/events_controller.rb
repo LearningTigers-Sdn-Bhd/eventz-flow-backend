@@ -207,6 +207,7 @@ module V1
         :end_date,
         :webhook_url,
         :visibility,
+        :enable_exhibitor_management,
         :use_ticket,
         :use_seat_ticketing,
         :use_exhibitor_kit,

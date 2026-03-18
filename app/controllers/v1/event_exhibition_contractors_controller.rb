@@ -1,6 +1,7 @@
 class V1::EventExhibitionContractorsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
+  before_action :ensure_exhibitor_management_enabled
 
   def show
     @event_exhibition_contractor = @event.event_exhibition_contractor
@@ -8,7 +9,7 @@ class V1::EventExhibitionContractorsController < ApplicationController
       authorize @event_exhibition_contractor
       render json: format_response(@event_exhibition_contractor), status: :ok
     else
-      render json: { message: "No exhibition contractor assigned to this event" }, status: :ok
+      render json: { message: 'No exhibition contractor assigned to this event' }, status: :ok
     end
   end
 
@@ -40,7 +41,6 @@ class V1::EventExhibitionContractorsController < ApplicationController
       end
 
       unlink_contractor_items_from_event(@event_exhibition_contractor)
-      @event.update(use_exhibitor_kit: false)
       @event_exhibition_contractor.destroy
       head :no_content
     else
@@ -54,6 +54,13 @@ class V1::EventExhibitionContractorsController < ApplicationController
     @event = Event.with_deleted.friendly.find(params[:event_id])
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
+  end
+
+  def ensure_exhibitor_management_enabled
+    return if current_user.org_owner? || @event.enable_exhibitor_management?
+
+    render json: { error: 'Forbidden', message: 'Exhibitor management is not enabled for this event.' },
+           status: :forbidden
   end
 
   def unlink_contractor_items_from_event(contractor)
@@ -74,10 +81,11 @@ class V1::EventExhibitionContractorsController < ApplicationController
 
     # Find exhibitor kits for this event that have transactions with contractor's items
     exhibitor_kits = ExhibitorKit.joins(:event_vendor)
-                                  .where(event_vendor: { event_id: @event.id })
+                                 .where(event_vendor: { event_id: @event.id })
 
     kit_items_count = ExhibitorKitItem.where(exhibitor_kit: exhibitor_kits, rentable_item_id: rentable_item_ids).count
-    kit_printings_count = ExhibitorKitPrinting.where(exhibitor_kit: exhibitor_kits, printing_service_id: printing_service_ids).count
+    kit_printings_count = ExhibitorKitPrinting.where(exhibitor_kit: exhibitor_kits,
+                                                     printing_service_id: printing_service_ids).count
 
     has_transactions = kit_items_count > 0 || kit_printings_count > 0
 
