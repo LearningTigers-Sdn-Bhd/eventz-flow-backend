@@ -18,66 +18,32 @@ class ExhibitorTeamMemberAttendeeSyncService
   private
 
   def create_ticket
-    if excess_member_requiring_payment?
-      Ticket.create!(
-        event: event,
-        ticket_type: exhibitor_ticket_type,
-        attendee_name: @team_member.full_name,
-        attendee_email: @team_member.email,
-        attendee_phone: @team_member.phone,
-        role: EXHIBITOR_TICKET_TYPE_NAME,
-        status: :pending_payment,
-        payment_status: :pending
-      )
-    else
-      Ticket.create!(
-        event: event,
-        ticket_type: exhibitor_ticket_type,
-        attendee_name: @team_member.full_name,
-        attendee_email: @team_member.email,
-        attendee_phone: @team_member.phone,
-        role: EXHIBITOR_TICKET_TYPE_NAME,
-        status: :purchased,
-        payment_status: :paid
-      )
-    end
+    status, payment_status = desired_ticket_state
+
+    Ticket.create!(
+      event: event,
+      ticket_type: exhibitor_ticket_type,
+      attendee_name: @team_member.full_name,
+      attendee_email: @team_member.email,
+      attendee_phone: @team_member.phone,
+      role: EXHIBITOR_TICKET_TYPE_NAME,
+      status: status,
+      payment_status: payment_status
+    )
   end
 
   def update_ticket(ticket)
-    # If the ticket is already confirmed (purchased + paid), preserve its payment status.
-    # Only the payment verification flow should ever upgrade a pending ticket to paid,
-    # so we must never downgrade a paid ticket back to pending on a simple info update.
-    if ticket.purchased? && ticket.paid?
-      ticket.update!(
-        ticket_type: exhibitor_ticket_type,
-        attendee_name: @team_member.full_name,
-        attendee_email: @team_member.email,
-        attendee_phone: @team_member.phone,
-        role: EXHIBITOR_TICKET_TYPE_NAME,
-        status: :purchased,
-        payment_status: :paid
-      )
-    elsif excess_member_requiring_payment?
-      ticket.update!(
-        ticket_type: exhibitor_ticket_type,
-        attendee_name: @team_member.full_name,
-        attendee_email: @team_member.email,
-        attendee_phone: @team_member.phone,
-        role: EXHIBITOR_TICKET_TYPE_NAME,
-        status: :pending_payment,
-        payment_status: :pending
-      )
-    else
-      ticket.update!(
-        ticket_type: exhibitor_ticket_type,
-        attendee_name: @team_member.full_name,
-        attendee_email: @team_member.email,
-        attendee_phone: @team_member.phone,
-        role: EXHIBITOR_TICKET_TYPE_NAME,
-        status: :purchased,
-        payment_status: :paid
-      )
-    end
+    status, payment_status = desired_ticket_state(ticket)
+
+    ticket.update!(
+      ticket_type: exhibitor_ticket_type,
+      attendee_name: @team_member.full_name,
+      attendee_email: @team_member.email,
+      attendee_phone: @team_member.phone,
+      role: EXHIBITOR_TICKET_TYPE_NAME,
+      status: status,
+      payment_status: payment_status
+    )
 
     ticket
   end
@@ -97,6 +63,14 @@ class ExhibitorTeamMemberAttendeeSyncService
       ticket_type.status = :published
       ticket_type.hidden = true
     end
+  end
+
+  def desired_ticket_state(ticket = nil)
+    return %i[pending_payment pending] unless @team_member.exhibitor_kit.paid?
+    return %i[purchased paid] if ticket&.purchased? && ticket&.paid?
+    return %i[pending_payment pending] if excess_member_requiring_payment?
+
+    %i[purchased paid]
   end
 
   # Returns true if this team member sits in an excess position (beyond the free limit)

@@ -23,7 +23,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       clear_enqueued_jobs
     end
 
-    it 'creates a paid exhibitor ticket and links it when added to a ticket event kit' do
+    it 'creates a pending exhibitor ticket and does not email when exhibitor kit is unpaid' do
       member = nil
 
       expect do
@@ -35,7 +35,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
           phone: '+60123456789'
         )
       end.to change(Ticket, :count).by(1)
-                                   .and have_enqueued_mail(TicketMailer, :confirmation_email)
+      expect(enqueued_jobs).to be_empty
 
       member.reload
       ticket = member.attendee
@@ -47,8 +47,27 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       expect(ticket.attendee_name).to eq('Jane Expo')
       expect(ticket.attendee_email).to eq('jane@example.com')
       expect(ticket.attendee_phone).to eq('+60123456789')
-      expect(ticket.payment_status).to eq('paid')
+      expect(ticket.payment_status).to eq('pending')
+      expect(ticket.status).to eq('pending_payment')
+    end
+
+    it 'upgrades free team member tickets and emails them when exhibitor kit becomes paid' do
+      member = create(
+        :exhibitor_team_member,
+        exhibitor_kit: exhibitor_kit,
+        full_name: 'Jane Expo',
+        email: 'jane@example.com',
+        phone: '+60123456789'
+      )
+      clear_enqueued_jobs
+
+      expect do
+        exhibitor_kit.update!(payment_status: :paid)
+      end.to have_enqueued_mail(TicketMailer, :confirmation_email).exactly(3).times
+
+      ticket = member.reload.attendee
       expect(ticket.status).to eq('purchased')
+      expect(ticket.payment_status).to eq('paid')
     end
 
     it 'reuses the exhibitor ticket type when adding multiple team members' do
@@ -79,6 +98,8 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       # exhibitor_kit factory creates 2 members already
 
       it 'creates a paid ticket for a member within the free limit' do
+        exhibitor_kit.update!(payment_status: :paid)
+        clear_enqueued_jobs
         member = nil
 
         expect do
@@ -120,6 +141,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       end
 
       it 'reuses a paid extra slot when a paid excess member is deleted and replaced' do
+        exhibitor_kit.update!(payment_status: :paid)
         create(:exhibitor_team_member, exhibitor_kit: exhibitor_kit, email: 'third@example.com', phone: '+60333333333')
         paid_excess_member = create(
           :exhibitor_team_member,
@@ -129,7 +151,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
           phone: '+60444444444'
         )
 
-        paid_payment = create(
+        create(
           :exhibitor_team_member_payment,
           :verified,
           exhibitor_kit: exhibitor_kit,
@@ -161,6 +183,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       end
 
       it 'rebalances an excess member into a free slot when a free member is deleted' do
+        exhibitor_kit.update!(payment_status: :paid)
         free_member = create(
           :exhibitor_team_member,
           exhibitor_kit: exhibitor_kit,

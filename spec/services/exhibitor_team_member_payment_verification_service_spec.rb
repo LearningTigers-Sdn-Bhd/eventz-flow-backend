@@ -17,6 +17,7 @@ RSpec.describe ExhibitorTeamMemberPaymentVerificationService do
     ActiveJob::Base.queue_adapter = :test
     # exhibitor_kit factory creates 2 members (within limit)
     exhibitor_kit
+    exhibitor_kit.update!(payment_status: :paid)
     clear_enqueued_jobs
   end
 

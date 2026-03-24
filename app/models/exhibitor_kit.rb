@@ -36,6 +36,7 @@ class ExhibitorKit < ApplicationRecord
   before_save :remove_payment_option_when_payment_is_settled
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
+  after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
 
@@ -121,5 +122,13 @@ class ExhibitorKit < ApplicationRecord
 
   def send_payment_confirmed_email
     ExhibitorRegistrationMailer.payment_confirmed_email(self).deliver_later
+  end
+
+  def should_reconcile_team_member_tickets?
+    saved_change_to_payment_status? && event&.use_ticket?
+  end
+
+  def reconcile_team_member_tickets
+    ExhibitorTeamMemberTicketReconciliationService.new(self).call
   end
 end

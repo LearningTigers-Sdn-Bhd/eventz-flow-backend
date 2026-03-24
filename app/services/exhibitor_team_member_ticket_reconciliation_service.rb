@@ -23,6 +23,7 @@ class ExhibitorTeamMemberTicketReconciliationService
   private
 
   def desired_ticket_state_for(index)
+    return %i[pending_payment pending] unless @exhibitor_kit.paid?
     return %i[purchased paid] unless @exhibitor_kit.has_team_member_limit?
     return %i[purchased paid] unless @exhibitor_kit.extra_team_member_fee.to_f.positive?
     return %i[purchased paid] if index < @exhibitor_kit.team_member_limit
