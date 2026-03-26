@@ -47,10 +47,10 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
 
   # Configuration for production
   allow do
+    # Strict regex: HTTPS only, single-level subdomain, alphanumeric + hyphens only
     origins 'https://eventzflow.com',
             'https://www.eventzflow.com',
-            'https://ogsesabah.eventzflow.com',
-            'https://smexpo.eventzflow.com'
+            /\Ahttps:\/\/[a-zA-Z0-9-]+\.eventzflow\.com\z/
 
     resource '*',
       headers: :any,
