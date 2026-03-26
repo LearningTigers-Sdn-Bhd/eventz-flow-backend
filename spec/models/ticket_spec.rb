@@ -28,8 +28,18 @@ RSpec.describe Ticket, type: :model do
     it { is_expected.to belong_to(:event) }
     it { is_expected.to belong_to(:ticket_type) }
     it { is_expected.to belong_to(:user).optional }
+    it { is_expected.to have_many(:event_reminder_logs).dependent(:destroy) }
     # To test this, ensure the `tickets` table has an `order_id` column.
     # it { is_expected.to belong_to(:order).optional }
+  end
+
+  describe 'dependent cleanup' do
+    it 'destroys reminder logs when the ticket is destroyed' do
+      ticket = create(:ticket, event: event, ticket_type: ticket_type)
+      create(:event_reminder_log, event: event, ticket: ticket, reminder_type: '7_day')
+
+      expect { ticket.destroy! }.to change(EventReminderLog, :count).by(-1)
+    end
   end
 
   # --- VALIDATIONS ---
