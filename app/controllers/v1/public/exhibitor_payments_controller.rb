@@ -124,7 +124,7 @@ module V1
       def callback
         event = Event.friendly.find(params[:event_slug])
         exhibitor_kit = find_exhibitor_kit!(event)
-        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
+        frontend_url = public_registration_url_for!(event)
 
         if exhibitor_kit.paid?
           return redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
@@ -150,8 +150,15 @@ module V1
         redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
                     allow_other_host: true
       rescue StandardError => e
-        redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=#{CGI.escape(e.message)}",
-                    allow_other_host: true
+        if defined?(frontend_url) && frontend_url.present?
+          redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=#{CGI.escape(e.message)}",
+                      allow_other_host: true
+        else
+          render_public_registration_error_page(
+            title: 'Registration Redirect Not Configured',
+            message: e.message.include?('public_registration_url') ? 'This event does not have a public registration URL configured yet. Please contact the organizer or try again later.' : e.message
+          )
+        end
       end
 
       private
@@ -179,6 +186,13 @@ module V1
         )
 
         exhibitor_kit.update!(payment_status: :paid)
+      end
+
+      def public_registration_url_for!(event)
+        url = event.normalized_public_registration_url
+        raise KeyError, 'public_registration_url' if url.blank?
+
+        url
       end
     end
   end

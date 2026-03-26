@@ -64,7 +64,14 @@ class Event < ApplicationRecord
   validates :status, presence: true
   validates :start_date, presence: true
   validates :end_date, presence: true
+  validates :public_registration_url,
+            format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: 'must be a valid URL' },
+            allow_blank: true
   validate :end_date_must_be_after_start_date
+
+  def normalized_public_registration_url
+    public_registration_url.to_s.strip.chomp('/')
+  end
 
   # --- Enums ---
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }

@@ -81,13 +81,11 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
   end
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/callback' do
-    it 'redirects to FRONTEND_FORM_URL on successful callback' do
+    it 'redirects to the event public registration URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       allow(gateway_instance).to receive(:fetch_payment).with('pay_exhibitor_123').and_return(
         { 'id' => 'pay_exhibitor_123', 'order_id' => 'order_exhibitor_123', 'method' => 'card' }
       )
-      original = ENV['FRONTEND_FORM_URL']
-      ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/callback", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -99,8 +97,6 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/exhibitor-registration?step=success')
       expect(exhibitor_kit.reload.exhibitor_registration_payment.payment_method).to eq('card')
-    ensure
-      ENV['FRONTEND_FORM_URL'] = original
     end
   end
 end

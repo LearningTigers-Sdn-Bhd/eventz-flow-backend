@@ -121,13 +121,11 @@ RSpec.describe 'V1::Public::Payments', type: :request do
   end
 
   describe 'POST /v1/public/events/:event_slug/payments/callback' do
-    it 'redirects to FRONTEND_FORM_URL on successful callback' do
+    it 'redirects to the event public registration URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       allow(gateway_instance).to receive(:fetch_payment).with('pay_sandbox_123').and_return(
         { 'id' => 'pay_sandbox_123', 'order_id' => 'order_sandbox_123', 'method' => 'fpx' }
       )
-      original = ENV['FRONTEND_FORM_URL']
-      ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
 
       post "/v1/public/events/#{event.slug}/payments/callback", params: {
         ticket_public_id: pending_ticket.public_id,
@@ -139,8 +137,6 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/register/standard?step=success')
       expect(pending_ticket.reload.ticket_payment.payment_method).to eq('fpx')
-    ensure
-      ENV['FRONTEND_FORM_URL'] = original
     end
   end
 

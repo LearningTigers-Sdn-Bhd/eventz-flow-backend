@@ -15,6 +15,7 @@ FactoryBot.define do
     
     # 4. Default visibility
     visibility { true }
+    public_registration_url { 'https://forms.example.com' }
 
     # Optional user association for creating an event
     transient do

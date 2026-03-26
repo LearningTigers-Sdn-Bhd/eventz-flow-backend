@@ -1,4 +1,5 @@
 require Rails.root.join('app/lib/custom_error')
+require Rails.root.join('app/lib/public_registration_error_page_renderer')
 require Rails.root.join('app/services/jwt_service')
 require Rails.root.join('app/services/authentication_service')
 
@@ -109,6 +110,12 @@ class ApplicationController < ActionController::API
 	# Request logging
 	def log_request_info
 		Rails.logger.info "#{request.method} #{request.path} - Params: #{params.except(:controller, :action)}"
+	end
+
+	def render_public_registration_error_page(title: 'Unable to Complete Payment Redirect', message:)
+		render html: PublicRegistrationErrorPageRenderer.call(title: title, message: message).html_safe,
+		       status: :unprocessable_content,
+		       layout: false
 	end
 
 	# Generate pagination metadata for API responses
