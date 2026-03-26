@@ -56,7 +56,7 @@ module V1
       authorize @event, :create_ticket?
 
       # Build the ticket using ONLY the strong parameters.
-      @ticket = @event.tickets.build(ticket_params)
+      @ticket = @event.tickets.build(ticket_params_with_payment_sync)
 
       # @ticket.user = current_user # Hide this for now
 
@@ -76,7 +76,7 @@ module V1
       # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
 
-      if @ticket.update(ticket_params)
+      if @ticket.update(ticket_params_with_payment_sync)
         render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -451,6 +451,19 @@ module V1
       end
 
       params.require(:ticket).permit(*allowed_params)
+    end
+
+    def ticket_params_with_payment_sync
+      permitted_params = ticket_params
+      payment_status = permitted_params[:payment_status]
+
+      return permitted_params unless @ticket&.pending_payment?
+      return permitted_params unless payment_status.present?
+
+      paid_value = Ticket.payment_statuses[:paid]
+      return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
+
+      permitted_params.merge(status: :purchased)
     end
   end
 end

@@ -84,6 +84,16 @@ RSpec.describe 'V1::Tickets', type: :request do
   let!(:checked_in_ticket) do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
   end
+  let(:pending_payment_ticket) do
+    create(
+      :ticket,
+      event: organizer_event,
+      ticket_type: general_ticket_type,
+      status: :pending_payment,
+      payment_status: :pending,
+      attendee_name: 'Pending Payment Attendee'
+    )
+  end
   let(:valid_ticket_params) do
     {
       ticket: {
@@ -304,6 +314,21 @@ RSpec.describe 'V1::Tickets', type: :request do
         schema TICKET_SCHEMA
 
         run_test!
+      end
+
+      response '200', 'Pending payment ticket becomes purchased when marked paid' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { pending_payment_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['payment_status']).to eq('paid')
+          expect(json['status']).to eq('purchased')
+          expect(pending_payment_ticket.reload.status).to eq('purchased')
+        end
       end
 
       response '200', 'Ticket successfully updated by Org Owner' do

@@ -50,15 +50,22 @@ module V1
 
       def status
         event = Event.friendly.find(params[:event_slug])
+        exhibitor_kit_id = params[:exhibitor_kit_id].to_i
         email = params[:email].to_s.strip.downcase
 
-        if email.blank?
-          return render json: { success: false, message: 'Email is required' }, status: :unprocessable_content
-        end
+        exhibitor_kit = if exhibitor_kit_id.positive?
+                          find_exhibitor_kit_for_event!(event: event, exhibitor_kit_id: exhibitor_kit_id)
+                        else
+                          if email.blank?
+                            return render json: { success: false, message: 'Email is required' }, status: :unprocessable_content
+                          end
 
-        exhibitor_kit = find_existing_registration(event: event, email: email)
+                          find_existing_registration(event: event, email: email)
+                        end
 
         render json: { success: true, data: serialize_registration_status(exhibitor_kit) }
+      rescue ActiveRecord::RecordNotFound
+        render json: { success: false, message: 'Event or exhibitor registration not found' }, status: :not_found
       end
 
       def create
