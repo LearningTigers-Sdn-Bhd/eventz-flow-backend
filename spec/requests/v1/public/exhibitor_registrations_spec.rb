@@ -36,6 +36,8 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']).to be_an(Array)
       expect(json['data'].first['label']).to eq('Malaysian')
       expect(json['data'].first['price'].to_f).to eq(1500.0)
+      expect(json['data'].first['base_price'].to_f).to eq(1500.0)
+      expect(json['data'].first['active_price_tier_label']).to be_nil
       expect(json['data'].first['zone']).to eq('zone_d')
       expect(json['data'].first['zone_quota']).to eq(103)
       expect(json['data'].first['zone_sold_count']).to eq(0)
@@ -45,6 +47,25 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data'].first['booth_price_sold_count']).to eq(0)
       expect(json['data'].first['booth_price_remaining']).to eq(30)
       expect(json['data'].first['booth_price_available']).to eq(true)
+    end
+
+    it 'returns the active tier price when a booth tier is active' do
+      create(
+        :exhibitor_booth_price_tier,
+        exhibitor_booth_price: booth_price,
+        label: 'Early Bird',
+        price: 1200,
+        start_date: 1.day.ago,
+        end_date: 1.day.from_now
+      )
+
+      get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data'].first['price'].to_f).to eq(1200.0)
+      expect(json['data'].first['base_price'].to_f).to eq(1500.0)
+      expect(json['data'].first['active_price_tier_label']).to eq('Early Bird')
     end
 
     it 'marks booth price unavailable when zone quota is full even if booth quota remains' do
@@ -133,6 +154,26 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(user.vendor_profile.category).to eq('Oil & Gas Equipment')
       expect(user.vendor_profile.person_in_charge).to eq('Amin Rahman')
       expect(user.vendor_profile.address).to eq('Kota Kinabalu')
+    end
+
+    it 'uses the active booth price tier for registration totals' do
+      create(
+        :exhibitor_booth_price_tier,
+        exhibitor_booth_price: booth_price,
+        label: 'Early Bird',
+        price: 1200,
+        start_date: 1.day.ago,
+        end_date: 1.day.from_now
+      )
+
+      post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+
+      expect(response).to have_http_status(:created)
+      json = JSON.parse(response.body)
+      expect(json['data']['price'].to_f).to eq(1200.0)
+
+      kit = ExhibitorKit.order(created_at: :desc).first
+      expect(kit.amount_paid.to_f).to eq(1200.0)
     end
 
     it 'returns payment_required true when payment option is now' do

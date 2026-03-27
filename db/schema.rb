@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_26_130000) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -557,6 +557,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_26_130000) do
     t.boolean "allow_printing_services", default: true, null: false
     t.text "standard_package_info"
     t.index ["user_id"], name: "index_exhibition_contractor_profiles_on_user_id"
+  end
+
+  create_table "exhibitor_booth_price_tiers", force: :cascade do |t|
+    t.bigint "exhibitor_booth_price_id", null: false
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.datetime "start_date", null: false
+    t.datetime "end_date"
+    t.string "label", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_booth_price_id", "start_date"], name: "idx_exhibitor_booth_price_tiers_on_booth_price_and_start"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_booth_price_tiers_on_exhibitor_booth_price_id"
+    t.index ["start_date"], name: "index_exhibitor_booth_price_tiers_on_start_date"
   end
 
   create_table "exhibitor_booth_prices", force: :cascade do |t|
@@ -1463,6 +1476,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_26_130000) do
   add_foreign_key "event_vendors", "users", column: "vendor_id"
   add_foreign_key "event_wish_wall_settings", "events"
   add_foreign_key "exhibition_contractor_profiles", "users"
+  add_foreign_key "exhibitor_booth_price_tiers", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_booth_prices", "events"
   add_foreign_key "exhibitor_booth_prices", "exhibitor_zones"
   add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"

@@ -505,6 +505,10 @@ Rails.application.routes.draw do
       resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
     end
 
+    resources :exhibitor_booth_prices, only: [] do
+      resources :price_tiers, controller: 'exhibitor_booth_price_tiers'
+    end
+
     # --- RESOURCES CMS ---
     scope 'resources' do
       # Collection routes for the main Resources controller

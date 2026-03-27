@@ -12,7 +12,7 @@ module V1
       def booth_prices
         event = Event.friendly.find(params[:event_slug])
 
-        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone).order(:booth_type, :label)
+        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_booth_price_tiers).order(:booth_type, :label)
         zone_sold_map = zone_sold_counts(event)
         booth_price_sold_map = booth_price_sold_counts(event)
 
@@ -28,13 +28,16 @@ module V1
             zone_available = zone_quota.nil? || zone_remaining.positive?
             booth_quota_available = booth_price_quota.nil? || booth_price_remaining.positive?
 
+            active_price_tier = price.current_price_tier
             {
               id: price.id,
               booth_type: price.booth_type,
               zone: price.zone,
               exhibitor_zone_id: price.exhibitor_zone_id,
               label: price.label,
-              price: price.price,
+              price: price.current_price,
+              base_price: price.price,
+              active_price_tier_label: active_price_tier&.label,
               zone_quota: zone_quota,
               zone_sold_count: zone_sold_count,
               zone_remaining: zone_remaining,
@@ -312,7 +315,7 @@ module V1
           exhibitor_booth_price: booth_price,
           booth_type: booth_price.booth_type,
           booth_quantity: qty,
-          amount_paid: booth_price.price * qty,
+          amount_paid: booth_price.current_price * qty,
           payment_status: :unpaid
         }
       end

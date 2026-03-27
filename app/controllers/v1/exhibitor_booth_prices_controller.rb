@@ -5,7 +5,7 @@ module V1
     before_action :set_exhibitor_booth_price, only: %i[update destroy]
 
     def index
-      booth_prices = policy_scope(@event.exhibitor_booth_prices)
+      booth_prices = policy_scope(@event.exhibitor_booth_prices.includes(:exhibitor_booth_price_tiers))
       render json: booth_prices.map { |booth_price| serialize_booth_price(booth_price) }
     end
 
@@ -51,7 +51,11 @@ module V1
     end
 
     def serialize_booth_price(booth_price)
-      booth_price.as_json.merge('zone' => booth_price.zone)
+      booth_price.as_json.merge(
+        'zone' => booth_price.zone,
+        'current_price' => booth_price.current_price,
+        'active_price_tier_label' => booth_price.current_price_tier&.label
+      )
     end
   end
 end

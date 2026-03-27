@@ -5,6 +5,7 @@ RSpec.describe ExhibitorBoothPrice, type: :model do
     it { should belong_to(:event) }
     it { should belong_to(:exhibitor_zone).optional }
     it { should have_many(:exhibitor_kits) }
+    it { should have_many(:exhibitor_booth_price_tiers) }
   end
 
   describe 'validations' do
@@ -92,6 +93,38 @@ RSpec.describe ExhibitorBoothPrice, type: :model do
       )
 
       expect(unbounded_price).to be_valid
+    end
+  end
+
+  describe '#current_price' do
+    it 'returns the active tier price when a tier is active' do
+      booth_price = create(:exhibitor_booth_price, price: 1500)
+      create(
+        :exhibitor_booth_price_tier,
+        exhibitor_booth_price: booth_price,
+        label: 'Early Bird',
+        price: 1200,
+        start_date: 1.day.ago,
+        end_date: 1.day.from_now
+      )
+
+      expect(booth_price.current_price.to_f).to eq(1200.0)
+      expect(booth_price.current_price_tier&.label).to eq('Early Bird')
+    end
+
+    it 'falls back to the base price when no tier is active' do
+      booth_price = create(:exhibitor_booth_price, price: 1500)
+      create(
+        :exhibitor_booth_price_tier,
+        exhibitor_booth_price: booth_price,
+        label: 'Expired',
+        price: 1200,
+        start_date: 3.days.ago,
+        end_date: 2.days.ago
+      )
+
+      expect(booth_price.current_price.to_f).to eq(1500.0)
+      expect(booth_price.current_price_tier).to be_nil
     end
   end
 end
