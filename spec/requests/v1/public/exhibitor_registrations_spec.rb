@@ -118,6 +118,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
         product_category: 'Oil & Gas Equipment',
         payment_option: 'later',
         exhibitor_booth_price_id: booth_price.id,
+        is_booth_manager: true,
         custom_fields_data: {
           preferred_booth_location: 'Hall A',
           other_services: ['Advertising Opportunities']
@@ -150,10 +151,36 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(kit.payment_status).to eq('unpaid')
       expect(kit.custom_fields_data['preferred_booth_location']).to eq('Hall A')
       expect(kit.custom_fields_data['zone']).to eq('zone_d')
+      expect(kit.custom_fields_data['is_booth_manager']).to eq(true)
       expect(user.authenticate('TempPass123!')).to eq(user)
       expect(user.vendor_profile.category).to eq('Oil & Gas Equipment')
       expect(user.vendor_profile.person_in_charge).to eq('Amin Rahman')
       expect(user.vendor_profile.address).to eq('Kota Kinabalu')
+    end
+
+    it 'creates a booth manager team member and linked exhibitor ticket when requested' do
+      expect do
+        post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+      end.to change(ExhibitorTeamMember, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+
+      team_member = ExhibitorTeamMember.order(created_at: :desc).first
+      expect(team_member.full_name).to eq('Amin Rahman')
+      expect(team_member.email).to eq(email)
+      expect(team_member.phone).to eq('0123456789')
+      expect(team_member.attendee).to be_a(Ticket)
+      expect(team_member.attendee.ticket_type.name).to eq('Exhibitor')
+      expect(team_member.attendee.attendee_email).to eq(email)
+    end
+
+    it 'does not create a duplicate booth manager team member for an existing registration' do
+      post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+
+      expect do
+        post "/v1/public/events/#{event.slug}/register_exhibitor",
+             params: params.merge(pic_email_address: "  #{email.upcase}  ")
+      end.not_to change(ExhibitorTeamMember, :count)
     end
 
     it 'uses the active booth price tier for registration totals' do
@@ -198,6 +225,28 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']['already_registered']).to be(true)
       expect(json['data']['exhibitor_kit_id']).to eq(existing_kit.id)
       expect(existing_kit.reload.company_name).to eq('Acme Energy')
+    end
+
+    it 'persists booth manager state when an existing registration is re-submitted with booth manager enabled' do
+      existing_exhibitor = create(:exhibitor, event: event)
+      existing_kit = existing_exhibitor.exhibitor_kit
+      existing_kit.exhibitor_team_members.destroy_all
+      existing_kit.update!(
+        exhibitor_booth_price: booth_price,
+        pic_email_address: email,
+        custom_fields_data: { payment_option: 'later', zone: 'zone_d' }
+      )
+
+      expect do
+        post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+      end.to change(ExhibitorTeamMember, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(existing_kit.reload.custom_fields_data['is_booth_manager']).to eq(true)
+
+      json = JSON.parse(response.body)
+      expect(json['data']['already_registered']).to be(true)
+      expect(json['data']['exhibitor_kit']['custom_fields_data']['is_booth_manager']).to eq(true)
     end
 
     it 'returns 422 when the selected zone quota is full' do
@@ -247,13 +296,14 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
     let!(:exhibitor) { create(:exhibitor, event: event, vendor: vendor) }
     let!(:exhibitor_kit) do
-      exhibitor.exhibitor_kit.tap do |kit|
-        kit.update!(
-          exhibitor_booth_price: booth_price,
-          pic_email_address: 'amin@example.com',
-          payment_status: :paid
-        )
-      end
+        exhibitor.exhibitor_kit.tap do |kit|
+          kit.update!(
+            exhibitor_booth_price: booth_price,
+            pic_email_address: 'amin@example.com',
+            payment_status: :paid,
+            custom_fields_data: { is_booth_manager: true, zone: 'zone_d' }
+          )
+        end
     end
 
     it 'returns existing registration status by email' do
@@ -269,8 +319,19 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(json['data']['pic_email_address']).to eq('amin@example.com')
       expect(json['data']['exhibitor_booth_price_id']).to eq(booth_price.id)
       expect(json['data']['zone']).to eq('zone_d')
+      expect(json['data']['is_booth_manager']).to eq(true)
       expect(json['data']['payment_proof_uploaded']).to eq(false)
       expect(json['data']['payment_proof_url']).to be_nil
+    end
+
+    it 'normalizes legacy booth manager values in serialized status responses' do
+      exhibitor_kit.update!(custom_fields_data: exhibitor_kit.custom_fields_data.merge('is_booth_manager' => 'false'))
+
+      get "/v1/public/events/#{event.slug}/exhibitor_registration_status", params: { email: 'amin@example.com' }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['is_booth_manager']).to eq(false)
     end
   end
 
@@ -304,6 +365,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
         product_category: 'Oil & Gas Equipment',
         payment_option: 'later',
         exhibitor_booth_price_id: alternate_booth_price.id,
+        is_booth_manager: false,
         custom_fields_data: {
           preferred_booth_location: 'Hall B',
           other_services: ['Advertising Opportunities']
@@ -324,6 +386,78 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(existing_kit.company_name).to eq('Updated Company')
       expect(existing_kit.booth_number).to eq('B-01')
       expect(existing_kit.amount_paid.to_f).to eq(2500.0)
+    end
+
+    it 'creates the booth manager team member on update when missing' do
+      existing_kit.exhibitor_team_members.destroy_all
+
+      expect do
+        patch "/v1/public/events/#{event.slug}/register_exhibitor",
+              params: update_params.merge(is_booth_manager: true)
+      end.to change(ExhibitorTeamMember, :count).by(1)
+
+      team_member = existing_kit.reload.exhibitor_team_members.order(:id).last
+      expect(team_member.email).to eq(email)
+      expect(team_member.attendee).to be_a(Ticket)
+    end
+
+    it 'does not duplicate the booth manager team member on update' do
+      existing_kit.exhibitor_team_members.destroy_all
+      create(:exhibitor_team_member,
+             exhibitor_kit: existing_kit,
+             full_name: 'Amin Rahman',
+             email: email.upcase,
+             phone: '0123456789')
+
+      expect do
+        patch "/v1/public/events/#{event.slug}/register_exhibitor",
+              params: update_params.merge(is_booth_manager: true, pic_email_address: " #{email} ")
+      end.not_to change(ExhibitorTeamMember, :count)
+    end
+
+    it 'preserves booth manager state when update requests false after the booth manager attendee already exists' do
+      existing_kit.exhibitor_team_members.destroy_all
+      existing_kit.update!(custom_fields_data: existing_kit.custom_fields_data.merge('is_booth_manager' => true))
+      create(:exhibitor_team_member,
+             exhibitor_kit: existing_kit,
+             full_name: 'Amin Rahman',
+             email: email,
+             phone: '0123456789')
+
+      patch "/v1/public/events/#{event.slug}/register_exhibitor", params: update_params.merge(is_booth_manager: false)
+
+      expect(response).to have_http_status(:ok)
+      expect(existing_kit.reload.custom_fields_data['is_booth_manager']).to eq(true)
+      expect(existing_kit.exhibitor_team_members.count).to eq(1)
+
+      get "/v1/public/events/#{event.slug}/exhibitor_registration_status", params: { exhibitor_kit_id: existing_kit.id }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['is_booth_manager']).to eq(true)
+      expect(json['data']['custom_fields_data']['is_booth_manager']).to eq(true)
+    end
+
+    it 'does not establish booth manager state from an unrelated team member when update requests false' do
+      existing_kit.exhibitor_team_members.destroy_all
+      existing_kit.update!(custom_fields_data: existing_kit.custom_fields_data.except('is_booth_manager'))
+      create(:exhibitor_team_member,
+             exhibitor_kit: existing_kit,
+             full_name: 'Manual Team Member',
+             email: 'manual@example.com',
+             phone: '0123456789')
+
+      patch "/v1/public/events/#{event.slug}/register_exhibitor", params: update_params.merge(is_booth_manager: false)
+
+      expect(response).to have_http_status(:ok)
+      expect(existing_kit.reload.custom_fields_data['is_booth_manager']).to eq(false)
+
+      get "/v1/public/events/#{event.slug}/exhibitor_registration_status", params: { exhibitor_kit_id: existing_kit.id }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['is_booth_manager']).to eq(false)
+      expect(json['data']['custom_fields_data']['is_booth_manager']).to eq(false)
     end
   end
 

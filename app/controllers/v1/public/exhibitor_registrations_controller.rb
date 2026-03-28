@@ -90,6 +90,9 @@ module V1
 
         existing_kit = find_existing_registration(event: event, email: email)
         if existing_kit.present?
+          ensure_booth_manager_team_member!(existing_kit)
+          persist_booth_manager_state!(existing_kit)
+
           return render json: {
             success: true,
             data: serialize_existing_registration(existing_kit)
@@ -231,7 +234,8 @@ module V1
               ensure_zone_capacity!(booth_price: booth_price)
             end
 
-            existing_kit.update!(build_exhibitor_kit_attributes(booth_price))
+            existing_kit.update!(build_exhibitor_kit_attributes(booth_price, existing_kit: existing_kit))
+            ensure_booth_manager_team_member!(existing_kit)
             existing_kit
           end
         end
@@ -245,15 +249,23 @@ module V1
           event.with_lock do
             exhibitor = Exhibitor.find_by(event: event, vendor: user)
 
-            return exhibitor.exhibitor_kit if exhibitor&.exhibitor_kit.present?
+            if exhibitor&.exhibitor_kit.present?
+              ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
+              return exhibitor.exhibitor_kit
+            end
 
             ensure_zone_capacity!(booth_price: booth_price)
 
-            return exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price)) if exhibitor.present?
+            if exhibitor.present?
+              kit = exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+              ensure_booth_manager_team_member!(kit)
+              return kit
+            end
 
             exhibitor = Exhibitor.new(event: event, vendor: user)
             exhibitor.build_exhibitor_kit(build_exhibitor_kit_attributes(booth_price))
             exhibitor.save!
+            ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
             exhibitor.exhibitor_kit
           end
         end
@@ -294,7 +306,7 @@ module V1
         qty > 0 ? qty : 1
       end
 
-      def build_exhibitor_kit_attributes(booth_price)
+      def build_exhibitor_kit_attributes(booth_price, existing_kit: nil)
         custom_fields_data = (registration_params[:custom_fields_data] || {}).to_h
         payment_option = registration_params[:payment_option].to_s == 'later' ? 'later' : 'now'
         zone = booth_price.zone
@@ -311,7 +323,8 @@ module V1
           pic_email_address: registration_params[:pic_email_address],
           country: registration_params[:country],
           custom_fields_data: custom_fields_data.merge(payment_option: payment_option, zone: zone,
-                                                       product_category: registration_params[:product_category]),
+                                                       product_category: registration_params[:product_category],
+                                                       is_booth_manager: resolved_booth_manager_state(existing_kit: existing_kit)),
           exhibitor_booth_price: booth_price,
           booth_type: booth_price.booth_type,
           booth_quantity: qty,
@@ -335,8 +348,39 @@ module V1
           :payment_option,
           :exhibitor_booth_price_id,
           :booth_quantity,
+          :is_booth_manager,
           custom_fields_data: {}
         )
+      end
+
+      def booth_manager_requested?
+        ActiveModel::Type::Boolean.new.cast(registration_params[:is_booth_manager])
+      end
+
+      def resolved_booth_manager_state(existing_kit: nil)
+        return true if booth_manager_requested?
+        return false if existing_kit.blank?
+
+        custom_field_booth_manager_state(existing_kit) || booth_manager_established?(existing_kit)
+      end
+
+      def custom_field_booth_manager_state(exhibitor_kit)
+        ActiveModel::Type::Boolean.new.cast(exhibitor_kit.custom_fields_data&.dig('is_booth_manager'))
+      end
+
+      def booth_manager_established?(exhibitor_kit)
+        normalized_pic_email = registration_params[:pic_email_address].to_s.strip.downcase
+        return false if normalized_pic_email.blank?
+
+        exhibitor_kit.exhibitor_team_members.where('LOWER(email) = ?', normalized_pic_email).exists?
+      end
+
+      def persist_booth_manager_state!(exhibitor_kit)
+        resolved_state = resolved_booth_manager_state(existing_kit: exhibitor_kit)
+        return unless resolved_state
+        return if custom_field_booth_manager_state(exhibitor_kit)
+
+        exhibitor_kit.update!(custom_fields_data: (exhibitor_kit.custom_fields_data || {}).merge('is_booth_manager' => true))
       end
 
       def upsert_vendor_profile!(user)
@@ -394,6 +438,7 @@ module V1
             booth_label: nil,
             price: nil,
             zone: nil,
+            is_booth_manager: false,
             payment_proof_uploaded: false,
             payment_proof_url: nil
           }
@@ -420,10 +465,24 @@ module V1
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
           price: exhibitor_kit.amount_paid,
           zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone,
+          is_booth_manager: custom_field_booth_manager_state(exhibitor_kit),
           payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
           payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil,
           custom_fields_data: exhibitor_kit.custom_fields_data || {}
         }
+      end
+
+      def ensure_booth_manager_team_member!(exhibitor_kit)
+        return unless booth_manager_requested?
+
+        normalized_email = registration_params[:pic_email_address].to_s.strip.downcase
+        return if normalized_email.blank?
+
+        team_member = exhibitor_kit.exhibitor_team_members.where('LOWER(email) = ?', normalized_email).first_or_initialize
+        team_member.email = normalized_email
+        team_member.full_name = registration_params[:pic_full_name]
+        team_member.phone = registration_params[:pic_contact_number]
+        team_member.save!
       end
 
       def serialize_existing_registration(exhibitor_kit)
