@@ -54,7 +54,10 @@ class EventLocation < ApplicationRecord
     event_type = determine_event_type
     return if event_type.nil?
 
-    WebhookSenderJob.perform_later(event.webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    event.webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   private

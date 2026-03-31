@@ -197,11 +197,12 @@ module V1
       end
 
       def send_winner_webhook(winner)
-        webhook_url = @event.webhook_url
-        return unless webhook_url.present?
+        return unless @event.webhook_url.present?
 
         payload = build_winner_webhook_payload(winner)
-        WebhookSenderJob.perform_later(webhook_url, payload)
+        @event.webhook_urls.each do |url|
+          WebhookSenderJob.perform_later(url, payload)
+        end
       rescue StandardError => e
         # Log error but don't fail the request
         Rails.logger.error "Failed to queue webhook: #{e.message}"

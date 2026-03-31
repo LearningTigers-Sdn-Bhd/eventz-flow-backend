@@ -475,6 +475,19 @@ RSpec.describe 'V1::Roulette', type: :request do
         expect(body['message']).to eq('Notification sent successfully')
       end
 
+      it 'successfully sends notifications to multiple webhook URLs' do
+        urls = 'https://example.com/w1, https://example.com/w2'
+        event_with_webhook.update!(webhook_url: urls)
+
+        expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w1', any_args)
+        expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w2', any_args)
+
+        post "/v1/events/#{event_with_webhook.id}/roulette/sessions/#{session.id}/winners/#{winner.id}/notify",
+             headers: auth_header(exhibitor)
+
+        expect(response).to have_http_status(:ok)
+      end
+
       it 'returns error when event has no webhook_url' do
         event_with_webhook.update!(webhook_url: nil)
 

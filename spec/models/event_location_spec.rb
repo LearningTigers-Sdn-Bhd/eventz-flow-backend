@@ -143,5 +143,21 @@ RSpec.describe EventLocation, type: :model do
 
       expect { location.destroy }.to change { EventLocationMember.count }.by(-1)
     end
+
+    describe '#send_webhook_notification' do
+      let(:event) { create(:event, webhook_url: 'https://example.com/w1, https://example.com/w2') }
+      let(:location) { create(:event_location, event: event) }
+
+      before do
+        allow(location).to receive(:determine_event_type).and_return('event_location.created')
+      end
+
+      it 'enqueues a WebhookSenderJob for each URL' do
+        expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w1', any_args)
+        expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w2', any_args)
+
+        location.send(:send_webhook_notification)
+      end
+    end
   end
 end
