@@ -174,6 +174,10 @@ class Event < ApplicationRecord
     }
   end
 
+  def webhook_urls
+    webhook_url.to_s.split(',').map(&:strip).reject(&:blank?)
+  end
+
   def send_webhook_notification
     return if skip_webhooks
     return unless webhook_url.present?
@@ -181,7 +185,10 @@ class Event < ApplicationRecord
     event_type = determine_event_type
     return if event_type.nil? # Skip if no significant change
 
-    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   # Sync custom label keys to tickets and visitors when labels_data changes

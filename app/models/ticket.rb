@@ -73,9 +73,7 @@ class Ticket < ApplicationRecord
 
   def send_webhook_notification
     return if skip_webhooks
-
-    webhook_url = event.webhook_url
-    return unless webhook_url.present?
+    return unless event.webhook_url.present?
 
     event_type = determine_event_type
     return if event_type.nil?
@@ -83,7 +81,10 @@ class Ticket < ApplicationRecord
     # For updates, skip if nothing significant changed
     return if event_type == 'ticket.updated' && !significant_changes?
 
-    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    event.webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   # --- Soft Delete Methods ---

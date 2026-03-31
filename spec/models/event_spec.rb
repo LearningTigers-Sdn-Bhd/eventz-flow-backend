@@ -252,4 +252,56 @@ RSpec.describe Event, type: :model do
       end
     end
   end
+
+  describe '#webhook_urls' do
+    it 'returns empty array when webhook_url is nil' do
+      event = build(:event, webhook_url: nil)
+      expect(event.webhook_urls).to eq([])
+    end
+
+    it 'returns array with one URL when webhook_url is single' do
+      url = 'https://example.com/webhook'
+      event = build(:event, webhook_url: url)
+      expect(event.webhook_urls).to eq([url])
+    end
+
+    it 'returns array with multiple URLs when webhook_url is comma-separated' do
+      urls = 'https://example.com/w1, https://example.com/w2'
+      event = build(:event, webhook_url: urls)
+      expect(event.webhook_urls).to eq(['https://example.com/w1', 'https://example.com/w2'])
+    end
+
+    it 'handles extra spaces and empty values' do
+      urls = ' https://example.com/w1 , , https://example.com/w2 '
+      event = build(:event, webhook_url: urls)
+      expect(event.webhook_urls).to eq(['https://example.com/w1', 'https://example.com/w2'])
+    end
+  end
+
+  describe '#send_webhook_notification' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/w1, https://example.com/w2') }
+
+    before do
+      allow(event).to receive(:determine_event_type).and_return('event.updated')
+    end
+
+    it 'enqueues a WebhookSenderJob for each URL' do
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w1', any_args)
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w2', any_args)
+
+      event.send_webhook_notification
+    end
+
+    it 'skips if skip_webhooks is true' do
+      event.skip_webhooks = true
+      expect(WebhookSenderJob).not_to receive(:perform_later)
+      event.send_webhook_notification
+    end
+
+    it 'skips if determine_event_type is nil' do
+      allow(event).to receive(:determine_event_type).and_return(nil)
+      expect(WebhookSenderJob).not_to receive(:perform_later)
+      event.send_webhook_notification
+    end
+  end
 end
