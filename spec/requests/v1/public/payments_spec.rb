@@ -235,6 +235,105 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(payment.payment_method).to eq('card')
     end
 
+    it 'uses the event-specific gateway when exhibitor webhook notes include event_slug' do
+      gateway_event = create(:event, status: :published)
+      vendor = create(:user, :vendor, email: 'event-gateway@example.com')
+      exhibitor = create(:exhibitor, event: gateway_event, vendor: vendor)
+      booth_price = create(:exhibitor_booth_price, event: gateway_event, booth_type: 'shell_scheme',
+                                                   label: 'Premium', price: 1800)
+      exhibitor_kit = exhibitor.exhibitor_kit
+      exhibitor_kit.update!(
+        exhibitor_booth_price: booth_price,
+        amount_paid: 1800,
+        payment_status: :unpaid
+      )
+
+      payload = {
+        event: 'payment.captured',
+        payload: {
+          payment: {
+            entity: {
+              id: 'pay_exhibitor_gateway_123',
+              order_id: 'order_exhibitor_gateway_123',
+              method: 'card',
+              notes: {
+                type: 'exhibitor_registration',
+                event_slug: gateway_event.slug,
+                exhibitor_kit_id: exhibitor_kit.id
+              }
+            }
+          }
+        }
+      }
+
+      allow(Payments::RazorpayGateway).to receive(:for_event).with(gateway_event).and_return(gateway_instance)
+      allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
+
+      post '/v1/public/payments/webhook', params: payload.to_json, headers: {
+        'CONTENT_TYPE' => 'application/json',
+        'X-Razorpay-Signature' => 'valid_webhook_signature'
+      }
+
+      expect(response).to have_http_status(:ok)
+      expect(Payments::RazorpayGateway).to have_received(:for_event).with(gateway_event)
+      exhibitor_kit.reload
+      expect(exhibitor_kit.payment_status).to eq('paid')
+    end
+
+    it 'returns ok and keeps exhibitor registration paid when payment.captured is replayed' do
+      vendor = create(:user, :vendor, email: 'replay@example.com')
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      booth_price = create(:exhibitor_booth_price, event: event, booth_type: 'shell_scheme', label: 'Replay',
+                                                   price: 2000)
+      exhibitor_kit = exhibitor.exhibitor_kit
+      exhibitor_kit.update!(
+        exhibitor_booth_price: booth_price,
+        amount_paid: 2000,
+        payment_status: :paid
+      )
+      exhibitor_kit.create_exhibitor_registration_payment!(
+        gateway: 'razorpay',
+        amount: 2000,
+        status: :paid,
+        gateway_payment_id: 'pay_exhibitor_replay_123',
+        payment_method: 'card',
+        gateway_response: {
+          'id' => 'pay_exhibitor_replay_123',
+          'order_id' => 'order_exhibitor_replay_123',
+          'method' => 'card'
+        }
+      )
+
+      payload = {
+        event: 'payment.captured',
+        payload: {
+          payment: {
+            entity: {
+              id: 'pay_exhibitor_replay_123',
+              order_id: 'order_exhibitor_replay_123',
+              method: 'card',
+              notes: {
+                type: 'exhibitor_registration',
+                exhibitor_kit_id: exhibitor_kit.id
+              }
+            }
+          }
+        }
+      }
+
+      allow(gateway_instance).to receive(:valid_webhook_signature?).and_return(true)
+
+      post '/v1/public/payments/webhook', params: payload.to_json, headers: {
+        'CONTENT_TYPE' => 'application/json',
+        'X-Razorpay-Signature' => 'valid_webhook_signature'
+      }
+
+      expect(response).to have_http_status(:ok)
+      exhibitor_kit.reload
+      expect(exhibitor_kit.payment_status).to eq('paid')
+      expect(exhibitor_kit.exhibitor_registration_payment.status).to eq('paid')
+    end
+
     context 'extra_team_member payment type' do
       let(:extra_team_member_event) { create(:event, status: :published, use_exhibitor_kit: true) }
       let(:vendor) { create(:user, :vendor) }
