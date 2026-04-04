@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_31_010318) do
+ActiveRecord::Schema[8.0].define(version: 2026_04_04_035439) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1238,6 +1238,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_31_010318) do
     t.datetime "paid_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "payment_screenshot_url"
     t.index ["gateway_payment_id"], name: "index_ticket_payments_on_gateway_payment_id"
     t.index ["received_by_id"], name: "index_ticket_payments_on_received_by_id"
     t.index ["ticket_id", "gateway"], name: "index_ticket_payments_on_ticket_id_and_gateway", unique: true, where: "(gateway IS NOT NULL)"
