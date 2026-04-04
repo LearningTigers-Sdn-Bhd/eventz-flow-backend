@@ -15,6 +15,16 @@ class Ticket < ApplicationRecord
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
   has_one :ticket_payment, dependent: :destroy
+  
+  # Delegation for payment details to expose them directly on the Ticket object (for flat API)
+  # Uses build_ticket_payment if it doesn't exist yet to support updates
+  delegate :payment_method, :payment_method=, :payment_screenshot_url, :payment_screenshot_url=, 
+           :gateway_payment_id, :gateway_payment_id=, to: :payment_record, allow_nil: true
+  
+  # Alias gateway_payment_id to transaction_id to match frontend expectations
+  alias_method :transaction_id, :gateway_payment_id
+  alias_method :transaction_id=, :gateway_payment_id=
+
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
   has_many :event_leads, as: :leadable, dependent: :destroy
@@ -256,5 +266,10 @@ class Ticket < ApplicationRecord
 
   def send_confirmation_email
     TicketMailer.confirmation_email(self).deliver_later
+  end
+
+  # Helper method for delegation to handle creation of payment record on demand
+  def payment_record
+    ticket_payment || build_ticket_payment(amount: ticket_type&.price || 0)
   end
 end

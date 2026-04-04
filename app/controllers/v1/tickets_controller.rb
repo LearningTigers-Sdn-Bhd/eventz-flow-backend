@@ -36,6 +36,7 @@ module V1
       # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
 
       render json: @tickets.as_json(
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
         include: {
           ticket_type: { only: [:id, :name, :price] },
           scanned_by: { only: [:id, :full_name] }
@@ -47,7 +48,10 @@ module V1
     def show
       # Authorize the specific ticket record against the show? policy
       authorize @ticket
-      render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      render json: @ticket.as_json(
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        include: { ticket_type: { only: [:id, :name, :price] } }
+      ), status: :ok
     end
 
     # POST /v1/events/:event_id/tickets
@@ -66,7 +70,10 @@ module V1
 
       if @ticket.save
         @ticket.reload
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :created
+        render json: @ticket.as_json(
+          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+          include: { ticket_type: { only: [:id, :name, :price] } }
+        ), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -77,7 +84,10 @@ module V1
       authorize @ticket, :update?
 
       if @ticket.update(ticket_params_with_payment_sync)
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+        render json: @ticket.as_json(
+          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+          include: { ticket_type: { only: [:id, :name, :price] } }
+        ), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -120,7 +130,10 @@ module V1
       authorize @ticket, :restore?
 
       if @ticket.restore
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+        render json: @ticket.as_json(
+          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+          include: { ticket_type: { only: [:id, :name, :price] } }
+        ), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -377,7 +390,10 @@ module V1
       )
         render json: {
           message: 'Ticket successfully unscanned',
-          ticket: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } })
+          ticket: @ticket.as_json(
+            methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+            include: { ticket_type: { only: [:id, :name, :price] } }
+          )
         }, status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -438,6 +454,9 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
+        :payment_method,
+        :transaction_id,
+        :payment_screenshot_url,
         :role,
         :skip_webhooks,
         custom_fields_data: {}
