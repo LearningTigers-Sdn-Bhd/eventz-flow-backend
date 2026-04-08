@@ -22,7 +22,8 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       booth_type: 'raw_space',
       label: 'International',
       price: 2500.00,
-      quota: 30
+      quota: 30,
+      conferences_included: true
     )
   end
 
@@ -172,6 +173,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(team_member.attendee).to be_a(Ticket)
       expect(team_member.attendee.ticket_type.name).to eq('Exhibitor')
       expect(team_member.attendee.attendee_email).to eq(email)
+      expect(team_member.attendee.custom_fields_data['conferences_included']).to eq(false)
     end
 
     it 'does not create a duplicate booth manager team member for an existing registration' do
@@ -374,6 +376,9 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
 
     it 'updates existing registration details and booth package' do
+      existing_team_member = existing_kit.exhibitor_team_members.first
+      existing_team_member.attendee.update!(custom_fields_data: { legacy_note: 'keep me' })
+
       patch "/v1/public/events/#{event.slug}/register_exhibitor", params: update_params
 
       expect(response).to have_http_status(:ok)
@@ -386,6 +391,11 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(existing_kit.company_name).to eq('Updated Company')
       expect(existing_kit.booth_number).to eq('B-01')
       expect(existing_kit.amount_paid.to_f).to eq(2500.0)
+
+      existing_team_member.update!(phone: '0198765432')
+      existing_team_member.attendee.reload
+      expect(existing_team_member.attendee.custom_fields_data['legacy_note']).to eq('keep me')
+      expect(existing_team_member.attendee.custom_fields_data['conferences_included']).to eq(true)
     end
 
     it 'creates the booth manager team member on update when missing' do
@@ -399,6 +409,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       team_member = existing_kit.reload.exhibitor_team_members.order(:id).last
       expect(team_member.email).to eq(email)
       expect(team_member.attendee).to be_a(Ticket)
+      expect(team_member.attendee.custom_fields_data['conferences_included']).to eq(true)
     end
 
     it 'does not duplicate the booth manager team member on update' do

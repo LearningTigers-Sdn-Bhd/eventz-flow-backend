@@ -90,6 +90,22 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       expect(event.ticket_types.where(name: 'Exhibitor').count).to eq(1)
     end
 
+    it 'stamps conferences_included on a team member added after the exhibitor kit already exists' do
+      booth_price = create(:exhibitor_booth_price, event: event, conferences_included: true)
+      exhibitor_kit.update!(exhibitor_booth_price: booth_price)
+
+      member = create(
+        :exhibitor_team_member,
+        exhibitor_kit: exhibitor_kit,
+        full_name: 'Later Add',
+        email: 'later@example.com',
+        phone: '+60122222222'
+      )
+
+      expect(member.reload.attendee).to be_a(Ticket)
+      expect(member.attendee.custom_fields_data['conferences_included']).to eq(true)
+    end
+
     context 'when a team member limit with extra fee is configured' do
       let!(:team_member_limit) do
         create(:exhibitor_team_member_limit, event: event, team_member_limit: 3, extra_team_member_fee: 50.00)

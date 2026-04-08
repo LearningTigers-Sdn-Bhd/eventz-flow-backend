@@ -413,6 +413,8 @@ module V1
           payment_proof_uploaded: exhibitor_kit.payment_proof.attached?,
           payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil,
           exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
+          exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
+          exhibitor_booth_price_conferences_included: exhibitor_kit.exhibitor_booth_price&.conferences_included,
           custom_fields_data: exhibitor_kit.custom_fields_data || {}
         }
       end
@@ -463,6 +465,8 @@ module V1
           preferred_booth_location: exhibitor_kit.custom_fields_data&.dig('preferred_booth_location'),
           other_services: exhibitor_kit.custom_fields_data&.dig('other_services') || [],
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
+          exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
+          exhibitor_booth_price_conferences_included: exhibitor_kit.exhibitor_booth_price&.conferences_included,
           price: exhibitor_kit.amount_paid,
           zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone,
           is_booth_manager: custom_field_booth_manager_state(exhibitor_kit),

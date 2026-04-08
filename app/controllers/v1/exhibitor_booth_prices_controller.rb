@@ -47,7 +47,7 @@ module V1
     end
 
     def exhibitor_booth_price_params
-      params.require(:exhibitor_booth_price).permit(:booth_type, :exhibitor_zone_id, :label, :price, :quota)
+      params.require(:exhibitor_booth_price).permit(:booth_type, :exhibitor_zone_id, :label, :price, :quota, :conferences_included)
     end
 
     def serialize_booth_price(booth_price)

@@ -213,6 +213,9 @@ module V1
         amount_paid: exhibitor_kit.amount_paid,
         payment_note: exhibitor_kit.payment_note,
         indemnity_link: exhibitor_kit.indemnity_link,
+        exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
+        exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
+        exhibitor_booth_price_conferences_included: exhibitor_kit.exhibitor_booth_price&.conferences_included,
         custom_fields_data: exhibitor_kit.custom_fields_data,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),

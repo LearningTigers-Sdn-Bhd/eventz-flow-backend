@@ -85,6 +85,12 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
     required: %w[id event_id vendor_id type redirect_url]
   }.freeze
 
+  EXHIBITOR_KIT_SCHEMA[:properties].merge!(
+    exhibitor_booth_price_id: { type: :integer, nullable: true },
+    exhibitor_booth_price_label: { type: :string, nullable: true, example: 'Shell Scheme Booth (3m x 3m)' },
+    exhibitor_booth_price_conferences_included: { type: :boolean, nullable: true, example: true }
+  )
+
   # ============================================================
   # Setup
   # ============================================================
@@ -137,6 +143,41 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           expect(data.first).to have_key('type')
           expect(data.first['vendor_id']).to be_present
           expect(data.first['type']).to eq('Merchant')
+        end
+      end
+
+      response '200', 'Returns exhibitor booth price summary inside exhibitor_kit' do
+        let!(:event) { create(:event, title: 'Exhibition Event', use_exhibitor_kit: true) }
+        let!(:event_admin_assignment) do
+          create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin')
+        end
+        let!(:booth_price) do
+          create(
+            :exhibitor_booth_price,
+            event: event,
+            booth_type: 'shell_scheme',
+            label: 'Shell Scheme Booth (3m x 3m)',
+            conferences_included: true
+          )
+        end
+        let!(:exhibitor_user) { create(:user, role: :vendor, full_name: 'Expo Vendor', email: 'expo@example.com') }
+        let!(:exhibitor) { create(:exhibitor, event: event, vendor: exhibitor_user) }
+
+        before do
+          exhibitor.exhibitor_kit.update!(exhibitor_booth_price: booth_price)
+        end
+
+        schema type: :array,
+               items: VENDOR_RESPONSE_SCHEMA
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          exhibitor_payload = data.find { |vendor| vendor['id'] == exhibitor.id }
+
+          expect(exhibitor_payload).to be_present
+          expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_id']).to eq(booth_price.id)
+          expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_label']).to eq('Shell Scheme Booth (3m x 3m)')
+          expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_conferences_included']).to be(true)
         end
       end
 
