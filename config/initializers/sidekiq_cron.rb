@@ -17,5 +17,11 @@ Rails.application.config.after_initialize do
       cron: '0 9 * * *',
       class: 'EventReminderJob'
     )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send pending payment reminders - Mondays at 9am',
+      cron: '0 9 * * 1',
+      class: 'PendingPaymentReminderJob'
+    )
   end
 end
