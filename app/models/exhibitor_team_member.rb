@@ -23,7 +23,10 @@ class ExhibitorTeamMember < ApplicationRecord
   end
 
   def destroy_attendee_record
-    attendee&.destroy!
+    return attendee&.destroy! unless attendee.is_a?(Ticket)
+    return unless attendee.ticket_type&.name == ExhibitorTeamMemberAttendeeSyncService::EXHIBITOR_TICKET_TYPE_NAME
+
+    attendee.destroy!
   end
 
   def store_exhibitor_kit_for_reconciliation

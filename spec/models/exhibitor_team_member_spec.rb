@@ -106,6 +106,78 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       expect(member.attendee.custom_fields_data['conferences_included']).to eq(true)
     end
 
+    it 'reuses and upgrades an existing conference-like ticket for Borneo Expo booth managers' do
+      event.update!(slug: 'borneo-expo-2026')
+      exhibitor_kit.update!(payment_status: :paid)
+
+      create(:ticket_type, event: event, name: 'Conference Pass 2026')
+      combined_ticket_type = create(:ticket_type, event: event, name: 'Exhibitor & Conference Bundle')
+      existing_ticket = create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: event.ticket_types.find_by!(name: 'Conference Pass 2026'),
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Jane Conference',
+        attendee_email: 'jane@example.com',
+        attendee_phone: '+60123456789',
+        status: :purchased
+      )
+      original_public_id = existing_ticket.public_id
+
+      expect do
+        @member = create(
+          :exhibitor_team_member,
+          exhibitor_kit: exhibitor_kit,
+          full_name: 'Jane Expo',
+          email: 'jane@example.com',
+          phone: '+60123456789'
+        )
+      end.not_to change(Ticket, :count)
+
+      ticket = @member.reload.attendee
+      expect(ticket.id).to eq(existing_ticket.id)
+      expect(ticket.public_id).to eq(original_public_id)
+      expect(ticket.ticket_type).to eq(combined_ticket_type)
+      expect(ticket.role).to eq('Custom Exhibitor Role')
+      expect(ticket.status).to eq('purchased')
+      expect(ticket.payment_status).to eq('paid')
+    end
+
+    it 'does not destroy a reused combined ticket when the team member is deleted' do
+      event.update!(slug: 'borneo-expo-2026')
+      exhibitor_kit.update!(payment_status: :paid)
+
+      create(:ticket_type, event: event, name: 'Conference Pass 2026')
+      combined_ticket_type = create(:ticket_type, event: event, name: 'Exhibitor & Conference Bundle')
+      existing_ticket = create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: event.ticket_types.find_by!(name: 'Conference Pass 2026'),
+        attendee_name: 'Jane Conference',
+        attendee_email: 'jane@example.com',
+        attendee_phone: '+60123456789',
+        status: :purchased
+      )
+
+      member = create(
+        :exhibitor_team_member,
+        exhibitor_kit: exhibitor_kit,
+        full_name: 'Jane Expo',
+        email: 'jane@example.com',
+        phone: '+60123456789'
+      )
+
+      expect(member.reload.attendee).to eq(existing_ticket)
+
+      expect do
+        member.destroy!
+      end.not_to change(Ticket, :count)
+
+      expect(existing_ticket.reload.ticket_type).to eq(combined_ticket_type)
+    end
+
     context 'when a team member limit with extra fee is configured' do
       let!(:team_member_limit) do
         create(:exhibitor_team_member_limit, event: event, team_member_limit: 3, extra_team_member_fee: 50.00)

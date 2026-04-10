@@ -176,6 +176,41 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(team_member.attendee.custom_fields_data['conferences_included']).to eq(false)
     end
 
+    it 'reuses and upgrades an existing conference-like ticket for Borneo Expo booth managers' do
+      event.update!(slug: 'borneo-expo-2026')
+
+      create(:ticket_type, event: event, name: 'Delegate Admission')
+      combined_ticket_type = create(:ticket_type, event: event, name: 'Exhibitor & Conference Bundle')
+      existing_ticket = create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: event.ticket_types.find_by!(name: 'Delegate Admission'),
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Amin Delegate',
+        attendee_email: email,
+        attendee_phone: '0123456789',
+        status: :purchased
+      )
+      original_public_id = existing_ticket.public_id
+
+      expect do
+        post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
+      end.to change(ExhibitorTeamMember, :count).by(1)
+         .and change(Ticket, :count).by(0)
+
+      expect(response).to have_http_status(:created)
+
+      team_member = ExhibitorTeamMember.order(created_at: :desc).first
+      ticket = team_member.reload.attendee
+
+      expect(ticket.id).to eq(existing_ticket.id)
+      expect(ticket.public_id).to eq(original_public_id)
+      expect(ticket.ticket_type).to eq(combined_ticket_type)
+      expect(ticket.role).to eq('Custom Exhibitor Role')
+      expect(ticket.attendee_email).to eq(email)
+    end
+
     it 'does not create a duplicate booth manager team member for an existing registration' do
       post "/v1/public/events/#{event.slug}/register_exhibitor", params: params
 
@@ -298,14 +333,14 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
     let!(:exhibitor) { create(:exhibitor, event: event, vendor: vendor) }
     let!(:exhibitor_kit) do
-        exhibitor.exhibitor_kit.tap do |kit|
-          kit.update!(
-            exhibitor_booth_price: booth_price,
-            pic_email_address: 'amin@example.com',
-            payment_status: :paid,
-            custom_fields_data: { is_booth_manager: true, zone: 'zone_d' }
-          )
-        end
+      exhibitor.exhibitor_kit.tap do |kit|
+        kit.update!(
+          exhibitor_booth_price: booth_price,
+          pic_email_address: 'amin@example.com',
+          payment_status: :paid,
+          custom_fields_data: { is_booth_manager: true, zone: 'zone_d' }
+        )
+      end
     end
 
     it 'returns existing registration status by email' do

@@ -9,8 +9,9 @@ module V1
       def create_order
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
+        conference_upgrade_order = borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
 
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !conference_upgrade_order
           return render json: {
             success: true,
             data: {
@@ -22,7 +23,7 @@ module V1
           }, status: :ok
         end
 
-        unless ticket.pending? && ticket.pending_payment?
+        unless conference_upgrade_order || (ticket.pending? && ticket.pending_payment?)
           return render json: {
             success: false,
             message: 'Ticket is not eligible for payment'
@@ -53,7 +54,14 @@ module V1
           only_path: false
         )
 
-        order = if existing_order_id.present?
+        order = if conference_upgrade_order
+                  conference_upgrade_ticket_type = conference_upgrade_ticket_type_for(event:)
+                  gateway.create_order(
+                    amount_subunits: (borneo_conference_upgrade_amount(ticket:, event:, conference_ticket_type: conference_upgrade_ticket_type) * 100).round,
+                    receipt: ticket.public_id,
+                    notes: borneo_conference_upgrade_notes(event:, ticket:, conference_ticket_type: conference_upgrade_ticket_type)
+                  )
+                elsif existing_order_id.present?
                   payment.gateway_response
                 else
                   total_amount = group_tickets.sum { |t| t.ticket_type.current_price.to_f }
@@ -112,7 +120,7 @@ module V1
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
         # Check if payment was already processed (webhook might have handled it)
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
           redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
                       allow_other_host: true
           return
@@ -142,6 +150,8 @@ module V1
           signature: signature,
           payment_entity: payment_entity
         )
+
+        form_slug = callback_success_form_slug(ticket: ticket.reload, fallback_form_slug: form_slug, payment_entity: payment_entity)
 
         redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
                     allow_other_host: true
@@ -173,7 +183,7 @@ module V1
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
 
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
           return render json: {
             success: true,
             data: {
@@ -385,26 +395,136 @@ module V1
         tickets_to_mark |= [ticket]
 
         gateway_response = (payment_entity || {}).merge(order_id: order_id, payment_id: payment_id, signature: signature)
+        upgraded_tickets = []
 
         Ticket.transaction do
           tickets_to_mark.each do |t|
             t.lock!
+
+            if borneo_conference_upgrade_payment?(event:, ticket: t, payment_entity:)
+              mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
+              apply_borneo_conference_upgrade!(event:, ticket: t)
+              upgraded_tickets << t.reload
+              next
+            end
+
             next if t.paid? && t.purchased?
 
-            payment_record = t.ticket_payment || TicketPayment.find_or_initialize_by(ticket: t, gateway: 'razorpay')
-            payment_record.assign_attributes(
-              amount: t.ticket_type.current_price.to_f,
-              status: 'paid',
-              paid_at: Time.current,
-              gateway_payment_id: payment_id,
-              payment_method: gateway_response['method'].to_s.presence,
-              gateway_response: gateway_response
-            )
-            payment_record.save!
-
-            t.update!(payment_status: :paid, status: :purchased)
+            mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
           end
         end
+
+        upgraded_tickets.each do |upgraded_ticket|
+          TicketMailer.confirmation_email(upgraded_ticket).deliver_later
+        end
+      end
+
+      def borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
+        borneo_event_slug?(event) && exhibitor_only_ticket_type?(ticket.ticket_type) && ticket.paid? && ticket.purchased?
+      end
+
+      def borneo_conference_upgrade_payment?(event:, ticket:, payment_entity:)
+        borneo_event_slug?(event) && exhibitor_only_ticket_type?(ticket.ticket_type) &&
+          payment_entity.to_h.dig('notes', 'upgrade_target').to_s == 'conference'
+      end
+
+      def borneo_conference_upgrade_amount(ticket:, event:, conference_ticket_type: nil)
+        conference_ticket_type&.current_price.to_f.presence ||
+          borneo_combined_ticket_type_for(event)&.current_price.to_f.presence ||
+          ticket.ticket_type.current_price.to_f
+      end
+
+      def borneo_conference_upgrade_notes(event:, ticket:, conference_ticket_type: nil)
+        notes = {
+          event_slug: event.slug,
+          ticket_public_id: ticket.public_id,
+          upgrade_target: 'conference'
+        }
+
+        form_slug = params[:form_slug].to_s.strip
+        notes[:form_slug] = form_slug if form_slug.present?
+        notes[:conference_ticket_type_id] = conference_ticket_type.id.to_s if conference_ticket_type.present?
+        notes
+      end
+
+      def apply_borneo_conference_upgrade!(event:, ticket:)
+        combined_ticket_type = borneo_combined_ticket_type_for(event)
+        return if combined_ticket_type.blank? || ticket.ticket_type == combined_ticket_type
+
+        ticket.update!(ticket_type: combined_ticket_type)
+      end
+
+      def callback_success_form_slug(ticket:, fallback_form_slug:, payment_entity:)
+        payment_notes = payment_entity.to_h['notes'].to_h
+        if payment_notes['upgrade_target'].to_s == 'conference'
+          return payment_notes['form_slug'].to_s.presence ||
+                 ticket.ticket_type.registration_forms.first&.slug ||
+                 fallback_form_slug ||
+                 'conference'
+        end
+
+        ticket.ticket_type.registration_forms.first&.slug || fallback_form_slug || 'standard'
+      end
+
+      def conference_upgrade_ticket_type_for(event:)
+        ticket_type_id = params[:ticket_type_id].to_i
+        return if ticket_type_id.zero?
+
+        ticket_type = event.ticket_types.find_by(id: ticket_type_id)
+        return if ticket_type.blank?
+
+        form_slug = params[:form_slug].to_s.strip
+        return ticket_type if form_slug.blank?
+
+        form = event.registration_forms.find_by(slug: form_slug)
+        return unless form && conference_like_name?(form.slug)
+
+        form.ticket_types.exists?(id: ticket_type.id) ? ticket_type : nil
+      end
+
+      def mark_ticket_paid!(ticket:, payment_id:, gateway_response:, payment_entity:)
+        payment_record = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
+        payment_record.assign_attributes(
+          amount: paid_amount_for(ticket:, payment_entity:),
+          status: 'paid',
+          paid_at: Time.current,
+          gateway_payment_id: payment_id,
+          payment_method: gateway_response['method'].to_s.presence,
+          gateway_response: gateway_response
+        )
+        payment_record.save!
+
+        ticket.update!(payment_status: :paid, status: :purchased)
+      end
+
+      def paid_amount_for(ticket:, payment_entity:)
+        amount_subunits = payment_entity.to_h['amount']
+        return amount_subunits.to_f / 100 if amount_subunits.present?
+
+        ticket.ticket_type.current_price.to_f
+      end
+
+      def borneo_combined_ticket_type_for(event)
+        event.ticket_types.find { |ticket_type| borneo_combined_ticket_type?(ticket_type) }
+      end
+
+      def borneo_combined_ticket_type?(ticket_type)
+        name = ticket_type&.name.to_s.downcase
+        name.include?('exhibitor') && conference_like_name?(name)
+      end
+
+      def exhibitor_only_ticket_type?(ticket_type)
+        name = ticket_type&.name.to_s.downcase
+        name.include?('exhibitor') && !conference_like_name?(name)
+      end
+
+      def conference_like_name?(value)
+        name = value.to_s.strip.downcase
+        name.include?('conference') || name.include?('delegate')
+      end
+
+      def borneo_event_slug?(event)
+        event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX)
       end
 
       def mark_ticket_failed!(ticket:, payment_id:, order_id:, gateway_response: nil)

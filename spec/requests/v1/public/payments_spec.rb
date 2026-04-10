@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'V1::Public::Payments', type: :request do
+  include ActiveJob::TestHelper
+
   let(:event) { create(:event, status: :published) }
   let(:ticket_type) do
     create(:ticket_type, event: event, price: 120.0, status: :published, hidden: false)
@@ -79,6 +81,130 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       json = JSON.parse(response.body)
       expect(json['data']['amount']).to eq(12_000)
     end
+
+    it 'creates a payment order for a borneo conference upgrade without upgrading the exhibitor ticket yet' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        role: 'Exhibitor',
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      allow(gateway_instance).to receive(:create_order).and_return(
+        {
+          'id' => 'order_borneo_upgrade_123',
+          'amount' => 12_000,
+          'currency' => 'MYR',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference'
+          }
+        }
+      )
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/create_order", params: {
+        ticket_public_id: existing_ticket.public_id
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['data']['already_paid']).not_to be(true)
+      expect(json['data']['order_id']).to eq('order_borneo_upgrade_123')
+      expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+    end
+
+    it 'charges a conference upgrade using the selected conference ticket price and stores the originating form slug' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      conference_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Conference Pass',
+        price: 80.0,
+        status: :published,
+        hidden: false
+      )
+      combined_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      conference_form = create(:registration_form, event: borneo_event, name: 'Conferences', slug: 'conferences')
+      conference_form.ticket_types << conference_ticket_type
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      expect(gateway_instance).to receive(:create_order).with(
+        amount_subunits: 8_000,
+        receipt: existing_ticket.public_id,
+        notes: {
+          event_slug: borneo_event.slug,
+          ticket_public_id: existing_ticket.public_id,
+          upgrade_target: 'conference',
+          form_slug: 'conferences',
+          conference_ticket_type_id: conference_ticket_type.id.to_s
+        }
+      ).and_return(
+        {
+          'id' => 'order_borneo_upgrade_456',
+          'amount' => 8_000,
+          'currency' => 'MYR'
+        }
+      )
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/create_order", params: {
+        ticket_public_id: existing_ticket.public_id,
+        form_slug: 'conferences',
+        ticket_type_id: conference_ticket_type.id
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['data']['amount']).to eq(8_000)
+      expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+      expect(combined_ticket_type.current_price.to_f).to eq(120.0)
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/payments/verify' do
@@ -118,6 +244,182 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(pending_ticket.payment_status).to eq('pending')
       expect(pending_ticket.status).to eq('pending_payment')
     end
+
+    it 'upgrades a borneo exhibitor ticket to the combined type only after successful verification' do
+      ActionMailer::Base.deliveries.clear
+
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      combined_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_upgrade_123').and_return(
+        {
+          'id' => 'pay_upgrade_123',
+          'order_id' => 'order_upgrade_123',
+          'method' => 'card',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference'
+          }
+        }
+      )
+
+      clear_enqueued_jobs
+
+      perform_enqueued_jobs do
+        post "/v1/public/events/#{borneo_event.slug}/payments/verify", params: {
+          ticket_public_id: existing_ticket.public_id,
+          razorpay_order_id: 'order_upgrade_123',
+          razorpay_payment_id: 'pay_upgrade_123',
+          razorpay_signature: 'valid_signature'
+        }
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(ActionMailer::Base.deliveries.size).to eq(1)
+      expect(ActionMailer::Base.deliveries.last.body.encoded).to include('Exhibitor & Conference')
+
+      existing_ticket.reload
+      expect(existing_ticket.ticket_type).to eq(combined_ticket_type)
+      expect(existing_ticket.public_id).to be_present
+      expect(existing_ticket.payment_status).to eq('paid')
+      expect(existing_ticket.status).to eq('purchased')
+      expect(existing_ticket.role).to eq('Custom Exhibitor Role')
+    end
+
+    it 'marks conference-upgrade verification as paid and purchased even if the source exhibitor ticket was pending' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      combined_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_upgrade_pending_123').and_return(
+        {
+          'id' => 'pay_upgrade_pending_123',
+          'order_id' => 'order_upgrade_pending_123',
+          'method' => 'card',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference'
+          }
+        }
+      )
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/verify", params: {
+        ticket_public_id: existing_ticket.public_id,
+        razorpay_order_id: 'order_upgrade_pending_123',
+        razorpay_payment_id: 'pay_upgrade_pending_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json.dig('data', 'payment_status')).to eq('paid')
+      expect(json.dig('data', 'status')).to eq('purchased')
+
+      existing_ticket.reload
+      expect(existing_ticket.ticket_type).to eq(combined_ticket_type)
+      expect(existing_ticket.payment_status).to eq('paid')
+      expect(existing_ticket.status).to eq('purchased')
+      expect(existing_ticket.role).to eq('Custom Exhibitor Role')
+      expect(existing_ticket.ticket_payment).to be_present
+    end
+
+    it 'does not upgrade a borneo exhibitor ticket when verification fails' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        role: 'Custom Exhibitor Role',
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(false)
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/verify", params: {
+        ticket_public_id: existing_ticket.public_id,
+        razorpay_order_id: 'order_upgrade_123',
+        razorpay_payment_id: 'pay_upgrade_123',
+        razorpay_signature: 'invalid_signature'
+      }
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      existing_ticket.reload
+      expect(existing_ticket.ticket_type).to eq(exhibitor_ticket_type)
+      expect(existing_ticket.payment_status).to eq('paid')
+      expect(existing_ticket.status).to eq('purchased')
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/payments/callback' do
@@ -137,6 +439,121 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/register/standard?step=success')
       expect(pending_ticket.reload.ticket_payment.payment_method).to eq('fpx')
+    end
+
+    it 'redirects borneo conference-upgrade payments to the conference form path without changing role' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      combined_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      conference_form = create(:registration_form, event: borneo_event, name: 'Conference', slug: 'conference')
+      conference_form.ticket_types << combined_ticket_type
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        role: 'Custom Exhibitor Role',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_upgrade_123').and_return(
+        {
+          'id' => 'pay_upgrade_123',
+          'order_id' => 'order_upgrade_123',
+          'method' => 'fpx',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference'
+          }
+        }
+      )
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/callback", params: {
+        ticket_public_id: existing_ticket.public_id,
+        razorpay_order_id: 'order_upgrade_123',
+        razorpay_payment_id: 'pay_upgrade_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:found)
+      expect(response.location).to include('https://forms.example.com/register/conference?step=success')
+
+      existing_ticket.reload
+      expect(existing_ticket.ticket_type).to eq(combined_ticket_type)
+      expect(existing_ticket.role).to eq('Custom Exhibitor Role')
+    end
+
+    it 'redirects borneo conference-upgrade payments back to the originating conference-like form slug' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      combined_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Exhibitor & Conference',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      conference_form = create(:registration_form, event: borneo_event, name: 'Conferences', slug: 'conferences')
+      conference_form.ticket_types << combined_ticket_type
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        role: 'Premium Exhibitor Access',
+        status: :purchased,
+        payment_status: :paid
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_upgrade_slug_123').and_return(
+        {
+          'id' => 'pay_upgrade_slug_123',
+          'order_id' => 'order_upgrade_slug_123',
+          'method' => 'fpx',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference',
+            'form_slug' => 'conferences'
+          }
+        }
+      )
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/callback", params: {
+        ticket_public_id: existing_ticket.public_id,
+        razorpay_order_id: 'order_upgrade_slug_123',
+        razorpay_payment_id: 'pay_upgrade_slug_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:found)
+      expect(response.location).to include('https://forms.example.com/register/conferences?step=success')
     end
   end
 

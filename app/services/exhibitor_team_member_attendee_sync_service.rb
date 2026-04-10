@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class ExhibitorTeamMemberAttendeeSyncService
-  EXHIBITOR_TICKET_TYPE_NAME = 'Exhibitor'.freeze
+  EXHIBITOR_TICKET_TYPE_NAME = 'Exhibitor'
   TICKET_TYPE_QUANTITY = 99_999
 
   def initialize(team_member)
@@ -11,7 +11,14 @@ class ExhibitorTeamMemberAttendeeSyncService
   def call
     return unless event&.use_ticket?
 
-    ticket = @team_member.attendee.is_a?(Ticket) ? update_ticket(@team_member.attendee) : create_ticket
+    ticket = if @team_member.attendee.is_a?(Ticket)
+               update_ticket(@team_member.attendee)
+             elsif (reusable_ticket = reusable_borneo_exhibitor_ticket)
+               update_ticket(reusable_ticket)
+             else
+               create_ticket
+             end
+
     link_ticket(ticket)
   end
 
@@ -35,13 +42,13 @@ class ExhibitorTeamMemberAttendeeSyncService
 
   def update_ticket(ticket)
     status, payment_status = desired_ticket_state(ticket)
+    ticket_type = desired_ticket_type(ticket)
 
     ticket.update!(
-      ticket_type: exhibitor_ticket_type,
+      ticket_type: ticket_type,
       attendee_name: @team_member.full_name,
       attendee_email: @team_member.email,
       attendee_phone: @team_member.phone,
-      role: EXHIBITOR_TICKET_TYPE_NAME,
       status: status,
       payment_status: payment_status,
       custom_fields_data: merged_custom_fields(ticket)
@@ -74,6 +81,29 @@ class ExhibitorTeamMemberAttendeeSyncService
       ticket_type.status = :published
       ticket_type.hidden = true
     end
+  end
+
+  def reusable_borneo_exhibitor_ticket
+    BorneoExpoTicketUpgradeService.call(
+      event: event,
+      attendee_email: @team_member.email,
+      target_category: 'exhibitor'
+    )
+  end
+
+  def desired_ticket_type(ticket)
+    return ticket.ticket_type if borneo_combined_ticket_type?(ticket.ticket_type)
+
+    exhibitor_ticket_type
+  end
+
+  def borneo_combined_ticket_type?(ticket_type)
+    unless event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX)
+      return false
+    end
+
+    name = ticket_type&.name.to_s.downcase
+    name.include?('exhibitor') && (name.include?('conference') || name.include?('delegate'))
   end
 
   def desired_ticket_state(ticket = nil)

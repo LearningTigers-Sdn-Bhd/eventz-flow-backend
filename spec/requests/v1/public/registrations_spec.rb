@@ -317,6 +317,263 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(json['message']).to include('not open')
       end
     end
+
+    context 'for Borneo Expo conference registration' do
+      let(:event) { create(:event, slug: 'borneo-expo-2026', status: :published) }
+      let!(:conference_ticket_type) do
+        create(:ticket_type, event: event, name: 'Conference Pass', price: 100.00, status: :published, hidden: false)
+      end
+      let!(:combined_ticket_type) do
+        create(:ticket_type, event: event, name: 'Exhibitor & Conference', price: 100.00, status: :published,
+                             hidden: false)
+      end
+      let!(:conference_form) do
+        form = create(:registration_form, event: event, name: 'Conference', slug: 'conference')
+        form.ticket_types << conference_ticket_type
+        form
+      end
+
+      let(:valid_params) do
+        super().merge(ticket_type_id: conference_ticket_type.id, form_slug: 'conference')
+      end
+
+      it 'returns conference upgrade data for an existing exhibitor ticket' do
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        existing_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_name: 'Existing Name',
+          attendee_email: 'JOHN@example.com',
+          attendee_phone: '0000000000',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        get "/v1/public/events/#{event.slug}/registration_status", params: {
+          email: 'john@example.com',
+          form_slug: 'conference'
+        }
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+
+        expect(json['data']['upgrade_mode']).to be(true)
+        expect(json['data']['upgrade_target']).to eq('conference')
+        expect(json['data']['existing_ticket_public_id']).to eq(existing_ticket.public_id)
+        expect(json['data']['existing_attendee_name']).to eq('Existing Name')
+        expect(json['data']['existing_attendee_email']).to eq('JOHN@example.com')
+        expect(json['data']['existing_attendee_phone']).to eq('0000000000')
+        expect(json['data']['existing_ticket_type']).to eq('Premium Exhibitor Access')
+      end
+
+      it 'does not enter conference upgrade mode for unpaid exhibitor tickets' do
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        create(
+          :ticket,
+          event: event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_name: 'Pending Exhibitor',
+          attendee_email: 'john@example.com',
+          attendee_phone: '0000000000',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+
+        get "/v1/public/events/#{event.slug}/registration_status", params: {
+          email: 'john@example.com',
+          form_slug: 'conference'
+        }
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+
+        expect(json['data']['upgrade_mode']).to be(false)
+        expect(json['data']['upgrade_target']).to be_nil
+        expect(json['data']['existing_ticket_public_id']).to be_nil
+        expect(json['data']['blocked_exhibitor_upgrade']).to be(true)
+        expect(json['data']['blocked_reason']).to eq('unpaid_exhibitor')
+        expect(json['data']['blocked_message']).to eq('You already have an unpaid exhibitor registration. Please complete that payment first before registering for conference.')
+      end
+
+      it 'reuses an existing exhibitor ticket for payment without upgrading it yet' do
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        existing_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_name: 'Existing Name',
+          attendee_email: 'john@example.com',
+          attendee_phone: '0000000000',
+          role: 'Existing Exhibitor',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+            attendee_name: 'Ignored Name',
+            attendee_phone: '9999999999',
+            role: 'Ignored Role'
+          )
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+
+        expect(json['data']['public_id']).to eq(existing_ticket.public_id)
+        expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+        expect(existing_ticket.attendee_name).to eq('Existing Name')
+        expect(existing_ticket.attendee_phone).to eq('0000000000')
+        expect(existing_ticket.role).to eq('Existing Exhibitor')
+      end
+
+      it 'reuses the existing exhibitor ticket for conference-like plural form slugs' do
+        conference_form.update!(slug: 'conferences')
+
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        existing_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_name: 'Existing Name',
+          attendee_email: 'john@example.com',
+          attendee_phone: '0000000000',
+          role: 'Exhibitor',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(form_slug: 'conferences')
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['data']['public_id']).to eq(existing_ticket.public_id)
+        expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+      end
+
+      it 'still creates a new conference ticket when no exhibitor ticket exists' do
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+
+        expect(created_ticket.ticket_type).to eq(conference_ticket_type)
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+      end
+
+      it 'creates a new conference ticket instead of reusing an unpaid exhibitor ticket' do
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        existing_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_name: 'Existing Name',
+          attendee_email: 'john@example.com',
+          attendee_phone: '0000000000',
+          role: 'Exhibitor',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+
+        expect(created_ticket).not_to eq(existing_ticket)
+        expect(created_ticket.ticket_type).to eq(conference_ticket_type)
+        expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+      end
+
+      it 'still creates a new ticket for non-Borneo events' do
+        other_event = create(:event, slug: 'other-event-2026', status: :published)
+        other_conference_ticket_type = create(
+          :ticket_type,
+          event: other_event,
+          name: 'Conference Pass',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        create(
+          :ticket_type,
+          event: other_event,
+          name: 'Exhibitor & Conference',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        other_form = create(:registration_form, event: other_event, name: 'Conference', slug: 'conference')
+        other_form.ticket_types << other_conference_ticket_type
+        exhibitor_ticket_type = create(
+          :ticket_type,
+          event: other_event,
+          name: 'Premium Exhibitor Access',
+          price: 100.00,
+          status: :published,
+          hidden: false
+        )
+        existing_ticket = create(
+          :ticket,
+          event: other_event,
+          ticket_type: exhibitor_ticket_type,
+          attendee_email: 'john@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        expect do
+          post "/v1/public/events/#{other_event.slug}/register",
+               params: valid_params.merge(ticket_type_id: other_conference_ticket_type.id)
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
+      end
+    end
   end
 
   # =========================================================================
