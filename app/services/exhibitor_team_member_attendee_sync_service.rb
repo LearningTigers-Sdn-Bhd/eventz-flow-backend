@@ -11,15 +11,18 @@ class ExhibitorTeamMemberAttendeeSyncService
   def call
     return unless event&.use_ticket?
 
+    upgraded_reused_ticket = false
     ticket = if @team_member.attendee.is_a?(Ticket)
                update_ticket(@team_member.attendee)
-             elsif (reusable_ticket = reusable_borneo_exhibitor_ticket)
+             elsif (upgraded_reused_ticket = reusable_conference_ticket_before_upgrade?) || (reusable_ticket = reusable_borneo_exhibitor_ticket)
+               reusable_ticket ||= reusable_borneo_exhibitor_ticket
                update_ticket(reusable_ticket)
              else
                create_ticket
              end
 
     link_ticket(ticket)
+    TicketMailer.confirmation_email(ticket.reload).deliver_later if upgraded_reused_ticket
   end
 
   private
@@ -91,10 +94,36 @@ class ExhibitorTeamMemberAttendeeSyncService
     )
   end
 
+  def reusable_conference_ticket_before_upgrade?
+    ticket = matching_event_ticket
+    ticket.present? && !borneo_combined_ticket_type?(ticket.ticket_type) && conference_like_ticket_type?(ticket.ticket_type)
+  end
+
+  def matching_event_ticket
+    normalized_email = @team_member.email.to_s.strip.downcase
+    return if normalized_email.blank?
+
+    event.tickets
+         .where(attendee_email_norm: normalized_email)
+         .where.not(status: %i[canceled refunded])
+         .includes(:ticket_type)
+         .order(created_at: :desc)
+         .first
+  end
+
   def desired_ticket_type(ticket)
     return ticket.ticket_type if borneo_combined_ticket_type?(ticket.ticket_type)
 
     exhibitor_ticket_type
+  end
+
+  def should_send_upgrade_email?(ticket)
+    !borneo_combined_ticket_type?(ticket.ticket_type) && conference_like_ticket_type?(ticket.ticket_type)
+  end
+
+  def conference_like_ticket_type?(ticket_type)
+    name = ticket_type&.name.to_s.downcase
+    name.include?('conference') || name.include?('delegate')
   end
 
   def borneo_combined_ticket_type?(ticket_type)

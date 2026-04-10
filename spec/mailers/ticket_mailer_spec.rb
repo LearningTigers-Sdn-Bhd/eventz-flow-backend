@@ -31,6 +31,26 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(mail.body.encoded).to include('General Admission')
     end
 
+    it 'uses upgrade-specific copy for borneo combined tickets' do
+      borneo_event = create(:event, title: 'Business C-nergy & Growth Conference Cum Borneo Exhibition',
+                                    slug: 'borneo-expo')
+      combined_ticket_type = create(:ticket_type, event: borneo_event, name: 'Exhibitor & Conference')
+      combined_ticket = create(
+        :ticket,
+        :paid,
+        event: borneo_event,
+        ticket_type: combined_ticket_type,
+        attendee_name: 'Shin',
+        attendee_email: 'shin@example.com'
+      )
+
+      combined_mail = described_class.confirmation_email(combined_ticket)
+      html_body = combined_mail.html_part&.body&.decoded || combined_mail.body.encoded
+
+      expect(html_body).to include('Your existing exhibitor ticket has been upgraded to <strong>Exhibitor &amp; Conference</strong>')
+      expect(html_body).to include('Your same QR code remains valid')
+    end
+
     it 'attaches the QR code' do
       expect(mail.attachments.count).to eq(1)
       expect(mail.attachments.first.filename).to eq('qr_code.png')

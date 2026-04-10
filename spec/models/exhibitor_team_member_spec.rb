@@ -109,6 +109,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
     it 'reuses and upgrades an existing conference-like ticket for Borneo Expo booth managers' do
       event.update!(slug: 'borneo-expo-2026')
       exhibitor_kit.update!(payment_status: :paid)
+      clear_enqueued_jobs
 
       create(:ticket_type, event: event, name: 'Conference Pass 2026')
       combined_ticket_type = create(:ticket_type, event: event, name: 'Exhibitor & Conference Bundle')
@@ -124,6 +125,10 @@ RSpec.describe ExhibitorTeamMember, type: :model do
         status: :purchased
       )
       original_public_id = existing_ticket.public_id
+      clear_enqueued_jobs
+
+      clear_enqueued_jobs
+      existing_ticket_count = Ticket.count
 
       expect do
         @member = create(
@@ -133,7 +138,9 @@ RSpec.describe ExhibitorTeamMember, type: :model do
           email: 'jane@example.com',
           phone: '+60123456789'
         )
-      end.not_to change(Ticket, :count)
+      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+
+      expect(Ticket.count).to eq(existing_ticket_count)
 
       ticket = @member.reload.attendee
       expect(ticket.id).to eq(existing_ticket.id)
