@@ -90,7 +90,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       expect(event.ticket_types.where(name: 'Exhibitor').count).to eq(1)
     end
 
-    it 'stamps conferences_included on a team member added after the exhibitor kit already exists' do
+    it 'does not stamp conferences_included on a team member added after the exhibitor kit already exists' do
       booth_price = create(:exhibitor_booth_price, event: event, conferences_included: true)
       exhibitor_kit.update!(exhibitor_booth_price: booth_price)
 
@@ -103,7 +103,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
       )
 
       expect(member.reload.attendee).to be_a(Ticket)
-      expect(member.attendee.custom_fields_data['conferences_included']).to eq(true)
+      expect(member.attendee.custom_fields_data).not_to have_key('conferences_included')
     end
 
     it 'reuses and upgrades an existing conference-like ticket for Borneo Expo booth managers' do

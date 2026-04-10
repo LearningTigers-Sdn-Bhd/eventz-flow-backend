@@ -39,7 +39,7 @@ class ExhibitorTeamMemberAttendeeSyncService
       role: EXHIBITOR_TICKET_TYPE_NAME,
       status: status,
       payment_status: payment_status,
-      custom_fields_data: merged_custom_fields
+      custom_fields_data: ticket_custom_fields
     )
   end
 
@@ -67,13 +67,12 @@ class ExhibitorTeamMemberAttendeeSyncService
     @team_member.update_column(:attendee_id, ticket.id)
   end
 
-  def merged_custom_fields(ticket = nil)
-    existing_custom_fields = ticket&.custom_fields_data.to_h
-    existing_custom_fields.merge('conferences_included' => conferences_included)
+  def merged_custom_fields(ticket)
+    ticket&.custom_fields_data.to_h || {}
   end
 
-  def conferences_included
-    @team_member.exhibitor_kit.exhibitor_booth_price&.conferences_included || false
+  def ticket_custom_fields
+    {}
   end
 
   def exhibitor_ticket_type

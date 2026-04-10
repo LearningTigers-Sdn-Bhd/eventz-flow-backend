@@ -47,7 +47,7 @@ RSpec.describe TicketMailer, type: :mailer do
       combined_mail = described_class.confirmation_email(combined_ticket)
       html_body = combined_mail.html_part&.body&.decoded || combined_mail.body.encoded
 
-      expect(html_body).to include('Your existing exhibitor ticket has been upgraded to <strong>Exhibitor &amp; Conference</strong>')
+      expect(html_body).to include('Your existing ticket has been upgraded to <strong>Exhibitor &amp; Conference</strong>')
       expect(html_body).to include('Your same QR code remains valid')
     end
 

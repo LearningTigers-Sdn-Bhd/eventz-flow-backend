@@ -177,7 +177,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           expect(exhibitor_payload).to be_present
           expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_id']).to eq(booth_price.id)
           expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_label']).to eq('Shell Scheme Booth (3m x 3m)')
-          expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_conferences_included']).to be(true)
+          expect(exhibitor_payload['exhibitor_kit']).not_to have_key('exhibitor_booth_price_conferences_included')
         end
       end
 

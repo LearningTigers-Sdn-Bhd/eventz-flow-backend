@@ -58,8 +58,7 @@ RSpec.describe 'V1::ExhibitorBoothPrices', type: :request do
           exhibitor_zone_id: zone.id,
           label: 'International',
           price: 3000.00,
-          quota: 30,
-          conferences_included: true
+          quota: 30
         }
       }
     end
@@ -74,7 +73,6 @@ RSpec.describe 'V1::ExhibitorBoothPrices', type: :request do
       expect(json['zone']).to eq('zone_d')
       expect(json['exhibitor_zone_id']).to eq(zone.id)
       expect(json['quota']).to eq(30)
-      expect(json['conferences_included']).to eq(true)
     end
 
     it 'rejects create when booth price quotas exceed zone quota' do
@@ -105,16 +103,12 @@ RSpec.describe 'V1::ExhibitorBoothPrices', type: :request do
   describe 'PATCH /v1/exhibitor_booth_prices/:id' do
     it 'updates booth price for org owner' do
       patch "/v1/exhibitor_booth_prices/#{booth_price.id}",
-            params: { exhibitor_booth_price: { price: 1800.00, quota: 25, conferences_included: true } },
+            params: { exhibitor_booth_price: { price: 1800.00, quota: 25 } },
             headers: auth_headers(admin_user)
 
       expect(response).to have_http_status(:ok)
       expect(booth_price.reload.price.to_f).to eq(1800.0)
       expect(booth_price.reload.quota).to eq(25)
-      expect(booth_price.reload.conferences_included).to eq(true)
-
-      json = JSON.parse(response.body)
-      expect(json['conferences_included']).to eq(true)
     end
 
     it 'attaches zone when editing an unassigned booth price' do

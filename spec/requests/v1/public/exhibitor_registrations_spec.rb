@@ -173,7 +173,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(team_member.attendee).to be_a(Ticket)
       expect(team_member.attendee.ticket_type.name).to eq('Exhibitor')
       expect(team_member.attendee.attendee_email).to eq(email)
-      expect(team_member.attendee.custom_fields_data['conferences_included']).to eq(false)
+      expect(team_member.attendee.custom_fields_data).not_to have_key('conferences_included')
     end
 
     it 'reuses and upgrades an existing conference-like ticket for Borneo Expo booth managers' do
@@ -430,7 +430,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       existing_team_member.update!(phone: '0198765432')
       existing_team_member.attendee.reload
       expect(existing_team_member.attendee.custom_fields_data['legacy_note']).to eq('keep me')
-      expect(existing_team_member.attendee.custom_fields_data['conferences_included']).to eq(true)
+      expect(existing_team_member.attendee.custom_fields_data).not_to have_key('conferences_included')
     end
 
     it 'creates the booth manager team member on update when missing' do
@@ -444,7 +444,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       team_member = existing_kit.reload.exhibitor_team_members.order(:id).last
       expect(team_member.email).to eq(email)
       expect(team_member.attendee).to be_a(Ticket)
-      expect(team_member.attendee.custom_fields_data['conferences_included']).to eq(true)
+      expect(team_member.attendee.custom_fields_data).not_to have_key('conferences_included')
     end
 
     it 'does not duplicate the booth manager team member on update' do

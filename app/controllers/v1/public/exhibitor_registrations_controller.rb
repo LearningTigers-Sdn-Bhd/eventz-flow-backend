@@ -12,7 +12,9 @@ module V1
       def booth_prices
         event = Event.friendly.find(params[:event_slug])
 
-        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_booth_price_tiers).order(:booth_type, :label)
+        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_booth_price_tiers).order(
+          :booth_type, :label
+        )
         zone_sold_map = zone_sold_counts(event)
         booth_price_sold_map = booth_price_sold_counts(event)
 
@@ -60,7 +62,8 @@ module V1
                           find_exhibitor_kit_for_event!(event: event, exhibitor_kit_id: exhibitor_kit_id)
                         else
                           if email.blank?
-                            return render json: { success: false, message: 'Email is required' }, status: :unprocessable_content
+                            return render json: { success: false, message: 'Email is required' },
+                                          status: :unprocessable_content
                           end
 
                           find_existing_registration(event: event, email: email)
@@ -414,7 +417,6 @@ module V1
           payment_proof_url: exhibitor_kit.payment_proof.attached? ? url_for(exhibitor_kit.payment_proof) : nil,
           exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
           exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
-          exhibitor_booth_price_conferences_included: exhibitor_kit.exhibitor_booth_price&.conferences_included,
           custom_fields_data: exhibitor_kit.custom_fields_data || {}
         }
       end
@@ -466,7 +468,6 @@ module V1
           other_services: exhibitor_kit.custom_fields_data&.dig('other_services') || [],
           booth_label: exhibitor_kit.exhibitor_booth_price&.label,
           exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
-          exhibitor_booth_price_conferences_included: exhibitor_kit.exhibitor_booth_price&.conferences_included,
           price: exhibitor_kit.amount_paid,
           zone: exhibitor_kit.custom_fields_data&.dig('zone') || exhibitor_kit.exhibitor_booth_price&.zone,
           is_booth_manager: custom_field_booth_manager_state(exhibitor_kit),
@@ -482,7 +483,8 @@ module V1
         normalized_email = registration_params[:pic_email_address].to_s.strip.downcase
         return if normalized_email.blank?
 
-        team_member = exhibitor_kit.exhibitor_team_members.where('LOWER(email) = ?', normalized_email).first_or_initialize
+        team_member = exhibitor_kit.exhibitor_team_members.where('LOWER(email) = ?',
+                                                                 normalized_email).first_or_initialize
         team_member.email = normalized_email
         team_member.full_name = registration_params[:pic_full_name]
         team_member.phone = registration_params[:pic_contact_number]
