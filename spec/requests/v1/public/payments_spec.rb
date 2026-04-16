@@ -82,6 +82,89 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(json['data']['amount']).to eq(12_000)
     end
 
+    it 'does not include pending tickets from other registration forms that share the same leader email' do
+      golf_leader_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Golf Flight Leader',
+        price: 6000.0,
+        status: :published,
+        hidden: false
+      )
+      golf_member_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Golf Flight Member',
+        price: 0.0,
+        status: :published,
+        hidden: false
+      )
+      conference_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Conference Delegate',
+        price: 100.0,
+        status: :published,
+        hidden: false
+      )
+      golf_form = create(:registration_form, event: event, name: 'Golf', slug: 'golf')
+      golf_form.ticket_types << golf_leader_ticket_type
+      golf_form.ticket_types << golf_member_ticket_type
+      conference_form = create(:registration_form, event: event, name: 'Conference', slug: 'conference')
+      conference_form.ticket_types << conference_ticket_type
+
+      leader_email = 'leader@example.com'
+      golf_leader = create(
+        :ticket,
+        event: event,
+        ticket_type: golf_leader_ticket_type,
+        attendee_name: 'Golf Leader',
+        attendee_email: leader_email,
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      create(
+        :ticket,
+        event: event,
+        ticket_type: golf_member_ticket_type,
+        attendee_name: 'Golf Member',
+        attendee_email: 'golf-member@example.com',
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      conference_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: conference_ticket_type,
+        attendee_name: 'Conference Leader',
+        attendee_email: 'conference@example.com',
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      expect(gateway_instance).to receive(:create_order).with(
+        hash_including(amount_subunits: 600_000)
+      ).and_return(
+        {
+          'id' => 'order_scoped_group_123',
+          'amount' => 600_000,
+          'currency' => 'MYR'
+        }
+      )
+
+      post "/v1/public/events/#{event.slug}/payments/create_order", params: {
+        ticket_public_id: golf_leader.public_id
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['amount']).to eq(600_000)
+      expect(conference_ticket.reload.payment_status).to eq('pending')
+    end
+
     it 'creates a payment order for a borneo conference upgrade without upgrading the exhibitor ticket yet' do
       borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
       exhibitor_ticket_type = create(
@@ -243,6 +326,91 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       pending_ticket.reload
       expect(pending_ticket.payment_status).to eq('pending')
       expect(pending_ticket.status).to eq('pending_payment')
+    end
+
+    it 'marks only tickets from the same registration form as paid when batching by leader email' do
+      golf_leader_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Golf Flight Leader',
+        price: 6000.0,
+        status: :published,
+        hidden: false
+      )
+      golf_member_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Golf Flight Member',
+        price: 0.0,
+        status: :published,
+        hidden: false
+      )
+      conference_ticket_type = create(
+        :ticket_type,
+        event: event,
+        name: 'Conference Delegate',
+        price: 100.0,
+        status: :published,
+        hidden: false
+      )
+      golf_form = create(:registration_form, event: event, name: 'Golf', slug: 'golf')
+      golf_form.ticket_types << golf_leader_ticket_type
+      golf_form.ticket_types << golf_member_ticket_type
+      conference_form = create(:registration_form, event: event, name: 'Conference', slug: 'conference')
+      conference_form.ticket_types << conference_ticket_type
+
+      leader_email = 'leader@example.com'
+      golf_leader = create(
+        :ticket,
+        event: event,
+        ticket_type: golf_leader_ticket_type,
+        attendee_name: 'Golf Leader',
+        attendee_email: leader_email,
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      golf_member = create(
+        :ticket,
+        event: event,
+        ticket_type: golf_member_ticket_type,
+        attendee_name: 'Golf Member',
+        attendee_email: 'golf-member@example.com',
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      conference_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: conference_ticket_type,
+        attendee_name: 'Conference Leader',
+        attendee_email: 'conference@example.com',
+        registered_by_email: leader_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_scoped_group_123').and_return(
+        { 'id' => 'pay_scoped_group_123', 'order_id' => 'order_scoped_group_123', 'method' => 'card' }
+      )
+
+      post "/v1/public/events/#{event.slug}/payments/verify", params: {
+        ticket_public_id: golf_leader.public_id,
+        razorpay_order_id: 'order_scoped_group_123',
+        razorpay_payment_id: 'pay_scoped_group_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:ok)
+      expect(golf_leader.reload.payment_status).to eq('paid')
+      expect(golf_leader.status).to eq('purchased')
+      expect(golf_member.reload.payment_status).to eq('paid')
+      expect(golf_member.status).to eq('purchased')
+      expect(conference_ticket.reload.payment_status).to eq('pending')
+      expect(conference_ticket.status).to eq('pending_payment')
+      expect(conference_ticket.ticket_payment).to be_nil
     end
 
     it 'upgrades a borneo exhibitor ticket to the combined type only after successful verification' do

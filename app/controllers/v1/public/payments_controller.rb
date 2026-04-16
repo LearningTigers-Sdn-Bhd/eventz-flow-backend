@@ -30,12 +30,12 @@ module V1
           }, status: :unprocessable_content
         end
 
-        # For group registrations, find all sibling tickets via registered_by_email
+        # For group registrations, batch only tickets from the same registration form.
         group_tickets = if ticket.registered_by_email.present?
-                          event.tickets.where(
-                            registered_by_email: ticket.registered_by_email,
-                            payment_status: :pending,
-                            status: :pending_payment
+                          pending_payment_batch_tickets(
+                            ticket: ticket,
+                            event: event,
+                            registered_by_email: ticket.registered_by_email
                           )
                         else
                           [ticket]
@@ -383,11 +383,12 @@ module V1
         # Collect all tickets to mark paid: the representative ticket plus any group siblings
         email = registered_by_email || ticket.registered_by_email
         tickets_to_mark = if email.present?
-                            event.tickets.where(
+                            pending_payment_batch_tickets(
+                              ticket: ticket,
+                              event: event,
                               registered_by_email: email,
-                              payment_status: :pending,
-                              status: :pending_payment
-                            ).to_a
+                              payment_entity: payment_entity
+                            )
                           else
                             [ticket]
                           end
@@ -502,6 +503,35 @@ module V1
         return amount_subunits.to_f / 100 if amount_subunits.present?
 
         ticket.ticket_type.current_price.to_f
+      end
+
+      def pending_payment_batch_tickets(ticket:, event:, registered_by_email:, payment_entity: nil)
+        scope = event.tickets.where(
+          registered_by_email: registered_by_email,
+          payment_status: :pending,
+          status: :pending_payment
+        )
+
+        ticket_type_ids = payment_scope_ticket_type_ids(ticket:, event:, payment_entity:)
+        scope = scope.where(ticket_type_id: ticket_type_ids) if ticket_type_ids.present?
+
+        scope.to_a
+      end
+
+      def payment_scope_ticket_type_ids(ticket:, event:, payment_entity: nil)
+        form_slug = payment_entity.to_h.dig('notes', 'form_slug').to_s.strip.presence
+        forms = if form_slug.present?
+                  form = event.registration_forms.find_by(slug: form_slug)
+                  form.present? ? [form] : []
+                else
+                  []
+                end
+
+        if forms.empty?
+          forms = ticket.ticket_type.registration_forms.where(event_id: event.id).to_a
+        end
+
+        forms.flat_map(&:ticket_type_ids).uniq.presence || [ticket.ticket_type_id]
       end
 
       def borneo_combined_ticket_type_for(event)
