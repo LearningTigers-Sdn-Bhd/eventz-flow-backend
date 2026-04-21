@@ -42,6 +42,37 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
       expect(json['data']['order_id']).to eq('order_exhibitor_123')
       expect(json['data']['key_id']).to eq('rzp_test_key')
     end
+
+    it 'creates a fresh razorpay order when the previous attempt failed' do
+      create(
+        :exhibitor_registration_payment,
+        exhibitor_kit: exhibitor_kit,
+        status: 'failed',
+        gateway_response: {
+          'id' => 'pay_failed_123',
+          'order_id' => 'order_failed_123',
+          'amount' => 150_000,
+          'method' => 'fpx'
+        }
+      )
+
+      allow(gateway_instance).to receive(:create_order).and_return(
+        {
+          'id' => 'order_exhibitor_retry_456',
+          'amount' => 150_000,
+          'currency' => 'MYR'
+        }
+      )
+
+      post "/v1/public/events/#{event.slug}/exhibitor_payments/create_order",
+           params: { exhibitor_kit_id: exhibitor_kit.id }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['order_id']).to eq('order_exhibitor_retry_456')
+      expect(exhibitor_kit.reload.exhibitor_registration_payment.status).to eq('pending')
+      expect(exhibitor_kit.exhibitor_registration_payment.gateway_response['id']).to eq('order_exhibitor_retry_456')
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/verify' do

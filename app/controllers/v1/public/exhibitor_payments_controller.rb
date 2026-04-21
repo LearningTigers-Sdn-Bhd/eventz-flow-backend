@@ -24,12 +24,12 @@ module V1
         end
 
         payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
-        existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
+        reusable_order = reusable_gateway_order(payment)
 
         gateway = Payments::RazorpayGateway.for_event(event)
 
-        order = if existing_order_id.present?
-                  payment.gateway_response
+        order = if reusable_order.present?
+                  reusable_order
                 else
                   created_order = gateway.create_order(
                     amount_subunits: (exhibitor_kit.amount_paid.to_f * 100).round,
@@ -193,6 +193,18 @@ module V1
         raise KeyError, 'public_registration_url' if url.blank?
 
         url
+      end
+
+      def reusable_gateway_order(payment)
+        return nil unless payment.status == 'pending'
+
+        gateway_response = payment.gateway_response
+        return nil unless gateway_response.is_a?(Hash)
+
+        order_id = gateway_response['id'].presence || gateway_response['order_id'].presence
+        return nil if order_id.blank? || !order_id.to_s.start_with?('order_')
+
+        gateway_response
       end
     end
   end

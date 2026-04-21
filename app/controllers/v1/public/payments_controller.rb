@@ -42,7 +42,7 @@ module V1
                         end
 
         payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
-        existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
+        reusable_order = reusable_gateway_order(payment)
 
         gateway = Payments::RazorpayGateway.for_event(event)
 
@@ -61,8 +61,8 @@ module V1
                     receipt: ticket.public_id,
                     notes: borneo_conference_upgrade_notes(event:, ticket:, conference_ticket_type: conference_upgrade_ticket_type)
                   )
-                elsif existing_order_id.present?
-                  payment.gateway_response
+                elsif reusable_order.present?
+                  reusable_order
                 else
                   total_amount = group_tickets.sum { |t| t.ticket_type.current_price.to_f }
                   amount_subunits = (total_amount * 100).round
@@ -621,6 +621,18 @@ module V1
         raise KeyError, 'public_registration_url' if url.blank?
 
         url
+      end
+
+      def reusable_gateway_order(payment)
+        return nil unless payment.status == 'pending'
+
+        gateway_response = payment.gateway_response
+        return nil unless gateway_response.is_a?(Hash)
+
+        order_id = gateway_response['id'].presence || gateway_response['order_id'].presence
+        return nil if order_id.blank? || !order_id.to_s.start_with?('order_')
+
+        gateway_response
       end
     end
   end
