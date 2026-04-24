@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -862,6 +862,29 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "pass_bundles", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.bigint "ticket_type_id", null: false
+    t.bigint "created_by_id"
+    t.string "name", null: false
+    t.string "token", null: false
+    t.integer "pass_limit", null: false
+    t.integer "payment_mode", default: 0, null: false
+    t.integer "payment_status", default: 0, null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_pass_bundles_on_created_by_id"
+    t.index ["event_id", "status"], name: "index_pass_bundles_on_event_id_and_status"
+    t.index ["event_id", "token"], name: "index_pass_bundles_on_event_id_and_token", unique: true
+    t.index ["event_id"], name: "index_pass_bundles_on_event_id"
+    t.index ["registration_form_id"], name: "index_pass_bundles_on_registration_form_id"
+    t.index ["ticket_type_id"], name: "index_pass_bundles_on_ticket_type_id"
+    t.check_constraint "pass_limit >= 0", name: "chk_pass_bundles_pass_limit_non_negative"
+  end
+
   create_table "password_resets", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "token_digest", null: false
@@ -1251,6 +1274,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
     t.datetime "deleted_at"
     t.string "role"
     t.string "registered_by_email"
+    t.bigint "pass_bundle_id"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
@@ -1258,6 +1282,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"
+    t.index ["pass_bundle_id"], name: "index_tickets_on_pass_bundle_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
@@ -1515,6 +1540,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
   add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
+  add_foreign_key "pass_bundles", "events"
+  add_foreign_key "pass_bundles", "registration_forms"
+  add_foreign_key "pass_bundles", "ticket_types"
+  add_foreign_key "pass_bundles", "users", column: "created_by_id"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
   add_foreign_key "plan_objects", "plans"
@@ -1553,6 +1582,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_09_120000) do
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
+  add_foreign_key "tickets", "pass_bundles"
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"

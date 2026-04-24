@@ -16,7 +16,7 @@ module V1
     def index
       # 1. Scope the tickets based on the authorized events and filter by the current event.
       # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle)
 
       # Apply filtering based on query parameters
       if params[:archived] == 'true'
@@ -39,7 +39,8 @@ module V1
         methods: [:payment_method, :transaction_id, :payment_screenshot_url],
         include: {
           ticket_type: { only: [:id, :name, :price] },
-          scanned_by: { only: [:id, :full_name] }
+          scanned_by: { only: [:id, :full_name] },
+          pass_bundle: { only: [:id, :name] }
         }
       ), status: :ok
     end
@@ -50,7 +51,10 @@ module V1
       authorize @ticket
       render json: @ticket.as_json(
         methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-        include: { ticket_type: { only: [:id, :name, :price] } }
+        include: {
+          ticket_type: { only: [:id, :name, :price] },
+          pass_bundle: { only: [:id, :name] }
+        }
       ), status: :ok
     end
 
@@ -72,7 +76,10 @@ module V1
         @ticket.reload
         render json: @ticket.as_json(
           methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: { ticket_type: { only: [:id, :name, :price] } }
+          include: {
+            ticket_type: { only: [:id, :name, :price] },
+            pass_bundle: { only: [:id, :name] }
+          }
         ), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -86,7 +93,10 @@ module V1
       if @ticket.update(ticket_params_with_payment_sync)
         render json: @ticket.as_json(
           methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: { ticket_type: { only: [:id, :name, :price] } }
+          include: {
+            ticket_type: { only: [:id, :name, :price] },
+            pass_bundle: { only: [:id, :name] }
+          }
         ), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -132,7 +142,10 @@ module V1
       if @ticket.restore
         render json: @ticket.as_json(
           methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: { ticket_type: { only: [:id, :name, :price] } }
+          include: {
+            ticket_type: { only: [:id, :name, :price] },
+            pass_bundle: { only: [:id, :name] }
+          }
         ), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content

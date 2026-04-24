@@ -86,6 +86,7 @@ module V1
 
       def create
         event = Event.friendly.find(params[:event_slug])
+        form = nil
 
         unless event.published?
           return render json: {
@@ -118,6 +119,8 @@ module V1
         end
 
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
+        bundle = resolve_pass_bundle(event:, form:, ticket_type:)
+        return if performed?
 
         ticket = conference_upgrade_ticket(
           event: event,
@@ -133,6 +136,7 @@ module V1
         else
           ticket = event.tickets.new(registration_params)
           ticket.ticket_type = ticket_type
+          ticket.pass_bundle = bundle if bundle.present?
 
           if auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
             ticket.status = 'purchased'
@@ -340,6 +344,51 @@ module V1
              .where(payment_status: :paid, status: :purchased)
              .where('LOWER(attendee_email) = ? OR LOWER(registered_by_email) = ?', leader_email, leader_email)
              .exists?
+      end
+
+      def resolve_pass_bundle(event:, form:, ticket_type:)
+        token = params[:bundle].to_s.strip
+        return nil if token.blank?
+
+        bundle = event.pass_bundles.find_by(token: token)
+        unless bundle
+          render_bundle_error('Invalid or expired bundle link.')
+          return nil
+        end
+
+        if bundle.expired?
+          render_bundle_error('Invalid or expired bundle link.')
+          return nil
+        end
+
+        if bundle.paused?
+          render_bundle_error('This bundle is paused. Please contact the organizer.')
+          return nil
+        end
+
+        if form.blank? || bundle.registration_form_id != form.id
+          render_bundle_error('This bundle link is not valid for this registration form.')
+          return nil
+        end
+
+        if bundle.ticket_type_id != ticket_type.id
+          render_bundle_error('This bundle link is not valid for the selected pass.')
+          return nil
+        end
+
+        if bundle.full?
+          render_bundle_error('This bundle is full. Please contact the organizer.')
+          return nil
+        end
+
+        bundle
+      end
+
+      def render_bundle_error(message)
+        render json: {
+          success: false,
+          message: message
+        }, status: :unprocessable_content
       end
     end
   end

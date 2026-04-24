@@ -6,6 +6,7 @@ class TicketType < ApplicationRecord
   has_many :ticket_type_price_tiers, dependent: :destroy
   has_many :registration_form_ticket_types, dependent: :destroy
   has_many :registration_forms, through: :registration_form_ticket_types
+  has_many :pass_bundles, dependent: :restrict_with_error
 
   # --- Seat Ticketing Sync ---
   enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }

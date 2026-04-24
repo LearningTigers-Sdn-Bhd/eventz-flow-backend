@@ -574,6 +574,123 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(existing_ticket.reload.ticket_type).to eq(exhibitor_ticket_type)
       end
     end
+
+    context 'with pass bundle token' do
+      let!(:delegate_form) do
+        form = create(:registration_form, event: event, name: 'Delegate', slug: 'delegate')
+        form.ticket_types << ticket_type
+        form
+      end
+      let!(:pass_bundle) do
+        create(
+          :pass_bundle,
+          event: event,
+          registration_form: delegate_form,
+          ticket_type: ticket_type,
+          name: 'STB',
+          pass_limit: 2,
+          payment_mode: :pay_offline,
+          payment_status: :unpaid,
+          status: :active
+        )
+      end
+
+      it 'stamps created ticket with the pass bundle' do
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.pass_bundle).to eq(pass_bundle)
+      end
+
+      it 'does not let bundle payment status block registration' do
+        pass_bundle.update!(payment_status: :unpaid)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it 'rejects an invalid bundle token' do
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: 'not-real'
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('Invalid or expired bundle link.')
+      end
+
+      it 'rejects a paused bundle' do
+        pass_bundle.update!(status: :paused)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('This bundle is paused. Please contact the organizer.')
+      end
+
+      it 'rejects an expired bundle' do
+        pass_bundle.update!(expires_at: 1.day.ago)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('Invalid or expired bundle link.')
+      end
+
+      it 'rejects a full bundle' do
+        create(:ticket, event: event, ticket_type: ticket_type, pass_bundle: pass_bundle)
+        create(:ticket, event: event, ticket_type: ticket_type, pass_bundle: pass_bundle)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('This bundle is full. Please contact the organizer.')
+      end
+
+      it 'rejects registration form mismatch' do
+        visitor_form = create(:registration_form, event: event, name: 'Visitor', slug: 'visitor')
+        visitor_form.ticket_types << ticket_type
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'visitor',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('This bundle link is not valid for this registration form.')
+      end
+
+      it 'rejects selected pass mismatch' do
+        other_ticket_type = create(:ticket_type, event: event, name: 'VIP', status: :published, hidden: false)
+        delegate_form.ticket_types << other_ticket_type
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          ticket_type_id: other_ticket_type.id,
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['message']).to eq('This bundle link is not valid for the selected pass.')
+      end
+    end
   end
 
   # =========================================================================

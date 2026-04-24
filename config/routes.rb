@@ -145,6 +145,7 @@ Rails.application.routes.draw do
           patch :restore
         end
       end
+      resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy]
       resources :exhibitor_booth_prices, only: %i[index create]

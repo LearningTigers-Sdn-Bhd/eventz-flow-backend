@@ -11,6 +11,7 @@ class Ticket < ApplicationRecord
   # We'll use explicit ID validation below for clarity/troubleshooting consistency.
   belongs_to :event
   belongs_to :ticket_type
+  belongs_to :pass_bundle, optional: true
   belongs_to :user, optional: true
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true

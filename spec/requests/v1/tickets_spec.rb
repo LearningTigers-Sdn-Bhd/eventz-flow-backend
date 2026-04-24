@@ -125,9 +125,23 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '200', 'Returns list of tickets for authorized staff' do
         let(:Authorization) { "Bearer #{staff_token}" } # Staff can view tickets for their event
+        before do
+          pass_bundle = create(
+            :pass_bundle,
+            event: organizer_event,
+            registration_form: create(:registration_form, event: organizer_event, slug: 'delegate'),
+            ticket_type: general_ticket_type,
+            name: 'STB'
+          )
+          purchased_ticket.update!(pass_bundle: pass_bundle)
+        end
+
         run_test! do
           json = JSON.parse(response.body)
           expect(json.count).to eq(2)
+          bundle_ticket = json.find { |ticket| ticket['id'] == purchased_ticket.id }
+          expect(bundle_ticket['pass_bundle']).to include('id', 'name')
+          expect(bundle_ticket['pass_bundle']['name']).to eq('STB')
         end
 
         # REFACTORED: Use reusable schema constant
