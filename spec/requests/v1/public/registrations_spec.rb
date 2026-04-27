@@ -114,6 +114,66 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
     end
   end
 
+  describe 'GET /v1/public/events/:event_slug/pass_bundles/:token' do
+    let!(:delegate_form) do
+      form = create(:registration_form, event: event, name: 'Invited Delegate', slug: 'invited-delegate')
+      form.ticket_types << ticket_type
+      form
+    end
+    let!(:pass_bundle) do
+      create(
+        :pass_bundle,
+        event: event,
+        registration_form: delegate_form,
+        ticket_type: ticket_type,
+        name: 'STB Delegation',
+        pass_limit: 2,
+        payment_mode: :pay_offline,
+        payment_status: :unpaid,
+        status: :active
+      )
+    end
+
+    it 'returns the registration context for a valid bundle link' do
+      get "/v1/public/events/#{event.slug}/pass_bundles/#{pass_bundle.token}"
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be true
+      expect(json['data']).to include(
+        'name' => 'STB Delegation',
+        'pass_limit' => 2,
+        'used_count' => 0,
+        'remaining_count' => 2,
+        'registration_form' => include(
+          'name' => 'Invited Delegate',
+          'slug' => 'invited-delegate'
+        ),
+        'ticket_type' => include(
+          'id' => ticket_type.id,
+          'name' => 'General'
+        )
+      )
+    end
+
+    it 'rejects invalid bundle tokens' do
+      get "/v1/public/events/#{event.slug}/pass_bundles/not-real"
+
+      expect(response).to have_http_status(:not_found)
+      expect(JSON.parse(response.body)['message']).to eq('Invalid or expired bundle link.')
+    end
+
+    it 'rejects unavailable bundle links' do
+      pass_bundle.update!(status: :paused)
+
+      get "/v1/public/events/#{event.slug}/pass_bundles/#{pass_bundle.token}"
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['message']).to eq('This bundle is paused. Please contact the organizer.')
+    end
+  end
+
   describe 'GET /v1/public/events/:event_slug/registration_status' do
     let!(:other_ticket_type) do
       create(:ticket_type, event: event, name: 'Other', price: 50.00, status: :published, hidden: false)

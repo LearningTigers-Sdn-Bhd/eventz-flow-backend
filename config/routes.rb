@@ -42,6 +42,7 @@ Rails.application.routes.draw do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        get 'pass_bundles/:token', to: 'registrations#pass_bundle'
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         patch 'register_exhibitor', to: 'exhibitor_registrations#update'

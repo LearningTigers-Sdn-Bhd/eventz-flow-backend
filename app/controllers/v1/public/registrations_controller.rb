@@ -84,6 +84,60 @@ module V1
         }
       end
 
+      def pass_bundle
+        event = Event.friendly.find(params[:event_slug])
+        bundle = event.pass_bundles.includes(:registration_form, :ticket_type).find_by(token: params[:token].to_s.strip)
+
+        unless bundle
+          return render json: {
+            success: false,
+            message: 'Invalid or expired bundle link.'
+          }, status: :not_found
+        end
+
+        if bundle.expired?
+          return render json: {
+            success: false,
+            message: 'Invalid or expired bundle link.'
+          }, status: :unprocessable_content
+        end
+
+        if bundle.paused?
+          return render json: {
+            success: false,
+            message: 'This bundle is paused. Please contact the organizer.'
+          }, status: :unprocessable_content
+        end
+
+        if bundle.full?
+          return render json: {
+            success: false,
+            message: 'This bundle is full. Please contact the organizer.'
+          }, status: :unprocessable_content
+        end
+
+        render json: {
+          success: true,
+          data: {
+            name: bundle.name,
+            token: bundle.token,
+            pass_limit: bundle.pass_limit,
+            used_count: bundle.used_count,
+            remaining_count: bundle.remaining_count,
+            payment_mode: bundle.payment_mode,
+            payment_status: bundle.payment_status,
+            registration_form: {
+              name: bundle.registration_form.name,
+              slug: bundle.registration_form.slug
+            },
+            ticket_type: {
+              id: bundle.ticket_type.id,
+              name: bundle.ticket_type.name
+            }
+          }
+        }
+      end
+
       def create
         event = Event.friendly.find(params[:event_slug])
         form = nil
