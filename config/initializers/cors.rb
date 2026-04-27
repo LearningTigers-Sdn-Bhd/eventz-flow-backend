@@ -36,6 +36,8 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
     origins ENV.fetch('STAGING_FRONTEND_URL', 'https://staging.eventzflow.com'),
             'https://staging.eventzflow.com',
             'https://staging-frontend.eventzflow.com',
+            'https://mockup.sabahimpactsummit.com',
+            'https://sabahimpactsummit.com',
             'http://staging.eventzflow.com',  # Include http if testing without SSL
             /\Ahttps:\/\/staging.*\.eventzflow\.com\z/  # Wildcard for staging subdomains
 
@@ -52,6 +54,9 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
     # Strict regex: HTTPS only, single-level subdomain, alphanumeric + hyphens only
     origins 'https://eventzflow.com',
             'https://www.eventzflow.com',
+            'https://mockup.sabahimpactsummit.com',
+            'https://sabahimpactsummit.com',
+            /\Ahttps:\/\/[a-zA-Z0-9-]+\.sabahimpactsummit\.com\z/,
             /\Ahttps:\/\/[a-zA-Z0-9-]+\.eventzflow\.com\z/
 
     resource '*',
