@@ -385,7 +385,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
 
         expect(response).to have_http_status(:unprocessable_content)
         json = JSON.parse(response.body)
-        expect(json['message']).to include('previous application was not selected')
+        expect(json['message']).to include('application was not selected in this intake')
       end
     end
 

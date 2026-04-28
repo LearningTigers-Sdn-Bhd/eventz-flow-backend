@@ -22,7 +22,7 @@ RSpec.describe TicketApplicationMailer, type: :mailer do
       expect(mail.to).to eq(['aina@example.com'])
       expect(mail.subject).to eq('Application received for Sabah Impact Summit')
       expect(mail.body.encoded).to include('Aina Rahman')
-      expect(mail.body.encoded).to include('reviewed within 48 hours')
+      expect(mail.body.encoded).to include('Within 48 hours')
       expect(mail.body.encoded).to include('May 15, 2026')
     end
   end
@@ -44,7 +44,8 @@ RSpec.describe TicketApplicationMailer, type: :mailer do
     it 'uses polite limited-seats wording' do
       expect(mail.to).to eq(['aina@example.com'])
       expect(mail.subject).to eq('Application update for Sabah Impact Summit')
-      expect(mail.body.encoded).to include('Due to limited seats')
+      expect(mail.body.encoded).to include('unable to confirm your delegate application')
+      expect(mail.body.encoded).to include('limited capacity')
     end
   end
 end

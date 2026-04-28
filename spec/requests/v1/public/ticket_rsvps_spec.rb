@@ -4,7 +4,16 @@ RSpec.describe 'V1::Public::TicketRsvps', type: :request do
   let(:event) { create(:event, title: 'Sabah Impact Summit', status: :published) }
   let(:registration_form) { create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate') }
   let(:ticket_type) { create(:ticket_type, event: event, status: :published) }
-  let(:ticket) { create(:ticket, :pending_payment, event: event, ticket_type: ticket_type, attendee_email: 'delegate@example.com') }
+  let(:ticket) do
+    create(
+      :ticket,
+      :pending_payment,
+      event: event,
+      ticket_type: ticket_type,
+      attendee_email: 'delegate@example.com',
+      attendee_phone: '+60123456789'
+    )
+  end
   let(:application) { create(:ticket_application, ticket: ticket, registration_form: registration_form, review_status: :approved, rsvp_status: :sent) }
   let(:raw_token) { application.assign_rsvp_token! }
 
@@ -15,6 +24,7 @@ RSpec.describe 'V1::Public::TicketRsvps', type: :request do
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
       expect(json['data']['attendee_name']).to eq(ticket.attendee_name)
+      expect(json['data']['attendee_phone']).to eq('+60123456789')
       expect(json['data']['review_status']).to eq('approved')
       expect(json['data']['rsvp_status']).to eq('sent')
     end

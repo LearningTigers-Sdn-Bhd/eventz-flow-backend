@@ -50,6 +50,7 @@ module V1
         {
           attendee_name: ticket.attendee_name,
           attendee_email: ticket.attendee_email,
+          attendee_phone: ticket.attendee_phone,
           event_title: event.title,
           review_status: application.review_status,
           rsvp_status: application.rsvp_status,
