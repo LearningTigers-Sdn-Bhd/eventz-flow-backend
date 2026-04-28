@@ -175,6 +175,7 @@ module V1
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
+        approval_enabled = delegate_approval_enabled_for_form?(form)
 
         ticket = conference_upgrade_ticket(
           event: event,
@@ -192,7 +193,10 @@ module V1
           ticket.ticket_type = ticket_type
           ticket.pass_bundle = bundle if bundle.present?
 
-          if auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
+          if approval_enabled
+            ticket.status = 'pending_payment'
+            ticket.payment_status = 'pending'
+          elsif auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
             ticket.status = 'purchased'
             ticket.payment_status = 'paid'
           else
@@ -202,6 +206,8 @@ module V1
         end
 
         if ticket.save
+          handle_ticket_application!(registration_form: form, ticket: ticket)
+
           render json: {
             success: true,
             data: serialize_ticket(ticket, ticket.ticket_type)
@@ -304,6 +310,29 @@ module V1
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id
         }
+      end
+
+      def handle_ticket_application!(registration_form:, ticket:)
+        return if registration_form.blank?
+
+        setting = registration_form.registration_form_rsvp_setting
+        return unless setting&.enabled?
+
+        application = ticket.ticket_application || ticket.create_ticket_application!(
+          registration_form: registration_form,
+          review_status: :pending_review,
+          rsvp_status: :not_sent
+        )
+
+        if ticket.attendee_email.present?
+          TicketApplicationMailer.acknowledgement(application).deliver_later
+        end
+      end
+
+      def delegate_approval_enabled_for_form?(form)
+        return false unless form
+
+        form.registration_form_rsvp_setting&.enabled? || false
       end
 
       def registration_status_ticket_type_ids(event:, form:)

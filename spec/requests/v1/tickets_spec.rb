@@ -14,7 +14,7 @@ TICKET_SCHEMA = {
     attendee_name: { type: :string },
     attendee_email: { type: :string, format: :email },
     attendee_phone: { type: [:string, :null] },
-    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled', 'pending_payment'] },
     payment_status: { type: :string, enum: ['pending', 'paid', 'failed', 'refunded_payment'] },
     checked_in: { type: :boolean, readOnly: true },
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
@@ -40,7 +40,7 @@ TICKET_INDEX_ITEM_SCHEMA = {
     id: { type: :integer },
     public_id: { type: :string, format: :uuid },
     attendee_name: { type: :string },
-    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled', 'pending_payment'] },
     ticket_type: {
       type: :object,
       properties: {
@@ -134,14 +134,21 @@ RSpec.describe 'V1::Tickets', type: :request do
             name: 'STB'
           )
           purchased_ticket.update!(pass_bundle: pass_bundle)
+          create(:ticket_application, ticket: pending_payment_ticket, review_status: :approved, rsvp_status: :sent)
+          pending_payment_ticket
         end
 
         run_test! do
           json = JSON.parse(response.body)
-          expect(json.count).to eq(2)
+          expect(json.count).to eq(3)
           bundle_ticket = json.find { |ticket| ticket['id'] == purchased_ticket.id }
           expect(bundle_ticket['pass_bundle']).to include('id', 'name')
           expect(bundle_ticket['pass_bundle']['name']).to eq('STB')
+          pending_payload = json.find { |ticket| ticket['public_id'] == pending_payment_ticket.public_id }
+          expect(pending_payload['ticket_application']).to include(
+            'review_status' => 'approved',
+            'rsvp_status' => 'sent'
+          )
         end
 
         # REFACTORED: Use reusable schema constant

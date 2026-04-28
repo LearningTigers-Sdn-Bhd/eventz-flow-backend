@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'V1::Public::Registrations', type: :request do
+  include ActiveJob::TestHelper
+
   let(:event) { create(:event, status: :published) }
   let!(:ticket_type) do
     create(
@@ -287,6 +289,47 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
           registration_kind: 'member'
         }
       }
+    end
+
+    context 'when registration form delegate approval is enabled' do
+      let!(:interested_form) do
+        form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')
+        form.ticket_types << ticket_type
+        form
+      end
+
+      before do
+        create(:registration_form_rsvp_setting,
+               registration_form: interested_form,
+               enabled: true,
+               rsvp_required: true,
+               review_sla_hours: 48)
+        ActionMailer::Base.deliveries.clear
+        clear_enqueued_jobs
+        clear_performed_jobs
+      end
+
+      it 'creates a pending ticket application and sends acknowledgement' do
+        perform_enqueued_jobs do
+          expect do
+            post "/v1/public/events/#{event.slug}/register",
+                 params: valid_params.merge(form_slug: interested_form.slug)
+          end.to change(Ticket, :count).by(1)
+            .and change(TicketApplication, :count).by(1)
+        end
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        application = created_ticket.ticket_application
+
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+        expect(application.review_status).to eq('pending_review')
+        expect(application.rsvp_status).to eq('not_sent')
+        expect(application.registration_form_id).to eq(interested_form.id)
+        expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
+        expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Your ticket for')
+      end
     end
 
     it 'creates a new ticket' do

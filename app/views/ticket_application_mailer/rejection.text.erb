@@ -1,0 +1,20 @@
+Application Update
+
+Dear <%= @ticket.attendee_name %>,
+
+Thank you for applying to <%= @event.title %>.
+After careful review, we are unable to confirm your delegate application at this time due to limited capacity.
+
+Application Status
+- Not selected in the current intake
+
+We truly appreciate your interest in being part of the summit and thank you for your understanding.
+<% if @contact_email.present? %>
+For assistance, contact us at <%= @contact_email %>.
+<% end %>
+
+Warm regards,
+<%= @event.title %> Team
+
+---
+This is an automated update from EventzFlow.

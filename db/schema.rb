@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
+ActiveRecord::Schema[8.0].define(version: 2026_04_28_090100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -225,7 +225,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -954,6 +954,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
     t.index ["user_id"], name: "index_printing_services_on_user_id"
   end
 
+  create_table "registration_form_rsvp_settings", force: :cascade do |t|
+    t.bigint "registration_form_id", null: false
+    t.boolean "enabled", default: false, null: false
+    t.boolean "rsvp_required", default: false, null: false
+    t.integer "rsvp_expires_in_hours"
+    t.integer "review_sla_hours", default: 48, null: false
+    t.datetime "notify_by_date"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id"], name: "index_registration_form_rsvp_settings_on_registration_form_id", unique: true
+    t.check_constraint "review_sla_hours > 0", name: "chk_registration_form_rsvp_settings_review_sla_positive"
+    t.check_constraint "rsvp_expires_in_hours IS NULL OR rsvp_expires_in_hours > 0", name: "chk_registration_form_rsvp_settings_expiry_positive"
+  end
+
   create_table "registration_form_ticket_types", force: :cascade do |t|
     t.bigint "registration_form_id", null: false
     t.bigint "ticket_type_id", null: false
@@ -1197,6 +1211,28 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
     t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id"
     t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id"
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
+  end
+
+  create_table "ticket_applications", force: :cascade do |t|
+    t.bigint "ticket_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.integer "review_status", default: 0, null: false
+    t.integer "rsvp_status", default: 0, null: false
+    t.bigint "reviewed_by_id"
+    t.datetime "reviewed_at"
+    t.text "rejection_reason"
+    t.string "rsvp_token_digest"
+    t.datetime "rsvp_sent_at"
+    t.datetime "rsvp_confirmed_at"
+    t.datetime "rsvp_expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id"], name: "index_ticket_applications_on_registration_form_id"
+    t.index ["reviewed_by_id"], name: "index_ticket_applications_on_reviewed_by_id"
+    t.index ["rsvp_token_digest"], name: "index_ticket_applications_on_rsvp_token_digest", unique: true
+    t.index ["ticket_id"], name: "index_ticket_applications_on_ticket_id", unique: true
+    t.check_constraint "review_status = ANY (ARRAY[0, 1, 2])", name: "chk_ticket_applications_review_status"
+    t.check_constraint "rsvp_status = ANY (ARRAY[0, 1, 2, 3, 4])", name: "chk_ticket_applications_rsvp_status"
   end
 
   create_table "ticket_payments", force: :cascade do |t|
@@ -1550,6 +1586,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
   add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
+  add_foreign_key "registration_form_rsvp_settings", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "ticket_types"
   add_foreign_key "registration_forms", "events"
@@ -1577,6 +1614,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_24_100100) do
   add_foreign_key "table_assignments", "plan_objects"
   add_foreign_key "table_assignments", "tickets"
   add_foreign_key "table_assignments", "visitors"
+  add_foreign_key "ticket_applications", "registration_forms"
+  add_foreign_key "ticket_applications", "tickets"
+  add_foreign_key "ticket_applications", "users", column: "reviewed_by_id"
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
