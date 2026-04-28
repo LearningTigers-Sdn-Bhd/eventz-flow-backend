@@ -40,7 +40,10 @@ module V1
         include: {
           ticket_type: { only: [:id, :name, :price] },
           scanned_by: { only: [:id, :full_name] },
-          pass_bundle: { only: [:id, :name] }
+          pass_bundle: { only: [:id, :name] },
+          ticket_application: {
+            only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
+          }
         }
       ), status: :ok
     end
@@ -49,13 +52,7 @@ module V1
     def show
       # Authorize the specific ticket record against the show? policy
       authorize @ticket
-      render json: @ticket.as_json(
-        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-        include: {
-          ticket_type: { only: [:id, :name, :price] },
-          pass_bundle: { only: [:id, :name] }
-        }
-      ), status: :ok
+      render json: ticket_response(@ticket), status: :ok
     end
 
     # POST /v1/events/:event_id/tickets
@@ -74,13 +71,7 @@ module V1
 
       if @ticket.save
         @ticket.reload
-        render json: @ticket.as_json(
-          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: {
-            ticket_type: { only: [:id, :name, :price] },
-            pass_bundle: { only: [:id, :name] }
-          }
-        ), status: :created
+        render json: ticket_response(@ticket), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -91,13 +82,7 @@ module V1
       authorize @ticket, :update?
 
       if @ticket.update(ticket_params_with_payment_sync)
-        render json: @ticket.as_json(
-          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: {
-            ticket_type: { only: [:id, :name, :price] },
-            pass_bundle: { only: [:id, :name] }
-          }
-        ), status: :ok
+        render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -140,13 +125,7 @@ module V1
       authorize @ticket, :restore?
 
       if @ticket.restore
-        render json: @ticket.as_json(
-          methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-          include: {
-            ticket_type: { only: [:id, :name, :price] },
-            pass_bundle: { only: [:id, :name] }
-          }
-        ), status: :ok
+        render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -496,6 +475,19 @@ module V1
       return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
 
       permitted_params.merge(status: :purchased)
+    end
+
+    def ticket_response(ticket)
+      ticket.as_json(
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        include: {
+          ticket_type: { only: [:id, :name, :price] },
+          pass_bundle: { only: [:id, :name] },
+          ticket_application: {
+            only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
+          }
+        }
+      )
     end
   end
 end

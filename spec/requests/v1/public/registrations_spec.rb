@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'V1::Public::Registrations', type: :request do
+  include ActiveJob::TestHelper
+
   let(:event) { create(:event, status: :published) }
   let!(:ticket_type) do
     create(
@@ -271,6 +273,36 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data']['has_pending_payment']).to be(false)
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).not_to include(stale_ticket.public_id)
     end
+
+    it 'returns rejected application state for rejected delegate applications' do
+      rejected_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: 'rejected@example.com',
+        status: :canceled,
+        payment_status: :pending
+      )
+      create(
+        :ticket_application,
+        ticket: rejected_ticket,
+        registration_form: delegate_form,
+        review_status: :rejected,
+        rejection_reason: 'Limited seats'
+      )
+
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: 'rejected@example.com',
+        form_slug: 'delegate'
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be(true)
+      expect(json['data']['has_rejected_application']).to be(true)
+      expect(json['data']['rejected_message']).to include('not selected')
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/register' do
@@ -287,6 +319,74 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
           registration_kind: 'member'
         }
       }
+    end
+
+    context 'when registration form delegate approval is enabled' do
+      let!(:interested_form) do
+        form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')
+        form.ticket_types << ticket_type
+        form
+      end
+
+      before do
+        create(:registration_form_rsvp_setting,
+               registration_form: interested_form,
+               enabled: true,
+               rsvp_required: true,
+               review_sla_hours: 48)
+        ActionMailer::Base.deliveries.clear
+        clear_enqueued_jobs
+        clear_performed_jobs
+      end
+
+      it 'creates a pending ticket application and sends acknowledgement' do
+        perform_enqueued_jobs do
+          expect do
+            post "/v1/public/events/#{event.slug}/register",
+                 params: valid_params.merge(form_slug: interested_form.slug)
+          end.to change(Ticket, :count).by(1)
+            .and change(TicketApplication, :count).by(1)
+        end
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        application = created_ticket.ticket_application
+
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+        expect(application.review_status).to eq('pending_review')
+        expect(application.rsvp_status).to eq('not_sent')
+        expect(application.registration_form_id).to eq(interested_form.id)
+        expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
+        expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Your ticket for')
+      end
+
+      it 'blocks re-registration for previously rejected applicants on the same form' do
+        rejected_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'john@example.com',
+          status: :canceled,
+          payment_status: :pending
+        )
+        create(
+          :ticket_application,
+          ticket: rejected_ticket,
+          registration_form: interested_form,
+          review_status: :rejected,
+          rejection_reason: 'Limited seats'
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: interested_form.slug)
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['message']).to include('application was not selected in this intake')
+      end
     end
 
     it 'creates a new ticket' do

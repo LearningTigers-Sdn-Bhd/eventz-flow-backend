@@ -43,6 +43,9 @@ Rails.application.routes.draw do
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
         get 'pass_bundles/:token', to: 'registrations#pass_bundle'
+        get 'ticket_rsvp/:token', to: 'ticket_rsvps#show'
+        post 'ticket_rsvp/:token/confirm', to: 'ticket_rsvps#confirm'
+        post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         patch 'register_exhibitor', to: 'exhibitor_registrations#update'
@@ -148,7 +151,9 @@ Rails.application.routes.draw do
       end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
-      resources :registration_forms, only: %i[index show create update destroy]
+      resources :registration_forms, only: %i[index show create update destroy] do
+        resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
+      end
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_zones, only: %i[index create]
 
@@ -178,6 +183,14 @@ Rails.application.routes.draw do
       end
 
       resources :visitors, only: %i[index show create update destroy]
+
+      resources :tickets, only: [] do
+        member do
+          patch 'application/approve', to: 'ticket_applications#approve'
+          patch 'application/reject', to: 'ticket_applications#reject'
+          post 'application/resend_rsvp', to: 'ticket_applications#resend_rsvp'
+        end
+      end
 
       resources :wishes, only: %i[index destroy] do
         member do

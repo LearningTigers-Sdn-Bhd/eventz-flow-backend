@@ -28,6 +28,7 @@ module V1
         event = Event.friendly.find(params[:event_slug])
         email = params[:email].to_s.strip.downcase
         form_slug = params[:form_slug].to_s.strip
+        form = nil
 
         if email.blank?
           return render json: {
@@ -44,6 +45,8 @@ module V1
           form = event.registration_forms.find_by(slug: form_slug)
           tickets = tickets.where(ticket_type_id: registration_status_ticket_type_ids(event:, form:)) if form
         end
+
+        rejected_application = rejected_application_for_form(event:, form:, email:)
 
         upgrade_ticket = conference_upgrade_ticket(event:, email:, form_slug:)
         blocked_upgrade_ticket = blocked_conference_upgrade_ticket(event:, email:, form_slug:)
@@ -64,6 +67,8 @@ module V1
           data: {
             has_pending_payment: pending_tickets.exists?,
             has_paid_ticket: paid_tickets.exists?,
+            has_rejected_application: rejected_application.present?,
+            rejected_message: rejected_application_message(event: event, rejected_application: rejected_application),
             pending_tickets: pending_tickets.limit(5).map do |ticket|
               serialize_status_ticket(ticket)
             end,
@@ -175,6 +180,15 @@ module V1
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
+        approval_enabled = delegate_approval_enabled_for_form?(form)
+        normalized_attendee_email = registration_params[:attendee_email].to_s.strip.downcase
+
+        if approval_enabled && rejected_application_for_form(event:, form:, email: normalized_attendee_email).present?
+          return render json: {
+            success: false,
+            message: 'Your application was not selected in this intake. Thank you for your interest.'
+          }, status: :unprocessable_content
+        end
 
         ticket = conference_upgrade_ticket(
           event: event,
@@ -192,7 +206,10 @@ module V1
           ticket.ticket_type = ticket_type
           ticket.pass_bundle = bundle if bundle.present?
 
-          if auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
+          if approval_enabled
+            ticket.status = 'pending_payment'
+            ticket.payment_status = 'pending'
+          elsif auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
             ticket.status = 'purchased'
             ticket.payment_status = 'paid'
           else
@@ -202,6 +219,8 @@ module V1
         end
 
         if ticket.save
+          handle_ticket_application!(registration_form: form, ticket: ticket)
+
           render json: {
             success: true,
             data: serialize_ticket(ticket, ticket.ticket_type)
@@ -304,6 +323,50 @@ module V1
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id
         }
+      end
+
+      def handle_ticket_application!(registration_form:, ticket:)
+        return if registration_form.blank?
+
+        setting = registration_form.registration_form_rsvp_setting
+        return unless setting&.enabled?
+
+        application = ticket.ticket_application || ticket.create_ticket_application!(
+          registration_form: registration_form,
+          review_status: :pending_review,
+          rsvp_status: :not_sent
+        )
+
+        if ticket.attendee_email.present?
+          TicketApplicationMailer.acknowledgement(application).deliver_later
+        end
+      end
+
+      def delegate_approval_enabled_for_form?(form)
+        return false unless form
+
+        form.registration_form_rsvp_setting&.enabled? || false
+      end
+
+      def rejected_application_for_form(event:, form:, email:)
+        return nil if form.blank? || email.blank?
+
+        TicketApplication
+          .joins(:ticket)
+          .where(
+            registration_form_id: form.id,
+            review_status: TicketApplication.review_statuses[:rejected],
+            tickets: { event_id: event.id }
+          )
+          .where('tickets.attendee_email_norm = :email OR LOWER(tickets.attendee_email) = :email', email: email)
+          .order(reviewed_at: :desc, id: :desc)
+          .first
+      end
+
+      def rejected_application_message(event:, rejected_application:)
+        return nil unless rejected_application
+
+        'Your application was not selected in this intake. Thank you for your interest.'
       end
 
       def registration_status_ticket_type_ids(event:, form:)

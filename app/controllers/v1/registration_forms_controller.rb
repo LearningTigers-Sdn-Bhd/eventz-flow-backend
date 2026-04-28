@@ -7,7 +7,7 @@ module V1
     # GET /v1/events/:event_id/registration_forms
     def index
       @registration_forms = @event.registration_forms
-        .includes(registration_form_ticket_types: :ticket_type)
+        .includes(:registration_form_rsvp_setting, registration_form_ticket_types: :ticket_type)
         .order(:position)
       render json: @registration_forms.map { |form| format_response(form) }, status: :ok
     end
@@ -214,6 +214,7 @@ module V1
 
     def format_response(form)
       mappings = form.registration_form_ticket_types.includes(:ticket_type)
+      rsvp_setting = form.registration_form_rsvp_setting
 
       {
         id: form.id,
@@ -224,6 +225,19 @@ module V1
         custom_labels_data: form.custom_labels_data || [],
         status: form.status,
         position: form.position,
+        registration_form_rsvp_setting: rsvp_setting&.as_json(
+          only: %i[
+            id
+            registration_form_id
+            enabled
+            rsvp_required
+            rsvp_expires_in_hours
+            review_sla_hours
+            notify_by_date
+            created_at
+            updated_at
+          ]
+        ),
         created_at: form.created_at,
         updated_at: form.updated_at,
         ticket_types: mappings.map { |mapping|

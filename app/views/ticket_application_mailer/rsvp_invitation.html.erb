@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #14532d, #15803d); color: white; padding: 40px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.9; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 16px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 20px; line-height: 1.7; }
+    .cta-wrap { margin: 24px 0; text-align: center; }
+    .cta { display: inline-block; padding: 12px 24px; border-radius: 8px; background: #15803d; color: #fff !important; text-decoration: none; font-weight: bold; font-size: 14px; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 20px; margin-bottom: 22px; }
+    .info-title { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; color: #15803d; }
+    .info-text { margin: 0; font-size: 14px; color: #555; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; margin-bottom: 8px; }
+    .signature { font-size: 15px; color: #333; font-weight: bold; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Application Approved</h1>
+        <p>We are pleased to welcome you</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Dear <strong><%= @ticket.attendee_name %></strong>,</p>
+
+        <p class="message">
+          Great news. Your application for <strong><%= @event.title %></strong> has been approved.
+          Please confirm your attendance to secure your place.
+        </p>
+
+        <div class="cta-wrap">
+          <a href="<%= @rsvp_url %>" class="cta">Confirm RSVP</a>
+        </div>
+
+        <div class="info-box">
+          <p class="info-title">RSVP Link Status</p>
+          <% if @ticket_application.rsvp_expires_at.present? %>
+            <p class="info-text">This RSVP link expires on <strong><%= @ticket_application.rsvp_expires_at.in_time_zone.strftime('%B %d, %Y %I:%M %p') %></strong>.</p>
+          <% else %>
+            <p class="info-text">This RSVP link does not expire.</p>
+          <% end %>
+        </div>
+
+        <p class="message">
+          Your QR ticket will be issued immediately after you confirm your RSVP.
+          <% if @contact_email.present? %>
+            If you need help, contact us at
+            <a href="mailto:<%= @contact_email %>" style="color: #2563eb; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.
+          <% end %>
+        </p>
+
+        <p class="closing">We look forward to hosting you.</p>
+        <p class="closing">Warm regards,</p>
+        <p class="signature"><%= @event.title %> Team</p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated update from EventzFlow. Please do not reply directly to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

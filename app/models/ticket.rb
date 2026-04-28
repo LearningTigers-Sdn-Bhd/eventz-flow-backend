@@ -16,6 +16,7 @@ class Ticket < ApplicationRecord
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
   has_one :ticket_payment, dependent: :destroy
+  has_one :ticket_application, dependent: :destroy
   
   # Delegation for payment details to expose them directly on the Ticket object (for flat API)
   # Uses build_ticket_payment if it doesn't exist yet to support updates
