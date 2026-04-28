@@ -273,6 +273,36 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data']['has_pending_payment']).to be(false)
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).not_to include(stale_ticket.public_id)
     end
+
+    it 'returns rejected application state for rejected delegate applications' do
+      rejected_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: 'rejected@example.com',
+        status: :canceled,
+        payment_status: :pending
+      )
+      create(
+        :ticket_application,
+        ticket: rejected_ticket,
+        registration_form: delegate_form,
+        review_status: :rejected,
+        rejection_reason: 'Limited seats'
+      )
+
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: 'rejected@example.com',
+        form_slug: 'delegate'
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      expect(json['success']).to be(true)
+      expect(json['data']['has_rejected_application']).to be(true)
+      expect(json['data']['rejected_message']).to include('not selected')
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/register' do
@@ -329,6 +359,33 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(application.registration_form_id).to eq(interested_form.id)
         expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
         expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Your ticket for')
+      end
+
+      it 'blocks re-registration for previously rejected applicants on the same form' do
+        rejected_ticket = create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'john@example.com',
+          status: :canceled,
+          payment_status: :pending
+        )
+        create(
+          :ticket_application,
+          ticket: rejected_ticket,
+          registration_form: interested_form,
+          review_status: :rejected,
+          rejection_reason: 'Limited seats'
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: interested_form.slug)
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['message']).to include('previous application was not selected')
       end
     end
 
