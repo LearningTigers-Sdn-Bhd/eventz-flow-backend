@@ -78,6 +78,8 @@ module V1
       update_attributes = event_params.except(
         :logo,
         :remove_logo,
+        :poster,
+        :remove_poster,
         :payment_receipt_email,
         :wish_wall_background_image,
         :remove_wish_wall_background_image
@@ -87,6 +89,7 @@ module V1
 
       Event.transaction do
         handle_logo
+        handle_poster
         handle_wish_wall_background_image
         success = @event.update(update_attributes)
 
@@ -225,6 +228,8 @@ module V1
         :skip_webhooks,
         :logo,
         :remove_logo,
+        :poster,
+        :remove_poster,
         :wish_wall_background_image,
         :remove_wish_wall_background_image,
         labels_data: {}, # Allows JSONB hash updates
@@ -248,6 +253,16 @@ module V1
         @event.logo.attach(event_p[:logo])
       elsif ActiveModel::Type::Boolean.new.cast(event_p[:remove_logo])
         @event.logo.purge_later if @event.logo.attached?
+      end
+    end
+
+    def handle_poster
+      event_p = params[:event] || {}
+
+      if event_p[:poster].present? && event_p[:poster].respond_to?(:read)
+        @event.poster.attach(event_p[:poster])
+      elsif ActiveModel::Type::Boolean.new.cast(event_p[:remove_poster])
+        @event.poster.purge_later if @event.poster.attached?
       end
     end
 

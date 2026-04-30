@@ -30,6 +30,7 @@ module V1
                                     ])
 
         event_json['logo_url'] = @event.logo_url
+        event_json['poster_url'] = @event.poster_url
         event_json['wish_wall_setting'] = @event.wish_wall_setting_payload
 
         success_response(data: event_json)

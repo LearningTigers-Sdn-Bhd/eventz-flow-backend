@@ -618,9 +618,14 @@ module V1
 
       def public_registration_url_for!(event)
         url = event.normalized_public_registration_url
-        raise KeyError, 'public_registration_url' if url.blank?
+        return url if url.present?
 
-        url
+        frontend_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', '')).to_s.chomp('/')
+        return "#{frontend_url}/events/#{event.slug}" if frontend_url.present?
+
+        request_base = "#{request.protocol}#{request.host}"
+        request_base = "#{request_base}:#{request.optional_port}" if request.optional_port.present?
+        "#{request_base}/events/#{event.slug}"
       end
 
       def reusable_gateway_order(payment)

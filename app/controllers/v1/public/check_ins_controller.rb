@@ -51,7 +51,8 @@ module V1
           id: @event.id,
           title: @event.title,
           slug: @event.slug,
-          use_ticket: @event.use_ticket
+          use_ticket: @event.use_ticket,
+          poster_url: @event.poster_url
         }
       end
 

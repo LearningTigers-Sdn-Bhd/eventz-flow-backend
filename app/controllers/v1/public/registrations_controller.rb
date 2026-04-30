@@ -310,6 +310,7 @@ module V1
 
       def serialize_status_ticket(ticket)
         {
+          id: ticket.id,
           public_id: ticket.public_id,
           attendee_name: ticket.attendee_name,
           attendee_email: ticket.attendee_email,
@@ -320,6 +321,7 @@ module V1
           price: ticket.ticket_type&.current_price || 0,
           payment_status: ticket.payment_status,
           status: ticket.status,
+          created_at: ticket.created_at,
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id
         }

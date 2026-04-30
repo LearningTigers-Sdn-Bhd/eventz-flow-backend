@@ -4,6 +4,7 @@ class Event < ApplicationRecord
 
   # --- Active Storage ---
   has_one_attached :logo, dependent: :purge_later
+  has_one_attached :poster, dependent: :purge_later
 
   # --- Associations (Refactored) ---
 
@@ -152,9 +153,16 @@ class Event < ApplicationRecord
     Rails.application.routes.url_helpers.rails_blob_url(wish_wall_setting.background_image, only_path: true)
   end
 
+  def poster_url
+    return nil unless poster.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(poster, only_path: true)
+  end
+
   def as_json(options = {})
     super(options).merge(
       'logo_url' => logo_url,
+      'poster_url' => poster_url,
       'payment_receipt_email' => event_email_setting&.payment_receipt_email,
       'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at]),
       'wish_wall_setting' => wish_wall_setting_payload
