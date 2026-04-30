@@ -201,8 +201,9 @@ module V1
 
     # Strong parameters for Event resource
     def event_params
-      params.require(:event).permit(
+      permitted = [
         :title,
+        :slug,
         :description,
         :status,
         :multiple_scans,
@@ -243,7 +244,10 @@ module V1
           header_text_color
           card_background_color
         ]
-      )
+      ]
+
+      permitted.delete(:slug) unless current_user&.org_owner?
+      params.require(:event).permit(*permitted)
     end
 
     def handle_logo
