@@ -209,6 +209,8 @@ module V1
         :multiple_scans,
         :start_date,
         :end_date,
+        :venue_name,
+        :venue_address,
         :webhook_url,
         :visibility,
         :enable_exhibitor_management,

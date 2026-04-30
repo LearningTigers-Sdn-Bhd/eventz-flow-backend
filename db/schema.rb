@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_04_28_090100) do
+ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -545,6 +545,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_28_090100) do
     t.boolean "auto_approve_wishes", default: false, null: false
     t.boolean "enable_exhibitor_management", default: false, null: false
     t.string "public_registration_url"
+    t.string "venue_name"
+    t.string "venue_address"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
