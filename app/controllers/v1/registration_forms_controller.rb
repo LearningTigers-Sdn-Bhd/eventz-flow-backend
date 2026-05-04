@@ -223,7 +223,7 @@ module V1
         slug: form.slug,
         description: form.description,
         custom_labels_data: form.custom_labels_data || [],
-        status: form.status,
+        status: RegistrationForm.statuses[form.status],
         position: form.position,
         registration_form_rsvp_setting: rsvp_setting&.as_json(
           only: %i[

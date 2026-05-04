@@ -9,7 +9,7 @@ module V1
 
       def registration_forms
         event = Event.friendly.find(params[:event_slug])
-        forms = event.registration_forms.active.order(:position, :created_at)
+        forms = event.registration_forms.order(:position, :created_at)
 
         render json: {
           success: true,
@@ -18,6 +18,7 @@ module V1
               slug: f.slug,
               name: f.name,
               description: f.description,
+              status: RegistrationForm.statuses[f.status],
               custom_labels_data: f.custom_labels_data || []
             }
           end
@@ -42,7 +43,7 @@ module V1
           email: email
         )
         if form_slug.present?
-          form = event.registration_forms.find_by(slug: form_slug)
+          form = event.registration_forms.active.find_by(slug: form_slug)
           tickets = tickets.where(ticket_type_id: registration_status_ticket_type_ids(event:, form:)) if form
         end
 
@@ -158,7 +159,7 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.find_by(slug: params[:form_slug])
+          form = event.registration_forms.active.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
@@ -241,7 +242,7 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.find_by(slug: params[:form_slug])
+          form = event.registration_forms.active.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
