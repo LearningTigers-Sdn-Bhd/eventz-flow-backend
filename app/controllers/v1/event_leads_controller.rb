@@ -118,6 +118,64 @@ module V1
       end
     end
 
+    # POST /v1/event-leads/scan
+    # Global ticket lead scan: resolve event from ticket and authorize by assignment.
+    def scan
+      public_id = params[:public_id] || params.dig(:event_lead, :public_id)
+      unless public_id
+        return render json: { error: 'Bad Request', message: 'public_id is required.' }, status: :bad_request
+      end
+
+      ticket = Ticket.includes(:event).find_by(public_id: public_id)
+      unless ticket
+        return render json: { error: 'Not Found', message: 'Attendee not found. The scanned QR code does not match any attendee ticket.' }, status: :not_found
+      end
+
+      event = ticket.event
+      unless event&.use_event_leads
+        return render json: { error: 'Forbidden', code: 'event_leads_disabled', message: 'Lead scan is disabled for this event.' }, status: :forbidden
+      end
+
+      event_vendor = EventVendor.includes(:vendor).find_by(event_id: event.id, vendor_id: current_user.id)
+      unless event_vendor
+        return render json: { error: 'Forbidden', code: 'not_authorized_for_ticket_scan', message: 'You are not authorized to scan this ticket.' }, status: :forbidden
+      end
+
+      authorize event_vendor, :create?, policy_class: EventLeadPolicy
+
+      lead = EventLead.find_or_initialize_by(leadable: ticket, event_vendor: event_vendor)
+      lead.notes = params[:notes] || params.dig(:event_lead, :notes) if lead.new_record? || params.key?(:notes) || params.dig(:event_lead, :notes)
+      lead.scanned_by = current_user if lead.new_record?
+
+      if lead.new_record?
+        if lead.save
+          lead.reload
+          render json: format_lead(lead).merge(already_captured: false), status: :created
+        else
+          render json: { error: 'Validation Error', errors: lead.errors.full_messages }, status: :unprocessable_content
+        end
+      else
+        render json: format_lead(lead).merge(already_captured: true), status: :ok
+      end
+    end
+
+    # GET /v1/event-leads/recent
+    # Recent lead captures for current user across assigned events.
+    def recent
+      limit = params[:limit].to_i
+      limit = 20 if limit <= 0
+      limit = 100 if limit > 100
+
+      base_leads = EventLead
+        .includes(event_vendor: :event, leadable: [])
+        .joins("INNER JOIN event_vendors ON event_vendors.id = event_leads.event_vendor_id")
+      leads = policy_scope(base_leads, policy_scope_class: EventLeadPolicy::Scope)
+        .order(created_at: :desc)
+        .limit(limit)
+
+      render json: leads.map { |lead| format_lead_with_details(lead) }, status: :ok
+    end
+
     private
 
     def format_lead(lead)
@@ -133,7 +191,8 @@ module V1
         event_vendor: {
           id: lead.event_vendor.id,
           vendor_id: lead.event_vendor.vendor_id,
-          event_id: lead.event_vendor.event_id
+          event_id: lead.event_vendor.event_id,
+          event_name: lead.event_vendor.event&.title
         }
       }
     end
@@ -150,6 +209,8 @@ module V1
         lead_phone: leadable_info[:phone],
         lead_public_id: leadable_info[:public_id],
         event_vendor_id: lead.event_vendor_id,
+        event_id: lead.event_vendor.event_id,
+        event_name: lead.event_vendor.event&.title,
         vendor_name: lead.event_vendor.vendor&.full_name,
         notes: lead.notes,
         scanned_by_id: lead.scanned_by_id,

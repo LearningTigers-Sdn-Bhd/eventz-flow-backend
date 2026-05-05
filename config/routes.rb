@@ -370,6 +370,8 @@ Rails.application.routes.draw do
     scope 'events/:event_id' do
       resources :event_leads, only: %i[index create update], path: 'event-leads'
     end
+    post 'event-leads/scan', to: 'event_leads#scan'
+    get 'event-leads/recent', to: 'event_leads#recent'
 
     # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)
     # GET /v1/scan/recent_check_ins - Get recent check-ins for authorized events

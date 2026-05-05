@@ -31,8 +31,8 @@ class EventLeadPolicy < ApplicationPolicy
     # Event-level staff
     return true if user.is_event_admin?(event) || user.is_event_team_member?(event)
 
-    # Vendor can only create leads for themselves
-    return true if user.is_vendor? && event_vendor.vendor_id == user.id
+    # Assigned vendor/exhibitor can only create leads for themselves
+    return true if user.is_event_vendor?(event) && event_vendor.vendor_id == user.id
 
     false
   end
@@ -50,11 +50,9 @@ class EventLeadPolicy < ApplicationPolicy
         return scope.all
       end
 
-      # Vendors: Only see leads they captured (their event_vendor records)
-      if user.is_vendor?
-        vendor_event_vendor_ids = EventVendor.where(vendor_id: user.id).pluck(:id)
-        return scope.where(event_vendor_id: vendor_event_vendor_ids)
-      end
+      # Assigned vendor/exhibitor users: only leads captured by their event_vendor records
+      vendor_event_vendor_ids = EventVendor.where(vendor_id: user.id).pluck(:id)
+      return scope.where(event_vendor_id: vendor_event_vendor_ids) if vendor_event_vendor_ids.any?
 
       scope.none
     end

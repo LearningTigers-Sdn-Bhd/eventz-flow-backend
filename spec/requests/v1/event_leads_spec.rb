@@ -17,6 +17,9 @@ RSpec.describe 'V1::EventLeads', type: :request do
   let!(:event) do
     create(:event, title: 'Test Event', payment_status: :paid, use_ticket: false, use_event_leads: true)
   end
+  let!(:other_event) do
+    create(:event, title: 'Other Event', payment_status: :paid, use_ticket: true, use_event_leads: true)
+  end
 
   # --- Setup Event Vendors ---
   let!(:event_vendor) do
@@ -39,6 +42,9 @@ RSpec.describe 'V1::EventLeads', type: :request do
   # --- Setup Tickets ---
   let!(:ticket) do
     create(:ticket, event: event, attendee_name: 'Ticket Attendee', attendee_email: 'ticket@example.com', attendee_phone: '+1112223333')
+  end
+  let!(:other_event_ticket) do
+    create(:ticket, event: other_event, attendee_name: 'Other Event Attendee')
   end
 
   # --- Setup Leads ---
@@ -277,6 +283,43 @@ RSpec.describe 'V1::EventLeads', type: :request do
         patch "/v1/events/#{event.id}/event-leads/99999",
               params: { notes: 'test' },
               headers: { 'Authorization' => "Bearer #{vendor_token}" }
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
+  describe 'POST /v1/event-leads/scan' do
+    context 'when vendor is assigned to scanned ticket event' do
+      it 'creates a lead successfully' do
+        post '/v1/event-leads/scan',
+             params: { public_id: ticket.public_id },
+             headers: { 'Authorization' => "Bearer #{vendor_token}" }
+
+        expect(response).to have_http_status(:created)
+        data = JSON.parse(response.body)
+        expect(data['leadable_type']).to eq('Ticket')
+        expect(data['leadable_id']).to eq(ticket.id)
+      end
+    end
+
+    context 'when vendor is not assigned to scanned ticket event' do
+      it 'returns forbidden with exact unauthorized message' do
+        post '/v1/event-leads/scan',
+             params: { public_id: other_event_ticket.public_id },
+             headers: { 'Authorization' => "Bearer #{vendor_token}" }
+
+        expect(response).to have_http_status(:forbidden)
+        data = JSON.parse(response.body)
+        expect(data['message']).to eq('You are not authorized to scan this ticket.')
+      end
+    end
+
+    context 'when ticket does not exist' do
+      it 'returns not found' do
+        post '/v1/event-leads/scan',
+             params: { public_id: 'missing-ticket' },
+             headers: { 'Authorization' => "Bearer #{vendor_token}" }
 
         expect(response).to have_http_status(:not_found)
       end
