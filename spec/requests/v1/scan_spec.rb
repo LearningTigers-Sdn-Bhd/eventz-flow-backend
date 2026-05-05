@@ -17,7 +17,7 @@ RSpec.describe 'V1::Scan', type: :request do
 
   # --- Setup Event ---
   let!(:organizer_event) do
-    event = create(:event, title: 'Organizer Event', payment_status: :paid)
+    event = create(:event, title: 'Organizer Event', payment_status: :paid, start_date: Time.zone.today - 1.day, end_date: Time.zone.today + 1.day)
     EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     create(:event_assignment, role: :event_team_member, event: event, user: staff_user)
     event
@@ -36,6 +36,7 @@ RSpec.describe 'V1::Scan', type: :request do
            checked_in: true, check_in_at: 1.hour.ago, status: :scanned,
            attendee_name: 'Scanned Attendee', scanned_by: staff_user)
   end
+  let!(:checked_in_ticket_scan_log) { create(:ticket_scan_log, ticket: checked_in_ticket, event: organizer_event, scanned_by: staff_user, scanned_at: checked_in_ticket.check_in_at, day_index: 2) }
 
   # --- Setup Visitors ---
   let!(:unchecked_visitor) do
@@ -58,6 +59,7 @@ RSpec.describe 'V1::Scan', type: :request do
       security [{ BearerAuth: [] }]
 
       parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :event_id, in: :query, type: :integer, required: false
       parameter name: :event_id, in: :query, type: :integer, required: false,
                 description: 'Filter by specific event ID'
       parameter name: :limit, in: :query, type: :integer, required: false,
@@ -170,6 +172,7 @@ RSpec.describe 'V1::Scan', type: :request do
       response '200', 'Ticket check-in successful' do
         let(:Authorization) { "Bearer #{staff_token}" }
         let(:public_id) { purchased_ticket.public_id }
+        let(:event_id) { organizer_event.id }
 
         schema type: :object,
                properties: {
@@ -208,21 +211,23 @@ RSpec.describe 'V1::Scan', type: :request do
         end
       end
 
-      response '422', 'Ticket already checked in' do
+      response '422', 'Ticket already checked in today' do
         let(:Authorization) { "Bearer #{staff_token}" }
         let(:public_id) { checked_in_ticket.public_id }
+        let(:event_id) { organizer_event.id }
 
         schema type: :object,
                properties: {
                  error: { type: :string },
                  type: { type: :string },
-                 checked_in_at: { type: :string }
+                 invalid_reason: { type: :string }
                }
 
         run_test! do |response|
           json = JSON.parse(response.body)
-          expect(json['error']).to include('already been checked in')
+          expect(json['error']).to include('already been checked in today')
           expect(json['type']).to eq('ticket')
+          expect(json['invalid_reason']).to eq('already_checked_in_today')
         end
       end
 
@@ -296,9 +301,10 @@ RSpec.describe 'V1::Scan', type: :request do
     context 'when user scans multiple records' do
       before do
         # Create additional check-ins by staff_user
-        create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
-               checked_in: true, check_in_at: 5.minutes.ago, status: :scanned,
-               attendee_name: 'Recent Attendee', scanned_by: staff_user)
+        recent_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                               checked_in: true, check_in_at: 5.minutes.ago, status: :scanned,
+                               attendee_name: 'Recent Attendee', scanned_by: staff_user)
+        create(:ticket_scan_log, ticket: recent_ticket, event: organizer_event, day_index: 1, scanned_by: staff_user, scanned_at: 5.minutes.ago)
       end
 
       it 'returns check-ins sorted by check_in_at descending' do
@@ -328,6 +334,7 @@ RSpec.describe 'V1::Scan', type: :request do
     context 'when checking in a ticket' do
       it 'sets status to scanned' do
         patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
+              params: { event_id: organizer_event.id },
               headers: { 'Authorization' => "Bearer #{staff_token}" }
 
         expect(response).to have_http_status(:ok)
@@ -345,6 +352,40 @@ RSpec.describe 'V1::Scan', type: :request do
         unchecked_visitor.reload
         expect(unchecked_visitor.checked_in).to be true
       end
+    end
+  end
+
+  describe 'Ticket day-aware validation' do
+    it 'rejects wrong day with invalid_reason' do
+      general_ticket_type.update!(valid_day_indexes: [2, 3])
+      allow(TicketDayIndexResolver).to receive(:current_day_index).and_return(1)
+
+      patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
+            params: { event_id: organizer_event.id },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      json = JSON.parse(response.body)
+      expect(json['invalid_reason']).to eq('wrong_day')
+      expect(json['current_day_index']).to eq(1)
+      expect(json['allowed_day_indexes']).to eq([2, 3])
+    end
+
+    it 'allows same ticket on another valid day' do
+      general_ticket_type.update!(valid_day_indexes: [1, 2])
+      allow(TicketDayIndexResolver).to receive(:current_day_index).and_return(1, 2)
+
+      patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
+            params: { event_id: organizer_event.id },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+      expect(response).to have_http_status(:ok)
+
+      patch "/v1/scan/#{purchased_ticket.public_id}/check_in",
+            params: { event_id: organizer_event.id },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+      expect(response).to have_http_status(:ok)
+
+      expect(TicketScanLog.where(ticket: purchased_ticket).pluck(:day_index)).to contain_exactly(1, 2)
     end
   end
 

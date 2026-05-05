@@ -26,6 +26,9 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   before do
     EventAssignment.find_or_create_by!(event: event, user: organizer_user, role: :event_admin)
     EventAssignment.find_or_create_by!(event: event, user: staff_user, role: :event_team_member)
+    scanned_tickets.each_with_index do |ticket, index|
+      create(:ticket_scan_log, ticket: ticket, event: event, scanned_by: staff_user, day_index: 1, scanned_at: Time.current - index.minutes)
+    end
   end
 
   path '/v1/events/{event_id}/metrics/total_tickets' do

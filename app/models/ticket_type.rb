@@ -27,6 +27,7 @@ class TicketType < ApplicationRecord
   validates :price, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :quantity, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :max_per_order, presence: true, numericality: { greater_than_or_equal_to: 1 }
+  validate :valid_day_indexes_shape
 
   # Scopes
   scope :global, -> { where(event_id: nil) }
@@ -146,6 +147,37 @@ class TicketType < ApplicationRecord
         from: change[0],
         to: change[1]
       }
+    end
+  end
+
+  def valid_day_indexes_shape
+    return if valid_day_indexes.nil?
+
+    unless valid_day_indexes.is_a?(Array)
+      errors.add(:valid_day_indexes, 'must be an array of positive integers')
+      return
+    end
+
+    if valid_day_indexes.empty?
+      errors.add(:valid_day_indexes, 'must be nil for all-days or a non-empty array')
+      return
+    end
+
+    if valid_day_indexes.any? { |index| !index.is_a?(Integer) || index <= 0 }
+      errors.add(:valid_day_indexes, 'must contain only positive integers')
+    end
+
+    if valid_day_indexes.uniq.length != valid_day_indexes.length
+      errors.add(:valid_day_indexes, 'must not contain duplicates')
+    end
+
+    return unless event&.start_date.present? && event&.end_date.present?
+
+    event_days = (event.end_date.to_date - event.start_date.to_date).to_i + 1
+    return if event_days <= 0
+
+    if valid_day_indexes.any? { |index| index < 1 || index > event_days }
+      errors.add(:valid_day_indexes, "must be within 1..#{event_days}")
     end
   end
 end

@@ -158,4 +158,45 @@ RSpec.describe TicketType, type: :model do
       end
     end
   end
+
+  describe 'valid_day_indexes' do
+    let(:event) do
+      create(:event, start_date: Time.zone.parse('2026-08-10 09:00:00'), end_date: Time.zone.parse('2026-08-12 18:00:00'))
+    end
+    let(:ticket_type) { build(:ticket_type, event: event) }
+
+    it 'allows nil valid_day_indexes as all-days' do
+      ticket_type.valid_day_indexes = nil
+      expect(ticket_type).to be_valid
+    end
+
+    it 'rejects non-positive values' do
+      ticket_type.valid_day_indexes = [1, 0]
+      expect(ticket_type).not_to be_valid
+      expect(ticket_type.errors[:valid_day_indexes]).to be_present
+    end
+
+    it 'rejects duplicate values' do
+      ticket_type.valid_day_indexes = [1, 1]
+      expect(ticket_type).not_to be_valid
+      expect(ticket_type.errors[:valid_day_indexes]).to be_present
+    end
+
+    it 'rejects empty array' do
+      ticket_type.valid_day_indexes = []
+      expect(ticket_type).not_to be_valid
+      expect(ticket_type.errors[:valid_day_indexes]).to include('must be nil for all-days or a non-empty array')
+    end
+
+    it 'accepts indexes within event day range' do
+      ticket_type.valid_day_indexes = [1, 3]
+      expect(ticket_type).to be_valid
+    end
+
+    it 'rejects indexes outside event day range' do
+      ticket_type.valid_day_indexes = [4]
+      expect(ticket_type).not_to be_valid
+      expect(ticket_type.errors[:valid_day_indexes]).to include('must be within 1..3')
+    end
+  end
 end

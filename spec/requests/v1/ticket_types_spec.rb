@@ -8,7 +8,9 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
   # Create a test event with an owner
   let!(:event_owner) { create(:user, :organizer) }
   let!(:test_event) do
-    event = create(:event)
+    start_date = Time.zone.parse('2026-08-10 09:00:00')
+    end_date = Time.zone.parse('2026-08-11 18:00:00')
+    event = create(:event, start_date: start_date, end_date: end_date)
     create(:event_assignment, role: :event_admin, event: event, user: event_owner)
     event
   end
@@ -284,7 +286,8 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
             price: 150.00,
             quantity: 50,
             max_per_order: 2,
-            status: 'published'
+            status: 'published',
+            valid_day_indexes: [1]
           }
         }
       end
@@ -301,6 +304,7 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('Event VIP')
           expect(json['event_id']).to eq(test_event.id)
+          expect(json['valid_day_indexes']).to eq([1])
         end
       end
 
@@ -320,7 +324,8 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
         {
           ticket_type: {
             name: 'Updated Event Ticket',
-            price: 80.00
+            price: 80.00,
+            valid_day_indexes: [1, 2]
           }
         }
       end
@@ -335,6 +340,7 @@ RSpec.describe 'V1::TicketTypes API', type: :request do
           json = JSON.parse(response.body)
           expect(json['name']).to eq('Updated Event Ticket')
           expect(json['price']).to eq('80.0')
+          expect(json['valid_day_indexes']).to eq([1, 2])
         end
       end
 

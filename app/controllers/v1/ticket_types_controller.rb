@@ -37,6 +37,7 @@ module V1
         # Event-specific ticket type
         authorize @event, :update? # Only event admins can manage ticket types
         @ticket_type = @event.ticket_types.build(ticket_type_params)
+        @ticket_type.valid_day_indexes = [1] unless params.dig(:ticket_type, :valid_day_indexes).present?
       else
         # Global ticket type - only org_owners can create
         unless current_user.org_owner?
@@ -155,6 +156,7 @@ module V1
         :sale_ends_at,
         :status,
         :hidden,
+        valid_day_indexes: [],
         custom_fields_data: {}
       )
     end

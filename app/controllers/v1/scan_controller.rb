@@ -22,14 +22,11 @@ module V1
         authorized_event_ids = [event_id]
       end
 
-      # Fetch recent ticket check-ins scanned by the current user
-      tickets = Ticket.where(event_id: authorized_event_ids)
-                      .where(checked_in: true)
-                      .where(scanned_by_id: current_user.id)
-                      .where.not(check_in_at: nil)
-                      .includes(:ticket_type, :event, :scanned_by)
-                      .order(check_in_at: :desc)
-                      .limit(limit)
+      # Fetch recent ticket check-ins from scan logs scanned by the current user
+      ticket_scan_logs = TicketScanLog.where(event_id: authorized_event_ids, scanned_by_id: current_user.id)
+                                      .includes(:scanned_by, ticket: [:ticket_type, :event])
+                                      .order(scanned_at: :desc)
+                                      .limit(limit)
 
       # Fetch recent visitor check-ins scanned by the current user
       visitors = Visitor.where(event_id: authorized_event_ids)
@@ -43,7 +40,8 @@ module V1
       # Combine and sort by check_in_at
       combined = []
 
-      tickets.each do |ticket|
+      ticket_scan_logs.each do |scan_log|
+        ticket = scan_log.ticket
         combined << {
           type: 'ticket',
           scan_id: ticket.public_id,
@@ -56,11 +54,11 @@ module V1
           event_id: ticket.event_id,
           event_name: ticket.event&.title,
           checked_in: ticket.checked_in,
-          check_in_at: ticket.check_in_at&.iso8601,
+          check_in_at: scan_log.scanned_at&.iso8601,
           status: 'success',
-          scanned_by: ticket.scanned_by ? {
-            id: ticket.scanned_by.id,
-            full_name: ticket.scanned_by.full_name
+          scanned_by: scan_log.scanned_by ? {
+            id: scan_log.scanned_by.id,
+            full_name: scan_log.scanned_by.full_name
           } : nil
         }
       end
@@ -116,8 +114,7 @@ module V1
       @type = @record.is_a?(Ticket) ? 'ticket' : 'visitor'
       authorize @record, :check_in?
 
-      # Check if already checked in
-      if @record.checked_in?
+      if @record.is_a?(Visitor) && @record.checked_in?
         render json: {
           error: "#{@type.capitalize} has already been checked in.",
           type: @type,
@@ -126,21 +123,10 @@ module V1
         return
       end
 
-      # Perform check-in
-      check_in_params = {
-        checked_in: true,
-        check_in_at: Time.current,
-        scanned_by_id: current_user.id
-      }
-
-      # Tickets also need status update
-      check_in_params[:status] = :scanned if @record.is_a?(Ticket)
-
-      if @record.update(check_in_params)
-        broadcast_to_welcome_screen
-        render json: build_response, status: :ok
+      if @record.is_a?(Ticket)
+        perform_ticket_check_in
       else
-        render json: @record.errors, status: :unprocessable_content
+        perform_visitor_check_in
       end
     rescue Pundit::NotAuthorizedError
       render json: { error: 'Not authorized to check in this record' }, status: :forbidden
@@ -205,6 +191,84 @@ module V1
       end
 
       base_response.compact
+    end
+
+    def perform_ticket_check_in
+      validation = TicketDayValidationService.call(
+        ticket: @record,
+        scanner_event_id: params[:event_id]&.to_i,
+        now: Time.current
+      )
+
+      unless validation.ok?
+        render json: validation.error_payload.merge(
+          error: ticket_invalid_message(validation.invalid_reason),
+          type: 'ticket'
+        ), status: :unprocessable_content
+        return
+      end
+
+      scanned_at = Time.current
+
+      ActiveRecord::Base.transaction do
+        @record.update!(
+          checked_in: true,
+          check_in_at: scanned_at,
+          scanned_by_id: current_user.id,
+          status: :scanned
+        )
+
+        TicketScanLog.create!(
+          ticket: @record,
+          event: @record.event,
+          day_index: validation.current_day_index,
+          scanned_at: scanned_at,
+          scanned_by: current_user
+        )
+      end
+
+      scanned_day_indexes = @record.ticket_scan_logs.order(:day_index).pluck(:day_index)
+      event_day_count = (@record.event.end_date.to_date - @record.event.start_date.to_date).to_i + 1
+
+      response = build_response.merge(
+        current_day_index: validation.current_day_index,
+        event_day_count: event_day_count,
+        scanned_day_indexes: scanned_day_indexes,
+        allowed_day_indexes: validation.allowed_day_indexes
+      )
+
+      broadcast_to_welcome_screen
+      render json: response, status: :ok
+    rescue ActiveRecord::RecordInvalid => e
+      render json: e.record.errors, status: :unprocessable_content
+    end
+
+    def perform_visitor_check_in
+      if @record.update(
+        checked_in: true,
+        check_in_at: Time.current,
+        scanned_by_id: current_user.id
+      )
+        broadcast_to_welcome_screen
+        render json: build_response, status: :ok
+      else
+        render json: @record.errors, status: :unprocessable_content
+      end
+    end
+
+    def ticket_invalid_message(reason)
+      case reason
+      when 'wrong_event'
+        'Ticket does not belong to this event.'
+      when 'outside_event_days'
+        'Ticket cannot be checked in outside event days.'
+      when 'wrong_day'
+        'Ticket is not valid for today.'
+      when 'already_checked_in_today'
+        'Ticket has already been checked in today.'
+      else
+        'Ticket check-in is invalid.'
+      end
     end
 
     def broadcast_to_welcome_screen

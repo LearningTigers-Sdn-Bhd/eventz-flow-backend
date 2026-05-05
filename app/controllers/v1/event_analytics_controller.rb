@@ -11,13 +11,18 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_scanned_tickets
     def total_scanned_tickets
-      count = @event.tickets.checked_in.count
+      count = scanned_ticket_logs_scope.distinct.count(:ticket_id)
       render json: { totalScannedTickets: count }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_unscanned_tickets
     def total_unscanned_tickets
-      count = @event.tickets.unscanned.count
+      scanned_count = scanned_ticket_logs_scope
+                      .joins(:ticket)
+                      .merge(scoped_active_tickets)
+                      .distinct
+                      .count(:ticket_id)
+      count = [scoped_active_tickets.count - scanned_count, 0].max
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
@@ -117,6 +122,10 @@ module V1
 
     def scoped_active_tickets
       @event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+    end
+
+    def scanned_ticket_logs_scope
+      TicketScanLog.where(event_id: @event.id)
     end
 
     def count_shoppers_today
@@ -232,8 +241,7 @@ module V1
     def find_earliest_date_for_metric(metric)
       case metric
       when 'scans'
-        # For ticket scans, use earliest check_in_at
-        earliest = @event.tickets.checked_in.minimum(:check_in_at)
+        earliest = scanned_ticket_logs_scope.minimum(:scanned_at)
         earliest&.to_date || @event.start_date.to_date
       when 'visitor_scans'
         # For visitor scans, use earliest check_in_at
@@ -258,7 +266,7 @@ module V1
     def find_latest_date_for_metric(metric)
       case metric
       when 'scans'
-        latest = @event.tickets.checked_in.maximum(:check_in_at)
+        latest = scanned_ticket_logs_scope.maximum(:scanned_at)
         latest&.to_date || @event.end_date.to_date
       when 'visitor_scans'
         latest = @event.visitors.checked_in.maximum(:check_in_at)
@@ -315,7 +323,7 @@ module V1
       when 'tickets'
         scoped_active_tickets.time_series_count(:created_at, range: range, group_by: group_by)
       when 'scans'
-        @event.tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        fetch_ticket_scans_time_series(range, group_by)
       when 'revenue'
         scoped_active_tickets
           .joins(:ticket_type)
@@ -334,6 +342,23 @@ module V1
       when 'redemption_value'
         VoucherRedemptionLog.for_event(@event)
                             .time_series_sum(:redemption_timestamp, :discount_applied_value, range: range, group_by: group_by)
+      end
+    end
+
+    def fetch_ticket_scans_time_series(range, group_by)
+      scope = scanned_ticket_logs_scope.where(scanned_at: range)
+
+      case group_by
+      when 'hour'
+        scope.group_by_hour(:scanned_at, range: range).count
+      when 'day'
+        scope.group_by_day(:scanned_at, range: range).count
+      when 'week'
+        scope.group_by_week(:scanned_at, range: range).count
+      when 'month'
+        scope.group_by_month(:scanned_at, range: range).count
+      else
+        scope.group_by_day(:scanned_at, range: range).count
       end
     end
 
@@ -368,7 +393,7 @@ module V1
       when 'tickets'
         scoped_active_tickets
       when 'scans'
-        @event.tickets.checked_in
+        scanned_ticket_logs_scope
       when 'visitors'
         @event.visitors
       when 'visitor_scans'
@@ -382,7 +407,9 @@ module V1
 
     def timestamp_column_for_metric(metric)
       case metric
-      when 'scans', 'visitor_scans'
+      when 'scans'
+        :scanned_at
+      when 'visitor_scans'
         :check_in_at
       when 'redemptions'
         :redemption_timestamp

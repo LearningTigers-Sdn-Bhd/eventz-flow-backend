@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_05_05_090100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1258,6 +1258,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
     t.index ["ticket_id"], name: "index_ticket_payments_on_ticket_id"
   end
 
+  create_table "ticket_scan_logs", force: :cascade do |t|
+    t.bigint "ticket_id", null: false
+    t.bigint "event_id", null: false
+    t.integer "day_index", null: false
+    t.datetime "scanned_at", null: false
+    t.bigint "scanned_by_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "scanned_at"], name: "index_ticket_scan_logs_on_event_id_and_scanned_at"
+    t.index ["event_id"], name: "index_ticket_scan_logs_on_event_id"
+    t.index ["scanned_by_id", "scanned_at"], name: "index_ticket_scan_logs_on_scanned_by_id_and_scanned_at"
+    t.index ["scanned_by_id"], name: "index_ticket_scan_logs_on_scanned_by_id"
+    t.index ["ticket_id", "day_index"], name: "index_ticket_scan_logs_on_ticket_id_and_day_index", unique: true
+    t.index ["ticket_id"], name: "index_ticket_scan_logs_on_ticket_id"
+  end
+
   create_table "ticket_type_price_tiers", force: :cascade do |t|
     t.bigint "ticket_type_id", null: false
     t.string "label", null: false
@@ -1285,6 +1301,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
     t.datetime "updated_at", null: false
     t.integer "seat_ticketing_type"
     t.bigint "seat_ticketing_source_id"
+    t.integer "valid_day_indexes", array: true
     t.index ["event_id", "status"], name: "index_ticket_types_on_event_id_and_status"
     t.index ["event_id"], name: "index_ticket_types_on_event_id"
     t.index ["seat_ticketing_type", "seat_ticketing_source_id"], name: "idx_ticket_types_on_seat_ticketing"
@@ -1621,6 +1638,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
   add_foreign_key "ticket_applications", "users", column: "reviewed_by_id"
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
+  add_foreign_key "ticket_scan_logs", "events"
+  add_foreign_key "ticket_scan_logs", "tickets"
+  add_foreign_key "ticket_scan_logs", "users", column: "scanned_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"

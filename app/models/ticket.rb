@@ -31,6 +31,7 @@ class Ticket < ApplicationRecord
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
   has_many :event_leads, as: :leadable, dependent: :destroy
   has_many :event_reminder_logs, dependent: :destroy
+  has_many :ticket_scan_logs, dependent: :destroy
   
   has_many :table_assignments, dependent: :destroy
   has_many :assigned_tables, through: :table_assignments, source: :plan_object
