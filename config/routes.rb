@@ -46,6 +46,7 @@ Rails.application.routes.draw do
         get 'ticket_rsvp/:token', to: 'ticket_rsvps#show'
         post 'ticket_rsvp/:token/confirm', to: 'ticket_rsvps#confirm'
         post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
+        resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         patch 'register_exhibitor', to: 'exhibitor_registrations#update'
