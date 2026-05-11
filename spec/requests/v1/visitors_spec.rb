@@ -239,6 +239,8 @@ RSpec.describe 'V1::Visitors', type: :request do
     end
 
     it 'returns 422 when the visitor is not checked in' do
+      existing_visitor.update_columns(checked_in: false, check_in_at: nil, scanned_by_id: nil)
+
       patch "/v1/visitors/#{existing_visitor.public_id}/unscan",
             headers: { 'Authorization' => "Bearer #{org_owner_token}" }
 

@@ -12,8 +12,11 @@ module V1
     # GET /v1/metrics/events_overview
     def events_overview
       @events = policy_scope(Event)
+      exhibitor_revenue_by_event = exhibitor_revenue_cents_by_event(@events.pluck(:id))
 
       events_data = @events.map do |event|
+        exhibitor_revenue_cents = exhibitor_revenue_by_event[event.id] || 0
+
         if event.use_ticket
           tickets = event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
           {
@@ -24,7 +27,7 @@ module V1
             total_tickets: tickets.count,
             scanned_tickets: event.tickets.checked_in.count,
             unscanned_tickets: event.tickets.unscanned.count,
-            total_revenue: tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i,
+            total_revenue: tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i + exhibitor_revenue_cents,
             total_visitors: 0,
             total_leads: 0,
             last_activity: event.updated_at
@@ -38,7 +41,7 @@ module V1
             total_tickets: 0,
             scanned_tickets: 0,
             unscanned_tickets: 0,
-            total_revenue: 0,
+            total_revenue: exhibitor_revenue_cents,
             total_visitors: event.visitors.count,
             scanned_visitors: event.visitors.checked_in.count,
             unscanned_visitors: event.visitors.unscanned.count,
@@ -64,6 +67,7 @@ module V1
 
       all_tickets = Ticket.where(event_id: ticket_event_ids)
       active_tickets = all_tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+      exhibitor_revenue_cents = exhibitor_revenue_cents_by_event(event_ids).values.sum
 
       total_visitors = Visitor.where(event_id: non_ticket_event_ids).count
       total_vendors = EventVendor.where(event_id: event_ids).count
@@ -75,7 +79,7 @@ module V1
         active_events: @events.where(status: 'published').count,
         total_tickets: active_tickets.count,
         total_scanned: all_tickets.checked_in.count,
-        total_revenue: active_tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i,
+        total_revenue: active_tickets.joins(:ticket_type).sum("ticket_types.price * 100.0").to_i + exhibitor_revenue_cents,
         total_locations: EventLocation.where(event_id: event_ids).count,
         total_visitors: total_visitors,
         total_vendors: total_vendors,
@@ -116,6 +120,18 @@ module V1
 
     def authorize_global_analytics
       authorize :analytics, :index?
+    end
+
+    def exhibitor_revenue_cents_by_event(event_ids)
+      return {} if event_ids.empty?
+
+      ExhibitorRegistrationPayment
+        .paid
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: event_ids })
+        .group("event_vendors.event_id")
+        .sum(:amount)
+        .transform_values { |amount| (amount.to_d * 100).to_i }
     end
 
     def scoped_tickets
