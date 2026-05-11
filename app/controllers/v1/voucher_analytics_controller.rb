@@ -1,6 +1,7 @@
 module V1
   class VoucherAnalyticsController < ApplicationController
     before_action :set_event
+    before_action :ensure_voucher_enabled!
 
     def index
       vouchers_scope = Voucher.for_event(@event)
@@ -60,6 +61,12 @@ module V1
 
     def set_event
       @event = Event.find(params[:event_id])
+    end
+
+    def ensure_voucher_enabled!
+      return if @event.use_voucher?
+
+      render json: { error: "Voucher feature is unavailable for this event." }, status: :forbidden
     end
 
     def build_daily_redemption_trend(scope)

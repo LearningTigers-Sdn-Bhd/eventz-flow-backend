@@ -21,6 +21,7 @@ module V1
 
         # Find event by ID (supports both numeric ID and friendly ID)
         event = Event.friendly.find(params[:event_id])
+        return error_response(message: 'Event not found', status: :not_found) unless event.use_voucher?
 
         # Get only active vouchers for this event
         @vouchers = event.vouchers.active.includes(:vendor)
@@ -36,6 +37,7 @@ module V1
       # Returns a single voucher by ID (only if active)
       def show
         @voucher = Voucher.includes(:vendor).find(params[:id])
+        return error_response(message: 'Voucher not found', status: :not_found) unless @voucher.event.use_voucher?
 
         # Only return active vouchers publicly
         unless @voucher.active?

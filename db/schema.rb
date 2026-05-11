@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_05_11_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -547,6 +547,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_04_30_160000) do
     t.string "public_registration_url"
     t.string "venue_name"
     t.string "venue_address"
+    t.boolean "use_voucher", default: true, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end

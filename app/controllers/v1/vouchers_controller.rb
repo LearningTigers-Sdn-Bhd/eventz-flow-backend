@@ -2,6 +2,8 @@ module V1
   class VouchersController < ApplicationController
     before_action :set_voucher, only: [:show, :update, :destroy]
     before_action :authorize_resource, only: [:show, :update, :destroy]
+    before_action :ensure_voucher_enabled_for_resource!, only: [:show, :update, :destroy]
+    before_action :ensure_voucher_enabled_for_create!, only: [:create]
 
     # GET /api/v1/vouchers
     def index
@@ -10,12 +12,19 @@ module V1
       # Apply filters if provided in query parameters
       if params[:event_id].present?
         event = Event.friendly.find(params[:event_id])
+        ensure_voucher_enabled!(event)
+        return if performed?
         @vouchers = @vouchers.where(event_id: event.id)
       elsif filter_params.key?(:vendor_id)
         @vouchers = @vouchers.where(vendor_id: filter_params[:vendor_id])
       elsif filter_params.key?(:event_id)
-        @vouchers = @vouchers.where(event_id: filter_params[:event_id])
+        event = Event.find(filter_params[:event_id])
+        ensure_voucher_enabled!(event)
+        return if performed?
+        @vouchers = @vouchers.where(event_id: event.id)
       end
+
+      @vouchers = @vouchers.joins(:event).where(events: { use_voucher: true })
 
       success_response(data: @vouchers.includes(:vendor).map { |v| format_voucher(v) })
     end
@@ -113,6 +122,27 @@ module V1
 
     def filter_params
       params.permit(:vendor_id, :event_id)
+    end
+
+    def ensure_voucher_enabled_for_create!
+      event_id = params[:event_id] || params.dig(:voucher, :event_id)
+      return if event_id.blank?
+
+      event = Event.find(event_id)
+      ensure_voucher_enabled!(event)
+    end
+
+    def ensure_voucher_enabled_for_resource!
+      ensure_voucher_enabled!(@voucher.event)
+    end
+
+    def ensure_voucher_enabled!(event)
+      return if event.use_voucher?
+
+      error_response(
+        message: "Voucher feature is unavailable for this event.",
+        status: :forbidden
+      )
     end
 
     def format_voucher(voucher)

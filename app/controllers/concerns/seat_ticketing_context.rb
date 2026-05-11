@@ -10,6 +10,15 @@ module SeatTicketingContext
   def load_seat_session(param_key: :session_id, include_deleted: false)
     scope = include_deleted ? EventSeatSession.with_deleted : EventSeatSession
     @session = scope.find(params[param_key])
+
+    unless @session.event.use_seat_ticketing?
+      if current_user.present?
+        render json: { error: 'Forbidden', message: 'Seat ticketing is not enabled for this event.' }, status: :forbidden
+      else
+        render json: { error: 'Session not found' }, status: :not_found
+      end
+      return
+    end
     
     # Skip authorization for public actions to allow anonymous access to seat selection
     public_actions = ['index', 'show', 'seats', 'lock', 'unlock', 'public_index', 'public_show', 'checkout']

@@ -220,6 +220,7 @@ module V1
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
+        :use_voucher,
         :use_wedding,
         :auto_approve_wishes,
         :extra_guest_limit,
