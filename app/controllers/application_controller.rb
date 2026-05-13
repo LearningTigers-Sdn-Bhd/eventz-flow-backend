@@ -39,6 +39,12 @@ class ApplicationController < ActionController::API
 	# --- Accessors --
 	attr_reader :current_user
 
+	# Pundit user context — wraps current_user with optional api_key for policy scopes
+	def pundit_user
+		return current_user unless @current_api_key
+		PunditUserContext.new(current_user, @current_api_key)
+	end
+
 	private
 
 	# Standard API response format

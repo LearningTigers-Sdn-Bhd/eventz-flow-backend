@@ -48,6 +48,7 @@ class Event < ApplicationRecord
 
   has_many :plans, dependent: :destroy
   has_many :event_seating_groups, dependent: :destroy
+  has_many :api_keys, dependent: :nullify
 
   # --- Reminders ---
   has_many :event_reminder_logs, dependent: :destroy

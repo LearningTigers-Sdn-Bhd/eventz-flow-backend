@@ -300,6 +300,9 @@ Rails.application.routes.draw do
       end
 
       # Event Metrics moved outside to avoid impacting event resources
+
+      # Event-scoped API keys
+      resources :api_keys, only: %i[index create destroy], controller: 'event_api_keys'
     end
 
     # Seat Ticketing

@@ -128,26 +128,32 @@ class EventPolicy < ApplicationPolicy
     def resolve
       return scope.none unless user.present?
 
+      # Unwrap PunditUserContext if present
+      api_key = user.respond_to?(:api_key) ? user.api_key : nil
+      actual_user = user.respond_to?(:user) ? user.user : user
+
+      # API key scoped to a specific event: restrict to that event only
+      return scope.where(id: api_key.event_id) if api_key&.event_id.present?
+
       # Org Owner: See ALL events regardless of status and visibility
-      return scope.all if user.is_org_owner?
+      return scope.all if actual_user.is_org_owner?
 
       # For vendors: See only events they are assigned to (as event_vendor)
-      if user.vendor?
-        vendor_event_ids = user.event_vendor_assignments.pluck(:event_id)
+      if actual_user.vendor?
+        vendor_event_ids = actual_user.event_vendor_assignments.pluck(:event_id)
         return scope.where(id: vendor_event_ids, visibility: true).distinct
       end
 
       # For exhibition contractors: See only events they are assigned to
-      if user.exhibition_contractor?
-        return scope.none unless user.exhibition_contractor_profile.present?
+      if actual_user.exhibition_contractor?
+        return scope.none unless actual_user.exhibition_contractor_profile.present?
 
-        assigned_event_ids = user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
+        assigned_event_ids = actual_user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
         return scope.where(id: assigned_event_ids, visibility: true).distinct
       end
 
-      # Organizer/Member: See only events they are assigned to (as event_admin or event_team_member)
-      # AND the event visibility must be TRUE
-      assigned_event_ids = user.event_assignments.pluck(:event_id)
+      # Organizer/Member: See only events they are assigned to
+      assigned_event_ids = actual_user.event_assignments.pluck(:event_id)
 
       scope.where(id: assigned_event_ids, visibility: true)
            .distinct

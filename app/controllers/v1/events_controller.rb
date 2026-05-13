@@ -228,6 +228,7 @@ module V1
         :public_registration_url,
         :use_sponsorship,
         :use_event_leads,
+        :use_api_access,
         :payment_receipt_email, # backward compat — routed to event_email_setting
         :skip_webhooks,
         :logo,
