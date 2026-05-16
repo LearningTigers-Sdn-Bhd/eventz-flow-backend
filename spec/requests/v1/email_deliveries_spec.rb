@@ -39,6 +39,21 @@ RSpec.describe 'V1::EmailDeliveries', type: :request do
       ids = JSON.parse(response.body)['data'].map { |row| row['id'] }
       expect(ids).to contain_exactly(older_sent.id)
     end
+
+    it 'filters email deliveries by event id' do
+      event = create(:event)
+      other_event = create(:event)
+      event_ticket = create(:ticket, event: event)
+      other_ticket = create(:ticket, event: other_event)
+      matching_delivery = create(:email_delivery, related: event_ticket)
+      create(:email_delivery, related: other_ticket)
+
+      get '/v1/email_deliveries', params: { event_id: event.id }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)['data'].map { |row| row['id'] }
+      expect(ids).to contain_exactly(matching_delivery.id)
+    end
   end
 
   describe 'POST /v1/email_deliveries/:id/resend' do

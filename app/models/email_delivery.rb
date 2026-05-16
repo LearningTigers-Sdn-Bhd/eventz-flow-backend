@@ -32,6 +32,22 @@ class EmailDelivery < ApplicationRecord
   scope :for_recipient, lambda { |recipient|
     recipient.present? ? where('recipient ILIKE ?', "%#{sanitize_sql_like(recipient)}%") : all
   }
+  scope :for_event, lambda { |event_id|
+    return all if event_id.blank?
+
+    ticket_ids = Ticket.where(event_id: event_id).select(:id)
+    ticket_application_ids = TicketApplication.joins(:ticket).where(tickets: { event_id: event_id }).select(:id)
+    exhibitor_kit_ids = ExhibitorKit.joins(:event_vendor).where(event_vendors: { event_id: event_id }).select(:id)
+
+    where(
+      "(related_type = 'Ticket' AND related_id IN (?)) OR
+       (related_type = 'TicketApplication' AND related_id IN (?)) OR
+       (related_type = 'ExhibitorKit' AND related_id IN (?))",
+      ticket_ids,
+      ticket_application_ids,
+      exhibitor_kit_ids
+    )
+  }
   scope :retryable, -> { where(status: 'failed', failure_reason: TRANSIENT_FAILURE_REASONS) }
 
   def delivered_successfully?

@@ -6,6 +6,7 @@ module V1
       scope = policy_scope(EmailDelivery).recent
       scope = scope.for_status(params[:status])
       scope = scope.for_recipient(params[:recipient])
+      scope = scope.for_event(params[:event_id])
       scope = scope.where(provider_message_id: params[:provider_message_id]) if params[:provider_message_id].present?
       scope = scope.where(status: 'sent').where('sent_at <= ?', 24.hours.ago) if truthy_param?(params[:stuck_sent])
       if params[:subject].present?
