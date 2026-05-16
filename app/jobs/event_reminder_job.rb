@@ -28,7 +28,13 @@ class EventReminderJob < ApplicationJob
   end
 
   def send_and_log(ticket, event, reminder_type)
-    EventReminderMailer.reminder(ticket, event, reminder_type).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'EventReminderMailer',
+      mailer_action: 'reminder',
+      args: [ticket, event, reminder_type],
+      related: ticket,
+      metadata: { event_id: event.id, reminder_type: reminder_type }
+    )
 
     EventReminderLog.create!(
       event: event,

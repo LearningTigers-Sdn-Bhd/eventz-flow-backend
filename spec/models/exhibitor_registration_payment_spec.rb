@@ -66,7 +66,14 @@ RSpec.describe ExhibitorRegistrationPayment, type: :model do
 
       expect do
         payment.mark_as_paid!(payment_method: 'fpx', gateway_response: { order_id: 'order_1' })
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email).exactly(3).times
+      end.to have_enqueued_job(EmailDeliveryJob)
+        .with(
+          kind_of(Integer),
+          'TicketMailer',
+          'confirmation_email',
+          kind_of(Array)
+        )
+        .exactly(3).times
 
       ticket.reload
       expect(ticket.status).to eq('purchased')

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_05_13_051700) do
+ActiveRecord::Schema[8.0].define(version: 2026_05_15_004745) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -101,6 +101,40 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_13_051700) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["exhibitor_kit_id"], name: "index_custom_requests_on_exhibitor_kit_id"
+  end
+
+  create_table "email_deliveries", force: :cascade do |t|
+    t.string "provider", default: "resend", null: false
+    t.string "provider_message_id"
+    t.string "mailer_name", null: false
+    t.string "mailer_action", null: false
+    t.string "recipient"
+    t.jsonb "recipients", default: {}, null: false
+    t.string "subject"
+    t.string "status", default: "queued", null: false
+    t.string "related_type"
+    t.bigint "related_id"
+    t.datetime "sent_at"
+    t.datetime "delivered_at"
+    t.datetime "failed_at"
+    t.datetime "bounced_at"
+    t.datetime "complained_at"
+    t.datetime "suppressed_at"
+    t.text "last_error"
+    t.string "failure_reason"
+    t.integer "retry_count", default: 0, null: false
+    t.datetime "next_retry_at"
+    t.bigint "resend_of_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["mailer_name", "mailer_action"], name: "index_email_deliveries_on_mailer_name_and_mailer_action"
+    t.index ["provider_message_id"], name: "index_email_deliveries_on_provider_message_id", unique: true, where: "(provider_message_id IS NOT NULL)"
+    t.index ["recipient"], name: "index_email_deliveries_on_recipient"
+    t.index ["related_type", "related_id"], name: "index_email_deliveries_on_related"
+    t.index ["resend_of_id"], name: "index_email_deliveries_on_resend_of_id"
+    t.index ["status"], name: "index_email_deliveries_on_status"
   end
 
   create_table "email_verifications", force: :cascade do |t|
@@ -1491,6 +1525,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_13_051700) do
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
+  add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"

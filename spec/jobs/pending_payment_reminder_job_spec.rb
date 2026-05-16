@@ -5,21 +5,6 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
 
   subject(:perform_job) { described_class.perform_now }
 
-  def stub_pending_payment_mailer(delivery)
-    mailer_class = Class.new do
-      class << self
-        attr_accessor :delivery
-      end
-
-      def self.pending_payment_reminder(*_args)
-        delivery
-      end
-    end
-
-    mailer_class.delivery = delivery
-    stub_const('EventReminderMailer', mailer_class)
-  end
-
   let(:today) { Date.new(2026, 4, 9) }
   let(:current_time) { Time.zone.local(2026, 4, 9, 12, 0, 0) }
   let(:period_key) { format('%<year>d-W%<week>02d', year: today.cwyear, week: today.cweek) }
@@ -45,7 +30,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
     it 'enqueues a reminder for eligible pending payment tickets' do
       expect do
         perform_job
-      end.to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder).with(ticket, event)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'skips a same-week rerun when a weekly pending payment reminder log already exists' do
@@ -59,7 +44,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
 
       expect do
         perform_job
-      end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+      end.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'allows a reminder in a later week' do
@@ -73,13 +58,13 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
 
       expect do
         perform_job
-      end.to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder).with(ticket, event)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
 
     context 'when the mailer delivery is stubbed' do
-      let(:message_delivery) { instance_double(ActionMailer::MessageDelivery, deliver_later: true) }
-
-      before { stub_pending_payment_mailer(message_delivery) }
+      before do
+        allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later).and_return(create(:email_delivery))
+      end
 
       it 'retries after a same-week failed reminder log and marks it sent' do
         failed_log = create(
@@ -103,7 +88,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
 
       context 'when enqueueing raises' do
         before do
-          allow(message_delivery).to receive(:deliver_later).and_raise(StandardError, 'enqueue failed')
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later).and_raise(StandardError, 'enqueue failed')
         end
 
         it 'marks the current-week log failed' do
@@ -144,7 +129,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -157,7 +142,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'still sends the reminder' do
         expect do
           perform_job
-        end.to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder).with(ticket, event)
+        end.to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -167,7 +152,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -179,7 +164,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -192,7 +177,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -205,7 +190,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -215,7 +200,7 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       it 'skips the reminder' do
         expect do
           perform_job
-        end.not_to have_enqueued_mail(EventReminderMailer, :pending_payment_reminder)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 

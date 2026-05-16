@@ -12,7 +12,12 @@ module V1
       user = User.find_by(email: email)
       if user.present?
         raw_token = ::PasswordReset.issue_for!(user)
-        UserMailer.password_reset(user, raw_token).deliver_now
+        EmailDelivery::AuditedDelivery.deliver_now(
+          mailer_name: 'UserMailer',
+          mailer_action: 'password_reset',
+          args: [user, raw_token],
+          related: user
+        )
       end
 
       success_response(message: 'If that email exists, instructions have been sent.')

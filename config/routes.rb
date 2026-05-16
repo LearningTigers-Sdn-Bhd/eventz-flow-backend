@@ -21,6 +21,7 @@ Rails.application.routes.draw do
   namespace :v1 do
     # Public endpoints (No authentication required)
     namespace :public do
+      post 'resend/webhook', to: 'resend_webhooks#create'
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
@@ -84,6 +85,9 @@ Rails.application.routes.draw do
     post 'auth/register_invited_vendor', to: 'authentication#register_invited_vendor'
     get 'auth/check_account', to: 'authentication#check_account'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
+    resources :email_deliveries, only: %i[index show] do
+      post :resend, on: :member
+    end
 
     # Password reset (follow auth route style, flat controller)
     post 'auth/password/request_reset_password', to: 'password_resets#request_reset_password'
@@ -148,6 +152,7 @@ Rails.application.routes.draw do
           delete :force_delete
           patch :cancel_ticket
           patch :restore
+          post :resend_confirmation_email
         end
       end
       resources :pass_bundles, only: %i[index show create update destroy]

@@ -63,7 +63,14 @@ RSpec.describe ExhibitorTeamMember, type: :model do
 
       expect do
         exhibitor_kit.update!(payment_status: :paid)
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email).exactly(3).times
+      end.to have_enqueued_job(EmailDeliveryJob)
+        .with(
+          kind_of(Integer),
+          'TicketMailer',
+          'confirmation_email',
+          kind_of(Array)
+        )
+        .exactly(3).times
 
       ticket = member.reload.attendee
       expect(ticket.status).to eq('purchased')
@@ -138,7 +145,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
           email: 'jane@example.com',
           phone: '+60123456789'
         )
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
 
       expect(Ticket.count).to eq(existing_ticket_count)
 
@@ -205,7 +212,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
             email: 'within@example.com',
             phone: '+60333333333'
           )
-        end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+        end.to have_enqueued_job(EmailDeliveryJob)
 
         ticket = member.reload.attendee
         expect(ticket.status).to eq('purchased')
@@ -227,7 +234,7 @@ RSpec.describe ExhibitorTeamMember, type: :model do
             email: 'excess@example.com',
             phone: '+60444444444'
           )
-        end.not_to have_enqueued_mail(TicketMailer, :confirmation_email)
+        end.not_to have_enqueued_job(EmailDeliveryJob)
 
         ticket = excess_member.reload.attendee
         expect(ticket).to be_a(Ticket)

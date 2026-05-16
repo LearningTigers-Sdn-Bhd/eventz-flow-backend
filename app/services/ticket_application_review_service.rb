@@ -44,7 +44,14 @@ class TicketApplicationReviewService
       @ticket.update!(status: :canceled)
     end
 
-    TicketApplicationMailer.rejection(@application).deliver_later if @ticket.attendee_email.present?
+    if @ticket.attendee_email.present?
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketApplicationMailer',
+        mailer_action: 'rejection',
+        args: [@application],
+        related: @application
+      )
+    end
     Result.new(success: true, application: @application)
   end
 
@@ -101,7 +108,14 @@ class TicketApplicationReviewService
       rsvp_sent_at: Time.current,
       rsvp_expires_at: expiry_time
     )
-    TicketApplicationMailer.rsvp_invitation(@application, raw_token).deliver_later if @ticket.attendee_email.present?
+    if @ticket.attendee_email.present?
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketApplicationMailer',
+        mailer_action: 'rsvp_invitation',
+        args: [@application, raw_token],
+        related: @application
+      )
+    end
     raw_token
   end
 

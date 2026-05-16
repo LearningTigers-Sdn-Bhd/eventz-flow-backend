@@ -4,7 +4,7 @@ module V1
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it
-    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore]
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
@@ -129,6 +129,32 @@ module V1
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
+    end
+
+    # POST /v1/events/:event_id/tickets/:id/resend_confirmation_email
+    # Org owner only - resend ticket confirmation email with QR
+    def resend_confirmation_email
+      authorize @ticket, :resend_confirmation_email?
+
+      if @ticket.attendee_email.blank?
+        return render json: { errors: ['Ticket does not have an attendee email'] }, status: :unprocessable_content
+      end
+
+      delivery = EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [@ticket],
+        related: @ticket,
+        metadata: {
+          source: 'ticket_actions_menu_manual_resend',
+          event_id: @event.id
+        }
+      )
+
+      render json: {
+        message: 'Ticket confirmation email has been queued for resend',
+        email_delivery_id: delivery.id
+      }, status: :accepted
     end
 
     def global_check_in

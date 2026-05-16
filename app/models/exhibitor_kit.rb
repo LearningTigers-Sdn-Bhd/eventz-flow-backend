@@ -117,11 +117,21 @@ class ExhibitorKit < ApplicationRecord
   end
 
   def send_registration_received_email
-    ExhibitorRegistrationMailer.registration_received_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'ExhibitorRegistrationMailer',
+      mailer_action: 'registration_received_email',
+      args: [self],
+      related: self
+    )
   end
 
   def send_payment_confirmed_email
-    ExhibitorRegistrationMailer.payment_confirmed_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'ExhibitorRegistrationMailer',
+      mailer_action: 'payment_confirmed_email',
+      args: [self],
+      related: self
+    )
   end
 
   def should_reconcile_team_member_tickets?

@@ -23,5 +23,11 @@ Rails.application.config.after_initialize do
       cron: '0 9 * * 1',
       class: 'PendingPaymentReminderJob'
     )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Retry email deliveries - every 15 minutes',
+      cron: '*/15 * * * *',
+      class: 'EmailDeliveryRetryJob'
+    )
   end
 end

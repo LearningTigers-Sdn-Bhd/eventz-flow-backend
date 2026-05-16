@@ -58,7 +58,17 @@ class PendingPaymentReminderJob < ApplicationJob
     )
     log.update!(sent_at: Time.current, status: 'sent')
 
-    EventReminderMailer.pending_payment_reminder(ticket, event).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'EventReminderMailer',
+      mailer_action: 'pending_payment_reminder',
+      args: [ticket, event],
+      related: ticket,
+      metadata: {
+        event_id: event.id,
+        reminder_type: 'payment_pending_weekly',
+        reminder_period_key: period_key
+      }
+    )
     nil
   rescue StandardError => e
     failed_log = current_log || current_period_log_for(ticket, period_key)

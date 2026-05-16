@@ -22,7 +22,14 @@ class ExhibitorTeamMemberAttendeeSyncService
              end
 
     link_ticket(ticket)
-    TicketMailer.confirmation_email(ticket.reload).deliver_later if upgraded_reused_ticket
+    if upgraded_reused_ticket
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [ticket.reload],
+        related: ticket
+      )
+    end
   end
 
   private

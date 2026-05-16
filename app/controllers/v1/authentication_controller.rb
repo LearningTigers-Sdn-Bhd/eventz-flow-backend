@@ -13,7 +13,12 @@ module V1
       if @user.save
         # Generate and send verification code
         code = EmailVerification.create_for_user(@user)
-        UserMailer.verification_code(@user, code).deliver_now
+        EmailDelivery::AuditedDelivery.deliver_now(
+          mailer_name: 'UserMailer',
+          mailer_action: 'verification_code',
+          args: [@user, code],
+          related: @user
+        )
 
         # Register creates a session too
         tokens = JwtService.generate_tokens(@user, request)
@@ -133,7 +138,12 @@ module V1
     def send_verification_code
       # Generate and send new verification code for current user
       code = EmailVerification.create_for_user(current_user)
-      UserMailer.verification_code(current_user, code).deliver_now
+      EmailDelivery::AuditedDelivery.deliver_now(
+        mailer_name: 'UserMailer',
+        mailer_action: 'verification_code',
+        args: [current_user, code],
+        related: current_user
+      )
 
       success_response(
         message: 'Verification code sent successfully',

@@ -177,7 +177,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
       expect do
         create(:exhibitor_kit, event_vendor: event_vendor, pic_email_address: 'new-exhibitor@example.com')
-      end.to have_enqueued_mail(ExhibitorRegistrationMailer, :registration_received_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'enqueues payment confirmed email when payment transitions to paid' do
@@ -188,7 +188,13 @@ RSpec.describe ExhibitorKit, type: :model do
 
       expect do
         exhibitor_kit.update!(payment_status: :paid)
-      end.to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
+        .with(
+          kind_of(Integer),
+          'ExhibitorRegistrationMailer',
+          'payment_confirmed_email',
+          kind_of(Array)
+        )
     end
 
     it 'does not enqueue payment confirmed email when status stays paid' do
@@ -199,7 +205,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
       expect do
         exhibitor_kit.update!(company_name: 'Updated Co')
-      end.not_to have_enqueued_mail(ExhibitorRegistrationMailer, :payment_confirmed_email)
+      end.not_to have_enqueued_job(EmailDeliveryJob)
     end
   end
 

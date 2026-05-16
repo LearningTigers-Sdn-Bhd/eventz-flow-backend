@@ -341,7 +341,12 @@ module V1
         )
 
         if ticket.attendee_email.present?
-          TicketApplicationMailer.acknowledgement(application).deliver_later
+          EmailDelivery::AuditedDelivery.deliver_later(
+            mailer_name: 'TicketApplicationMailer',
+            mailer_action: 'acknowledgement',
+            args: [application],
+            related: application
+          )
         end
       end
 

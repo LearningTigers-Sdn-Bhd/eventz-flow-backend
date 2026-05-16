@@ -267,7 +267,12 @@ class Ticket < ApplicationRecord
   end
 
   def send_confirmation_email
-    TicketMailer.confirmation_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'TicketMailer',
+      mailer_action: 'confirmation_email',
+      args: [self],
+      related: self
+    )
   end
 
   # Helper method for delegation to handle creation of payment record on demand

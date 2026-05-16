@@ -52,7 +52,7 @@ RSpec.describe ExhibitorTeamMemberPaymentVerificationService do
 
         expect do
           described_class.new(payment).call
-        end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+        end.to have_enqueued_job(EmailDeliveryJob)
       end
 
       it 'does not upgrade more tickets than extra_member_count' do

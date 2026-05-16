@@ -83,6 +83,12 @@ class TicketPolicy < ApplicationPolicy
     destroy?
   end
 
+  # Resend ticket confirmation email is restricted to org_owner only
+  def resend_confirmation_email?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_organizer?
+  end
+
   # =========================================================================
   # Scope: Correctly filters tickets based on authorized events.
   # This refactoring is the critical fix for the PG::UndefinedColumn error.

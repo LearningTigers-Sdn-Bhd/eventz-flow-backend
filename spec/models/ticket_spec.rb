@@ -145,7 +145,7 @@ RSpec.describe Ticket, type: :model do
           status: :pending_payment,
           payment_status: :pending
         )
-      end.not_to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'sends confirmation email for free ticket when ticket is already paid' do
@@ -160,7 +160,7 @@ RSpec.describe Ticket, type: :model do
           status: :purchased,
           payment_status: :paid
         )
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'sends confirmation email when free group member becomes paid after leader payment' do
@@ -177,7 +177,7 @@ RSpec.describe Ticket, type: :model do
 
       expect do
         member_ticket.update!(status: :purchased, payment_status: :paid)
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
   end
 
