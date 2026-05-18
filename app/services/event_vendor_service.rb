@@ -26,7 +26,7 @@ class EventVendorService
   def self.create(event:, params:, current_user:)
     # Determine vendor type based on event.use_ticket
     vendor_type = determine_vendor_type(event)
-    exhibitor_kit_attrs = params[:exhibitor_kit_attributes]
+    exhibitor_kit_attrs = enrich_exhibitor_kit_attributes(event, params[:exhibitor_kit_attributes])
     
     # If vendor_id is provided, assign existing vendor
     if params[:vendor_id].present?
@@ -49,6 +49,42 @@ class EventVendorService
   # @return [String] 'Exhibitor' or 'Merchant'
   def self.determine_vendor_type(event)
     (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
+  end
+
+  # Enrich exhibitor_kit_attributes with derived fields when caller supplies
+  # an exhibitor_booth_price_id but omits booth_type / amount_paid.
+  #
+  # Mirrors public/exhibitor_registrations_controller.rb#build_exhibitor_kit_attributes:
+  # booth_type/amount_paid are server-derived from the booth price so the
+  # organizer assign form only needs to send exhibitor_booth_price_id.
+  #
+  # @param event [Event] The event
+  # @param attrs [ActionController::Parameters, Hash, nil] Raw exhibitor_kit_attributes
+  # @return [ActionController::Parameters, Hash, nil] Same shape, possibly with booth_type/amount_paid filled
+  def self.enrich_exhibitor_kit_attributes(event, attrs)
+    return attrs if attrs.blank?
+
+    booth_price_id = attrs[:exhibitor_booth_price_id] || attrs['exhibitor_booth_price_id']
+    return attrs if booth_price_id.blank?
+
+    booth_price = event.exhibitor_booth_prices.find_by(id: booth_price_id)
+    return attrs unless booth_price
+
+    booth_type = attrs[:booth_type] || attrs['booth_type']
+    if booth_type.blank?
+      attrs[:booth_type] = booth_price.booth_type if attrs.respond_to?(:[]=)
+    end
+
+    qty = (attrs[:booth_quantity] || attrs['booth_quantity']).to_i
+    qty = 1 if qty <= 0
+    attrs[:booth_quantity] = qty if attrs.respond_to?(:[]=)
+
+    amount_paid = attrs[:amount_paid] || attrs['amount_paid']
+    if amount_paid.blank?
+      attrs[:amount_paid] = booth_price.current_price * qty if attrs.respond_to?(:[]=)
+    end
+
+    attrs
   end
 
 

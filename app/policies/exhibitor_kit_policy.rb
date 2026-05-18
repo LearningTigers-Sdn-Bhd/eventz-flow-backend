@@ -45,6 +45,7 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :qr_code_url, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
+      :exhibitor_booth_price_id, :booth_quantity,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
       { custom_fields_data: {} },
       { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },

@@ -136,10 +136,12 @@ module V1
         exhibitor_kit_attributes: [
           :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
           :side_wall_right_required, :name_on_fascia, :fascia_upgrade_required,
-          :company_name, :company_address, :pic_full_name, :pic_contact_number,
-          :pic_email_address, :special_requirements,
+          :company_name, :company_address, :country, :pic_full_name, :pic_position,
+          :pic_contact_number, :pic_email_address, :special_requirements,
           :digital_brochure_link, :qr_code_url, :is_raw_space,
-          :indemnity_signed, :indemnity_document_url, :_destroy,
+          :indemnity_signed, :indemnity_document_url,
+          :exhibitor_booth_price_id, :booth_quantity, :_destroy,
+          { custom_fields_data: {} },
           { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] }
         ]
       )
