@@ -24,8 +24,8 @@ class EventSponsorship < ApplicationRecord
 
   # --- Soft Delete ---
   default_scope { where(deleted_at: nil) }
-  scope :with_deleted, -> { unscoped }
-  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
 
   def soft_delete
     update(deleted_at: Time.current)

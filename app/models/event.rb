@@ -82,8 +82,8 @@ class Event < ApplicationRecord
 
   # --- Soft Delete Scopes ---
   default_scope { where(deleted_at: nil) }
-  scope :with_deleted, -> { unscoped }
-  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
 
   # --- Scopes for specific event staff roles ---
 

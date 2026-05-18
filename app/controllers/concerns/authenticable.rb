@@ -7,6 +7,7 @@ module Authenticable
     included do
       before_action :authenticate_user!
       before_action :require_verified_email!
+      before_action :enforce_api_key_event_scope!
     end
 
     class_methods do
@@ -106,6 +107,68 @@ module Authenticable
           errors: [{ field: 'email_verification', message: 'Please verify your email before accessing this resource' }]
         }, status: :forbidden
       end
+    end
+
+    # When the request is authenticated via an event-scoped API key, every
+    # request must target that exact event. Without this gate, an org_owner
+    # who creates an event-scoped key still inherits "scope.all" in many
+    # Pundit scopes (e.g. VoucherPolicy::Scope) and could read data across
+    # other events using the key.
+    #
+    # Rules:
+    #   - If api_key has no event_id (account-wide key), do nothing.
+    #   - If the request includes an event_id-shaped param, it must match
+    #     api_key.event_id.
+    #   - If the request does not target an event at all (e.g. account-level
+    #     listings like /v1/vouchers without filter), reject — event-scoped
+    #     keys must not be used for cross-event endpoints.
+    def enforce_api_key_event_scope!
+      return unless @authenticated_via_api_key
+      return unless @current_api_key&.event_id.present?
+
+      requested_event_id = api_key_request_event_id
+      if requested_event_id.nil?
+        return render json: {
+          success: false,
+          message: 'This API key is scoped to a single event. Provide event_id in the URL or query.',
+          errors: []
+        }, status: :forbidden
+      end
+
+      return if requested_event_id.to_s == @current_api_key.event_id.to_s
+
+      render json: {
+        success: false,
+        message: 'This API key is not authorized for the requested event.',
+        errors: []
+      }, status: :forbidden
+    end
+
+    # Best-effort extraction of an event identifier from a request. Returns
+    # the integer event_id when one can be resolved, otherwise nil.
+    def api_key_request_event_id
+      direct = params[:event_id] ||
+               params[:business_matching_event_id] ||
+               params.dig(:voucher, :event_id)
+      return direct.to_i if direct.present? && direct.to_s.match?(/\A\d+\z/)
+
+      slug = params[:event_slug] || params[:slug]
+      if slug.present?
+        event = Event.with_deleted.friendly.find_by(slug: slug) ||
+                (slug.to_s.match?(/\A\d+\z/) ? Event.with_deleted.find_by(id: slug) : nil)
+        return event&.id
+      end
+
+      # /v1/scan/:public_id/check_in — resolve the event via the scanned record
+      # so kiosks/scanners using an event-scoped API key still work for the
+      # event they're scoped to.
+      if params[:public_id].present?
+        record = Ticket.find_by(public_id: params[:public_id]) ||
+                 Visitor.find_by(public_id: params[:public_id])
+        return record&.event_id
+      end
+
+      nil
     end
 
     def current_user

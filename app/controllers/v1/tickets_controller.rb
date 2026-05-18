@@ -13,29 +13,36 @@ module V1
     # Query params:
     #   - archived=true: Show only archived (soft-deleted) tickets
     #   - full=true: Show all tickets including archived ones
+    #   - updated_since: ISO8601 timestamp. Returns only tickets updated at or
+    #     after the given time. Use for incremental sync.
+    #   - page / per_page: Paginate results. When either is present, the response
+    #     is sliced and pagination metadata is returned via response headers
+    #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
+    #     remains a bare array for backwards compatibility.
     def index
-      # 1. Scope the tickets based on the authorized events and filter by the current event.
-      # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
       @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle)
 
-      # Apply filtering based on query parameters
       if params[:archived] == 'true'
-        # Show only archived tickets
         @tickets = @tickets.only_deleted
       elsif params[:full] == 'true'
-        # Show all tickets including archived
         @tickets = @tickets.with_deleted
       end
 
-      if params[:unassigned] == 'true'
-        @tickets = @tickets.unassigned
+      @tickets = @tickets.unassigned if params[:unassigned] == 'true'
+
+      if params[:updated_since].present?
+        begin
+          since = Time.iso8601(params[:updated_since].to_s)
+        rescue ArgumentError
+          return render json: {
+            error: 'invalid_updated_since',
+            message: '`updated_since` must be a valid ISO8601 timestamp (e.g. 2026-05-18T00:00:00Z).'
+          }, status: :bad_request
+        end
+        @tickets = @tickets.where('tickets.updated_at >= ?', since)
       end
-      # Default: only non-archived tickets (handled by default_scope)
 
-      # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
-      # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
-
-      render json: @tickets.as_json(
+      json_options = {
         methods: [:payment_method, :transaction_id, :payment_screenshot_url],
         include: {
           ticket_type: { only: [:id, :name, :price] },
@@ -45,7 +52,21 @@ module V1
             only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
           }
         }
-      ), status: :ok
+      }
+
+      if params[:page].present? || params[:per_page].present?
+        ordered_scope = @tickets.reorder(id: :asc)
+        pagy_obj, paginated = pagy(ordered_scope, limit: pagination_params[:per_page])
+
+        response.headers['X-Total-Count'] = pagy_obj.count.to_s
+        response.headers['X-Page']        = pagy_obj.page.to_s
+        response.headers['X-Per-Page']    = pagy_obj.limit.to_s
+        response.headers['X-Total-Pages'] = pagy_obj.pages.to_s
+
+        render json: paginated.as_json(json_options), status: :ok
+      else
+        render json: @tickets.as_json(json_options), status: :ok
+      end
     end
 
     # GET /v1/events/:event_id/tickets/:id

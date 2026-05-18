@@ -41,9 +41,14 @@ class Ticket < ApplicationRecord
   enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
   # --- Soft Delete Scopes ---
+  # `with_deleted` and `only_deleted` use `unscope(where: :deleted_at)` rather
+  # than `unscoped` so they only strip the soft-delete filter from the chain
+  # they're called on. Calling `unscoped` here would also wipe any preceding
+  # `where`/`policy_scope`/`event` filters applied by the caller, which has
+  # caused cross-event ticket leakage when used inside a tenant-scoped query.
   default_scope { where(deleted_at: nil) }
-  scope :with_deleted, -> { unscoped }
-  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
 
   # --- Validations ---
 
