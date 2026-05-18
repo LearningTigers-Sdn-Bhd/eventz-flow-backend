@@ -23,7 +23,7 @@ module V1
           }, status: :ok
         end
 
-        unless conference_upgrade_order || (ticket.pending? && ticket.pending_payment?)
+        unless conference_upgrade_order || (ticket.pending_payment? && (ticket.pending? || ticket.failed?))
           return render json: {
             success: false,
             message: 'Ticket is not eligible for payment'
@@ -513,7 +513,7 @@ module V1
       def pending_payment_batch_tickets(ticket:, event:, registered_by_email:, payment_entity: nil)
         scope = event.tickets.where(
           registered_by_email: registered_by_email,
-          payment_status: :pending,
+          payment_status: %i[pending failed],
           status: :pending_payment
         )
 
