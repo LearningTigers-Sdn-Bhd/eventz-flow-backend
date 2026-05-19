@@ -2,6 +2,9 @@ require 'bcrypt'
 require 'securerandom'
 
 class ApiKey < ApplicationRecord
+  SCOPES = %w[read_only check_in read_write].freeze
+  WRITE_METHODS = %w[POST PUT PATCH DELETE].freeze
+
   # --- Attributes & Dependencies ---
   belongs_to :user
   belongs_to :event, optional: true
@@ -15,10 +18,25 @@ class ApiKey < ApplicationRecord
   validates :key_hash, presence: true, uniqueness: true
   validates :user_id, presence: true
   validates :name, length: { maximum: 255 }
+  validates :scope, presence: true, inclusion: { in: SCOPES }
 
   validate :event_allows_api_access, if: -> { event_id.present? }
 
   scope :active, -> { where(is_active: true) }
+
+  # Whether this key is permitted to perform an HTTP request with the given
+  # method. Verb-based gating is the simplest meaningful split: read_only =
+  # GET/HEAD, check_in = read + POST (scanner check-in writes), read_write =
+  # full CRUD.
+  def allows_method?(http_method)
+    method = http_method.to_s.upcase
+    case scope
+    when 'read_only'  then !WRITE_METHODS.include?(method)
+    when 'check_in'   then method != 'PUT' && method != 'PATCH' && method != 'DELETE'
+    when 'read_write' then true
+    else false
+    end
+  end
 
   # =========================================================================
   # 1. GENERATION METHOD (Secure Creation)

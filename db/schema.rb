@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_05_15_004745) do
+ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -51,9 +51,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_15_004745) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "event_id"
+    t.string "scope", default: "read_only", null: false
     t.index ["event_id"], name: "index_api_keys_on_event_id"
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
+    t.index ["scope"], name: "index_api_keys_on_scope"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
   end
 

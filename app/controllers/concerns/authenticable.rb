@@ -8,6 +8,7 @@ module Authenticable
       before_action :authenticate_user!
       before_action :require_verified_email!
       before_action :enforce_api_key_event_scope!
+      before_action :enforce_api_key_method_scope!
     end
 
     class_methods do
@@ -140,6 +141,22 @@ module Authenticable
       render json: {
         success: false,
         message: 'This API key is not authorized for the requested event.',
+        errors: []
+      }, status: :forbidden
+    end
+
+    # Gate every API-key request by the key's scope. The scope is verb-based:
+    # read_only rejects POST/PUT/PATCH/DELETE; check_in additionally allows
+    # POST (so /v1/scan/:public_id/check_in works); read_write allows all.
+    # This sits *after* enforce_api_key_event_scope! so we've already
+    # confirmed the key is targeting the right event before we check method.
+    def enforce_api_key_method_scope!
+      return unless @authenticated_via_api_key
+      return if @current_api_key&.allows_method?(request.request_method)
+
+      render json: {
+        success: false,
+        message: "This API key is read-only and cannot perform #{request.request_method} requests.",
         errors: []
       }, status: :forbidden
     end
