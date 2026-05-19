@@ -210,6 +210,8 @@ module V1
           if approval_enabled
             ticket.status = 'pending_payment'
             ticket.payment_status = 'pending'
+          elsif bundle.present?
+            apply_bundle_payment_state!(ticket: ticket, bundle: bundle)
           elsif auto_paid_ticket?(event: event, ticket: ticket, ticket_type: ticket_type)
             ticket.status = 'purchased'
             ticket.payment_status = 'paid'
@@ -469,6 +471,17 @@ module V1
              .where(payment_status: :paid, status: :purchased)
              .where('LOWER(attendee_email) = ? OR LOWER(registered_by_email) = ?', leader_email, leader_email)
              .exists?
+      end
+
+      def apply_bundle_payment_state!(ticket:, bundle:)
+        case bundle.payment_status
+        when 'not_required', 'paid', 'sponsored'
+          ticket.status = 'purchased'
+          ticket.payment_status = 'paid'
+        else
+          ticket.status = 'pending_payment'
+          ticket.payment_status = 'pending'
+        end
       end
 
       def resolve_pass_bundle(event:, form:, ticket_type:)

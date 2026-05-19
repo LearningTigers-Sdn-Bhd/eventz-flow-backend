@@ -777,6 +777,62 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(response).to have_http_status(:created)
       end
 
+      it 'creates a paid ticket when bundle payment_status is not_required' do
+        pass_bundle.update!(payment_mode: :free, payment_status: :not_required)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('purchased')
+        expect(created_ticket.payment_status).to eq('paid')
+      end
+
+      it 'creates a paid ticket when bundle payment_status is sponsored' do
+        pass_bundle.update!(payment_status: :sponsored)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('purchased')
+        expect(created_ticket.payment_status).to eq('paid')
+      end
+
+      it 'creates a paid ticket when bundle payment_status is paid' do
+        pass_bundle.update!(payment_status: :paid)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('purchased')
+        expect(created_ticket.payment_status).to eq('paid')
+      end
+
+      it 'creates a pending ticket when bundle payment_status is unpaid' do
+        pass_bundle.update!(payment_mode: :pay_offline, payment_status: :unpaid)
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          form_slug: 'delegate',
+          bundle: pass_bundle.token
+        )
+
+        expect(response).to have_http_status(:created)
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+      end
+
       it 'rejects an invalid bundle token' do
         post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
           form_slug: 'delegate',
