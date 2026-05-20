@@ -8,6 +8,7 @@ module Authenticable
       before_action :authenticate_user!
       before_action :require_verified_email!
       before_action :enforce_api_key_event_scope!
+      before_action :enforce_api_key_method_scope!
     end
 
     class_methods do
@@ -144,6 +145,23 @@ module Authenticable
       }, status: :forbidden
     end
 
+    # Gate every API-key request by the key's scope. read_only rejects all
+    # writes; check_in allows POST anywhere plus PATCH on /check_in and
+    # /unscan paths only (scan kiosks need PATCH for check_in routes);
+    # read_write allows all. This sits *after* enforce_api_key_event_scope!
+    # so we've already confirmed the key is targeting the right event before
+    # we check method.
+    def enforce_api_key_method_scope!
+      return unless @authenticated_via_api_key
+      return if @current_api_key&.allows_method?(request.request_method, request.path)
+
+      render json: {
+        success: false,
+        message: "This API key is read-only and cannot perform #{request.request_method} requests.",
+        errors: []
+      }, status: :forbidden
+    end
+
     # Best-effort extraction of an event identifier from a request. Returns
     # the integer event_id when one can be resolved, otherwise nil.
     def api_key_request_event_id
@@ -151,6 +169,12 @@ module Authenticable
                params[:business_matching_event_id] ||
                params.dig(:voucher, :event_id)
       return direct.to_i if direct.present? && direct.to_s.match?(/\A\d+\z/)
+
+      # /v1/events/:id — when the events controller is the target, params[:id]
+      # is the event id itself.
+      if controller_path == 'v1/events' && params[:id].present? && params[:id].to_s.match?(/\A\d+\z/)
+        return params[:id].to_i
+      end
 
       slug = params[:event_slug] || params[:slug]
       if slug.present?
