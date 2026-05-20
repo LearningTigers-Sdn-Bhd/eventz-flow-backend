@@ -48,10 +48,29 @@ RSpec.describe ApiKey, type: :model do
         expect(key.allows_method?('POST')).to be true
       end
 
-      it 'rejects PUT/PATCH/DELETE' do
-        expect(key.allows_method?('PUT')).to be false
+      it 'allows PATCH on /check_in paths' do
+        expect(key.allows_method?('PATCH', '/v1/scan/abc/check_in')).to be true
+        expect(key.allows_method?('PATCH', '/v1/tickets/check_in')).to be true
+        expect(key.allows_method?('PATCH', '/v1/visitors/check_in')).to be true
+      end
+
+      it 'allows PATCH on /unscan paths' do
+        expect(key.allows_method?('PATCH', '/v1/tickets/123/unscan')).to be true
+        expect(key.allows_method?('PATCH', '/v1/visitors/456/unscan')).to be true
+      end
+
+      it 'rejects PATCH on non-check-in paths' do
+        expect(key.allows_method?('PATCH', '/v1/events/1')).to be false
+        expect(key.allows_method?('PATCH', '/v1/tickets/1')).to be false
+      end
+
+      it 'rejects PATCH without a path (defensive)' do
         expect(key.allows_method?('PATCH')).to be false
-        expect(key.allows_method?('DELETE')).to be false
+      end
+
+      it 'rejects PUT and DELETE everywhere' do
+        expect(key.allows_method?('PUT', '/v1/scan/abc/check_in')).to be false
+        expect(key.allows_method?('DELETE', '/v1/scan/abc/check_in')).to be false
       end
     end
 

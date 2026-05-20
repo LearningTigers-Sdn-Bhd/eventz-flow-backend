@@ -85,8 +85,8 @@ RSpec.describe 'V1::Events', type: :request do
 
   # --- SETUP API KEYS ---
   # Assuming ApiKey.create_key_for_user exists
-  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user) }
-  let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user) }
+  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user, scope: 'read_write') }
+  let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user, scope: 'read_write') }
 
   # --- Setup Event Data ---
   let(:event_attributes) { attributes_for(:event) }

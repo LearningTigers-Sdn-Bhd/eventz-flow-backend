@@ -66,8 +66,8 @@ RSpec.describe 'V1::EventLocations', type: :request do
   let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
 
   # --- Setup API Keys ---
-  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user) }
-  let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user) }
+  let!(:organizer_api_key) { ApiKey.create_key_for_user(organizer_user, scope: 'read_write') }
+  let!(:org_owner_api_key) { ApiKey.create_key_for_user(org_owner_user, scope: 'read_write') }
 
   # --- Setup Event ---
   let!(:event) do
