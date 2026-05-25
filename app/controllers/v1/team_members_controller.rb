@@ -18,6 +18,14 @@
     render json: @team_members.map { |user| format_user(user) }, status: :ok
   end
 
+  # GET /v1/team_members/organizers
+  def organizers
+    return render_forbidden unless current_user.org_owner?
+
+    organizers = User.where(role: :organizer).order(full_name: :asc)
+    render json: organizers.map { |u| { id: u.id.to_s, full_name: u.full_name, email: u.email } }, status: :ok
+  end
+
   # GET /v1/team_members/organizer/:organizer_id
   def organizer_members
     return render_forbidden unless current_user.org_owner?
@@ -187,7 +195,8 @@
       :email,
       :phone,
       :role,
-      :email_verified_at
+      :email_verified_at,
+      :created_by_id
     )
 
     if password_provided?

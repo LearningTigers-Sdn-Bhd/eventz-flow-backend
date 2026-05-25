@@ -132,7 +132,7 @@ module V1
 
     def vendor_update_params
       # Build the list of permitted params dynamically
-      permitted_params = [:full_name, :email, :phone]
+      permitted_params = [:full_name, :email, :phone, :created_by_id]
 
       # Include password fields if password is provided
       if params[:vendor][:password].present?

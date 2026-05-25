@@ -421,6 +421,7 @@ Rails.application.routes.draw do
     resources :team_members, only: %i[index show create update destroy] do
       collection do
         get 'organizer/:organizer_id', to: 'team_members#organizer_members'
+        get 'organizers', to: 'team_members#organizers'
       end
       member do
         patch :toggle_status
