@@ -41,8 +41,15 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_amount_price
     def total_amount_price
-      amount_cents = scoped_active_tickets.total_revenue_cents
-      render json: { totalAmountPrice: amount_cents.to_i }, status: :ok
+      ticket_revenue_cents = scoped_active_tickets.total_revenue_cents.to_i
+      exhibitor_revenue_cents = ExhibitorRegistrationPayment
+        .paid
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .sum(:amount)
+      exhibitor_revenue_cents = (exhibitor_revenue_cents.to_d * 100).to_i
+      total = ticket_revenue_cents + exhibitor_revenue_cents
+      render json: { totalAmountPrice: total }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/mall_live_feed
