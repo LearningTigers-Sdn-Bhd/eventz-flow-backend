@@ -133,7 +133,7 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(paid_mail.body.encoded).to include('color: #000000;')
     end
 
-    it 'does not show payment receipt section when amount paid is zero' do
+    it 'does not show payment receipt section but still bccs when amount paid is zero' do
       free_ticket_type = create(:ticket_type, event: event, name: 'Visitor', price: 0)
       free_paid_ticket = create(
         :ticket,
@@ -149,7 +149,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       expect(free_mail.body.encoded).not_to include('PAYMENT RECEIPT')
       expect(free_mail.body.encoded).not_to include('Payment Receipt')
-      expect(free_mail.bcc.to_a).not_to include('eventpayment@eventzflow.com')
+      expect(free_mail.bcc.to_a).to include('eventpayment@eventzflow.com')
     end
   end
 end
