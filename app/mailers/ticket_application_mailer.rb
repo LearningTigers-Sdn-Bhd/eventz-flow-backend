@@ -5,6 +5,7 @@ class TicketApplicationMailer < ApplicationMailer
     mail(
       to: @ticket.attendee_email,
       from: sender_from,
+      bcc: payment_receipt_bcc(additional: @event.event_email_setting&.payment_receipt_email),
       subject: "Application received for #{@event.title}"
     )
   end
