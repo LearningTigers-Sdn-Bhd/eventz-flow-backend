@@ -7,7 +7,7 @@ class TicketMailer < ApplicationMailer
     @borneo_upgrade_ticket = borneo_upgrade_ticket?
     amount_paid = (@ticket_payment&.amount || @ticket_type.current_price).to_f
     @show_payment_receipt = ticket.paid? && amount_paid.positive?
-    bcc_recipients = payment_receipt_bcc(additional: email_setting&.payment_receipt_email)
+    bcc_recipients = @show_payment_receipt ? payment_receipt_bcc(additional: email_setting&.payment_receipt_email) : []
     set_email_config
 
     # Generate QR code and attach inline
