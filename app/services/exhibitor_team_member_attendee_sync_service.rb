@@ -75,11 +75,18 @@ class ExhibitorTeamMemberAttendeeSyncService
   end
 
   def merged_custom_fields(ticket)
-    ticket&.custom_fields_data.to_h || {}
+    (ticket&.custom_fields_data.to_h || {}).merge(company_custom_field)
   end
 
   def ticket_custom_fields
-    {}
+    company_custom_field
+  end
+
+  def company_custom_field
+    company_name = @team_member.exhibitor_kit.company_name.to_s.strip
+    return {} if company_name.blank?
+
+    { 'company' => company_name }
   end
 
   def exhibitor_ticket_type
