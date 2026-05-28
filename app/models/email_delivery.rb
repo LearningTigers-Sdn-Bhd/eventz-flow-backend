@@ -48,7 +48,9 @@ class EmailDelivery < ApplicationRecord
       exhibitor_kit_ids
     )
   }
-  scope :retryable, -> { where(status: 'failed', failure_reason: TRANSIENT_FAILURE_REASONS) }
+  MAX_RETRY_COUNT = 3
+
+  scope :retryable, -> { where(status: 'failed', failure_reason: TRANSIENT_FAILURE_REASONS).where('retry_count < ?', MAX_RETRY_COUNT) }
 
   def delivered_successfully?
     status == 'delivered'

@@ -150,8 +150,8 @@ class ExhibitorTeamMemberAttendeeSyncService
 
   def desired_ticket_state(ticket = nil)
     return %i[pending_payment pending] unless @team_member.exhibitor_kit.paid?
-    return %i[purchased paid] if ticket&.purchased? && ticket&.paid?
     return %i[pending_payment pending] if excess_member_requiring_payment?
+    return %i[purchased paid] if ticket&.purchased? && ticket&.paid?
 
     %i[purchased paid]
   end
