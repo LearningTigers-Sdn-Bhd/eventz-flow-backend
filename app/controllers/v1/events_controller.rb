@@ -229,6 +229,9 @@ module V1
         :use_sponsorship,
         :use_event_leads,
         :use_api_access,
+        :reminders_enabled,
+        :reminder_7_day,
+        :reminder_1_day,
         :payment_receipt_email, # backward compat — routed to event_email_setting
         :skip_webhooks,
         :logo,
