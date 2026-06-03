@@ -440,7 +440,7 @@ module V1
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
-      render json: { error: 'Only organization owners can unscan tickets' }, status: :forbidden
+      render json: { error: 'Only organization owners and organizers can unscan tickets' }, status: :forbidden
     rescue StandardError => e
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end

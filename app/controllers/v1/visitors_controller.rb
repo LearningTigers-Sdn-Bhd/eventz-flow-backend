@@ -128,7 +128,7 @@ module V1
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Visitor not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
-      render json: { error: 'Only organization owners can unscan visitors' }, status: :forbidden
+      render json: { error: 'Only organization owners and organizers can unscan visitors' }, status: :forbidden
     end
 
     private
