@@ -4,6 +4,7 @@ class Event < ApplicationRecord
 
   # --- Active Storage ---
   has_one_attached :logo, dependent: :purge_later
+  has_one_attached :poster, dependent: :purge_later
 
   # --- Associations (Refactored) ---
 
@@ -17,11 +18,14 @@ class Event < ApplicationRecord
   has_many :event_locations, dependent: :destroy, inverse_of: :event
   has_many :ticket_types, dependent: :destroy
   has_many :registration_forms, dependent: :destroy
+  has_many :pass_bundles, dependent: :destroy
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
+  has_many :wishes, dependent: :destroy
+  has_one :wish_wall_setting, dependent: :destroy
   has_many :vouchers, dependent: :destroy
   has_one :event_exhibition_contractor, dependent: :destroy
   has_many :event_exhibition_contractors, dependent: :destroy
@@ -42,6 +46,10 @@ class Event < ApplicationRecord
   has_many :event_sponsorships, dependent: :destroy
   has_many :sponsors, through: :event_sponsorships
 
+  has_many :plans, dependent: :destroy
+  has_many :event_seating_groups, dependent: :destroy
+  has_many :api_keys, dependent: :nullify
+
   # --- Reminders ---
   has_many :event_reminder_logs, dependent: :destroy
 
@@ -50,6 +58,7 @@ class Event < ApplicationRecord
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
 
   accepts_nested_attributes_for :event_email_setting, update_only: true
+  accepts_nested_attributes_for :wish_wall_setting, update_only: true
 
   attr_accessor :skip_webhooks
 
@@ -58,8 +67,14 @@ class Event < ApplicationRecord
   validates :status, presence: true
   validates :start_date, presence: true
   validates :end_date, presence: true
-
+  validates :public_registration_url,
+            format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: 'must be a valid URL' },
+            allow_blank: true
   validate :end_date_must_be_after_start_date
+
+  def normalized_public_registration_url
+    public_registration_url.to_s.strip.chomp('/')
+  end
 
   # --- Enums ---
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
@@ -67,8 +82,8 @@ class Event < ApplicationRecord
 
   # --- Soft Delete Scopes ---
   default_scope { where(deleted_at: nil) }
-  scope :with_deleted, -> { unscoped }
-  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
 
   # --- Scopes for specific event staff roles ---
 
@@ -122,6 +137,7 @@ class Event < ApplicationRecord
     EventVendor.where(event_id: id).destroy_all
     EventAssignment.where(event_id: id).destroy_all
     Visitor.where(event_id: id).destroy_all
+    Wish.where(event_id: id).destroy_all
     # Now destroy the event itself (unscoped to find soft-deleted events)
     Event.unscoped.find(id).destroy!
   end
@@ -132,12 +148,44 @@ class Event < ApplicationRecord
     Rails.application.routes.url_helpers.rails_blob_url(logo, only_path: true)
   end
 
+  def wish_wall_background_image_url
+    return nil unless wish_wall_setting&.background_image&.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(wish_wall_setting.background_image, only_path: true)
+  end
+
+  def poster_url
+    return nil unless poster.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(poster, only_path: true)
+  end
+
   def as_json(options = {})
     super(options).merge(
       'logo_url' => logo_url,
+      'poster_url' => poster_url,
       'payment_receipt_email' => event_email_setting&.payment_receipt_email,
-      'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at])
+      'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at]),
+      'wish_wall_setting' => wish_wall_setting_payload
     )
+  end
+
+  def wish_wall_setting_payload
+    setting = wish_wall_setting
+
+    {
+      'display_mode' => setting&.display_mode || 'cards',
+      'animation_shape' => setting&.animation_shape,
+      'animation_text' => setting&.animation_text,
+      'accent_color' => setting&.accent_color,
+      'header_text_color' => setting&.header_text_color,
+      'card_background_color' => setting&.card_background_color,
+      'background_image_url' => wish_wall_background_image_url
+    }
+  end
+
+  def webhook_urls
+    webhook_url.to_s.split(',').map(&:strip).reject(&:blank?)
   end
 
   def send_webhook_notification
@@ -147,7 +195,10 @@ class Event < ApplicationRecord
     event_type = determine_event_type
     return if event_type.nil? # Skip if no significant change
 
-    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   # Sync custom label keys to tickets and visitors when labels_data changes

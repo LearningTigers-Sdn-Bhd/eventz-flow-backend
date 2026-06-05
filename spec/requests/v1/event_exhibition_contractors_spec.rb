@@ -1,52 +1,64 @@
 require 'rails_helper'
 
-RSpec.describe "V1::EventExhibitionContractors", type: :request do
+RSpec.describe 'V1::EventExhibitionContractors', type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:api_key) { create(:api_key, user: org_owner) }
   let(:auth_header) { { 'Authorization' => api_key.raw_key } }
 
-  let(:event) { create(:event) }
+  let(:event) { create(:event, enable_exhibitor_management: true) }
   let(:exhibition_contractor_profile) { create(:exhibition_contractor_profile) }
 
-  describe "GET /v1/events/:event_id/event_exhibition_contractor" do
-    context "when an event exhibition contractor is assigned" do
-      let!(:assigned_exhibition_contractor) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: exhibition_contractor_profile) }
+  describe 'GET /v1/events/:event_id/event_exhibition_contractor' do
+    context 'when exhibitor management is disabled' do
+      let(:event) { create(:event, enable_exhibitor_management: false) }
 
-      context "with valid authorization" do
+      before { get v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header }
+
+      it 'returns successful response for org owner' do
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    context 'when an event exhibition contractor is assigned' do
+      let!(:assigned_exhibition_contractor) do
+        create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: exhibition_contractor_profile)
+      end
+
+      context 'with valid authorization' do
         before { get v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header }
 
-        it "returns a successful response" do
+        it 'returns a successful response' do
           expect(response).to have_http_status(:ok)
         end
 
-        it "returns the event exhibition contractor for the event" do
+        it 'returns the event exhibition contractor for the event' do
           expect(json_body['id']).to eq(assigned_exhibition_contractor.id)
         end
       end
 
-      context "without authorization" do
+      context 'without authorization' do
         before { get v1_event_event_exhibition_contractor_path(event_id: event.id) }
 
-        it "returns unauthorized" do
+        it 'returns unauthorized' do
           expect(response).to have_http_status(:unauthorized)
         end
       end
     end
 
-    context "when no event exhibition contractor is assigned" do
+    context 'when no event exhibition contractor is assigned' do
       before { get v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header }
 
-      it "returns a successful response" do
+      it 'returns a successful response' do
         expect(response).to have_http_status(:ok)
       end
 
-      it "returns a message indicating no contractor assigned" do
-        expect(json_body['message']).to eq("No exhibition contractor assigned to this event")
+      it 'returns a message indicating no contractor assigned' do
+        expect(json_body['message']).to eq('No exhibition contractor assigned to this event')
       end
     end
   end
 
-  describe "POST /v1/events/:event_id/event_exhibition_contractor" do
+  describe 'POST /v1/events/:event_id/event_exhibition_contractor' do
     let(:new_exhibition_contractor_profile) { create(:exhibition_contractor_profile) }
     let(:valid_attributes) do
       {
@@ -56,20 +68,59 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       }
     end
 
-    context "with valid authorization and valid attributes" do
-      it "creates a new event exhibition contractor" do
-        expect {
-          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes, headers: auth_header
-        }.to change(EventExhibitionContractor, :count).by(1)
+    context 'when exhibitor management is disabled' do
+      let(:event) { create(:event, enable_exhibitor_management: false) }
+
+      it 'creates a new event exhibition contractor for org owner' do
+        expect do
+          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes,
+                                                                              headers: auth_header
+        end.to change(EventExhibitionContractor, :count).by(1)
       end
 
-      it "returns a created response" do
-        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes, headers: auth_header
+      it 'returns created for org owner' do
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes,
+                                                                            headers: auth_header
         expect(response).to have_http_status(:created)
       end
     end
 
-    context "with valid authorization and invalid attributes (e.g., duplicate event_id)" do
+    context 'with valid authorization and valid attributes' do
+      it 'creates a new event exhibition contractor' do
+        expect do
+          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes,
+                                                                              headers: auth_header
+        end.to change(EventExhibitionContractor, :count).by(1)
+      end
+
+      it 'returns a created response' do
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes,
+                                                                            headers: auth_header
+        expect(response).to have_http_status(:created)
+      end
+
+      context 'when exhibitor management is disabled on the event' do
+        let(:event) do
+          create(:event, enable_exhibitor_management: false, allow_contractor_printing_services: true)
+        end
+        let(:contractor_user) { new_exhibition_contractor_profile.user }
+        let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
+        let!(:printing_service) { create(:printing_service, user: contractor_user) }
+
+        it 'does not auto-link contractor items or printing services to the event' do
+          expect do
+            post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes,
+                                                                                headers: auth_header
+          end.to change(EventExhibitionContractor, :count).by(1)
+                                                          .and change(EventRentableItem, :count).by(0)
+                                                                                                .and change(
+                                                                                                  EventPrintingService, :count
+                                                                                                ).by(0)
+        end
+      end
+    end
+
+    context 'with valid authorization and invalid attributes (e.g., duplicate event_id)' do
       let(:new_profile_for_duplicate) { create(:exhibition_contractor_profile) }
       let(:invalid_attributes) do
         {
@@ -79,64 +130,92 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
         }
       end
 
-      it "does not create a duplicate event exhibition contractor" do
-        create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: create(:exhibition_contractor_profile))
-        expect {
-          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes, headers: auth_header
-        }.to_not change(EventExhibitionContractor, :count)
+      it 'does not create a duplicate event exhibition contractor' do
+        create(:event_exhibition_contractor, event: event,
+                                             exhibition_contractor_profile: create(:exhibition_contractor_profile))
+        expect do
+          post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes,
+                                                                              headers: auth_header
+        end.to_not change(EventExhibitionContractor, :count)
       end
 
-      it "returns unprocessable entity" do
-        create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: create(:exhibition_contractor_profile))
-        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes, headers: auth_header
+      it 'returns unprocessable entity' do
+        create(:event_exhibition_contractor, event: event,
+                                             exhibition_contractor_profile: create(:exhibition_contractor_profile))
+        post v1_event_event_exhibition_contractor_path(event_id: event.id), params: invalid_attributes,
+                                                                            headers: auth_header
         expect(response).to have_http_status(:unprocessable_content)
       end
     end
 
-    context "without authorization" do
-      it "returns unauthorized" do
+    context 'without authorization' do
+      it 'returns unauthorized' do
         post v1_event_event_exhibition_contractor_path(event_id: event.id), params: valid_attributes
         expect(response).to have_http_status(:unauthorized)
       end
     end
   end
 
-  describe "DELETE /v1/events/:event_id/event_exhibition_contractor" do
+  describe 'DELETE /v1/events/:event_id/event_exhibition_contractor' do
     let!(:event_exhibition_contractor_to_delete) { create(:event_exhibition_contractor, event: event) }
 
-    context "with valid authorization" do
-      it "deletes the event exhibition contractor" do
-        expect {
+    context 'when exhibitor management is disabled' do
+      let(:event) { create(:event, enable_exhibitor_management: false) }
+      let!(:event_exhibition_contractor_to_delete) { create(:event_exhibition_contractor, event: event) }
+
+      it 'deletes the contractor for org owner' do
+        expect do
           delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        }.to change(EventExhibitionContractor, :count).by(-1)
+        end.to change(EventExhibitionContractor, :count).by(-1)
       end
 
-      it "returns no content" do
+      it 'returns no content for org owner' do
+        delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+        expect(response).to have_http_status(:no_content)
+      end
+    end
+
+    context 'with valid authorization' do
+      it 'keeps exhibitor kit enabled after contractor removal' do
+        event.update!(use_exhibitor_kit: true)
+
+        delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+
+        expect(event.reload.use_exhibitor_kit).to be(true)
+      end
+
+      it 'deletes the event exhibition contractor' do
+        expect do
+          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+        end.to change(EventExhibitionContractor, :count).by(-1)
+      end
+
+      it 'returns no content' do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         expect(response).to have_http_status(:no_content)
       end
 
-      it "sets use_exhibitor_kit to false on the event" do
+      it 'keeps use_exhibitor_kit enabled on the event' do
         event.update!(use_exhibitor_kit: true)
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        expect(event.reload.use_exhibitor_kit).to be(false)
+        expect(event.reload.use_exhibitor_kit).to be(true)
       end
     end
 
-    context "when contractor has linked rentable items" do
+    context 'when contractor has linked rentable items' do
       let(:contractor_user) { event_exhibition_contractor_to_delete.exhibition_contractor_profile.user }
       let!(:rentable_item1) { create(:rentable_item, user: contractor_user) }
       let!(:rentable_item2) { create(:rentable_item, user: contractor_user) }
       let!(:event_rentable_item1) { create(:event_rentable_item, event: event, rentable_item: rentable_item1) }
       let!(:event_rentable_item2) { create(:event_rentable_item, event: event, rentable_item: rentable_item2) }
 
-      it "removes all linked rentable items from the event" do
-        expect {
+      it 'removes all linked rentable items from the event' do
+        expect do
           delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        }.to change(EventRentableItem, :count).by(-2)
+        end.to change(EventRentableItem, :count).by(-2)
       end
 
-      it "only removes items belonging to the contractor" do
+      it 'only removes items belonging to the contractor' do
         other_user = create(:user, :exhibition_contractor)
         other_item = create(:rentable_item, user: other_user)
         other_event_item = create(:event_rentable_item, event: event, rentable_item: other_item)
@@ -147,20 +226,24 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       end
     end
 
-    context "when contractor has linked printing services" do
+    context 'when contractor has linked printing services' do
       let(:contractor_user) { event_exhibition_contractor_to_delete.exhibition_contractor_profile.user }
       let!(:printing_service1) { create(:printing_service, user: contractor_user) }
       let!(:printing_service2) { create(:printing_service, user: contractor_user) }
-      let!(:event_printing_service1) { create(:event_printing_service, event: event, printing_service: printing_service1) }
-      let!(:event_printing_service2) { create(:event_printing_service, event: event, printing_service: printing_service2) }
-
-      it "removes all linked printing services from the event" do
-        expect {
-          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        }.to change(EventPrintingService, :count).by(-2)
+      let!(:event_printing_service1) do
+        create(:event_printing_service, event: event, printing_service: printing_service1)
+      end
+      let!(:event_printing_service2) do
+        create(:event_printing_service, event: event, printing_service: printing_service2)
       end
 
-      it "only removes services belonging to the contractor" do
+      it 'removes all linked printing services from the event' do
+        expect do
+          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+        end.to change(EventPrintingService, :count).by(-2)
+      end
+
+      it 'only removes services belonging to the contractor' do
         other_user = create(:user, :exhibition_contractor)
         other_service = create(:printing_service, user: other_user)
         other_event_service = create(:event_printing_service, event: event, printing_service: other_service)
@@ -171,54 +254,60 @@ RSpec.describe "V1::EventExhibitionContractors", type: :request do
       end
     end
 
-    context "without authorization" do
-      it "returns unauthorized" do
+    context 'without authorization' do
+      it 'returns unauthorized' do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id)
         expect(response).to have_http_status(:unauthorized)
       end
     end
 
-    context "when contractor has existing transactions" do
+    context 'when contractor has existing transactions' do
       let(:contractor_user) { event_exhibition_contractor_to_delete.exhibition_contractor_profile.user }
       let!(:rentable_item) { create(:rentable_item, user: contractor_user) }
       let!(:event_rentable_item) { create(:event_rentable_item, event: event, rentable_item: rentable_item) }
       let(:exhibitor) { create(:exhibitor, event: event) }
       let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
-      let!(:exhibitor_kit_item) { create(:exhibitor_kit_item, exhibitor_kit: exhibitor_kit, rentable_item: rentable_item) }
-
-      it "does not delete the contractor" do
-        expect {
-          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        }.to_not change(EventExhibitionContractor, :count)
+      let!(:exhibitor_kit_item) do
+        create(:exhibitor_kit_item, exhibitor_kit: exhibitor_kit, rentable_item: rentable_item)
       end
 
-      it "returns unprocessable entity with HAS_TRANSACTIONS code" do
+      it 'does not delete the contractor' do
+        expect do
+          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+        end.to_not change(EventExhibitionContractor, :count)
+      end
+
+      it 'returns unprocessable entity with HAS_TRANSACTIONS code' do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         expect(response).to have_http_status(:unprocessable_content)
         expect(json_body['code']).to eq('HAS_TRANSACTIONS')
       end
 
-      it "returns transaction details in the response" do
+      it 'returns transaction details in the response' do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         expect(json_body['details']['rentable_items_in_use']).to eq(1)
       end
     end
 
-    context "when contractor has existing printing service transactions" do
+    context 'when contractor has existing printing service transactions' do
       let(:contractor_user) { event_exhibition_contractor_to_delete.exhibition_contractor_profile.user }
       let!(:printing_service) { create(:printing_service, user: contractor_user) }
-      let!(:event_printing_service) { create(:event_printing_service, event: event, printing_service: printing_service) }
+      let!(:event_printing_service) do
+        create(:event_printing_service, event: event, printing_service: printing_service)
+      end
       let(:exhibitor) { create(:exhibitor, event: event) }
       let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
-      let!(:exhibitor_kit_printing) { create(:exhibitor_kit_printing, exhibitor_kit: exhibitor_kit, printing_service: printing_service) }
-
-      it "does not delete the contractor" do
-        expect {
-          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
-        }.to_not change(EventExhibitionContractor, :count)
+      let!(:exhibitor_kit_printing) do
+        create(:exhibitor_kit_printing, exhibitor_kit: exhibitor_kit, printing_service: printing_service)
       end
 
-      it "returns printing services in use count" do
+      it 'does not delete the contractor' do
+        expect do
+          delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
+        end.to_not change(EventExhibitionContractor, :count)
+      end
+
+      it 'returns printing services in use count' do
         delete v1_event_event_exhibition_contractor_path(event_id: event.id), headers: auth_header
         expect(json_body['details']['printing_services_in_use']).to eq(1)
       end

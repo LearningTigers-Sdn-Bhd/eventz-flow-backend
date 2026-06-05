@@ -9,6 +9,8 @@ module V1
         return render json: { error: 'event_slug is required' }, status: :bad_request if params[:event_slug].blank?
 
         event = Event.friendly.find(params[:event_slug])
+        return render json: { error: 'Event not found' }, status: :not_found unless event.use_seat_ticketing?
+
         sessions = EventSeatSession
           .where(event_id: event.id, status: :published)
 
@@ -27,6 +29,8 @@ module V1
           .find_by(public_id: identifier)
 
         if @session&.published?
+          return render json: { error: 'Session not found' }, status: :not_found unless @session.event.use_seat_ticketing?
+
           render json: diet_session_payload(@session)
         else
           render json: { error: 'Session not found' }, status: :not_found
@@ -38,7 +42,7 @@ module V1
         @section = EventSeatSection.find(params[:section_id])
         @session = @section.event_seat_venue.event_seat_session
 
-        if @session&.published?
+        if @session&.published? && @session.event.use_seat_ticketing?
           render json: {
             section_id: @section.id,
             seats: @section.event_ticket_seats.as_json(
@@ -60,6 +64,7 @@ module V1
           EventSeatSession.find_by(public_id: identifier)
 
         return render json: { error: 'Session not found' }, status: :not_found unless @session
+        return render json: { error: 'Session not found' }, status: :not_found unless @session.event.use_seat_ticketing?
         return render json: { error: 'Session not published' }, status: :forbidden unless @session.published?
 
         service = ::SeatTicketing::CheckoutService.new(@session, params)

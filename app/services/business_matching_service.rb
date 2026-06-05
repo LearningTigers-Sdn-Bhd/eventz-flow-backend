@@ -563,8 +563,14 @@ class BusinessMatchingService < BaseService
             Rails.logger.info "TEMP DATA DEBUG: #{temp_booking_data.inspect}"
             Rails.logger.info "DEBUG: ENTERING OPTIMISTIC UPDATE BLOCK"
 
-            # Send email immediately (async)
-            BookingMailer.confirmation_email(temp_booking_data, bm_event_title, event_id).deliver_now
+            # Send email immediately
+            EmailDelivery::AuditedDelivery.deliver_now(
+              mailer_name: 'BookingMailer',
+              mailer_action: 'confirmation_email',
+              args: [temp_booking_data, bm_event_title, event_id],
+              related: nil,
+              metadata: { event_id: event_id, booking_id: temp_booking_data[:id] }
+            )
 
             # Cache the provisional data for a short period
             Rails.cache.write("pending_booking_#{temp_booking_data[:id]}", temp_booking_data, expires_in: 5.minutes)
@@ -627,8 +633,13 @@ class BusinessMatchingService < BaseService
             final_booking_data['id'] ||= booking_data['_id'] || "N/A"
 
             # Send confirmation email
-            # Use deliver_later for async email sending
-            BookingMailer.confirmation_email(final_booking_data, event_title, event_id).deliver_later
+            EmailDelivery::AuditedDelivery.deliver_later(
+              mailer_name: 'BookingMailer',
+              mailer_action: 'confirmation_email',
+              args: [final_booking_data, event_title, event_id],
+              related: nil,
+              metadata: { event_id: event_id, booking_id: final_booking_data['id'] }
+            )
 
             # Invalidate availability caches
             Rails.cache.delete("business_matching_availability_#{event_id}_#{bm_event_id}")

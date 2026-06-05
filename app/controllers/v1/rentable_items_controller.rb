@@ -48,13 +48,14 @@ module V1
     end
 
     def rentable_item_params
-      params.require(:rentable_item).permit(:name, :description, :unit_of_measure, :default_price, :status, :item_category_id, :image)
+      params.require(:rentable_item).permit(:name, :description, :unit_of_measure, :default_price, :status,
+                                            :item_category_id, :image)
     end
 
     def handle_image_removal
-      if ActiveModel::Type::Boolean.new.cast(params[:remove_image])
-        @rentable_item.image.purge_later if @rentable_item.image.attached?
-      end
+      return unless ActiveModel::Type::Boolean.new.cast(params[:remove_image])
+
+      @rentable_item.image.purge_later if @rentable_item.image.attached?
     end
 
     def format_rentable_item(item)
@@ -66,7 +67,7 @@ module V1
     def link_to_assigned_events(rentable_item)
       return unless current_user.exhibition_contractor_profile.present?
 
-      current_user.exhibition_contractor_profile.events.find_each do |event|
+      current_user.exhibition_contractor_profile.events.where(enable_exhibitor_management: true).find_each do |event|
         EventRentableItem.find_or_create_by(event: event, rentable_item: rentable_item)
       end
     end

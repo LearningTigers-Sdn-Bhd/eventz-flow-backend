@@ -12,10 +12,19 @@ class ExhibitorTeamMemberPaymentPolicy < ApplicationPolicy
     user.vendor? && record.exhibitor_kit.event_vendor.vendor_id == user.id
   end
 
+  def create_order?
+    user.vendor? && record.exhibitor_kit.event_vendor.vendor_id == user.id
+  end
+
+  def verify?
+    user.vendor? && record.exhibitor_kit.event_vendor.vendor_id == user.id
+  end
+
   def update?
     # Vendor can update payment_proof, external_ref, notes when status allows
-    if record.exhibitor_kit.event_vendor.vendor_id == user.id
-      return true if record.status == 'pending' || record.status == 'submitted' || record.status == 'rejected'
+    if (record.exhibitor_kit.event_vendor.vendor_id == user.id) && %w[pending submitted
+                                                                      rejected].include?(record.status)
+      return true
     end
 
     # Organizer/Admin can verify/reject
@@ -40,13 +49,13 @@ class ExhibitorTeamMemberPaymentPolicy < ApplicationPolicy
 
   def permitted_attributes_for_update
     if record.exhibitor_kit.event_vendor.vendor_id == user.id # Vendor
-      if record.status == 'pending' || record.status == 'submitted' || record.status == 'rejected'
-        [:payment_proof, :external_ref, :note, :payment_source]
+      if %w[pending submitted rejected].include?(record.status)
+        %i[payment_proof external_ref note payment_source]
       else
         []
       end
     elsif user.is_org_owner_or_organizer? # Organizer/Admin
-      [:status, :note, :paid_at]
+      %i[status note paid_at]
     else
       []
     end

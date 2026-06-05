@@ -4,7 +4,7 @@ module V1
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it
-    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore]
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
@@ -13,37 +13,67 @@ module V1
     # Query params:
     #   - archived=true: Show only archived (soft-deleted) tickets
     #   - full=true: Show all tickets including archived ones
+    #   - updated_since: ISO8601 timestamp. Returns only tickets updated at or
+    #     after the given time. Use for incremental sync.
+    #   - page / per_page: Paginate results. When either is present, the response
+    #     is sliced and pagination metadata is returned via response headers
+    #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
+    #     remains a bare array for backwards compatibility.
     def index
-      # 1. Scope the tickets based on the authorized events and filter by the current event.
-      # policy_scope(Ticket) uses TicketPolicy::Scope to filter tickets the user can see.
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle)
 
-      # Apply filtering based on query parameters
       if params[:archived] == 'true'
-        # Show only archived tickets
         @tickets = @tickets.only_deleted
       elsif params[:full] == 'true'
-        # Show all tickets including archived
         @tickets = @tickets.with_deleted
       end
-      # Default: only non-archived tickets (handled by default_scope)
 
-      # 2. Authorization is handled by the EventPolicy check in set_event_and_authorize.
-      # We skip 'authorize @tickets, :index?' as it's often redundant/misused for collections.
+      @tickets = @tickets.unassigned if params[:unassigned] == 'true'
 
-      render json: @tickets.as_json(
+      if params[:updated_since].present?
+        begin
+          since = Time.iso8601(params[:updated_since].to_s)
+        rescue ArgumentError
+          return render json: {
+            error: 'invalid_updated_since',
+            message: '`updated_since` must be a valid ISO8601 timestamp (e.g. 2026-05-18T00:00:00Z).'
+          }, status: :bad_request
+        end
+        @tickets = @tickets.where('tickets.updated_at >= ?', since)
+      end
+
+      json_options = {
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
         include: {
           ticket_type: { only: [:id, :name, :price] },
-          scanned_by: { only: [:id, :full_name] }
+          scanned_by: { only: [:id, :full_name] },
+          pass_bundle: { only: [:id, :name] },
+          ticket_application: {
+            only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
+          }
         }
-      ), status: :ok
+      }
+
+      if params[:page].present? || params[:per_page].present?
+        ordered_scope = @tickets.reorder(id: :asc)
+        pagy_obj, paginated = pagy(ordered_scope, limit: pagination_params[:per_page])
+
+        response.headers['X-Total-Count'] = pagy_obj.count.to_s
+        response.headers['X-Page']        = pagy_obj.page.to_s
+        response.headers['X-Per-Page']    = pagy_obj.limit.to_s
+        response.headers['X-Total-Pages'] = pagy_obj.pages.to_s
+
+        render json: paginated.as_json(json_options), status: :ok
+      else
+        render json: @tickets.as_json(json_options), status: :ok
+      end
     end
 
     # GET /v1/events/:event_id/tickets/:id
     def show
       # Authorize the specific ticket record against the show? policy
       authorize @ticket
-      render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      render json: ticket_response(@ticket), status: :ok
     end
 
     # POST /v1/events/:event_id/tickets
@@ -52,7 +82,7 @@ module V1
       authorize @event, :create_ticket?
 
       # Build the ticket using ONLY the strong parameters.
-      @ticket = @event.tickets.build(ticket_params)
+      @ticket = @event.tickets.build(ticket_params_with_payment_sync)
 
       # @ticket.user = current_user # Hide this for now
 
@@ -62,7 +92,7 @@ module V1
 
       if @ticket.save
         @ticket.reload
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :created
+        render json: ticket_response(@ticket), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -72,8 +102,8 @@ module V1
       # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
 
-      if @ticket.update(ticket_params)
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+      if @ticket.update(ticket_params_with_payment_sync)
+        render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -116,10 +146,36 @@ module V1
       authorize @ticket, :restore?
 
       if @ticket.restore
-        render json: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } }), status: :ok
+        render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
+    end
+
+    # POST /v1/events/:event_id/tickets/:id/resend_confirmation_email
+    # Org owner only - resend ticket confirmation email with QR
+    def resend_confirmation_email
+      authorize @ticket, :resend_confirmation_email?
+
+      if @ticket.attendee_email.blank?
+        return render json: { errors: ['Ticket does not have an attendee email'] }, status: :unprocessable_content
+      end
+
+      delivery = EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [@ticket],
+        related: @ticket,
+        metadata: {
+          source: 'ticket_actions_menu_manual_resend',
+          event_id: @event.id
+        }
+      )
+
+      render json: {
+        message: 'Ticket confirmation email has been queued for resend',
+        email_delivery_id: delivery.id
+      }, status: :accepted
     end
 
     def global_check_in
@@ -373,7 +429,10 @@ module V1
       )
         render json: {
           message: 'Ticket successfully unscanned',
-          ticket: @ticket.as_json(include: { ticket_type: { only: [:id, :name, :price] } })
+          ticket: @ticket.as_json(
+            methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+            include: { ticket_type: { only: [:id, :name, :price] } }
+          )
         }, status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -381,7 +440,7 @@ module V1
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
-      render json: { error: 'Only organization owners can unscan tickets' }, status: :forbidden
+      render json: { error: 'Only organization owners and organizers can unscan tickets' }, status: :forbidden
     rescue StandardError => e
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
     end
@@ -434,6 +493,9 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
+        :payment_method,
+        :transaction_id,
+        :payment_screenshot_url,
         :role,
         :skip_webhooks,
         custom_fields_data: {}
@@ -447,6 +509,32 @@ module V1
       end
 
       params.require(:ticket).permit(*allowed_params)
+    end
+
+    def ticket_params_with_payment_sync
+      permitted_params = ticket_params
+      payment_status = permitted_params[:payment_status]
+
+      return permitted_params unless @ticket&.pending_payment?
+      return permitted_params unless payment_status.present?
+
+      paid_value = Ticket.payment_statuses[:paid]
+      return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
+
+      permitted_params.merge(status: :purchased)
+    end
+
+    def ticket_response(ticket)
+      ticket.as_json(
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        include: {
+          ticket_type: { only: [:id, :name, :price] },
+          pass_bundle: { only: [:id, :name] },
+          ticket_application: {
+            only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
+          }
+        }
+      )
     end
   end
 end

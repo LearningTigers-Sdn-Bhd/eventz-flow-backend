@@ -9,6 +9,10 @@ module V1
     # GET /v1/events/:event_id/visitors
     def index
       @visitors = policy_scope(Visitor).where(event: @event)
+      
+      if params[:unassigned] == 'true'
+        @visitors = @visitors.unassigned
+      end
 
       render json: @visitors.map { |v|
         v.as_json.merge(
@@ -107,11 +111,13 @@ module V1
         render json: { error: 'Visitor is not checked in' }, status: :unprocessable_content and return
       end
 
-      if @visitor.update(
+      @visitor.assign_attributes(
         checked_in: false,
         check_in_at: nil,
         scanned_by_id: nil
       )
+
+      if @visitor.save(validate: false)
         render json: {
           message: 'Visitor successfully unscanned',
           visitor: @visitor.as_json
@@ -122,7 +128,7 @@ module V1
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Visitor not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
-      render json: { error: 'Only organization owners can unscan visitors' }, status: :forbidden
+      render json: { error: 'Only organization owners and organizers can unscan visitors' }, status: :forbidden
     end
 
     private

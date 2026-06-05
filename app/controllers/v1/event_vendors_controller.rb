@@ -61,33 +61,25 @@ module V1
 
       vendor_attributes = params.require(:vendor).permit(:redirect_url, :poster_url, :qr_url)
 
-      # Update main event_vendor attributes
-      if @event_vendor.update(vendor_attributes)
-        # Handle exhibitor_kit_attributes separately if present in params and if exhibitor_kit exists
+      success = ActiveRecord::Base.transaction do
+        raise ActiveRecord::Rollback unless @event_vendor.update(vendor_attributes)
+
         if params[:vendor][:exhibitor_kit_attributes].present? && @event_vendor.is_a?(Exhibitor) && @event_vendor.exhibitor_kit
           permitted_attrs_structure_for_kit = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update
-
-          # Use permit on the raw exhibitor_kit_attributes to get only permitted data
           strong_exhibitor_kit_params = params[:vendor][:exhibitor_kit_attributes].permit(*permitted_attrs_structure_for_kit)
 
-          # Only update if there are permitted attributes to update
-          if strong_exhibitor_kit_params.present?
-            if @event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
-              # All good, continue
-            else
-              # If exhibitor kit update fails, add its errors to event_vendor for a combined response
-              @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
-            end
+          if strong_exhibitor_kit_params.present? && !@event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
+            @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
+            raise ActiveRecord::Rollback
           end
         end
 
-        if @event_vendor.errors.any? # Check if exhibitor_kit errors were added
-          render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
-                 status: :unprocessable_content
-        else
-          @event_vendor.reload # Reload to ensure all associations are fresh
-          render json: format_event_vendor(@event_vendor), status: :ok
-        end
+        true
+      end
+
+      if success && @event_vendor.errors.empty?
+        @event_vendor.reload
+        render json: format_event_vendor(@event_vendor), status: :ok
       else
         render json: { error: 'Validation error', errors: @event_vendor.errors.full_messages },
                status: :unprocessable_content
@@ -144,11 +136,13 @@ module V1
         exhibitor_kit_attributes: [
           :id, :booth_number, :booth_type, :booth_dimensions, :side_wall_left_required,
           :side_wall_right_required, :name_on_fascia, :fascia_upgrade_required,
-          :company_name, :company_address, :pic_full_name, :pic_contact_number,
-          :pic_email_address, :special_requirements,
+          :company_name, :company_address, :country, :pic_full_name, :pic_position,
+          :pic_contact_number, :pic_email_address, :special_requirements,
           :digital_brochure_link, :qr_code_url, :is_raw_space,
-          :indemnity_signed, :indemnity_document_url, :_destroy,
-          { exhibitor_team_members_attributes: %i[id full_name _destroy] }
+          :indemnity_signed, :indemnity_document_url,
+          :exhibitor_booth_price_id, :booth_quantity, :_destroy,
+          { custom_fields_data: {} },
+          { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] }
         ]
       )
     end
@@ -221,17 +215,21 @@ module V1
         amount_paid: exhibitor_kit.amount_paid,
         payment_note: exhibitor_kit.payment_note,
         indemnity_link: exhibitor_kit.indemnity_link,
+        exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
+        exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
         custom_fields_data: exhibitor_kit.custom_fields_data,
-        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name
+        exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,
         team_member_limit: exhibitor_kit.team_member_limit,
         excess_team_member_count: exhibitor_kit.excess_team_member_count,
         paid_extra_member_count: exhibitor_kit.paid_extra_member_count,
+        used_paid_extra_member_count: exhibitor_kit.used_paid_extra_member_count,
         unpaid_excess_team_member_count: exhibitor_kit.unpaid_excess_team_member_count,
         has_unpaid_excess_team_members: exhibitor_kit.has_unpaid_excess_team_members?,
         extra_team_member_fee: exhibitor_kit.extra_team_member_fee,
         extra_team_member_charges: exhibitor_kit.extra_team_member_charges,
+        extra_team_member_payment_mode: extra_team_member_payment_mode(exhibitor_kit),
         exhibitor_kit_items: items.map { |item| format_exhibitor_kit_item(item) },
         exhibitor_kit_printings: printings.map { |printing| format_exhibitor_kit_printing(printing) },
         custom_requests: exhibitor_kit.custom_requests.as_json(only: %i[id description quantity status
@@ -300,6 +298,10 @@ module V1
         created_at: payment.created_at,
         updated_at: payment.updated_at
       }
+    end
+
+    def extra_team_member_payment_mode(exhibitor_kit)
+      exhibitor_kit.event.event_payment_gateway.present? ? 'payment_gateway' : 'manual_bank_in'
     end
   end
 end

@@ -9262,6 +9262,32 @@ paths:
         description: Set to "true" to show all tickets including archived ones
         schema:
           type: string
+      - name: updated_since
+        in: query
+        required: false
+        description: ISO8601 timestamp. When present, returns only tickets with
+          `updated_at >= updated_since`. Use this for incremental sync — track
+          the time of your last successful pull and pass it on the next call.
+        schema:
+          type: string
+          format: date-time
+      - name: page
+        in: query
+        required: false
+        description: Page number (1-indexed). When sent (with or without `per_page`),
+          the response is paginated and totals are returned via response headers
+          (`X-Total-Count`, `X-Page`, `X-Per-Page`, `X-Total-Pages`).
+        schema:
+          type: integer
+          minimum: 1
+      - name: per_page
+        in: query
+        required: false
+        description: Results per page when paginating. Default 25, max 100.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
       responses:
         '200':
           description: Lists all tickets including archived

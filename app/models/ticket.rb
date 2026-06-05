@@ -11,21 +11,44 @@ class Ticket < ApplicationRecord
   # We'll use explicit ID validation below for clarity/troubleshooting consistency.
   belongs_to :event
   belongs_to :ticket_type
+  belongs_to :pass_bundle, optional: true
   belongs_to :user, optional: true
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
   has_one :ticket_payment, dependent: :destroy
+  has_one :ticket_application, dependent: :destroy
+  
+  # Delegation for payment details to expose them directly on the Ticket object (for flat API)
+  # Uses build_ticket_payment if it doesn't exist yet to support updates
+  delegate :payment_method, :payment_method=, :payment_screenshot_url, :payment_screenshot_url=, 
+           :gateway_payment_id, :gateway_payment_id=, to: :payment_record, allow_nil: true
+  
+  # Alias gateway_payment_id to transaction_id to match frontend expectations
+  alias_method :transaction_id, :gateway_payment_id
+  alias_method :transaction_id=, :gateway_payment_id=
+
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+  has_many :event_leads, as: :leadable, dependent: :destroy
+  has_many :event_reminder_logs, dependent: :destroy
+  
+  has_many :table_assignments, dependent: :destroy
+  has_many :assigned_tables, through: :table_assignments, source: :plan_object
+  has_one :event_seating_group_member, as: :participant, dependent: :destroy
 
   # --- Enums ---
   enum :status, { purchased: 0, scanned: 1, refunded: 2, canceled: 3, pending_payment: 4 }
   enum :payment_status, { pending: 0, paid: 1, failed: 2, refunded_payment: 3 }
 
   # --- Soft Delete Scopes ---
+  # `with_deleted` and `only_deleted` use `unscope(where: :deleted_at)` rather
+  # than `unscoped` so they only strip the soft-delete filter from the chain
+  # they're called on. Calling `unscoped` here would also wipe any preceding
+  # `where`/`policy_scope`/`event` filters applied by the caller, which has
+  # caused cross-event ticket leakage when used inside a tenant-scoped query.
   default_scope { where(deleted_at: nil) }
-  scope :with_deleted, -> { unscoped }
-  scope :only_deleted, -> { unscoped.where.not(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
 
   # --- Validations ---
 
@@ -49,6 +72,10 @@ class Ticket < ApplicationRecord
   scope :checked_in, -> { where(checked_in: true) }
   scope :active, -> { where(status: %i[purchased scanned]) }
   scope :unscanned, -> { active.where(checked_in: false) }
+  scope :unassigned, -> { left_outer_joins(:table_assignments).where(table_assignments: { id: nil }) }
+  scope :unassigned_in_plan, ->(plan) {
+    where.not(id: joins(:table_assignments).joins(table_assignments: :plan_object).where(plan_objects: { plan_id: plan.id }).select(:id))
+  }
   scope :within_date_range, ->(range) { where(created_at: range) }
 
   after_commit :send_webhook_notification, on: %i[create update]
@@ -63,9 +90,7 @@ class Ticket < ApplicationRecord
 
   def send_webhook_notification
     return if skip_webhooks
-
-    webhook_url = event.webhook_url
-    return unless webhook_url.present?
+    return unless event.webhook_url.present?
 
     event_type = determine_event_type
     return if event_type.nil?
@@ -73,7 +98,10 @@ class Ticket < ApplicationRecord
     # For updates, skip if nothing significant changed
     return if event_type == 'ticket.updated' && !significant_changes?
 
-    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    event.webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   # --- Soft Delete Methods ---
@@ -244,6 +272,16 @@ class Ticket < ApplicationRecord
   end
 
   def send_confirmation_email
-    TicketMailer.confirmation_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'TicketMailer',
+      mailer_action: 'confirmation_email',
+      args: [self],
+      related: self
+    )
+  end
+
+  # Helper method for delegation to handle creation of payment record on demand
+  def payment_record
+    ticket_payment || build_ticket_payment(amount: ticket_type&.price || 0)
   end
 end

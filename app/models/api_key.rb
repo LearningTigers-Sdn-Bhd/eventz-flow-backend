@@ -1,89 +1,94 @@
-# app/models/api_key.rb
 require 'bcrypt'
 require 'securerandom'
 
 class ApiKey < ApplicationRecord
+  SCOPES = %w[read_only check_in read_write].freeze
+  WRITE_METHODS = %w[POST PUT PATCH DELETE].freeze
+  CHECK_IN_PATH_RE = %r{/(check_in|unscan)(/|\z)}.freeze
+
   # --- Attributes & Dependencies ---
   belongs_to :user
-  
+  belongs_to :event, optional: true
+
   # Used to hold the raw key only during creation (not saved to DB)
-  attr_accessor :raw_key 
-  
+  attr_accessor :raw_key
+
   # --- Callbacks & Scopes ---
   before_validation :generate_key_and_hash, on: :create
-  
+
   validates :key_hash, presence: true, uniqueness: true
   validates :user_id, presence: true
   validates :name, length: { maximum: 255 }
+  validates :scope, presence: true, inclusion: { in: SCOPES }
 
-  # Add this if need to restrict one active API key per user (database level enforcement)
-  # validates :user_id, uniqueness: { 
-  #   scope: :is_active, 
-  #   conditions: -> { where(is_active: true) },
-  #   message: "already has an active API key"
-  # }, if: :is_active?
-  
+  validate :event_allows_api_access, if: -> { event_id.present? }
+
   scope :active, -> { where(is_active: true) }
+
+  # Whether this key is permitted to perform an HTTP request with the given
+  # method and path. Scopes:
+  #   read_only  — GET/HEAD only.
+  #   check_in   — read + POST anywhere + PATCH on check-in/unscan paths only
+  #                (the scan/check_in routes are PATCH; kiosk keys must reach
+  #                them without unlocking arbitrary PATCH writes).
+  #   read_write — full CRUD.
+  def allows_method?(http_method, path = nil)
+    method = http_method.to_s.upcase
+    case scope
+    when 'read_only'  then !WRITE_METHODS.include?(method)
+    when 'check_in'
+      return true unless WRITE_METHODS.include?(method)
+      return true if method == 'POST'
+      method == 'PATCH' && path.to_s.match?(CHECK_IN_PATH_RE)
+    when 'read_write' then true
+    else false
+    end
+  end
 
   # =========================================================================
   # 1. GENERATION METHOD (Secure Creation)
   # =========================================================================
-  
-  # Creates a new ApiKey record and returns the RAW (unhashed) key string.
-  def self.create_key_for_user(user)
-    key = user.api_keys.new
-    
-    # We rely on the before_validation callback to populate key.raw_key and key.key_hash
-    key.save!
 
-    # Return the RAW key string (only available once)
+  def self.create_key_for_user(user, scope: 'read_only')
+    key = user.api_keys.new(scope: scope)
+    key.save!
     key.raw_key
   end
-  
+
   # =========================================================================
   # 2. AUTHENTICATION METHOD (Secure Verification)
   # =========================================================================
 
-  # Attempts to authenticate a raw key by comparing it to the stored hash.
-  # This uses the secure BCrypt comparison method.
+  # Returns the ApiKey record (not just user) so callers can check event_id.
   def self.authenticate_by_key(raw_key)
     return nil unless raw_key.present?
 
-    # Since we cannot lookup by the raw key, we must check ALL active keys.
-    # We find a key that is the correct length and check against its hash.
-    # A common optimization is to use the first N characters as a lookup index,
-    # but for simplicity, we iterate over all active keys for the comparison.
-    
-    key = ApiKey.active.find_each do |key_record|
-      # BCrypt handles the unsalting and comparison securely
+    ApiKey.active.find_each do |key_record|
       if BCrypt::Password.new(key_record.key_hash) == raw_key
-        # Update last_used_at timestamp on successful authentication
         key_record.update!(last_used_at: Time.current)
-        return key_record.user
+        return key_record
       end
     end
-    
+
     nil
   rescue BCrypt::Errors::InvalidHash, ArgumentError
-    # Handle cases where the stored hash is malformed
     nil
   end
 
-  # Revoke method (soft delete)
   def revoke!
     update(is_active: false)
   end
-  
+
   private
-  
-  # Generates a random raw key and computes its BCrypt hash (used on create)
+
   def generate_key_and_hash
-    # Ensure this only runs if the key is not already set
     unless key_hash.present?
-      # Generate a strong, random key
-      self.raw_key = SecureRandom.hex(32) 
-      # Hash the key using BCrypt for secure, salted storage
+      self.raw_key = SecureRandom.hex(32)
       self.key_hash = BCrypt::Password.create(raw_key)
     end
+  end
+
+  def event_allows_api_access
+    errors.add(:event, 'does not have API access enabled') unless event&.use_api_access?
   end
 end

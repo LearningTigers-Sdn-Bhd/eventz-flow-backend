@@ -24,12 +24,12 @@ module V1
         end
 
         payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
-        existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
+        reusable_order = reusable_gateway_order(payment)
 
         gateway = Payments::RazorpayGateway.for_event(event)
 
-        order = if existing_order_id.present?
-                  payment.gateway_response
+        order = if reusable_order.present?
+                  reusable_order
                 else
                   created_order = gateway.create_order(
                     amount_subunits: (exhibitor_kit.amount_paid.to_f * 100).round,
@@ -103,8 +103,10 @@ module V1
           return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature)
+                                 signature: signature, gateway_response: payment_entity)
 
         render json: {
           success: true,
@@ -122,7 +124,7 @@ module V1
       def callback
         event = Event.friendly.find(params[:event_slug])
         exhibitor_kit = find_exhibitor_kit!(event)
-        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
+        frontend_url = public_registration_url_for!(event)
 
         if exhibitor_kit.paid?
           return redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
@@ -141,13 +143,22 @@ module V1
                              allow_other_host: true
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature)
+                                 signature: signature, gateway_response: payment_entity)
         redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
                     allow_other_host: true
       rescue StandardError => e
-        redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=#{CGI.escape(e.message)}",
-                    allow_other_host: true
+        if defined?(frontend_url) && frontend_url.present?
+          redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=#{CGI.escape(e.message)}",
+                      allow_other_host: true
+        else
+          render_public_registration_error_page(
+            title: 'Registration Redirect Not Configured',
+            message: e.message.include?('public_registration_url') ? 'This event does not have a public registration URL configured yet. Please contact the organizer or try again later.' : e.message
+          )
+        end
       end
 
       private
@@ -158,7 +169,7 @@ module V1
           .find_by!(id: params[:exhibitor_kit_id], event_vendors: { event_id: event.id, type: 'Exhibitor' })
       end
 
-      def mark_exhibitor_kit_paid!(exhibitor_kit:, payment_id:, order_id:, signature:)
+      def mark_exhibitor_kit_paid!(exhibitor_kit:, payment_id:, order_id:, signature:, gateway_response: nil)
         payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
 
         payment.update!(
@@ -166,8 +177,8 @@ module V1
           status: 'paid',
           paid_at: Time.current,
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
-          gateway_response: {
+          payment_method: gateway_response&.dig('method').to_s.presence,
+          gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id,
             signature: signature
@@ -175,6 +186,25 @@ module V1
         )
 
         exhibitor_kit.update!(payment_status: :paid)
+      end
+
+      def public_registration_url_for!(event)
+        url = event.normalized_public_registration_url
+        raise KeyError, 'public_registration_url' if url.blank?
+
+        url
+      end
+
+      def reusable_gateway_order(payment)
+        return nil unless payment.status == 'pending'
+
+        gateway_response = payment.gateway_response
+        return nil unless gateway_response.is_a?(Hash)
+
+        order_id = gateway_response['id'].presence || gateway_response['order_id'].presence
+        return nil if order_id.blank? || !order_id.to_s.start_with?('order_')
+
+        gateway_response
       end
     end
   end

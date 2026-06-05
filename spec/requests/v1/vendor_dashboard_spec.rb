@@ -27,10 +27,10 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
   let!(:visitor2) { create(:visitor, event: event1) }
   let!(:visitor3) { create(:visitor, event: event2) }
 
-  let!(:stamp1) { create(:visitor_vendor_stamp, visitor: visitor1, event_vendor: event_vendor1) }
-  let!(:stamp2) { create(:visitor_vendor_stamp, visitor: visitor2, event_vendor: event_vendor1) }
-  let!(:stamp3) { create(:visitor_vendor_stamp, visitor: visitor3, event_vendor: event_vendor2) }
-  let!(:other_stamp) { create(:visitor_vendor_stamp, visitor: visitor1, event_vendor: other_event_vendor) }
+  let!(:stamp1) { create(:event_lead, leadable: visitor1, event_vendor: event_vendor1) }
+  let!(:stamp2) { create(:event_lead, leadable: visitor2, event_vendor: event_vendor1) }
+  let!(:stamp3) { create(:event_lead, leadable: visitor3, event_vendor: event_vendor2) }
+  let!(:other_stamp) { create(:event_lead, leadable: visitor1, event_vendor: other_event_vendor) }
 
   # --- Setup Vouchers ---
   let!(:voucher1) { create(:voucher, event: event1, vendor: vendor_user, total_redemption_available: 100) }
@@ -59,7 +59,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
                    properties: {
                      total_events: { type: :integer },
                      active_events: { type: :integer },
-                     total_stamps: { type: :integer },
+                     total_leads: { type: :integer },
                      total_vouchers: { type: :integer },
                      total_redeemed: { type: :integer }
                    }
@@ -76,7 +76,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
                        start_date: { type: :string },
                        end_date: { type: :string },
                        event_vendor_id: { type: :integer },
-                       stamp_count: { type: :integer },
+                       lead_count: { type: :integer },
                        total_vouchers: { type: :integer },
                        total_redeemed: { type: :integer },
                        redemption_rate: { type: :number }
@@ -93,7 +93,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
           # Verify summary
           expect(data['summary']['total_events']).to eq(3)
           expect(data['summary']['active_events']).to eq(2)
-          expect(data['summary']['total_stamps']).to eq(3)
+          expect(data['summary']['total_leads']).to eq(3)
           expect(data['summary']['total_vouchers']).to eq(225)
           expect(data['summary']['total_redeemed']).to eq(4)
 
@@ -102,20 +102,20 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
 
           # Verify event1 data
           event1_data = data['events'].find { |e| e['id'] == event1.id }
-          expect(event1_data['stamp_count']).to eq(2)
+          expect(event1_data['lead_count']).to eq(2)
           expect(event1_data['total_vouchers']).to eq(150)
           expect(event1_data['total_redeemed']).to eq(3)
           expect(event1_data['redemption_rate']).to eq(2.0)
 
           # Verify event2 data
           event2_data = data['events'].find { |e| e['id'] == event2.id }
-          expect(event2_data['stamp_count']).to eq(1)
+          expect(event2_data['lead_count']).to eq(1)
           expect(event2_data['total_vouchers']).to eq(75)
           expect(event2_data['total_redeemed']).to eq(1)
 
           # Verify event3 data (draft)
           event3_data = data['events'].find { |e| e['id'] == event3.id }
-          expect(event3_data['stamp_count']).to eq(0)
+          expect(event3_data['lead_count']).to eq(0)
           expect(event3_data['total_vouchers']).to eq(0)
           expect(event3_data['total_redeemed']).to eq(0)
         end
@@ -131,7 +131,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
 
           expect(data['summary']['total_events']).to eq(0)
           expect(data['summary']['active_events']).to eq(0)
-          expect(data['summary']['total_stamps']).to eq(0)
+          expect(data['summary']['total_leads']).to eq(0)
           expect(data['summary']['total_vouchers']).to eq(0)
           expect(data['summary']['total_redeemed']).to eq(0)
           expect(data['events']).to be_empty
@@ -146,7 +146,7 @@ RSpec.describe 'V1::VendorDashboard', type: :request do
 
           # other_vendor_user only has event_vendor for event1
           expect(data['summary']['total_events']).to eq(1)
-          expect(data['summary']['total_stamps']).to eq(1)
+          expect(data['summary']['total_leads']).to eq(1)
           expect(data['summary']['total_vouchers']).to eq(200)
           expect(data['summary']['total_redeemed']).to eq(1)
 

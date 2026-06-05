@@ -258,6 +258,39 @@ RSpec.describe 'V1::Analytics', type: :request do
         expect(data['total_revenue']).to eq(57300)
       end
 
+      it 'includes paid exhibitor registration revenue in summary total_revenue' do
+        event = create(:event, status: :published, visibility: true)
+        ticket_type = create(:ticket_type, event: event, price: 50.00)
+        create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :purchased)
+
+        exhibitor = create(:exhibitor, event: event)
+        create(
+          :exhibitor_registration_payment,
+          exhibitor_kit: exhibitor.exhibitor_kit,
+          amount: 1200.50,
+          status: "paid",
+        )
+
+        another_exhibitor = create(:exhibitor, event: event)
+        create(
+          :exhibitor_registration_payment,
+          exhibitor_kit: another_exhibitor.exhibitor_kit,
+          amount: 300,
+          status: "pending",
+        )
+
+        get '/v1/metrics/summary', params: {}, headers: {
+          'Authorization' => "Bearer #{summary_edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        # ticket revenue: 2 * 50.00 * 100 = 10000
+        # paid exhibitor revenue: 1200.50 * 100 = 120050
+        # pending exhibitor payment is excluded
+        expect(data['total_revenue']).to eq(130050)
+      end
+
       it 'handles events with only draft status' do
         draft_event1 = create(:event, status: :draft, visibility: true)
         draft_event2 = create(:event, status: :draft, visibility: true)
@@ -373,6 +406,40 @@ RSpec.describe 'V1::Analytics', type: :request do
         expect(event_data['total_tickets']).to eq(5)
         # 3 * 25.50 + 2 * 150.75 = 76.50 + 301.50 = 378.00 * 100 = 37800
         expect(event_data['total_revenue']).to eq(37800)
+      end
+
+      it 'includes paid exhibitor registration revenue in event total_revenue' do
+        event = create(:event, status: :published, visibility: true)
+        ticket_type = create(:ticket_type, event: event, price: 80.00)
+        create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :purchased)
+
+        exhibitor = create(:exhibitor, event: event)
+        create(
+          :exhibitor_registration_payment,
+          exhibitor_kit: exhibitor.exhibitor_kit,
+          amount: 500,
+          status: "paid",
+        )
+
+        another_exhibitor = create(:exhibitor, event: event)
+        create(
+          :exhibitor_registration_payment,
+          exhibitor_kit: another_exhibitor.exhibitor_kit,
+          amount: 250,
+          status: "failed",
+        )
+
+        get '/v1/metrics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        event_data = data['events'].find { |e| e['id'] == event.id }
+        # ticket revenue: 2 * 80.00 * 100 = 16000
+        # paid exhibitor revenue: 500 * 100 = 50000
+        # failed exhibitor payment is excluded
+        expect(event_data['total_revenue']).to eq(66000)
       end
 
       it 'returns empty array for user with no events' do

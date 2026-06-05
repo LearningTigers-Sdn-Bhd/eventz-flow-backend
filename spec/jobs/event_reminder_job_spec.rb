@@ -17,7 +17,7 @@ RSpec.describe EventReminderJob, type: :job do
     it 'sends 7-day reminder for events starting in 7 days' do
       expect {
         described_class.new.perform
-      }.to have_enqueued_mail(EventReminderMailer, :reminder).with(ticket, event, "7_day")
+      }.to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'creates a reminder log' do
@@ -31,7 +31,7 @@ RSpec.describe EventReminderJob, type: :job do
 
       expect {
         described_class.new.perform
-      }.not_to have_enqueued_mail(EventReminderMailer, :reminder)
+      }.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
     context 'when reminders are disabled' do
@@ -40,7 +40,7 @@ RSpec.describe EventReminderJob, type: :job do
       it 'does not send reminders' do
         expect {
           described_class.new.perform
-        }.not_to have_enqueued_mail(EventReminderMailer, :reminder)
+        }.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
 
@@ -50,7 +50,7 @@ RSpec.describe EventReminderJob, type: :job do
       it 'does not send reminder' do
         expect {
           described_class.new.perform
-        }.not_to have_enqueued_mail(EventReminderMailer, :reminder)
+        }.not_to have_enqueued_job(EmailDeliveryJob)
       end
     end
   end

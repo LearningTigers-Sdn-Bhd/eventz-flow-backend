@@ -66,7 +66,11 @@ module V1
         # Authorization: User must have access to this event
         authorize event, :show?
 
-        result = TicketExcelService.export(params[:event_id])
+        result = TicketExcelService.export(
+          params[:event_id],
+          from: params[:from].present? ? Date.parse(params[:from]) : nil,
+          to: params[:to].present? ? Date.parse(params[:to]) : nil
+        )
 
         success_response(
           data: {

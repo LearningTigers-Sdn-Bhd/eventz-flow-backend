@@ -9,8 +9,9 @@ module V1
       def create_order
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
+        conference_upgrade_order = borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
 
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !conference_upgrade_order
           return render json: {
             success: true,
             data: {
@@ -22,26 +23,26 @@ module V1
           }, status: :ok
         end
 
-        unless ticket.pending? && ticket.pending_payment?
+        unless conference_upgrade_order || (ticket.pending_payment? && (ticket.pending? || ticket.failed?))
           return render json: {
             success: false,
             message: 'Ticket is not eligible for payment'
           }, status: :unprocessable_content
         end
 
-        # For group registrations, find all sibling tickets via registered_by_email
+        # For group registrations, batch only tickets from the same registration form.
         group_tickets = if ticket.registered_by_email.present?
-                          event.tickets.where(
-                            registered_by_email: ticket.registered_by_email,
-                            payment_status: :pending,
-                            status: :pending_payment
+                          pending_payment_batch_tickets(
+                            ticket: ticket,
+                            event: event,
+                            registered_by_email: ticket.registered_by_email
                           )
                         else
                           [ticket]
                         end
 
         payment = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
-        existing_order_id = payment.gateway_response&.dig('id') || payment.gateway_response&.dig('order_id')
+        reusable_order = reusable_gateway_order(payment)
 
         gateway = Payments::RazorpayGateway.for_event(event)
 
@@ -53,8 +54,15 @@ module V1
           only_path: false
         )
 
-        order = if existing_order_id.present?
-                  payment.gateway_response
+        order = if conference_upgrade_order
+                  conference_upgrade_ticket_type = conference_upgrade_ticket_type_for(event:)
+                  gateway.create_order(
+                    amount_subunits: (borneo_conference_upgrade_amount(ticket:, event:, conference_ticket_type: conference_upgrade_ticket_type) * 100).round,
+                    receipt: ticket.public_id,
+                    notes: borneo_conference_upgrade_notes(event:, ticket:, conference_ticket_type: conference_upgrade_ticket_type)
+                  )
+                elsif reusable_order.present?
+                  reusable_order
                 else
                   total_amount = group_tickets.sum { |t| t.ticket_type.current_price.to_f }
                   amount_subunits = (total_amount * 100).round
@@ -101,6 +109,7 @@ module V1
       def callback
         require 'cgi'
         event = Event.friendly.find(params[:event_slug])
+        frontend_url = public_registration_url_for!(event)
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
 
         # Get form slug from ticket's ticket type association
@@ -110,10 +119,8 @@ module V1
         order_id = params[:razorpay_order_id].to_s
         payment_id = params[:razorpay_payment_id].to_s
         signature = params[:razorpay_signature].to_s
-        frontend_url = ENV.fetch('FRONTEND_FORM_URL')
-
         # Check if payment was already processed (webhook might have handled it)
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
           redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
                       allow_other_host: true
           return
@@ -133,31 +140,50 @@ module V1
         end
 
         # Mark tickets as paid
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_tickets_paid!(
           ticket: ticket,
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature
+          signature: signature,
+          payment_entity: payment_entity
         )
+
+        form_slug = callback_success_form_slug(ticket: ticket.reload, fallback_form_slug: form_slug, payment_entity: payment_entity)
 
         redirect_to "#{frontend_url}/register/#{form_slug}?step=success&ticket=#{ticket.public_id}&email=#{CGI.escape(ticket.attendee_email || '')}",
                     allow_other_host: true
       rescue ActiveRecord::RecordNotFound
         # Try to get form_slug from the ticket if it was loaded, otherwise use 'standard'
-        redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=not_found"
-        redirect_to redirect_url, allow_other_host: true
+        if defined?(frontend_url) && frontend_url.present?
+          redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=not_found"
+          redirect_to redirect_url, allow_other_host: true
+        else
+          render_public_registration_error_page(
+            title: 'Registration Redirect Not Configured',
+            message: 'This event does not have a public registration URL configured yet. Please contact the organizer or try again later.'
+          )
+        end
       rescue StandardError => e
-        redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=#{CGI.escape(e.message)}"
-        redirect_url += "&ticket=#{ticket.public_id}" if defined?(ticket) && ticket&.public_id
-        redirect_to redirect_url, allow_other_host: true
+        if defined?(frontend_url) && frontend_url.present?
+          redirect_url = "#{frontend_url}/register/#{defined?(form_slug) && form_slug ? form_slug : 'standard'}?step=payment&error=#{CGI.escape(e.message)}"
+          redirect_url += "&ticket=#{ticket.public_id}" if defined?(ticket) && ticket&.public_id
+          redirect_to redirect_url, allow_other_host: true
+        else
+          render_public_registration_error_page(
+            title: 'Registration Redirect Not Configured',
+            message: e.message.include?('public_registration_url') ? 'This event does not have a public registration URL configured yet. Please contact the organizer or try again later.' : e.message
+          )
+        end
       end
 
       def verify
         event = Event.friendly.find(params[:event_slug])
         ticket = event.tickets.find_by!(public_id: params[:ticket_public_id])
 
-        if ticket.paid? && ticket.purchased?
+        if ticket.paid? && ticket.purchased? && !borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
           return render json: {
             success: true,
             data: {
@@ -183,12 +209,15 @@ module V1
           return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
         end
 
+        payment_entity = gateway.fetch_payment(payment_id)
+
         mark_tickets_paid!(
           ticket: ticket,
           event: event,
           payment_id: payment_id,
           order_id: order_id,
-          signature: signature
+          signature: signature,
+          payment_entity: payment_entity
         )
 
         render json: {
@@ -249,6 +278,50 @@ module V1
           return render json: { success: true }, status: :ok
         end
 
+        if payment_type == 'extra_team_member'
+          payment_record = ExhibitorTeamMemberPayment.find_by(id: notes['payment_id'])
+          return render json: { success: true }, status: :ok if payment_record.blank?
+
+          case payload['event'].to_s
+          when 'payment.captured'
+            payment_record.with_lock do
+              unless payment_record.verified?
+                next unless extra_team_member_order_matches?(payment_record, payment_entity['order_id'].to_s)
+                next unless extra_team_member_amount_matches?(payment_record)
+
+                payment_record.update!(
+                  status: :verified,
+                  gateway_payment_id: payment_entity['id'].to_s,
+                  payment_method: payment_entity['method'].to_s.presence,
+                  gateway_response: payment_record.gateway_response.merge(
+                    payment_entity,
+                    'payment_id' => payment_entity['id'].to_s,
+                    'order_id' => payment_entity['order_id'].to_s,
+                    'webhook_event' => 'payment.captured'
+                  ),
+                  paid_at: Time.current,
+                  payee_id: nil
+                )
+              end
+            end
+          when 'payment.failed'
+            payment_record.with_lock do
+              unless payment_record.verified?
+                payment_record.update!(
+                  status: :rejected,
+                  note: 'Payment failed via Razorpay',
+                  gateway_response: payment_record.gateway_response.merge(
+                    'webhook_event' => 'payment.failed',
+                    'failed_payment_id' => payment_entity['id'].to_s
+                  )
+                )
+              end
+            end
+          end
+
+          return render json: { success: true }, status: :ok
+        end
+
         ticket_public_id = notes['ticket_public_id'].to_s
 
         return render json: { success: true }, status: :ok if ticket_public_id.blank?
@@ -265,11 +338,12 @@ module V1
             registered_by_email: registered_by_email,
             payment_id: payment_entity['id'].to_s,
             order_id: payment_entity['order_id'].to_s,
-            signature: signature
+            signature: signature,
+            payment_entity: payment_entity
           )
         when 'payment.failed'
           mark_ticket_failed!(ticket: ticket, payment_id: payment_entity['id'].to_s,
-                              order_id: payment_entity['order_id'].to_s)
+                              order_id: payment_entity['order_id'].to_s, gateway_response: payment_entity)
         end
 
         render json: { success: true }, status: :ok
@@ -295,45 +369,200 @@ module V1
         nil
       end
 
-      def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil)
+      def extra_team_member_order_matches?(payment_record, order_id)
+        stored_order_id = payment_record.gateway_response&.dig('id') || payment_record.gateway_response&.dig('order_id')
+        stored_order_id.present? && stored_order_id == order_id
+      end
+
+      def extra_team_member_amount_matches?(payment_record)
+        stored_amount = payment_record.gateway_response&.dig('amount')
+        stored_amount.present? && stored_amount.to_i == (payment_record.amount * 100).to_i
+      end
+
+      def mark_tickets_paid!(ticket:, event:, payment_id:, order_id:, signature:, registered_by_email: nil, payment_entity: nil)
         # Collect all tickets to mark paid: the representative ticket plus any group siblings
         email = registered_by_email || ticket.registered_by_email
         tickets_to_mark = if email.present?
-                            event.tickets.where(
+                            pending_payment_batch_tickets(
+                              ticket: ticket,
+                              event: event,
                               registered_by_email: email,
-                              payment_status: :pending,
-                              status: :pending_payment
-                            ).to_a
+                              payment_entity: payment_entity
+                            )
                           else
                             [ticket]
                           end
         # Always include the representative ticket in case it wasn't caught by the query
         tickets_to_mark |= [ticket]
 
-        gateway_response = { order_id: order_id, payment_id: payment_id, signature: signature }
+        gateway_response = (payment_entity || {}).merge(order_id: order_id, payment_id: payment_id, signature: signature)
+        upgraded_tickets = []
 
         Ticket.transaction do
           tickets_to_mark.each do |t|
             t.lock!
+
+            if borneo_conference_upgrade_payment?(event:, ticket: t, payment_entity:)
+              mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
+              apply_borneo_conference_upgrade!(event:, ticket: t)
+              upgraded_tickets << t.reload
+              next
+            end
+
             next if t.paid? && t.purchased?
 
-            payment_record = t.ticket_payment || TicketPayment.find_or_initialize_by(ticket: t, gateway: 'razorpay')
-            payment_record.assign_attributes(
-              amount: t.ticket_type.current_price.to_f,
-              status: 'paid',
-              paid_at: Time.current,
-              gateway_payment_id: payment_id,
-              payment_method: 'fpx',
-              gateway_response: gateway_response
-            )
-            payment_record.save!
-
-            t.update!(payment_status: :paid, status: :purchased)
+            mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
           end
+        end
+
+        upgraded_tickets.each do |upgraded_ticket|
+          EmailDelivery::AuditedDelivery.deliver_later(
+            mailer_name: 'TicketMailer',
+            mailer_action: 'confirmation_email',
+            args: [upgraded_ticket],
+            related: upgraded_ticket
+          )
         end
       end
 
-      def mark_ticket_failed!(ticket:, payment_id:, order_id:)
+      def borneo_conference_upgrade_eligible_ticket?(event:, ticket:)
+        borneo_event_slug?(event) && exhibitor_only_ticket_type?(ticket.ticket_type) && ticket.paid? && ticket.purchased?
+      end
+
+      def borneo_conference_upgrade_payment?(event:, ticket:, payment_entity:)
+        borneo_event_slug?(event) && exhibitor_only_ticket_type?(ticket.ticket_type) &&
+          payment_entity.to_h.dig('notes', 'upgrade_target').to_s == 'conference'
+      end
+
+      def borneo_conference_upgrade_amount(ticket:, event:, conference_ticket_type: nil)
+        conference_ticket_type&.current_price.to_f.presence ||
+          borneo_combined_ticket_type_for(event)&.current_price.to_f.presence ||
+          ticket.ticket_type.current_price.to_f
+      end
+
+      def borneo_conference_upgrade_notes(event:, ticket:, conference_ticket_type: nil)
+        notes = {
+          event_slug: event.slug,
+          ticket_public_id: ticket.public_id,
+          upgrade_target: 'conference'
+        }
+
+        form_slug = params[:form_slug].to_s.strip
+        notes[:form_slug] = form_slug if form_slug.present?
+        notes[:conference_ticket_type_id] = conference_ticket_type.id.to_s if conference_ticket_type.present?
+        notes
+      end
+
+      def apply_borneo_conference_upgrade!(event:, ticket:)
+        combined_ticket_type = borneo_combined_ticket_type_for(event)
+        return if combined_ticket_type.blank? || ticket.ticket_type == combined_ticket_type
+
+        ticket.update!(ticket_type: combined_ticket_type)
+      end
+
+      def callback_success_form_slug(ticket:, fallback_form_slug:, payment_entity:)
+        payment_notes = payment_entity.to_h['notes'].to_h
+        if payment_notes['upgrade_target'].to_s == 'conference'
+          return payment_notes['form_slug'].to_s.presence ||
+                 ticket.ticket_type.registration_forms.first&.slug ||
+                 fallback_form_slug ||
+                 'conference'
+        end
+
+        ticket.ticket_type.registration_forms.first&.slug || fallback_form_slug || 'standard'
+      end
+
+      def conference_upgrade_ticket_type_for(event:)
+        ticket_type_id = params[:ticket_type_id].to_i
+        return if ticket_type_id.zero?
+
+        ticket_type = event.ticket_types.find_by(id: ticket_type_id)
+        return if ticket_type.blank?
+
+        form_slug = params[:form_slug].to_s.strip
+        return ticket_type if form_slug.blank?
+
+        form = event.registration_forms.find_by(slug: form_slug)
+        return unless form && conference_like_name?(form.slug)
+
+        form.ticket_types.exists?(id: ticket_type.id) ? ticket_type : nil
+      end
+
+      def mark_ticket_paid!(ticket:, payment_id:, gateway_response:, payment_entity:)
+        payment_record = ticket.ticket_payment || TicketPayment.find_or_initialize_by(ticket: ticket, gateway: 'razorpay')
+        payment_record.assign_attributes(
+          amount: paid_amount_for(ticket:, payment_entity:),
+          status: 'paid',
+          paid_at: Time.current,
+          gateway_payment_id: payment_id,
+          payment_method: gateway_response['method'].to_s.presence,
+          gateway_response: gateway_response
+        )
+        payment_record.save!
+
+        ticket.update!(payment_status: :paid, status: :purchased)
+      end
+
+      def paid_amount_for(ticket:, payment_entity:)
+        amount_subunits = payment_entity.to_h['amount']
+        return amount_subunits.to_f / 100 if amount_subunits.present?
+
+        ticket.ticket_type.current_price.to_f
+      end
+
+      def pending_payment_batch_tickets(ticket:, event:, registered_by_email:, payment_entity: nil)
+        scope = event.tickets.where(
+          registered_by_email: registered_by_email,
+          payment_status: %i[pending failed],
+          status: :pending_payment
+        )
+
+        ticket_type_ids = payment_scope_ticket_type_ids(ticket:, event:, payment_entity:)
+        scope = scope.where(ticket_type_id: ticket_type_ids) if ticket_type_ids.present?
+
+        scope.to_a
+      end
+
+      def payment_scope_ticket_type_ids(ticket:, event:, payment_entity: nil)
+        form_slug = payment_entity.to_h.dig('notes', 'form_slug').to_s.strip.presence
+        forms = if form_slug.present?
+                  form = event.registration_forms.find_by(slug: form_slug)
+                  form.present? ? [form] : []
+                else
+                  []
+                end
+
+        if forms.empty?
+          forms = ticket.ticket_type.registration_forms.where(event_id: event.id).to_a
+        end
+
+        forms.flat_map(&:ticket_type_ids).uniq.presence || [ticket.ticket_type_id]
+      end
+
+      def borneo_combined_ticket_type_for(event)
+        event.ticket_types.find { |ticket_type| borneo_combined_ticket_type?(ticket_type) }
+      end
+
+      def borneo_combined_ticket_type?(ticket_type)
+        name = ticket_type&.name.to_s.downcase
+        name.include?('exhibitor') && conference_like_name?(name)
+      end
+
+      def exhibitor_only_ticket_type?(ticket_type)
+        name = ticket_type&.name.to_s.downcase
+        name.include?('exhibitor') && !conference_like_name?(name)
+      end
+
+      def conference_like_name?(value)
+        name = value.to_s.strip.downcase
+        name.include?('conference') || name.include?('delegate')
+      end
+
+      def borneo_event_slug?(event)
+        event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX)
+      end
+
+      def mark_ticket_failed!(ticket:, payment_id:, order_id:, gateway_response: nil)
         Ticket.transaction do
           ticket.lock!
 
@@ -344,8 +573,8 @@ module V1
             amount: ticket.ticket_type.current_price.to_f,
             status: 'failed',
             gateway_payment_id: payment_id,
-            payment_method: 'fpx',
-            gateway_response: {
+            payment_method: gateway_response&.dig('method').to_s.presence,
+            gateway_response: gateway_response.presence || {
               order_id: order_id,
               payment_id: payment_id
             }
@@ -364,7 +593,7 @@ module V1
           status: 'paid',
           paid_at: Time.current,
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
+          payment_method: gateway_response&.dig('method').to_s.presence,
           gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id,
@@ -382,7 +611,7 @@ module V1
           amount: exhibitor_kit.amount_paid.to_f,
           status: 'failed',
           gateway_payment_id: payment_id,
-          payment_method: 'fpx',
+          payment_method: gateway_response&.dig('method').to_s.presence,
           gateway_response: gateway_response.presence || {
             order_id: order_id,
             payment_id: payment_id
@@ -390,6 +619,30 @@ module V1
         )
 
         exhibitor_kit.update!(payment_status: :unpaid)
+      end
+
+      def public_registration_url_for!(event)
+        url = event.normalized_public_registration_url
+        return url if url.present?
+
+        frontend_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', '')).to_s.chomp('/')
+        return "#{frontend_url}/events/#{event.slug}" if frontend_url.present?
+
+        request_base = "#{request.protocol}#{request.host}"
+        request_base = "#{request_base}:#{request.optional_port}" if request.optional_port.present?
+        "#{request_base}/events/#{event.slug}"
+      end
+
+      def reusable_gateway_order(payment)
+        return nil unless payment.status == 'pending'
+
+        gateway_response = payment.gateway_response
+        return nil unless gateway_response.is_a?(Hash)
+
+        order_id = gateway_response['id'].presence || gateway_response['order_id'].presence
+        return nil if order_id.blank? || !order_id.to_s.start_with?('order_')
+
+        gateway_response
       end
     end
   end

@@ -1,4 +1,5 @@
 require Rails.root.join('app/lib/custom_error')
+require Rails.root.join('app/lib/public_registration_error_page_renderer')
 require Rails.root.join('app/services/jwt_service')
 require Rails.root.join('app/services/authentication_service')
 
@@ -37,6 +38,12 @@ class ApplicationController < ActionController::API
 
 	# --- Accessors --
 	attr_reader :current_user
+
+	# Pundit user context — wraps current_user with optional api_key for policy scopes
+	def pundit_user
+		return current_user unless @current_api_key
+		PunditUserContext.new(current_user, @current_api_key)
+	end
 
 	private
 
@@ -109,6 +116,12 @@ class ApplicationController < ActionController::API
 	# Request logging
 	def log_request_info
 		Rails.logger.info "#{request.method} #{request.path} - Params: #{params.except(:controller, :action)}"
+	end
+
+	def render_public_registration_error_page(title: 'Unable to Complete Payment Redirect', message:)
+		render html: PublicRegistrationErrorPageRenderer.call(title: title, message: message).html_safe,
+		       status: :unprocessable_content,
+		       layout: false
 	end
 
 	# Generate pagination metadata for API responses

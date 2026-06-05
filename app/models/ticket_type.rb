@@ -6,6 +6,7 @@ class TicketType < ApplicationRecord
   has_many :ticket_type_price_tiers, dependent: :destroy
   has_many :registration_form_ticket_types, dependent: :destroy
   has_many :registration_forms, through: :registration_form_ticket_types
+  has_many :pass_bundles, dependent: :restrict_with_error
 
   # --- Seat Ticketing Sync ---
   enum :seat_ticketing_type, { st_section: 0, st_group: 1, st_individual: 2 }
@@ -56,11 +57,14 @@ class TicketType < ApplicationRecord
   def send_webhook_notification
     # Only send webhooks for event-specific ticket types (not global templates)
     return unless event.present? && event.webhook_url.present?
-    
+
     event_type = determine_event_type
     return if event_type.nil?
-    
-    WebhookSenderJob.perform_later(event.webhook_url, build_webhook_payload(event_type))
+
+    payload = build_webhook_payload(event_type)
+    event.webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   private

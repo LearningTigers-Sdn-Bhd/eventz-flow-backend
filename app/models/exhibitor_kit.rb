@@ -33,8 +33,10 @@ class ExhibitorKit < ApplicationRecord
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
+  before_save :remove_payment_option_when_payment_is_settled
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
+  after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
 
@@ -71,6 +73,11 @@ class ExhibitorKit < ApplicationRecord
     exhibitor_team_member_payments.verified.sum(:extra_member_count)
   end
 
+  # Count of paid extra slots currently used by existing excess members.
+  def used_paid_extra_member_count
+    [excess_team_member_count, paid_extra_member_count].min
+  end
+
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
     exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)
@@ -101,11 +108,37 @@ class ExhibitorKit < ApplicationRecord
     pic_email_address.present? && saved_change_to_payment_status? && paid?
   end
 
+  def remove_payment_option_when_payment_is_settled
+    return if unpaid?
+    return unless custom_fields_data.is_a?(Hash)
+    return unless custom_fields_data.key?('payment_option') || custom_fields_data.key?(:payment_option)
+
+    self.custom_fields_data = custom_fields_data.except('payment_option', :payment_option)
+  end
+
   def send_registration_received_email
-    ExhibitorRegistrationMailer.registration_received_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'ExhibitorRegistrationMailer',
+      mailer_action: 'registration_received_email',
+      args: [self],
+      related: self
+    )
   end
 
   def send_payment_confirmed_email
-    ExhibitorRegistrationMailer.payment_confirmed_email(self).deliver_later
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'ExhibitorRegistrationMailer',
+      mailer_action: 'payment_confirmed_email',
+      args: [self],
+      related: self
+    )
+  end
+
+  def should_reconcile_team_member_tickets?
+    saved_change_to_payment_status? && event&.use_ticket?
+  end
+
+  def reconcile_team_member_tickets
+    ExhibitorTeamMemberTicketReconciliationService.new(self).call
   end
 end

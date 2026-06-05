@@ -6,8 +6,8 @@ RSpec.describe 'V1::ReceivedPayments', type: :request do
   let(:contractor_user) { create(:user, :exhibition_contractor) }
   let(:vendor_user) { create(:user, :vendor) }
 
-  # Setup event with exhibitor kit enabled
-  let(:event) { create(:event, use_exhibitor_kit: true) }
+  # Setup event with exhibitor management enabled
+  let(:event) { create(:event, use_exhibitor_kit: true, enable_exhibitor_management: true) }
   let(:event_id) { event.id }
 
   # Create contractor profile and assign to event

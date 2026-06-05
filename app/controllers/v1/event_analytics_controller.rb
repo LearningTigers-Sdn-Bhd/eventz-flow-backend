@@ -41,8 +41,15 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_amount_price
     def total_amount_price
-      amount_cents = scoped_active_tickets.total_revenue_cents
-      render json: { totalAmountPrice: amount_cents.to_i }, status: :ok
+      ticket_revenue_cents = scoped_active_tickets.total_revenue_cents.to_i
+      exhibitor_revenue_cents = ExhibitorRegistrationPayment
+        .paid
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .sum(:amount)
+      exhibitor_revenue_cents = (exhibitor_revenue_cents.to_d * 100).to_i
+      total = ticket_revenue_cents + exhibitor_revenue_cents
+      render json: { totalAmountPrice: total }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/mall_live_feed
@@ -62,7 +69,7 @@ module V1
     # Flexible time-series analytics with hourly, daily, weekly, monthly grouping.
     #
     # Query params:
-    #   metric: tickets | scans | revenue | visitors | visitor_scans | stamps | redemptions | redemption_value (required)
+    #   metric: tickets | scans | revenue | visitors | visitor_scans | leads | redemptions | redemption_value (required)
     #   group_by: hour | day | week | month (optional, auto-detected from event duration)
     #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
     #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
@@ -89,7 +96,7 @@ module V1
     # Returns hourly data grouped by day - useful for multi-day event reports.
     #
     # Query params:
-    #   metric: scans | visitors | visitor_scans | tickets | stamps | redemptions (required)
+    #   metric: scans | visitors | visitor_scans | tickets | leads | redemptions (required)
     #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
     #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
     def hourly_breakdown_by_day
@@ -143,12 +150,12 @@ module V1
     end
 
     def fetch_top_merchants
-      top_merchants_data = VisitorVendorStamp.joins(:event_vendor)
-                                             .where(event_vendors: { event_id: @event.id })
-                                             .group(:event_vendor_id)
-                                             .order('count_all DESC')
-                                             .limit(5)
-                                             .count
+      top_merchants_data = EventLead.joins(:event_vendor)
+                                     .where(event_vendors: { event_id: @event.id })
+                                     .group(:event_vendor_id)
+                                     .order('count_all DESC')
+                                     .limit(5)
+                                     .count
 
       vendors = EventVendor.includes(:vendor).find(top_merchants_data.keys).index_by(&:id)
 
@@ -164,20 +171,20 @@ module V1
     end
 
     def fetch_popular_halls
-      location_traffic = VisitorVendorStamp.joins(:event_vendor)
-                                           .joins("INNER JOIN event_location_members ON event_location_members.member_id = event_vendors.vendor_id")
-                                           .joins("INNER JOIN event_locations ON event_locations.id = event_location_members.event_location_id")
-                                           .where(event_vendors: { event_id: @event.id })
-                                           .where(event_locations: { event_id: @event.id })
-                                           .group('event_locations.name')
-                                           .count
+      location_traffic = EventLead.joins(:event_vendor)
+                                   .joins("INNER JOIN event_location_members ON event_location_members.member_id = event_vendors.vendor_id")
+                                   .joins("INNER JOIN event_locations ON event_locations.id = event_location_members.event_location_id")
+                                   .where(event_vendors: { event_id: @event.id })
+                                   .where(event_locations: { event_id: @event.id })
+                                   .group('event_locations.name')
+                                   .count
 
-      total_stamps = location_traffic.values.sum
+      total_leads = location_traffic.values.sum
 
       location_traffic.map do |name, count|
         {
           name: name,
-          percentage: total_stamps.zero? ? 0 : ((count.to_f / total_stamps) * 100).round(1)
+          percentage: total_leads.zero? ? 0 : ((count.to_f / total_leads) * 100).round(1)
         }
       end.sort_by { |h| -h[:percentage] }
     end
@@ -239,11 +246,11 @@ module V1
         # For visitor scans, use earliest check_in_at
         earliest = @event.visitors.checked_in.minimum(:check_in_at)
         earliest&.to_date || @event.start_date.to_date
-      when 'stamps'
-        # For stamps, use earliest stamp created_at
-        earliest = VisitorVendorStamp.joins(:visitor)
-                                      .where(visitors: { event_id: @event.id })
-                                      .minimum(:created_at)
+      when 'leads'
+        # For leads, use earliest lead created_at
+        earliest = EventLead.joins(:event_vendor)
+                            .where(event_vendors: { event_id: @event.id })
+                            .minimum(:created_at)
         earliest&.to_date || @event.start_date.to_date
       when 'redemptions', 'redemption_value'
         # For redemptions, use earliest redemption_timestamp
@@ -263,10 +270,10 @@ module V1
       when 'visitor_scans'
         latest = @event.visitors.checked_in.maximum(:check_in_at)
         latest&.to_date || @event.end_date.to_date
-      when 'stamps'
-        latest = VisitorVendorStamp.joins(:visitor)
-                                    .where(visitors: { event_id: @event.id })
-                                    .maximum(:created_at)
+      when 'leads'
+        latest = EventLead.joins(:event_vendor)
+                          .where(event_vendors: { event_id: @event.id })
+                          .maximum(:created_at)
         latest&.to_date || @event.end_date.to_date
       when 'redemptions', 'redemption_value'
         latest = VoucherRedemptionLog.for_event(@event).maximum(:redemption_timestamp)
@@ -324,10 +331,10 @@ module V1
         @event.visitors.time_series_count(:created_at, range: range, group_by: group_by)
       when 'visitor_scans'
         @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
-      when 'stamps'
-        VisitorVendorStamp.joins(:visitor)
-                          .where(visitors: { event_id: @event.id })
-                          .time_series_count(:created_at, range: range, group_by: group_by)
+      when 'leads'
+        EventLead.joins(:event_vendor)
+                 .where(event_vendors: { event_id: @event.id })
+                 .time_series_count(:created_at, range: range, group_by: group_by)
       when 'redemptions'
         VoucherRedemptionLog.for_event(@event)
                             .time_series_count(:redemption_timestamp, range: range, group_by: group_by)
@@ -373,8 +380,8 @@ module V1
         @event.visitors
       when 'visitor_scans'
         @event.visitors.checked_in
-      when 'stamps'
-        VisitorVendorStamp.joins(:visitor).where(visitors: { event_id: @event.id })
+      when 'leads'
+        EventLead.joins(:event_vendor).where(event_vendors: { event_id: @event.id })
       when 'redemptions'
         VoucherRedemptionLog.for_event(@event)
       end

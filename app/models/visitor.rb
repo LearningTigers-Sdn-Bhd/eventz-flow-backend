@@ -9,9 +9,13 @@ class Visitor < ApplicationRecord
   # --- Associations ---
   belongs_to :event
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
-  has_many :visitor_vendor_stamps, dependent: :destroy
+  has_many :event_leads, as: :leadable, dependent: :destroy
   has_many :voucher_usages, as: :redeemer, dependent: :destroy
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
+  
+  has_many :table_assignments, dependent: :destroy
+  has_many :assigned_tables, through: :table_assignments, source: :plan_object
+  has_one :event_seating_group_member, as: :participant, dependent: :destroy
 
   # --- RSVP Associations ---
   has_many :companions, class_name: 'Visitor', foreign_key: 'added_by_id', dependent: :destroy
@@ -27,6 +31,10 @@ class Visitor < ApplicationRecord
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
   scope :unscanned, -> { where(checked_in: false) }
+  scope :unassigned, -> { left_outer_joins(:table_assignments).where(table_assignments: { id: nil }) }
+  scope :unassigned_in_plan, ->(plan) {
+    where.not(id: joins(:table_assignments).joins(table_assignments: :plan_object).where(plan_objects: { plan_id: plan.id }).select(:id))
+  }
 
   # --- Validations ---
   validates :event_id, presence: true
@@ -87,8 +95,7 @@ class Visitor < ApplicationRecord
 
   def send_webhook_notification
     return if skip_webhooks
-    webhook_url = event.webhook_url
-    return unless webhook_url.present?
+    return unless event.webhook_url.present?
 
     event_type = determine_event_type
     return if event_type.nil?
@@ -96,7 +103,10 @@ class Visitor < ApplicationRecord
     # For updates, skip if nothing significant changed
     return if event_type == 'visitor.updated' && !significant_changes?
 
-    WebhookSenderJob.perform_later(webhook_url, build_webhook_payload(event_type))
+    payload = build_webhook_payload(event_type)
+    event.webhook_urls.each do |url|
+      WebhookSenderJob.perform_later(url, payload)
+    end
   end
 
   def determine_event_type

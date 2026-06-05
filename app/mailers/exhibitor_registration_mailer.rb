@@ -8,6 +8,7 @@ class ExhibitorRegistrationMailer < ApplicationMailer
     mail(
       to: exhibitor_kit.pic_email_address,
       from: sender_from,
+      bcc: payment_receipt_bcc(additional: email_setting&.payment_receipt_email),
       subject: "Exhibitor registration received for #{@event.title}"
     )
   end

@@ -21,6 +21,7 @@ Rails.application.routes.draw do
   namespace :v1 do
     # Public endpoints (No authentication required)
     namespace :public do
+      post 'resend/webhook', to: 'resend_webhooks#create'
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
@@ -31,6 +32,8 @@ Rails.application.routes.draw do
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
+      # Public seating plans
+      resources :plans, only: %i[show]
       # Public booking details
       resources :bookings, only: [:show]
 
@@ -40,6 +43,11 @@ Rails.application.routes.draw do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        get 'pass_bundles/:token', to: 'registrations#pass_bundle'
+        get 'ticket_rsvp/:token', to: 'ticket_rsvps#show'
+        post 'ticket_rsvp/:token/confirm', to: 'ticket_rsvps#confirm'
+        post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
+        resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         patch 'register_exhibitor', to: 'exhibitor_registrations#update'
@@ -59,6 +67,8 @@ Rails.application.routes.draw do
       scope 'events/:slug' do
         get 'rsvp/:public_id', to: 'rsvp#show'
         post 'rsvp/:public_id/respond', to: 'rsvp#respond_rsvp'
+        get 'wishes', to: 'wishes#index'
+        post 'wishes', to: 'wishes#create'
       end
     end
 
@@ -75,6 +85,9 @@ Rails.application.routes.draw do
     post 'auth/register_invited_vendor', to: 'authentication#register_invited_vendor'
     get 'auth/check_account', to: 'authentication#check_account'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
+    resources :email_deliveries, only: %i[index show] do
+      post :resend, on: :member
+    end
 
     # Password reset (follow auth route style, flat controller)
     post 'auth/password/request_reset_password', to: 'password_resets#request_reset_password'
@@ -114,15 +127,39 @@ Rails.application.routes.draw do
       resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
       end
+      resources :plans, shallow: true do
+        resources :plan_objects, only: %i[create destroy] do
+          collection do
+            patch :batch
+            post :batch_create
+            delete :batch_destroy
+          end
+        end
+        resources :assignments, controller: 'table_assignments', only: %i[create update destroy], param: :ticket_id
+        resources :seating_groups, controller: 'seating_groups', shallow: false,
+                                   only: %i[index create update destroy] do
+          member do
+            post :members, action: :add_member
+            delete 'members/:member_id', action: :remove_member, as: :member
+            post :assign_to_table
+          end
+        end
+        post :auto_distribute, on: :member
+        get :export, on: :member
+      end
       resources :tickets, only: %i[index show create update destroy] do
         member do
           delete :force_delete
           patch :cancel_ticket
           patch :restore
+          post :resend_confirmation_email
         end
       end
+      resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
-      resources :registration_forms, only: %i[index show create update destroy]
+      resources :registration_forms, only: %i[index show create update destroy] do
+        resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
+      end
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_zones, only: %i[index create]
 
@@ -147,11 +184,26 @@ Rails.application.routes.draw do
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
-          get :stamp_count, to: 'stamp_analytics#count'
+          get :lead_count, to: 'lead_analytics#count'
         end
       end
 
       resources :visitors, only: %i[index show create update destroy]
+
+      resources :tickets, only: [] do
+        member do
+          patch 'application/approve', to: 'ticket_applications#approve'
+          patch 'application/reject', to: 'ticket_applications#reject'
+          post 'application/resend_rsvp', to: 'ticket_applications#resend_rsvp'
+        end
+      end
+
+      resources :wishes, only: %i[index destroy] do
+        member do
+          patch :approve
+          patch :reject
+        end
+      end
 
       resources :voucher_analytics, only: [:index], controller: 'voucher_analytics' do
         collection do
@@ -183,6 +235,15 @@ Rails.application.routes.draw do
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]
+
+        namespace :exhibitor_team_member_payments do
+          resource :razorpay, only: [], controller: 'razorpay' do
+            post :create_order
+            post :verify
+            post :callback
+            get :callback
+          end
+        end
       end
 
       # Exhibitor team member limit settings (singular - one per event)
@@ -244,6 +305,9 @@ Rails.application.routes.draw do
       end
 
       # Event Metrics moved outside to avoid impacting event resources
+
+      # Event-scoped API keys
+      resources :api_keys, only: %i[index create destroy], controller: 'event_api_keys'
     end
 
     # Seat Ticketing
@@ -311,9 +375,12 @@ Rails.application.routes.draw do
       end
     end
 
-    # Visitors stamps
-    get 'events/:event_id/visitor-stamps', to: 'visitor_stamps#index'
-    post 'visitors/:public_id/stamps', to: 'visitor_stamps#create'
+    # Event Leads (exhibitor lead capture — replaces visitor stamps)
+    scope 'events/:event_id' do
+      resources :event_leads, only: %i[index create update], path: 'event-leads'
+    end
+    post 'event-leads/scan', to: 'event_leads#scan'
+    get 'event-leads/recent', to: 'event_leads#recent'
 
     # UNIFIED SCAN ENDPOINT (handles both tickets and visitors)
     # GET /v1/scan/recent_check_ins - Get recent check-ins for authorized events
@@ -354,6 +421,7 @@ Rails.application.routes.draw do
     resources :team_members, only: %i[index show create update destroy] do
       collection do
         get 'organizer/:organizer_id', to: 'team_members#organizer_members'
+        get 'organizers', to: 'team_members#organizers'
       end
       member do
         patch :toggle_status
@@ -462,6 +530,10 @@ Rails.application.routes.draw do
     # REMOVED conflicting only: [] definitions
     resources :event_rentable_items, only: [] do
       resources :event_rentable_item_prices, controller: 'event_rentable_item_prices'
+    end
+
+    resources :exhibitor_booth_prices, only: [] do
+      resources :price_tiers, controller: 'exhibitor_booth_price_tiers'
     end
 
     # --- RESOURCES CMS ---

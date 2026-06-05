@@ -5,5 +5,6 @@ FactoryBot.define do
     booth_type { 'shell_scheme' }
     sequence(:label) { |n| "Tier #{n}" }
     price { 1500.00 }
+    conferences_included { false }
   end
 end

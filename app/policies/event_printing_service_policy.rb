@@ -1,21 +1,27 @@
 class EventPrintingServicePolicy < ApplicationPolicy
   def index?
-    user.org_owner? || 
-    user.organizer? || 
-    (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || 
-    (record&.event && user.is_event_staff?(record.event)) ||
-    user.vendor?  # Allow vendors to browse printing services
+    return false unless exhibitor_management_enabled?
+
+    user.org_owner? ||
+      user.organizer? ||
+      (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) ||
+      (record&.event && user.is_event_staff?(record.event)) ||
+      user.vendor?  # Allow vendors to browse printing services
   end
 
   def show?
-    user.org_owner? || 
-    user.organizer? || 
-    (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) || 
-    (record&.event && user.is_event_staff?(record.event)) ||
-    user.vendor?  # Allow vendors to view printing service details
+    return false unless exhibitor_management_enabled?
+
+    user.org_owner? ||
+      user.organizer? ||
+      (user.exhibition_contractor? && record&.event && user.exhibition_contractor_for?(record.event)) ||
+      (record&.event && user.is_event_staff?(record.event)) ||
+      user.vendor?  # Allow vendors to view printing service details
   end
 
   def create?
+    return false unless exhibitor_management_enabled?
+
     # Org owner can only link services when contractor printing is disabled
     if user.org_owner?
       record&.event && !record.event.allow_contractor_printing_services
@@ -29,12 +35,16 @@ class EventPrintingServicePolicy < ApplicationPolicy
   end
 
   def update?
+    return false unless exhibitor_management_enabled?
+
     user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event))
   end
 
   def destroy?
+    return false unless exhibitor_management_enabled?
+
     user.org_owner? || user.organizer? || (record&.event && user.is_event_staff?(record.event)) ||
-    (user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event))
+      (user.exhibition_contractor? && record&.event && record.event.allow_contractor_printing_services && user.exhibition_contractor_for?(record.event))
   end
 
   class Scope < Scope
@@ -52,10 +62,18 @@ class EventPrintingServicePolicy < ApplicationPolicy
              .where(events: { use_exhibitor_kit: true })
       elsif user.is_staff?
         scope.joins(event: :event_assignments)
-             .where(event_assignments: { user_id: user.id, role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]] })
+             .where(event_assignments: { user_id: user.id,
+                                         role: [EventAssignment.roles[:event_admin],
+                                                EventAssignment.roles[:event_team_member]] })
       else
         scope.none
       end
     end
+  end
+
+  private
+
+  def exhibitor_management_enabled?
+    user.org_owner? || record&.event&.enable_exhibitor_management?
   end
 end

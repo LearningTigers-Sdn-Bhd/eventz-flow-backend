@@ -230,8 +230,9 @@ RSpec.describe 'V1::ApiKeys', type: :request do
           expect(api_key.name).to eq('My New API Key')
 
           # Verify we can authenticate with the raw key
-          authenticated_user = ApiKey.authenticate_by_key(json['raw_key'])
-          expect(authenticated_user).to eq(org_owner)
+          api_key_record = ApiKey.authenticate_by_key(json['raw_key'])
+          expect(api_key_record).to be_present
+          expect(api_key_record.user).to eq(org_owner)
         end
       end
 
@@ -248,8 +249,9 @@ RSpec.describe 'V1::ApiKeys', type: :request do
           expect(json['name']).to be_nil
 
           # Verify we can authenticate with the raw key
-          authenticated_user = ApiKey.authenticate_by_key(json['raw_key'])
-          expect(authenticated_user).to eq(org_owner)
+          api_key_record = ApiKey.authenticate_by_key(json['raw_key'])
+          expect(api_key_record).to be_present
+          expect(api_key_record.user).to eq(org_owner)
         end
       end
 
@@ -334,8 +336,8 @@ RSpec.describe 'V1::ApiKeys', type: :request do
           expect(api_key.is_active).to be false
 
           # Verify authentication no longer works
-          authenticated_user = ApiKey.authenticate_by_key(@org_owner_raw_key)
-          expect(authenticated_user).to be_nil
+          api_key_record = ApiKey.authenticate_by_key(@org_owner_raw_key)
+          expect(api_key_record).to be_nil
         end
       end
 

@@ -59,6 +59,13 @@ module V1
       end
 
       @voucher = Voucher.find_by!(voucher_uuid: voucher_uuid)
+      unless @voucher.event.use_voucher?
+        render json: {
+          success: false,
+          message: 'Voucher feature is unavailable for this event'
+        }, status: :forbidden
+        return
+      end
     rescue ActiveRecord::RecordNotFound
       render json: {
         success: false,

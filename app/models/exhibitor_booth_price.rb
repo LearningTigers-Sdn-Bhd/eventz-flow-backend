@@ -2,6 +2,7 @@ class ExhibitorBoothPrice < ApplicationRecord
   belongs_to :event
   belongs_to :exhibitor_zone, optional: true
   has_many :exhibitor_kits, dependent: :nullify
+  has_many :exhibitor_booth_price_tiers, dependent: :destroy
 
   delegate :zone, to: :exhibitor_zone, allow_nil: true
 
@@ -11,6 +12,14 @@ class ExhibitorBoothPrice < ApplicationRecord
   validates :quota, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validate :zone_quota_must_belong_to_event
   validate :quota_must_not_exceed_zone_quota
+
+  def current_price_tier(reference_time = Time.current)
+    exhibitor_booth_price_tiers.ordered.find { |tier| tier.active?(reference_time) }
+  end
+
+  def current_price(reference_time = Time.current)
+    current_price_tier(reference_time)&.price || price
+  end
 
   private
 

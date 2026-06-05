@@ -2,6 +2,7 @@ module V1
   class ReceivedPaymentsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event
+    before_action :ensure_exhibitor_management_enabled
 
     # GET /v1/events/:event_id/received_payments
     # Returns all ExhibitorKitPayments where the current user is the payee
@@ -26,6 +27,13 @@ module V1
 
     def set_event
       @event = Event.find(params[:event_id])
+    end
+
+    def ensure_exhibitor_management_enabled
+      return if current_user.org_owner? || @event.enable_exhibitor_management?
+
+      render json: { error: 'Forbidden', message: 'Exhibitor management is not enabled for this event.' },
+             status: :forbidden
     end
 
     def format_payment(payment)

@@ -3,7 +3,7 @@ class EventReminderMailer < ApplicationMailer
     @ticket = ticket
     @event = event
     @reminder_type = reminder_type
-    @days_until = reminder_type == "7_day" ? 7 : 1
+    @days_until = reminder_type == '7_day' ? 7 : 1
 
     # Generate QR code and attach inline
     qr_png = QrCodeService.generate_png(ticket.public_id)
@@ -12,6 +12,16 @@ class EventReminderMailer < ApplicationMailer
     mail(
       to: ticket.attendee_email,
       subject: reminder_subject
+    )
+  end
+
+  def pending_payment_reminder(ticket, event)
+    @ticket = ticket
+    @event = event
+
+    mail(
+      to: ticket.attendee_email,
+      subject: "Complete your payment for #{event.title}"
     )
   end
 

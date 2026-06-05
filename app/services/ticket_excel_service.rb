@@ -5,9 +5,11 @@ class TicketExcelService
   # Export tickets to Excel file
   # @param event_id [Integer] The event ID to export tickets for
   # @return [Hash] { file_path: String, export_log: ExportLog }
-  def self.export(event_id)
+  def self.export(event_id, from: nil, to: nil)
     event = Event.find(event_id)
     tickets = event.tickets.includes(:ticket_type, :event)
+    tickets = tickets.where('created_at >= ?', from.beginning_of_day) if from.present?
+    tickets = tickets.where('created_at <= ?', to.end_of_day) if to.present?
 
     # Create exports directory if it doesn't exist
     exports_dir = Rails.root.join('storage', 'exports')
@@ -53,7 +55,8 @@ class TicketExcelService
         'Public ID',
         'QR Code',
         'Payment Status',
-        'Checked In'
+        'Checked In',
+        'Created At'
       ]
       # Add label columns (using display names)
       all_label_keys.each do |key|
@@ -73,7 +76,8 @@ class TicketExcelService
           ticket.public_id,
           '', # QR Code column - will be filled with formula below
           ticket.payment_status,
-          ticket.checked_in
+          ticket.checked_in,
+          ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S')
         ]
 
         # Add values from ticket.custom_fields_data for each label key
@@ -150,10 +154,14 @@ class TicketExcelService
         checked_in: 10
       }
 
-      # Identify label columns (all columns after checked_in)
+      # Detect if file has the new format with Created At at column 11
+      has_created_at_column = header_row[10]&.strip == 'Created At'
+      label_start_col = has_created_at_column ? 12 : 11
+
+      # Identify label columns (all columns after fixed columns)
       label_columns = {}
-      if sheet.last_column > 10
-        (11..sheet.last_column).each do |col_idx|
+      if sheet.last_column >= label_start_col
+        (label_start_col..sheet.last_column).each do |col_idx|
           label_display_name = header_row[col_idx - 1] # -1 for 0-indexed array
           label_columns[col_idx] = label_display_name
         end

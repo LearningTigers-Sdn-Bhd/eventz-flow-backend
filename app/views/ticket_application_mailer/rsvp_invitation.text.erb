@@ -1,0 +1,27 @@
+Application Approved
+
+Dear <%= @ticket.attendee_name %>,
+
+Great news. Your application for <%= @event.title %> has been approved.
+Please confirm your attendance to secure your place:
+
+<%= @rsvp_url %>
+
+<% if @ticket_application.rsvp_expires_at.present? %>
+This RSVP link expires on <%= @ticket_application.rsvp_expires_at.in_time_zone.strftime('%B %d, %Y %I:%M %p') %>.
+<% else %>
+This RSVP link does not expire.
+<% end %>
+
+Your QR ticket will be issued immediately after RSVP confirmation.
+<% if @contact_email.present? %>
+If you need help, contact us at <%= @contact_email %>.
+<% end %>
+
+We look forward to hosting you.
+
+Warm regards,
+<%= @event.title %> Team
+
+---
+This is an automated update from EventzFlow.

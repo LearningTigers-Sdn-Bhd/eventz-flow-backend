@@ -68,6 +68,13 @@ module Payments
       ActiveSupport::SecurityUtils.secure_compare(expected, signature)
     end
 
+    def fetch_payment(payment_id)
+      raise ArgumentError, 'payment_id is required' if payment_id.blank?
+
+      response = request(:get, "/payments/#{payment_id}", nil)
+      JSON.parse(response.body)
+    end
+
     private
 
     def request(method, path, payload)

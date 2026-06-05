@@ -2,7 +2,9 @@
 module V1
   class AuthenticationController < ApplicationController
     skip_before_action :authenticate_user!, only: %i[login register refresh_token register_invited_vendor check_account]
-    skip_before_action :require_verified_email!, only: %i[logout send_verification_code verify_email refresh_token register_invited_vendor check_account join_event_as_vendor sessions revoke_session]
+    skip_before_action :require_verified_email!,
+                       only: %i[logout send_verification_code verify_email refresh_token register_invited_vendor check_account
+                                join_event_as_vendor sessions revoke_session]
 
     def register
       @user = User.new(register_params)
@@ -11,7 +13,12 @@ module V1
       if @user.save
         # Generate and send verification code
         code = EmailVerification.create_for_user(@user)
-        UserMailer.verification_code(@user, code).deliver_now
+        EmailDelivery::AuditedDelivery.deliver_now(
+          mailer_name: 'UserMailer',
+          mailer_action: 'verification_code',
+          args: [@user, code],
+          related: @user
+        )
 
         # Register creates a session too
         tokens = JwtService.generate_tokens(@user, request)
@@ -28,19 +35,23 @@ module V1
           status: :created
         )
       else
-        error_response(message: 'Validation Error', errors: format_validation_errors(@user), status: :unprocessable_content)
+        error_response(message: 'Validation Error', errors: format_validation_errors(@user),
+                       status: :unprocessable_content)
       end
     end
 
     # POST /v1/login
     def login
       email = login_params[:email]
-      return error_response(message: 'Email is required', errors: [{ field: 'email', message: 'Email is required' }], status: :unprocessable_content) if email.blank?
+      if email.blank?
+        return error_response(message: 'Email is required', errors: [{ field: 'email', message: 'Email is required' }],
+                              status: :unprocessable_content)
+      end
 
       user = User.find_by(email: email.downcase)
 
       # Check if user exists, is active, and credentials are valid
-      if user&.active? && user&.authenticate(login_params[:password])
+      if user&.active? && user.authenticate(login_params[:password])
         tokens = JwtService.generate_tokens(user, request)
 
         # Set cookie for browser-based access (optional - frontend will also handle)
@@ -56,27 +67,25 @@ module V1
           message: 'Login successful',
           status: :ok
         )
-      else
+      elsif user.nil?
         # Provide specific error messages based on the failure reason
-        if user.nil?
-          error_response(
-            message: 'Authentication failed',
-            errors: [{ field: 'email', message: 'Email not found' }],
-            status: :unauthorized
-          )
-        elsif !user.active?
-          error_response(
-            message: 'Authentication failed',
-            errors: [{ field: 'account', message: 'Account is inactive' }],
-            status: :unauthorized
-          )
-        else
-          error_response(
-            message: 'Authentication failed',
-            errors: [{ field: 'password', message: 'Invalid password' }],
-            status: :unauthorized
-          )
-        end
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'email', message: 'Email not found' }],
+          status: :unauthorized
+        )
+      elsif !user.active?
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'account', message: 'Account is inactive' }],
+          status: :unauthorized
+        )
+      else
+        error_response(
+          message: 'Authentication failed',
+          errors: [{ field: 'password', message: 'Invalid password' }],
+          status: :unauthorized
+        )
       end
     end
 
@@ -89,39 +98,36 @@ module V1
           payload = JwtService.decode(refresh_token)
           # Only revoke if token is valid refresh token
           if payload[:type] == 'refresh'
-             session = UserSession.find_by(refresh_token_hash: JwtService.hash_token(refresh_token))
-             session&.revoke!
+            session = UserSession.find_by(refresh_token_hash: JwtService.hash_token(refresh_token))
+            session&.revoke!
           end
-        rescue
+        rescue StandardError
           # Ignore invalid tokens during logout
         end
       end
 
       # 2. Revoke by authenticated user (if cookie was missing or invalid but header auth worked)
       if current_user
-        if params[:all] == 'true'
-          current_user.active_sessions.update_all(revoked: true, updated_at: Time.current)
-        end
-        # Note: If we logged out via refresh token above, we might have already revoked the current session.
+        current_user.active_sessions.update_all(revoked: true, updated_at: Time.current) if params[:all] == 'true'
+        # NOTE: If we logged out via refresh token above, we might have already revoked the current session.
         # But if the access token belongs to a DIFFERENT session than the cookie (unlikely but possible),
         # we might want to revoke that too?
         # Typically logout should revoke the session associated with the request credentials.
         # If the request has BOTH access token and refresh cookie, we prioritized the cookie above.
         # If no cookie, we can try to revoke the session from the access token JTI.
-        
+
         unless refresh_token
-           # Extract JTI from current access token if possible (depends on how current_user is set)
-           # We don't easily have the JTI here unless we parse the Authorization header again.
-           # But for now, relying on cookie for the main session is sufficient.
+          # Extract JTI from current access token if possible (depends on how current_user is set)
+          # We don't easily have the JTI here unless we parse the Authorization header again.
+          # But for now, relying on cookie for the main session is sufficient.
         end
       end
 
-      cookies.delete(:refresh_token, 
-        httponly: true,
-        secure: Rails.env.production?,
-        same_site: :lax
-      )
-      
+      cookies.delete(:refresh_token,
+                     httponly: true,
+                     secure: Rails.env.production?,
+                     same_site: :lax)
+
       success_response(
         message: 'Logged out successfully',
         status: :ok
@@ -132,7 +138,12 @@ module V1
     def send_verification_code
       # Generate and send new verification code for current user
       code = EmailVerification.create_for_user(current_user)
-      UserMailer.verification_code(current_user, code).deliver_now
+      EmailDelivery::AuditedDelivery.deliver_now(
+        mailer_name: 'UserMailer',
+        mailer_action: 'verification_code',
+        args: [current_user, code],
+        related: current_user
+      )
 
       success_response(
         message: 'Verification code sent successfully',
@@ -144,7 +155,8 @@ module V1
     def verify_email
       code = params[:code]
       if code.blank?
-        return error_response(message: 'Verification code is required', errors: [{ field: 'code', message: 'Verification code is required' }], status: :unprocessable_content)
+        return error_response(message: 'Verification code is required',
+                              errors: [{ field: 'code', message: 'Verification code is required' }], status: :unprocessable_content)
       end
 
       if EmailVerification.verify_code(current_user, code)
@@ -153,25 +165,28 @@ module V1
 
         success_response(
           data: {
-            user: current_user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: current_user.email_verified?)
+            user: current_user.slice(:id, :full_name, :email, :role,
+                                     :phone).merge(email_verified: current_user.email_verified?)
           },
           message: 'Email verified successfully',
           status: :ok
         )
       else
-        error_response(message: 'Invalid verification code', errors: [{ field: 'code', message: 'Invalid or expired code' }], status: :unauthorized)
+        error_response(message: 'Invalid verification code',
+                       errors: [{ field: 'code', message: 'Invalid or expired code' }], status: :unauthorized)
       end
     end
 
     def refresh_token
       refresh_token = cookies.signed[:refresh_token] || params[:refresh_token]
-      
+
       unless refresh_token
-        return error_response(message: 'Refresh token is required', errors: [{ field: 'refresh_token', message: 'Refresh token is required' }], status: :unprocessable_content)
+        return error_response(message: 'Refresh token is required',
+                              errors: [{ field: 'refresh_token', message: 'Refresh token is required' }], status: :unprocessable_content)
       end
 
       tokens = JwtService.refresh_access_token(refresh_token, request)
-      
+
       set_refresh_token_cookie(tokens[:refresh_token], tokens[:expires_at])
 
       user = tokens[:user]
@@ -186,7 +201,8 @@ module V1
       )
     rescue CustomError::Unauthorized => e
       cookies.delete(:refresh_token)
-      return error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }], status: :unauthorized)
+      error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }],
+                     status: :unauthorized)
     end
 
     # POST /v1/auth/register_invited_vendor
@@ -276,17 +292,13 @@ module V1
 
         event_vendor = EventVendor.create_for_event(event, @user, event_vendor_attrs)
 
-        unless event_vendor.persisted?
-          raise ActiveRecord::Rollback
-        end
+        raise ActiveRecord::Rollback unless event_vendor.persisted?
 
         # Add vendor to group if group_id was in the invitation token
         group_id = payload[:group_id] || payload['group_id']
         if group_id.present?
           group = Group.find_by(id: group_id)
-          if group
-            GroupAffiliate.find_or_create_by!(group: group, vendor: @user)
-          end
+          GroupAffiliate.find_or_create_by!(group: group, vendor: @user) if group
         end
 
         tokens = JwtService.generate_tokens(@user, request)
@@ -319,9 +331,15 @@ module V1
 
       # Validate required fields
       missing_fields = []
-      missing_fields << { field: 'current_password', message: 'Current password is required' } if current_password.blank?
+      if current_password.blank?
+        missing_fields << { field: 'current_password',
+                            message: 'Current password is required' }
+      end
       missing_fields << { field: 'new_password', message: 'New password is required' } if new_password.blank?
-      missing_fields << { field: 'confirm_new_password', message: 'Confirm new password is required' } if confirm_new_password.blank?
+      if confirm_new_password.blank?
+        missing_fields << { field: 'confirm_new_password',
+                            message: 'Confirm new password is required' }
+      end
       if missing_fields.any?
         return error_response(message: 'Validation Error', errors: missing_fields, status: :unprocessable_content)
       end
@@ -349,21 +367,21 @@ module V1
         # Rotate JTI to invalidate existing tokens/sessions and issue fresh tokens
         # Also revoke all sessions
         current_user.active_sessions.update_all(revoked: true)
-        
+
         tokens = JwtService.generate_tokens(current_user, request)
         set_refresh_token_cookie(tokens[:refresh_token], tokens[:expires_at])
 
-        return success_response(
+        success_response(
           data: {
-             access_token: tokens[:access_token],
-             expires_at: tokens[:expires_at],
-             session_id: tokens[:session_id]
+            access_token: tokens[:access_token],
+            expires_at: tokens[:expires_at],
+            session_id: tokens[:session_id]
           },
           message: 'Password updated successfully',
           status: :ok
         )
       else
-        return error_response(
+        error_response(
           message: 'Validation Error',
           errors: format_validation_errors(current_user),
           status: :unprocessable_content
@@ -386,10 +404,10 @@ module V1
 
       # Find user by email or phone
       user = if email.present?
-        User.find_by(email: email)
-      else
-        User.find_by(phone: phone)
-      end
+               User.find_by(email: email)
+             else
+               User.find_by(phone: phone)
+             end
 
       if user.present?
         success_response(
@@ -477,7 +495,7 @@ module V1
       end
 
       # Create EventVendor record (type based on event settings)
-      vendor_type = (event.use_ticket? || event.use_exhibitor_kit?) ? 'Exhibitor' : 'Merchant'
+      vendor_type = event.use_ticket? || event.use_exhibitor_kit? ? 'Exhibitor' : 'Merchant'
 
       event_vendor_attrs = {
         event: event,
@@ -499,9 +517,7 @@ module V1
         group_id = payload[:group_id] || payload['group_id']
         if group_id.present?
           group = Group.find_by(id: group_id)
-          if group
-            GroupAffiliate.find_or_create_by!(group: group, vendor: current_user)
-          end
+          GroupAffiliate.find_or_create_by!(group: group, vendor: current_user) if group
         end
 
         success_response(
@@ -523,29 +539,29 @@ module V1
         )
       end
     end
-    
+
     # GET /v1/auth/sessions
     def sessions
       sessions = current_user.active_sessions.order(last_used_at: :desc)
-      
+
       success_response(
-        data: sessions.map { |s| 
+        data: sessions.map do |s|
           {
             id: s.id,
             device_name: s.device_name,
             ip_address: s.ip_address,
             last_used_at: s.last_used_at,
-            current: s.refresh_token_hash == JwtService.hash_token(cookies.signed[:refresh_token] || '') 
+            current: s.refresh_token_hash == JwtService.hash_token(cookies.signed[:refresh_token] || '')
           }
-        },
+        end,
         status: :ok
       )
     end
-  
+
     # DELETE /v1/auth/sessions/:id
     def revoke_session
       session = current_user.active_sessions.find_by(id: params[:id])
-      
+
       if session
         session.revoke!
         success_response(message: 'Session revoked successfully')
@@ -555,7 +571,7 @@ module V1
     end
 
     private
-    
+
     def set_refresh_token_cookie(token, _expires_at_ignored)
       cookies.signed[:refresh_token] = {
         value: token,
@@ -601,31 +617,35 @@ module V1
 
     def invited_vendor_profile_params
       return {} unless params[:vendor_profile].present?
-      params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes, :company_profile)
+
+      params.require(:vendor_profile).permit(:description, :category, :person_in_charge, :address, :notes,
+                                             :company_profile)
     end
 
     def handle_vendor_profile_image(profile)
       # Handle image upload
       uploaded_image = params.dig(:vendor_profile, :image)
-      if uploaded_image.present? && uploaded_image.respond_to?(:read)
-        profile.image.attach(uploaded_image)
-      end
+      return unless uploaded_image.present? && uploaded_image.respond_to?(:read)
+
+      profile.image.attach(uploaded_image)
     end
 
     def invited_event_vendor_params
       return {} unless params[:event_vendor].present?
+
       params.require(:event_vendor).permit(:redirect_url, :poster_url, :qr_url)
     end
 
     def exhibitor_kit_params
       return {} unless params[:exhibitor_kit].present?
+
       params.require(:exhibitor_kit).permit(
         :booth_number, :booth_type, :booth_dimensions,
         :side_wall_left_required, :side_wall_right_required,
         :name_on_fascia, :fascia_upgrade_required,
         :company_name, :company_address,
         :pic_full_name, :pic_contact_number, :pic_email_address,
-        exhibitor_team_members_attributes: [:full_name]
+        exhibitor_team_members_attributes: %i[full_name email phone]
       )
     end
   end

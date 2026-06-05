@@ -1,0 +1,30 @@
+Application Received
+
+Dear <%= @ticket.attendee_name %>,
+
+Thank you for applying to <%= @event.title %>.
+We have successfully received your delegate application for <%= @ticket_type.name %>.
+
+Application Summary
+- Event: <%= @event.title %>
+- Application Category: <%= @ticket_type.name %>
+- Review Target: Within <%= @setting&.review_sla_hours || 48 %> hours
+<% if @setting&.notify_by_date.present? %>
+- Decision Notice By: <%= @setting.notify_by_date.in_time_zone.strftime('%B %d, %Y') %>
+<% end %>
+
+What Happens Next
+1. Our committee will review your application details.
+2. If approved, we will email you an RSVP confirmation link.
+3. No action is needed from you for now.
+
+We appreciate your interest and look forward to welcoming you.
+<% if @contact_email.present? %>
+If you need assistance, contact us at <%= @contact_email %>.
+<% end %>
+
+Warm regards,
+<%= @event.title %> Team
+
+---
+This is an automated update from EventzFlow.

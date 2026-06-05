@@ -31,6 +31,26 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(mail.body.encoded).to include('General Admission')
     end
 
+    it 'uses upgrade-specific copy for borneo combined tickets' do
+      borneo_event = create(:event, title: 'Business C-nergy & Growth Conference Cum Borneo Exhibition',
+                                    slug: 'borneo-expo')
+      combined_ticket_type = create(:ticket_type, event: borneo_event, name: 'Exhibitor & Conference')
+      combined_ticket = create(
+        :ticket,
+        :paid,
+        event: borneo_event,
+        ticket_type: combined_ticket_type,
+        attendee_name: 'Shin',
+        attendee_email: 'shin@example.com'
+      )
+
+      combined_mail = described_class.confirmation_email(combined_ticket)
+      html_body = combined_mail.html_part&.body&.decoded || combined_mail.body.encoded
+
+      expect(html_body).to include('Your existing ticket has been upgraded to <strong>Exhibitor &amp; Conference</strong>')
+      expect(html_body).to include('Your same QR code remains valid')
+    end
+
     it 'attaches the QR code' do
       expect(mail.attachments.count).to eq(1)
       expect(mail.attachments.first.filename).to eq('qr_code.png')
@@ -110,10 +130,10 @@ RSpec.describe TicketMailer, type: :mailer do
 
       paid_mail = described_class.confirmation_email(paid_ticket)
 
-      expect(paid_mail.body.encoded).to include('color: #1e3a8a;')
+      expect(paid_mail.body.encoded).to include('color: #000000;')
     end
 
-    it 'does not show payment receipt section when amount paid is zero' do
+    it 'does not show payment receipt section but still bccs when amount paid is zero' do
       free_ticket_type = create(:ticket_type, event: event, name: 'Visitor', price: 0)
       free_paid_ticket = create(
         :ticket,
@@ -129,7 +149,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       expect(free_mail.body.encoded).not_to include('PAYMENT RECEIPT')
       expect(free_mail.body.encoded).not_to include('Payment Receipt')
-      expect(free_mail.bcc.to_a).not_to include('eventpayment@eventzflow.com')
+      expect(free_mail.bcc.to_a).to include('eventpayment@eventzflow.com')
     end
   end
 end

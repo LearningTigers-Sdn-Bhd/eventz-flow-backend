@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
+ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,8 +50,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "is_active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "event_id"
+    t.string "scope", default: "read_only", null: false
+    t.index ["event_id"], name: "index_api_keys_on_event_id"
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
+    t.index ["scope"], name: "index_api_keys_on_scope"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
   end
 
@@ -77,6 +81,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "voice_enabled", default: true
     t.string "voice_type", default: "ms-MY-Wavenet-A"
     t.string "welcome_text", default: "Welcome"
+    t.string "idle_mode"
+    t.string "announcement_mode"
+    t.integer "announcement_duration"
+    t.boolean "show_seating_plan", default: false
+    t.integer "seating_plan_sidebar_position", default: 0
+    t.bigint "active_plan_id"
+    t.string "seating_announcement_template"
+    t.integer "seating_plan_duration"
+    t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
   end
 
@@ -90,6 +103,40 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["exhibitor_kit_id"], name: "index_custom_requests_on_exhibitor_kit_id"
+  end
+
+  create_table "email_deliveries", force: :cascade do |t|
+    t.string "provider", default: "resend", null: false
+    t.string "provider_message_id"
+    t.string "mailer_name", null: false
+    t.string "mailer_action", null: false
+    t.string "recipient"
+    t.jsonb "recipients", default: {}, null: false
+    t.string "subject"
+    t.string "status", default: "queued", null: false
+    t.string "related_type"
+    t.bigint "related_id"
+    t.datetime "sent_at"
+    t.datetime "delivered_at"
+    t.datetime "failed_at"
+    t.datetime "bounced_at"
+    t.datetime "complained_at"
+    t.datetime "suppressed_at"
+    t.text "last_error"
+    t.string "failure_reason"
+    t.integer "retry_count", default: 0, null: false
+    t.datetime "next_retry_at"
+    t.bigint "resend_of_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["mailer_name", "mailer_action"], name: "index_email_deliveries_on_mailer_name_and_mailer_action"
+    t.index ["provider_message_id"], name: "index_email_deliveries_on_provider_message_id", unique: true, where: "(provider_message_id IS NOT NULL)"
+    t.index ["recipient"], name: "index_email_deliveries_on_recipient"
+    t.index ["related_type", "related_id"], name: "index_email_deliveries_on_related"
+    t.index ["resend_of_id"], name: "index_email_deliveries_on_resend_of_id"
+    t.index ["status"], name: "index_email_deliveries_on_status"
   end
 
   create_table "email_verifications", force: :cascade do |t|
@@ -131,6 +178,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_event_exhibition_contractors_on_event_id", unique: true
     t.index ["exhibition_contractor_profile_id"], name: "idx_on_exhibition_contractor_profile_id_13ae474f9f"
+  end
+
+  create_table "event_leads", force: :cascade do |t|
+    t.bigint "event_vendor_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "leadable_type", null: false
+    t.bigint "leadable_id", null: false
+    t.text "notes"
+    t.bigint "scanned_by_id"
+    t.index ["event_vendor_id"], name: "index_event_leads_on_event_vendor_id"
+    t.index ["leadable_type", "leadable_id", "event_vendor_id"], name: "index_event_leads_on_leadable_and_event_vendor", unique: true
+    t.index ["leadable_type", "leadable_id"], name: "index_event_leads_on_leadable"
   end
 
   create_table "event_location_members", force: :cascade do |t|
@@ -198,9 +258,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "sent_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "reminder_period_key"
     t.index ["event_id"], name: "index_event_reminder_logs_on_event_id"
-    t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_id_and_reminder_type", unique: true
+    t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
+    t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -299,6 +362,31 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.string "aspect_ratio"
     t.index ["event_seat_session_id"], name: "index_event_seat_venues_on_event_seat_session_id"
+  end
+
+  create_table "event_seating_group_members", force: :cascade do |t|
+    t.bigint "event_seating_group_id", null: false
+    t.string "participant_type", null: false
+    t.bigint "participant_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_seating_group_id", "participant_type"], name: "index_event_seating_group_members_on_group_and_type"
+    t.index ["event_seating_group_id"], name: "index_event_seating_group_members_on_event_seating_group_id"
+    t.index ["participant_type", "participant_id"], name: "index_event_seating_group_members_on_participant_unique", unique: true
+  end
+
+  create_table "event_seating_groups", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "plan_id"
+    t.integer "scope", default: 0, null: false
+    t.string "name", null: false
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "scope"], name: "index_event_seating_groups_on_event_id_and_scope"
+    t.index ["event_id"], name: "index_event_seating_groups_on_event_id"
+    t.index ["plan_id", "scope"], name: "index_event_seating_groups_on_plan_id_and_scope"
+    t.index ["plan_id"], name: "index_event_seating_groups_on_plan_id"
   end
 
   create_table "event_sponsorship_attachments", force: :cascade do |t|
@@ -448,6 +536,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["vendor_id"], name: "index_event_vendors_on_vendor_id"
   end
 
+  create_table "event_wish_wall_settings", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "display_mode", default: "cards", null: false
+    t.string "animation_shape"
+    t.string "animation_text"
+    t.string "accent_color"
+    t.string "header_text_color"
+    t.string "card_background_color"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_event_wish_wall_settings_on_event_id", unique: true
+  end
+
   create_table "events", force: :cascade do |t|
     t.string "title", null: false
     t.text "description"
@@ -455,7 +556,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.boolean "multiple_scans", default: false, null: false
     t.datetime "start_date"
     t.datetime "end_date"
-    t.string "webhook_url"
+    t.text "webhook_url"
     t.jsonb "labels_data", default: {}
     t.boolean "visibility", default: true, null: false
     t.datetime "created_at", null: false
@@ -478,6 +579,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
+    t.boolean "use_event_leads", default: false, null: false
+    t.boolean "auto_approve_wishes", default: false, null: false
+    t.boolean "enable_exhibitor_management", default: false, null: false
+    t.string "public_registration_url"
+    t.string "venue_name"
+    t.string "venue_address"
+    t.boolean "use_voucher", default: true, null: false
+    t.boolean "use_api_access", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -495,6 +604,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["user_id"], name: "index_exhibition_contractor_profiles_on_user_id"
   end
 
+  create_table "exhibitor_booth_price_tiers", force: :cascade do |t|
+    t.bigint "exhibitor_booth_price_id", null: false
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.datetime "start_date", null: false
+    t.datetime "end_date"
+    t.string "label", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exhibitor_booth_price_id", "start_date"], name: "idx_exhibitor_booth_price_tiers_on_booth_price_and_start"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_booth_price_tiers_on_exhibitor_booth_price_id"
+    t.index ["start_date"], name: "index_exhibitor_booth_price_tiers_on_start_date"
+  end
+
   create_table "exhibitor_booth_prices", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "booth_type", null: false
@@ -504,6 +626,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.bigint "exhibitor_zone_id"
     t.integer "quota"
+    t.boolean "conferences_included", default: false, null: false
     t.index ["event_id", "booth_type", "exhibitor_zone_id", "label"], name: "idx_exhibitor_booth_prices_unique", unique: true
     t.index ["event_id"], name: "index_exhibitor_booth_prices_on_event_id"
     t.index ["exhibitor_zone_id"], name: "index_exhibitor_booth_prices_on_exhibitor_zone_id"
@@ -645,7 +768,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "paid_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "gateway"
+    t.string "gateway_payment_id"
+    t.string "payment_method"
+    t.jsonb "gateway_response", default: {}, null: false
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_member_payments_on_exhibitor_kit_id"
+    t.index ["gateway_payment_id"], name: "index_exhibitor_team_member_payments_on_gateway_payment_id"
     t.index ["payee_id"], name: "index_exhibitor_team_member_payments_on_payee_id"
   end
 
@@ -654,6 +782,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.string "full_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "email"
+    t.string "phone"
+    t.string "attendee_type"
+    t.bigint "attendee_id"
+    t.index ["attendee_type", "attendee_id"], name: "index_exhibitor_team_members_on_attendee"
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_members_on_exhibitor_kit_id"
   end
 
@@ -771,6 +904,29 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "pass_bundles", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.bigint "ticket_type_id", null: false
+    t.bigint "created_by_id"
+    t.string "name", null: false
+    t.string "token", null: false
+    t.integer "pass_limit", null: false
+    t.integer "payment_mode", default: 0, null: false
+    t.integer "payment_status", default: 0, null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_pass_bundles_on_created_by_id"
+    t.index ["event_id", "status"], name: "index_pass_bundles_on_event_id_and_status"
+    t.index ["event_id", "token"], name: "index_pass_bundles_on_event_id_and_token", unique: true
+    t.index ["event_id"], name: "index_pass_bundles_on_event_id"
+    t.index ["registration_form_id"], name: "index_pass_bundles_on_registration_form_id"
+    t.index ["ticket_type_id"], name: "index_pass_bundles_on_ticket_type_id"
+    t.check_constraint "pass_limit >= 0", name: "chk_pass_bundles_pass_limit_non_negative"
+  end
+
   create_table "password_resets", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "token_digest", null: false
@@ -792,6 +948,40 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
   end
 
+  create_table "plan_objects", force: :cascade do |t|
+    t.bigint "plan_id", null: false
+    t.integer "object_type"
+    t.string "layer"
+    t.float "x"
+    t.float "y"
+    t.float "rotation", default: 0.0
+    t.float "width"
+    t.float "height"
+    t.string "label"
+    t.integer "capacity"
+    t.boolean "locked", default: false
+    t.integer "z_index", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.text "path"
+    t.index ["plan_id"], name: "index_plan_objects_on_plan_id"
+  end
+
+  create_table "plans", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name"
+    t.float "canvas_width", default: 0.0
+    t.float "canvas_height", default: 0.0
+    t.float "pixels_per_unit", default: 20.0
+    t.boolean "public_enabled", default: false
+    t.string "share_token"
+    t.jsonb "settings_json"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_plans_on_event_id"
+    t.index ["share_token"], name: "index_plans_on_share_token", unique: true
+  end
+
   create_table "printing_services", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -804,6 +994,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "updated_at", null: false
     t.index ["item_category_id"], name: "index_printing_services_on_item_category_id"
     t.index ["user_id"], name: "index_printing_services_on_user_id"
+  end
+
+  create_table "registration_form_rsvp_settings", force: :cascade do |t|
+    t.bigint "registration_form_id", null: false
+    t.boolean "enabled", default: false, null: false
+    t.boolean "rsvp_required", default: false, null: false
+    t.integer "rsvp_expires_in_hours"
+    t.integer "review_sla_hours", default: 48, null: false
+    t.datetime "notify_by_date"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id"], name: "index_registration_form_rsvp_settings_on_registration_form_id", unique: true
+    t.check_constraint "review_sla_hours > 0", name: "chk_registration_form_rsvp_settings_review_sla_positive"
+    t.check_constraint "rsvp_expires_in_hours IS NULL OR rsvp_expires_in_hours > 0", name: "chk_registration_form_rsvp_settings_expiry_positive"
   end
 
   create_table "registration_form_ticket_types", force: :cascade do |t|
@@ -1037,6 +1241,42 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "table_assignments", force: :cascade do |t|
+    t.bigint "ticket_id"
+    t.bigint "plan_object_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "visitor_id"
+    t.text "notes"
+    t.datetime "arrived_at"
+    t.index ["plan_object_id"], name: "index_table_assignments_on_plan_object_id"
+    t.index ["ticket_id"], name: "index_table_assignments_on_ticket_id"
+    t.index ["visitor_id"], name: "index_table_assignments_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "table_assignments_exactly_one_participant"
+  end
+
+  create_table "ticket_applications", force: :cascade do |t|
+    t.bigint "ticket_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.integer "review_status", default: 0, null: false
+    t.integer "rsvp_status", default: 0, null: false
+    t.bigint "reviewed_by_id"
+    t.datetime "reviewed_at"
+    t.text "rejection_reason"
+    t.string "rsvp_token_digest"
+    t.datetime "rsvp_sent_at"
+    t.datetime "rsvp_confirmed_at"
+    t.datetime "rsvp_expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["registration_form_id"], name: "index_ticket_applications_on_registration_form_id"
+    t.index ["reviewed_by_id"], name: "index_ticket_applications_on_reviewed_by_id"
+    t.index ["rsvp_token_digest"], name: "index_ticket_applications_on_rsvp_token_digest", unique: true
+    t.index ["ticket_id"], name: "index_ticket_applications_on_ticket_id", unique: true
+    t.check_constraint "review_status = ANY (ARRAY[0, 1, 2])", name: "chk_ticket_applications_review_status"
+    t.check_constraint "rsvp_status = ANY (ARRAY[0, 1, 2, 3, 4])", name: "chk_ticket_applications_rsvp_status"
+  end
+
   create_table "ticket_payments", force: :cascade do |t|
     t.bigint "ticket_id", null: false
     t.bigint "received_by_id"
@@ -1051,6 +1291,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "paid_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "payment_screenshot_url"
     t.index ["gateway_payment_id"], name: "index_ticket_payments_on_gateway_payment_id"
     t.index ["received_by_id"], name: "index_ticket_payments_on_received_by_id"
     t.index ["ticket_id", "gateway"], name: "index_ticket_payments_on_ticket_id_and_gateway", unique: true, where: "(gateway IS NOT NULL)"
@@ -1111,6 +1352,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.datetime "deleted_at"
     t.string "role"
     t.string "registered_by_email"
+    t.bigint "pass_bundle_id"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
@@ -1118,6 +1360,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["event_id", "status"], name: "index_tickets_on_event_id_and_status"
     t.index ["event_id", "ticket_type_id", "attendee_name_norm"], name: "idx_tickets_event_type_name_norm_unique", unique: true, where: "((attendee_email_norm IS NULL) AND (attendee_phone_norm IS NULL))"
     t.index ["event_id"], name: "index_tickets_on_event_id"
+    t.index ["pass_bundle_id"], name: "index_tickets_on_pass_bundle_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
@@ -1173,16 +1416,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.text "notes"
     t.text "company_profile"
     t.index ["vendor_id"], name: "index_vendor_profiles_on_vendor_id", unique: true
-  end
-
-  create_table "visitor_vendor_stamps", force: :cascade do |t|
-    t.bigint "visitor_id", null: false
-    t.bigint "event_vendor_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["event_vendor_id"], name: "index_visitor_vendor_stamps_on_event_vendor_id"
-    t.index ["visitor_id", "event_vendor_id"], name: "index_visitor_vendor_stamps_on_visitor_and_event_vendor", unique: true
-    t.index ["visitor_id"], name: "index_visitor_vendor_stamps_on_visitor_id"
   end
 
   create_table "visitors", force: :cascade do |t|
@@ -1271,19 +1504,38 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
     t.index ["voucher_code"], name: "index_vouchers_on_voucher_code"
   end
 
+  create_table "wishes", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "visitor_id"
+    t.string "guest_name", null: false
+    t.text "message", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "approved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "status"], name: "index_wishes_on_event_id_and_status"
+    t.index ["event_id"], name: "index_wishes_on_event_id"
+    t.index ["visitor_id"], name: "index_wishes_on_visitor_id"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_keys", "events"
   add_foreign_key "api_keys", "users"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "check_in_displays", "events"
+  add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
+  add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"
   add_foreign_key "event_assignments", "users"
   add_foreign_key "event_email_settings", "events"
   add_foreign_key "event_exhibition_contractors", "events"
   add_foreign_key "event_exhibition_contractors", "exhibition_contractor_profiles"
+  add_foreign_key "event_leads", "event_vendors"
+  add_foreign_key "event_leads", "users", column: "scanned_by_id", on_delete: :nullify
   add_foreign_key "event_location_members", "event_locations"
   add_foreign_key "event_location_members", "users", column: "member_id"
   add_foreign_key "event_locations", "events"
@@ -1305,6 +1557,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "event_seat_sections", "ticket_types"
   add_foreign_key "event_seat_sessions", "events"
   add_foreign_key "event_seat_venues", "event_seat_sessions"
+  add_foreign_key "event_seating_group_members", "event_seating_groups"
+  add_foreign_key "event_seating_groups", "events"
+  add_foreign_key "event_seating_groups", "plans"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorship_payments"
   add_foreign_key "event_sponsorship_attachments", "event_sponsorships"
   add_foreign_key "event_sponsorship_attachments", "users", column: "uploaded_by_id"
@@ -1329,7 +1584,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "event_vendors", "events"
   add_foreign_key "event_vendors", "exhibitor_owners"
   add_foreign_key "event_vendors", "users", column: "vendor_id"
+  add_foreign_key "event_wish_wall_settings", "events"
   add_foreign_key "exhibition_contractor_profiles", "users"
+  add_foreign_key "exhibitor_booth_price_tiers", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_booth_prices", "events"
   add_foreign_key "exhibitor_booth_prices", "exhibitor_zones"
   add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"
@@ -1363,10 +1620,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
+  add_foreign_key "pass_bundles", "events"
+  add_foreign_key "pass_bundles", "registration_forms"
+  add_foreign_key "pass_bundles", "ticket_types"
+  add_foreign_key "pass_bundles", "users", column: "created_by_id"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
+  add_foreign_key "plan_objects", "plans"
+  add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
+  add_foreign_key "registration_form_rsvp_settings", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "ticket_types"
   add_foreign_key "registration_forms", "events"
@@ -1391,19 +1655,24 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
+  add_foreign_key "table_assignments", "plan_objects"
+  add_foreign_key "table_assignments", "tickets"
+  add_foreign_key "table_assignments", "visitors"
+  add_foreign_key "ticket_applications", "registration_forms"
+  add_foreign_key "ticket_applications", "tickets"
+  add_foreign_key "ticket_applications", "users", column: "reviewed_by_id"
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
+  add_foreign_key "tickets", "pass_bundles"
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
-  add_foreign_key "visitor_vendor_stamps", "event_vendors"
-  add_foreign_key "visitor_vendor_stamps", "visitors"
   add_foreign_key "visitors", "events"
   add_foreign_key "visitors", "users", column: "scanned_by_id"
   add_foreign_key "visitors", "visitors", column: "added_by_id"
@@ -1412,4 +1681,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_09_200001) do
   add_foreign_key "voucher_usages", "vouchers"
   add_foreign_key "vouchers", "events"
   add_foreign_key "vouchers", "users", column: "vendor_id"
+  add_foreign_key "wishes", "events"
+  add_foreign_key "wishes", "visitors"
 end

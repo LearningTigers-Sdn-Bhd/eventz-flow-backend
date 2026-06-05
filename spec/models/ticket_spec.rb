@@ -28,8 +28,18 @@ RSpec.describe Ticket, type: :model do
     it { is_expected.to belong_to(:event) }
     it { is_expected.to belong_to(:ticket_type) }
     it { is_expected.to belong_to(:user).optional }
+    it { is_expected.to have_many(:event_reminder_logs).dependent(:destroy) }
     # To test this, ensure the `tickets` table has an `order_id` column.
     # it { is_expected.to belong_to(:order).optional }
+  end
+
+  describe 'dependent cleanup' do
+    it 'destroys reminder logs when the ticket is destroyed' do
+      ticket = create(:ticket, event: event, ticket_type: ticket_type)
+      create(:event_reminder_log, event: event, ticket: ticket, reminder_type: '7_day')
+
+      expect { ticket.destroy! }.to change(EventReminderLog, :count).by(-1)
+    end
   end
 
   # --- VALIDATIONS ---
@@ -135,7 +145,7 @@ RSpec.describe Ticket, type: :model do
           status: :pending_payment,
           payment_status: :pending
         )
-      end.not_to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'sends confirmation email for free ticket when ticket is already paid' do
@@ -150,7 +160,7 @@ RSpec.describe Ticket, type: :model do
           status: :purchased,
           payment_status: :paid
         )
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
     end
 
     it 'sends confirmation email when free group member becomes paid after leader payment' do
@@ -167,7 +177,29 @@ RSpec.describe Ticket, type: :model do
 
       expect do
         member_ticket.update!(status: :purchased, payment_status: :paid)
-      end.to have_enqueued_mail(TicketMailer, :confirmation_email)
+      end.to have_enqueued_job(EmailDeliveryJob)
+    end
+  end
+
+  describe '#send_webhook_notification' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/w1, https://example.com/w2') }
+    let(:ticket) { create(:ticket, event: event) }
+
+    before do
+      allow(ticket).to receive(:determine_event_type).and_return('ticket.created')
+    end
+
+    it 'enqueues a WebhookSenderJob for each URL' do
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w1', any_args)
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w2', any_args)
+
+      ticket.send_webhook_notification
+    end
+
+    it 'skips if skip_webhooks is true' do
+      ticket.skip_webhooks = true
+      expect(WebhookSenderJob).not_to receive(:perform_later)
+      ticket.send_webhook_notification
     end
   end
 end

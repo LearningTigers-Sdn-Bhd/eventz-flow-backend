@@ -13,7 +13,7 @@ module V1
     def update
       authorize @check_in_display
 
-      handle_background_image
+      handle_assets
 
       if @check_in_display.update(check_in_display_params)
         success_response(data: @check_in_display.as_json_for_api)
@@ -55,19 +55,46 @@ module V1
     end
 
     def check_in_display_params
-      params.require(:check_in_display).permit(:font_family, :font_size, :animation_type, :is_bold, :name_color, :voice_enabled, :voice_type, :welcome_text)
+      params.require(:check_in_display).permit(
+        :font_family, :font_size, :animation_type, :is_bold, 
+        :name_color, :voice_enabled, :voice_type, :welcome_text,
+        :idle_mode, :announcement_mode, :announcement_duration,
+        :show_seating_plan, :seating_plan_sidebar_position, :seating_plan_duration, :active_plan_id,
+        :seating_announcement_template
+      )
     end
 
-    def handle_background_image
+    def handle_assets
       display_params = params[:check_in_display] || {}
 
+      # Idle Assets
       if display_params[:background_image].present? && display_params[:background_image].respond_to?(:read)
         @check_in_display.background_image.attach(display_params[:background_image])
-        return
       end
-
       if ActiveModel::Type::Boolean.new.cast(display_params[:remove_background_image])
         @check_in_display.background_image.purge_later if @check_in_display.background_image.attached?
+      end
+
+      if display_params[:idle_video].present? && display_params[:idle_video].respond_to?(:read)
+        @check_in_display.idle_video.attach(display_params[:idle_video])
+      end
+      if ActiveModel::Type::Boolean.new.cast(display_params[:remove_idle_video])
+        @check_in_display.idle_video.purge_later if @check_in_display.idle_video.attached?
+      end
+
+      # Announcement Assets
+      if display_params[:announcement_image].present? && display_params[:announcement_image].respond_to?(:read)
+        @check_in_display.announcement_image.attach(display_params[:announcement_image])
+      end
+      if ActiveModel::Type::Boolean.new.cast(display_params[:remove_announcement_image])
+        @check_in_display.announcement_image.purge_later if @check_in_display.announcement_image.attached?
+      end
+
+      if display_params[:announcement_video].present? && display_params[:announcement_video].respond_to?(:read)
+        @check_in_display.announcement_video.attach(display_params[:announcement_video])
+      end
+      if ActiveModel::Type::Boolean.new.cast(display_params[:remove_announcement_video])
+        @check_in_display.announcement_video.purge_later if @check_in_display.announcement_video.attached?
       end
     end
 

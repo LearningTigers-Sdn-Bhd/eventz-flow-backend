@@ -14,7 +14,7 @@ TICKET_SCHEMA = {
     attendee_name: { type: :string },
     attendee_email: { type: :string, format: :email },
     attendee_phone: { type: [:string, :null] },
-    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled', 'pending_payment'] },
     payment_status: { type: :string, enum: ['pending', 'paid', 'failed', 'refunded_payment'] },
     checked_in: { type: :boolean, readOnly: true },
     custom_fields_data: { type: :object, description: 'E.g., {"t_shirt_size": "L"}' },
@@ -40,7 +40,7 @@ TICKET_INDEX_ITEM_SCHEMA = {
     id: { type: :integer },
     public_id: { type: :string, format: :uuid },
     attendee_name: { type: :string },
-    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled'] },
+    status: { type: :string, enum: ['purchased', 'scanned', 'refunded', 'canceled', 'pending_payment'] },
     ticket_type: {
       type: :object,
       properties: {
@@ -84,6 +84,16 @@ RSpec.describe 'V1::Tickets', type: :request do
   let!(:checked_in_ticket) do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
   end
+  let(:pending_payment_ticket) do
+    create(
+      :ticket,
+      event: organizer_event,
+      ticket_type: general_ticket_type,
+      status: :pending_payment,
+      payment_status: :pending,
+      attendee_name: 'Pending Payment Attendee'
+    )
+  end
   let(:valid_ticket_params) do
     {
       ticket: {
@@ -115,9 +125,30 @@ RSpec.describe 'V1::Tickets', type: :request do
 
       response '200', 'Returns list of tickets for authorized staff' do
         let(:Authorization) { "Bearer #{staff_token}" } # Staff can view tickets for their event
+        before do
+          pass_bundle = create(
+            :pass_bundle,
+            event: organizer_event,
+            registration_form: create(:registration_form, event: organizer_event, slug: 'delegate'),
+            ticket_type: general_ticket_type,
+            name: 'STB'
+          )
+          purchased_ticket.update!(pass_bundle: pass_bundle)
+          create(:ticket_application, ticket: pending_payment_ticket, review_status: :approved, rsvp_status: :sent)
+          pending_payment_ticket
+        end
+
         run_test! do
           json = JSON.parse(response.body)
-          expect(json.count).to eq(2)
+          expect(json.count).to eq(3)
+          bundle_ticket = json.find { |ticket| ticket['id'] == purchased_ticket.id }
+          expect(bundle_ticket['pass_bundle']).to include('id', 'name')
+          expect(bundle_ticket['pass_bundle']['name']).to eq('STB')
+          pending_payload = json.find { |ticket| ticket['public_id'] == pending_payment_ticket.public_id }
+          expect(pending_payload['ticket_application']).to include(
+            'review_status' => 'approved',
+            'rsvp_status' => 'sent'
+          )
         end
 
         # REFACTORED: Use reusable schema constant
@@ -304,6 +335,21 @@ RSpec.describe 'V1::Tickets', type: :request do
         schema TICKET_SCHEMA
 
         run_test!
+      end
+
+      response '200', 'Pending payment ticket becomes purchased when marked paid' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { pending_payment_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['payment_status']).to eq('paid')
+          expect(json['status']).to eq('purchased')
+          expect(pending_payment_ticket.reload.status).to eq('purchased')
+        end
       end
 
       response '200', 'Ticket successfully updated by Org Owner' do

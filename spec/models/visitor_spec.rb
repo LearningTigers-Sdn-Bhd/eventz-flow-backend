@@ -20,7 +20,7 @@ RSpec.describe Visitor, type: :model do
   # --- Associations ---
   describe 'Associations' do
     it { is_expected.to belong_to(:event) }
-    it { is_expected.to have_many(:visitor_vendor_stamps).dependent(:destroy) }
+    it { is_expected.to have_many(:event_leads).dependent(:destroy) }
   end
 
   # --- Validations ---
@@ -89,6 +89,28 @@ RSpec.describe Visitor, type: :model do
         expect(Visitor.unscanned.count).to eq(3)
         expect(Visitor.unscanned).to match_array(not_checked_in_visitors)
       end
+    end
+  end
+
+  describe '#send_webhook_notification' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/w1, https://example.com/w2') }
+    let(:visitor) { create(:visitor, event: event) }
+
+    before do
+      allow(visitor).to receive(:determine_event_type).and_return('visitor.created')
+    end
+
+    it 'enqueues a WebhookSenderJob for each URL' do
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w1', any_args)
+      expect(WebhookSenderJob).to receive(:perform_later).with('https://example.com/w2', any_args)
+
+      visitor.send(:send_webhook_notification)
+    end
+
+    it 'skips if skip_webhooks is true' do
+      visitor.skip_webhooks = true
+      expect(WebhookSenderJob).not_to receive(:perform_later)
+      visitor.send(:send_webhook_notification)
     end
   end
 end

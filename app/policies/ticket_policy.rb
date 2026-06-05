@@ -39,10 +39,10 @@ class TicketPolicy < ApplicationPolicy
     user.is_event_admin?(record.event) || user.is_event_team_member?(record.event)
   end
 
-  # Unscan is restricted to org_owner only
+  # Unscan is restricted to org_owner and organizer
   def unscan?
     return false if user.blank? || record.blank?
-    user.is_org_owner?
+    user.is_org_owner? || user.is_organizer?
   end
 
   # Check-in (update status) is typically allowed for all event staff (Admins/Team Members/Organizers).
@@ -81,6 +81,12 @@ class TicketPolicy < ApplicationPolicy
   # Restore requires organizer/admin authorization (same as destroy)
   def restore?
     destroy?
+  end
+
+  # Resend ticket confirmation email is restricted to org_owner only
+  def resend_confirmation_email?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_organizer?
   end
 
   # =========================================================================

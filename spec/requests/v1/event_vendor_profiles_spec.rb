@@ -3,7 +3,8 @@ require 'swagger_helper'
 
 RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swagger.yaml' do
   # --- Setup Users & Tokens ---
-  let(:vendor_user) { create(:user, role: :vendor) }
+  let(:vendor_creator) { create(:user, role: :organizer) }
+  let(:vendor_user) { create(:user, role: :vendor, created_by: vendor_creator) }
   let(:other_vendor) { create(:user, role: :vendor) }
   let(:admin_user) { create(:user, role: :organizer) }
 
@@ -62,6 +63,18 @@ RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swag
 
         run_test!
       end
+
+      response '200', 'Profile retrieved by event admin for vendor they did not create' do
+        let(:event_id) { event.id }
+        let(:id) { event_vendor.id }
+        let(:Authorization) { "Bearer #{admin_token}" }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['id']).to eq(event_vendor.id)
+          expect(data['vendor_id']).to eq(vendor_user.id)
+        end
+      end
     end
 
     patch 'Update event vendor profile' do
@@ -116,6 +129,24 @@ RSpec.describe 'V1::EventVendorProfiles', type: :request, openapi_spec: 'v1/swag
                }
 
         run_test!
+      end
+
+      response '200', 'Profile updated by event admin for vendor they did not create' do
+        let(:event_id) { event.id }
+        let(:id) { event_vendor.id }
+        let(:Authorization) { "Bearer #{admin_token}" }
+        let(:body) do
+          {
+            profile: {
+              redirect_url: 'https://admin-updated.example.com'
+            }
+          }
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['redirect_url']).to eq('https://admin-updated.example.com')
+        end
       end
     end
   end

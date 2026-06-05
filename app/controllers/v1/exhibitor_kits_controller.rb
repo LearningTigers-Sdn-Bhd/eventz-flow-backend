@@ -20,7 +20,7 @@ class V1::ExhibitorKitsController < ApplicationController
     result = service.create
 
     if result.success?
-      render json: result.data, status: result.status
+      render json: format_exhibitor_kit(result.data), status: result.status
     else
       render json: { errors: result.errors }, status: result.status
     end
@@ -31,7 +31,7 @@ class V1::ExhibitorKitsController < ApplicationController
     result = service.update(@exhibitor_kit)
 
     if result.success?
-      render json: result.data, status: result.status
+      render json: format_exhibitor_kit(result.data), status: result.status
     else
       render json: { errors: result.errors }, status: result.status
     end
@@ -58,7 +58,10 @@ class V1::ExhibitorKitsController < ApplicationController
 
   def set_exhibitor_kit
     @exhibitor_kit = ExhibitorKit.find(params[:id])
-    render json: { error: "ExhibitorKit not found for this event" }, status: :not_found unless @exhibitor_kit.event == @event
+    return if @exhibitor_kit.event == @event
+
+    render json: { error: 'ExhibitorKit not found for this event' },
+           status: :not_found
   end
 
   def ensure_event_has_exhibitor_kit_enabled
@@ -76,18 +79,22 @@ class V1::ExhibitorKitsController < ApplicationController
       # Contractors only see items where rentable_item belongs to them
       items = items.select { |item| item.rentable_item&.user_id == current_user.id }
       # Contractors only see printings if event allows contractor printing services and printing service belongs to them
-      if @event.allow_contractor_printing_services?
-        printings = printings.select { |printing| printing.printing_service&.user_id == current_user.id }
-      else
-        printings = []
-      end
+      printings = if @event.allow_contractor_printing_services?
+                    printings.select { |printing| printing.printing_service&.user_id == current_user.id }
+                  else
+                    []
+                  end
     end
 
     kit.as_json(
       include: [
-        { custom_requests: { only: [:id, :description, :quantity, :status, :resolved_price, :response_notes] } }
+        { custom_requests: { only: %i[id description quantity status resolved_price response_notes] } }
       ]
     ).merge(
+      exhibitor_booth_price_label: kit.exhibitor_booth_price&.label,
+      exhibitor_team_members: kit.exhibitor_team_members.as_json(
+        only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]
+      ),
       exhibitor_kit_items: items.map { |item| format_kit_item(item) },
       exhibitor_kit_printings: printings.map { |printing| format_kit_printing(printing) }
     )

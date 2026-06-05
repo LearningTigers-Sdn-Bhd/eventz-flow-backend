@@ -42,11 +42,45 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
       expect(json['data']['order_id']).to eq('order_exhibitor_123')
       expect(json['data']['key_id']).to eq('rzp_test_key')
     end
+
+    it 'creates a fresh razorpay order when the previous attempt failed' do
+      create(
+        :exhibitor_registration_payment,
+        exhibitor_kit: exhibitor_kit,
+        status: 'failed',
+        gateway_response: {
+          'id' => 'pay_failed_123',
+          'order_id' => 'order_failed_123',
+          'amount' => 150_000,
+          'method' => 'fpx'
+        }
+      )
+
+      allow(gateway_instance).to receive(:create_order).and_return(
+        {
+          'id' => 'order_exhibitor_retry_456',
+          'amount' => 150_000,
+          'currency' => 'MYR'
+        }
+      )
+
+      post "/v1/public/events/#{event.slug}/exhibitor_payments/create_order",
+           params: { exhibitor_kit_id: exhibitor_kit.id }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['data']['order_id']).to eq('order_exhibitor_retry_456')
+      expect(exhibitor_kit.reload.exhibitor_registration_payment.status).to eq('pending')
+      expect(exhibitor_kit.exhibitor_registration_payment.gateway_response['id']).to eq('order_exhibitor_retry_456')
+    end
   end
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/verify' do
     it 'marks exhibitor payment as paid when signature is valid' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_exhibitor_123').and_return(
+        { 'id' => 'pay_exhibitor_123', 'order_id' => 'order_exhibitor_123', 'method' => 'fpx' }
+      )
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/verify", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -59,6 +93,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
       expect(exhibitor_kit.reload.payment_status).to eq('paid')
       expect(exhibitor_kit.exhibitor_registration_payment).to be_present
       expect(exhibitor_kit.exhibitor_registration_payment.status).to eq('paid')
+      expect(exhibitor_kit.exhibitor_registration_payment.payment_method).to eq('fpx')
     end
 
     it 'rejects invalid payment signature' do
@@ -77,10 +112,11 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
   end
 
   describe 'POST /v1/public/events/:event_slug/exhibitor_payments/callback' do
-    it 'redirects to FRONTEND_FORM_URL on successful callback' do
+    it 'redirects to the event public registration URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
-      original = ENV['FRONTEND_FORM_URL']
-      ENV['FRONTEND_FORM_URL'] = 'https://forms.example.com'
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_exhibitor_123').and_return(
+        { 'id' => 'pay_exhibitor_123', 'order_id' => 'order_exhibitor_123', 'method' => 'card' }
+      )
 
       post "/v1/public/events/#{event.slug}/exhibitor_payments/callback", params: {
         exhibitor_kit_id: exhibitor_kit.id,
@@ -91,8 +127,7 @@ RSpec.describe 'V1::Public::ExhibitorPayments', type: :request do
 
       expect(response).to have_http_status(:found)
       expect(response.location).to include('https://forms.example.com/exhibitor-registration?step=success')
-    ensure
-      ENV['FRONTEND_FORM_URL'] = original
+      expect(exhibitor_kit.reload.exhibitor_registration_payment.payment_method).to eq('card')
     end
   end
 end

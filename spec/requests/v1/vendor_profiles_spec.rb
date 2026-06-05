@@ -6,12 +6,17 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
   let(:org_owner) { create(:user, role: :org_owner) }
   let(:organizer_creator) { create(:user, role: :organizer) }
   let(:other_organizer) { create(:user, role: :organizer) }
+  let(:event_admin_user) { create(:user, role: :member) }
   let(:vendor_user) { create(:user, role: :vendor, created_by: organizer_creator) }
   let(:non_vendor_user) { create(:user, role: :member) }
+  let(:event) { create(:event) }
+  let!(:event_admin_assignment) { create(:event_assignment, event: event, user: event_admin_user, role: 'event_admin') }
+  let!(:event_vendor_assignment) { create(:event_vendor, event: event, vendor: vendor_user) }
 
   let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
   let(:organizer_creator_token) { JwtService.generate_tokens(organizer_creator)[:access_token] }
   let(:other_organizer_token) { JwtService.generate_tokens(other_organizer)[:access_token] }
+  let(:event_admin_token) { JwtService.generate_tokens(event_admin_user)[:access_token] }
   let(:vendor_token) { JwtService.generate_tokens(vendor_user)[:access_token] }
   let(:non_vendor_token) { JwtService.generate_tokens(non_vendor_user)[:access_token] }
 
@@ -62,7 +67,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
 
       response '403', 'Forbidden - not a vendor' do
         let(:Authorization) { "Bearer #{non_vendor_token}" }
-        
+
         schema type: :object,
                properties: {
                  success: { type: :boolean },
@@ -146,7 +151,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
       response '403', 'Forbidden - not a vendor' do
         let(:Authorization) { "Bearer #{non_vendor_token}" }
         let(:vendor_profile) { { vendor_profile: { description: 'Test' } } }
-        
+
         schema type: :object,
                properties: {
                  success: { type: :boolean },
@@ -222,10 +227,21 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
         end
       end
 
+      response '200', 'Vendor profile retrieved by event admin for assigned vendor' do
+        let(:vendor_id) { vendor_user.id }
+        let(:Authorization) { "Bearer #{event_admin_token}" }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['vendor_id']).to eq(vendor_user.id)
+          expect(data['vendor']['id']).to eq(vendor_user.id)
+        end
+      end
+
       response '403', 'Forbidden - organizer who did not create vendor' do
         let(:vendor_id) { vendor_user.id }
         let(:Authorization) { "Bearer #{other_organizer_token}" }
-        
+
         schema type: :object,
                properties: {
                  success: { type: :boolean },
@@ -236,7 +252,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
       end
 
       response '404', 'Vendor not found' do
-        let(:vendor_id) { 99999 }
+        let(:vendor_id) { 99_999 }
         let(:Authorization) { "Bearer #{org_owner_token}" }
         run_test!
       end
@@ -331,7 +347,7 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
         let(:vendor_id) { vendor_user.id }
         let(:Authorization) { "Bearer #{other_organizer_token}" }
         let(:vendor_profile) { { vendor_profile: { category: 'Test' } } }
-        
+
         schema type: :object,
                properties: {
                  success: { type: :boolean },
@@ -343,4 +359,3 @@ RSpec.describe 'V1::VendorProfiles', type: :request do
     end
   end
 end
-

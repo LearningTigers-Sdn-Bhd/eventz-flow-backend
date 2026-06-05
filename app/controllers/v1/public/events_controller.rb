@@ -15,21 +15,23 @@ module V1
         @event = Event.friendly.find(params[:slug])
 
         # Return only public-safe event information
-        event_json = @event.as_json(only: [
-          :id,
-          :title,
-          :slug,
-          :description,
-          :start_date,
-          :end_date,
-          :start_time,
-          :end_time,
-          :venue_name,
-          :venue_address,
-          :status
-        ])
+        event_json = @event.as_json(only: %i[
+                                      id
+                                      title
+                                      slug
+                                      description
+                                      start_date
+                                      end_date
+                                      start_time
+                                      end_time
+                                      venue_name
+                                      venue_address
+                                      status
+                                    ])
 
         event_json['logo_url'] = @event.logo_url
+        event_json['poster_url'] = @event.poster_url
+        event_json['wish_wall_setting'] = @event.wish_wall_setting_payload
 
         success_response(data: event_json)
       rescue ActiveRecord::RecordNotFound
@@ -39,9 +41,9 @@ module V1
       # GET /v1/public/events/:slug/business_matching_events
       def business_matching_events
         @event = Event.friendly.find(params[:slug])
-        
+
         unless @event.use_business_matching
-          return render json: { errors: "Business matching is not enabled for this event" }, status: :bad_request
+          return render json: { errors: 'Business matching is not enabled for this event' }, status: :bad_request
         end
 
         service_result = BusinessMatchingService.new(nil).fetch_events(@event.id)

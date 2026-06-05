@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe EventPrintingServicePolicy, type: :policy do
   let(:user) { create(:user) }
-  let(:event) { create(:event) }
+  let(:event) { create(:event, enable_exhibitor_management: true) }
   let(:printing_service) { create(:printing_service) }
   let(:record) { create(:event_printing_service, event: event, printing_service: printing_service) }
 
@@ -10,6 +10,13 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
 
   context 'for an admin (org_owner)' do
     let(:user) { create(:user, :org_owner) }
+    it { is_expected.to permit_actions(%i[index show create update destroy]) }
+  end
+
+  context 'when exhibitor management is disabled' do
+    let(:user) { create(:user, :org_owner) }
+    let(:event) { create(:event, enable_exhibitor_management: false) }
+
     it { is_expected.to permit_actions(%i[index show create update destroy]) }
   end
 
@@ -29,7 +36,9 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
   context 'for an exhibition contractor assigned to the event' do
     let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
     let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
-    let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile) }
+    let!(:event_contractor_assignment) do
+      create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+    end
     let(:user) { contractor_user }
 
     it { is_expected.to permit_actions(%i[index show]) }
@@ -48,28 +57,34 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
     it { is_expected.to forbid_actions(%i[index show create update destroy]) }
   end
 
-  describe "scope" do
+  describe 'scope' do
     let!(:event_printing_service_1) { create(:event_printing_service) }
     let!(:event_printing_service_2) { create(:event_printing_service) }
 
     context 'for an admin (org_owner)' do
       let(:user) { create(:user, :org_owner) }
       it 'returns all event printing services' do
-        expect(Pundit.policy_scope(user, EventPrintingService).to_a).to match_array([event_printing_service_1, event_printing_service_2])
+        expect(Pundit.policy_scope(user,
+                                   EventPrintingService).to_a).to match_array([event_printing_service_1,
+                                                                               event_printing_service_2])
       end
     end
 
     context 'for an organizer' do
       let(:user) { create(:user, :organizer) }
       it 'returns all event printing services' do
-        expect(Pundit.policy_scope(user, EventPrintingService).to_a).to match_array([event_printing_service_1, event_printing_service_2])
+        expect(Pundit.policy_scope(user,
+                                   EventPrintingService).to_a).to match_array([event_printing_service_1,
+                                                                               event_printing_service_2])
       end
     end
 
     context 'for event staff' do
       let(:event_staff_user) { create(:user) }
-      let(:staffed_event) { create(:event) }
-      let!(:event_assignment) { create(:event_assignment, user: event_staff_user, event: staffed_event, role: :event_admin) }
+      let(:staffed_event) { create(:event, enable_exhibitor_management: true) }
+      let!(:event_assignment) do
+        create(:event_assignment, user: event_staff_user, event: staffed_event, role: :event_admin)
+      end
       let!(:staffed_event_printing_service) { create(:event_printing_service, event: staffed_event) }
       let(:user) { event_staff_user }
 
@@ -81,8 +96,10 @@ RSpec.describe EventPrintingServicePolicy, type: :policy do
     context 'for an exhibition contractor assigned to events' do
       let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: false) }
       let!(:contractor_profile) { create(:exhibition_contractor_profile, user: contractor_user) }
-      let(:contractor_event) { create(:event) }
-      let!(:event_contractor_assignment) { create(:event_exhibition_contractor, event: contractor_event, exhibition_contractor_profile: contractor_profile) }
+      let(:contractor_event) { create(:event, enable_exhibitor_management: true) }
+      let!(:event_contractor_assignment) do
+        create(:event_exhibition_contractor, event: contractor_event, exhibition_contractor_profile: contractor_profile)
+      end
       let!(:contractor_event_printing_service) { create(:event_printing_service, event: contractor_event) }
       let(:user) { contractor_user }
 

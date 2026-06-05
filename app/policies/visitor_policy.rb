@@ -54,7 +54,7 @@ class VisitorPolicy < ApplicationPolicy
   def unscan?
     return false if user.blank? || record.blank?
 
-    user.is_org_owner?
+    user.is_org_owner? || user.is_organizer?
   end
 
   # Deletion is restricted to Org Owners and Event Admins.

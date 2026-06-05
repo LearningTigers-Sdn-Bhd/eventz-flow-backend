@@ -19,6 +19,26 @@ RSpec.describe 'V1::ExhibitorBoothPrices', type: :request do
       expect(json.first['id']).to eq(booth_price.id)
       expect(json.first['zone']).to eq('zone_d')
       expect(json.first['exhibitor_zone_id']).to eq(zone.id)
+      expect(json.first['current_price'].to_f).to eq(booth_price.price.to_f)
+      expect(json.first['active_price_tier_label']).to be_nil
+    end
+
+    it 'returns active tier metadata when a tier is active' do
+      create(
+        :exhibitor_booth_price_tier,
+        exhibitor_booth_price: booth_price,
+        label: 'Early Bird',
+        price: 1200,
+        start_date: 1.day.ago,
+        end_date: 1.day.from_now
+      )
+
+      get "/v1/events/#{event.id}/exhibitor_booth_prices", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json.first['current_price'].to_f).to eq(1200.0)
+      expect(json.first['active_price_tier_label']).to eq('Early Bird')
     end
 
     it 'returns empty collection for member' do
