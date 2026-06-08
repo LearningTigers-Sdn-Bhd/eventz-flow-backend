@@ -28,7 +28,7 @@ class PendingPaymentReminderJob < ApplicationJob
                                       .select(:ticket_id)
 
     Ticket.joins(:event)
-          .includes(:event)
+          .includes(:event, :ticket_type)
           .where(payment_status: :pending)
           .where.not(status: %i[canceled refunded])
           .where.not(attendee_email: [nil, ''])
@@ -37,7 +37,10 @@ class PendingPaymentReminderJob < ApplicationJob
   end
 
   def actionable_ticket?(ticket)
-    ticket.pending? && !ticket.canceled? && !ticket.refunded? && ticket.attendee_email.present? && ticket.event.reload.start_date > Time.current
+    ticket.pending? && !ticket.canceled? && !ticket.refunded? &&
+      ticket.attendee_email.present? &&
+      ticket.ticket_type.current_price.positive? &&
+      ticket.event.reload.start_date > Time.current
   end
 
   def current_period_log_for(ticket, period_key)
