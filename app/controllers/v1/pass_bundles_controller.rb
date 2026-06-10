@@ -99,11 +99,8 @@ module V1
     end
 
     def bundle_link(bundle)
-      base_url = @event.normalized_public_registration_url.presence
-      path = "/register/#{bundle.registration_form.slug}?bundle=#{bundle.token}"
-      return path if base_url.blank?
-
-      "#{base_url.chomp('/')}#{path}"
+      base_url = public_registration_url_for(@event)
+      "#{base_url}/register/#{bundle.registration_form.slug}?bundle=#{bundle.token}"
     end
   end
 end
