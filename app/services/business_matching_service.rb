@@ -12,9 +12,11 @@ class BusinessMatchingService < BaseService
     pending_key = "business_matching_events_pending_#{event_id}" # Still useful for initial async request
 
     if force_refresh
-      Rails.logger.info "Force refresh requested. Clearing all business matching cache for event #{event_id}"
-      # Use Regex for delete_matched as string is interpreted as Regex in MemoryStore/Redis
-      Rails.cache.delete_matched(/business_matching_.*_#{event_id}.*/)
+      Rails.logger.info "Force refresh requested. Clearing business matching cache for event #{event_id}"
+      # delete_matched with Regex is slow/unreliable in Redis. Use explicit keys instead.
+      Rails.cache.delete(cache_key)
+      Rails.cache.delete(raw_cache_key)
+      Rails.cache.delete(pending_key)
     end
 
     unless force_refresh
