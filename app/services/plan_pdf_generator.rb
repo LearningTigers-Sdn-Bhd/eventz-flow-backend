@@ -36,7 +36,11 @@ class PlanPdfGenerator
   private
 
   def generate_map_page(pdf, plan)
-    pdf.text plan.name, size: 22, style: :bold
+    # Subtle generation timestamp in the corner
+    pdf.text_box Time.now.strftime("%d#{day_suffix(Time.now)} %B %Y, %I:%M%P (%a)"), 
+                 at: [pdf.bounds.right - 150, pdf.bounds.top + 10], 
+                 width: 150, align: :right, size: 7, color: "888888"
+
     pdf.text plan.event.title, size: 12, color: "666666"
     pdf.move_down 20
 
@@ -64,9 +68,12 @@ class PlanPdfGenerator
   end
 
   def generate_ops_manifest(pdf, plan)
-    pdf.text plan.name, size: 24, style: :bold
-    pdf.text "Internal Seating Manifest (Ops)", size: 12, color: "444444"
-    pdf.text plan.event.title, size: 10, color: "666666"
+    # Subtle generation timestamp in the corner
+    pdf.text_box Time.now.strftime("%d#{day_suffix(Time.now)} %B %Y, %I:%M%P (%a)"), 
+                 at: [pdf.bounds.right - 150, pdf.bounds.top + 10], 
+                 width: 150, align: :right, size: 7, color: "888888"
+
+    pdf.text plan.event.title, size: 12, color: "666666"
     pdf.move_down 20
 
     pdf.table([
@@ -105,7 +112,11 @@ class PlanPdfGenerator
   end
 
   def generate_public_list(pdf, plan)
-    pdf.text plan.name, size: 26, style: :bold, align: :center
+    # Subtle generation timestamp in the corner
+    pdf.text_box Time.now.strftime("%d#{day_suffix(Time.now)} %B %Y, %I:%M%P (%a)"), 
+                 at: [pdf.bounds.right - 150, pdf.bounds.top + 10], 
+                 width: 150, align: :right, size: 7, color: "888888"
+
     pdf.text plan.event.title, size: 14, color: "666666", align: :center
     pdf.move_down 40
 
@@ -167,6 +178,17 @@ class PlanPdfGenerator
 
       # Move cursor to the bottom of the taller table
       pdf.move_cursor_to(initial_y - max_row_height - row_spacing)
+    end
+  end
+
+  private
+
+  def day_suffix(time)
+    case time.day
+    when 1, 21, 31 then "st"
+    when 2, 22 then "nd"
+    when 3, 23 then "rd"
+    else "th"
     end
   end
 
