@@ -55,9 +55,17 @@ module V1
           review_status: application.review_status,
           rsvp_status: application.rsvp_status,
           rsvp_expires_at: application.rsvp_expires_at&.iso8601,
+          rsvp_required: rsvp_required?,
           ticket_status: ticket.status,
           payment_status: ticket.payment_status
         }
+      end
+
+      def rsvp_required?
+        setting = application.registration_form&.registration_form_rsvp_setting
+        return true if setting.nil?
+
+        setting.rsvp_required
       end
     end
   end

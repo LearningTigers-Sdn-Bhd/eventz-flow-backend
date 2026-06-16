@@ -195,6 +195,7 @@ Rails.application.routes.draw do
           patch 'application/approve', to: 'ticket_applications#approve'
           patch 'application/reject', to: 'ticket_applications#reject'
           post 'application/resend_rsvp', to: 'ticket_applications#resend_rsvp'
+          patch 'application/approve_rsvp', to: 'ticket_applications#approve_rsvp'
         end
       end
 
