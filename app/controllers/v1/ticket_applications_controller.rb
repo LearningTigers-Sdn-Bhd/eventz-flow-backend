@@ -35,6 +35,17 @@ module V1
       end
     end
 
+    def approve_rsvp
+      authorize @ticket, :update?
+
+      result = TicketApplicationReviewService.new(@application, reviewer: current_user).approve_rsvp!
+      if result.success?
+        render json: ticket_payload, status: :ok
+      else
+        render json: { error: result.error }, status: :unprocessable_content
+      end
+    end
+
     private
 
     def set_event

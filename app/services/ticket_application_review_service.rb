@@ -95,6 +95,19 @@ class TicketApplicationReviewService
     Result.new(success: true, application: @application)
   end
 
+  def approve_rsvp!
+    return Result.new(success: false, application: @application, error: 'Application is not approved') unless @application.approved?
+    return Result.new(success: true, application: @application) if @application.confirmed?
+    return Result.new(success: false, application: @application, error: 'RSVP was declined') if @application.declined?
+
+    TicketApplication.transaction do
+      @application.update!(rsvp_status: :confirmed, rsvp_confirmed_at: Time.current)
+      purchase_ticket!
+    end
+
+    Result.new(success: true, application: @application)
+  end
+
   private
 
   def rsvp_required?
