@@ -5,8 +5,16 @@ class EmailDeliveryRetryJob < ApplicationJob
     EmailDelivery.retryable
                  .where('next_retry_at <= ?', Time.current)
                  .find_each do |delivery|
+      args = EmailDelivery::ArgsRebuilder.call(delivery)
+
+      # Unsupported mailer/action for retry: stop re-picking it forever.
+      unless args
+        delivery.update!(failure_reason: 'unsupported_retry', next_retry_at: nil)
+        next
+      end
+
       delivery.increment!(:retry_count)
-      EmailDelivery::Resender.call(delivery)
+      EmailDeliveryJob.perform_later(delivery.id, delivery.mailer_name, delivery.mailer_action, args)
     end
   end
 end

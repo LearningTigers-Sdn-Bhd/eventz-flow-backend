@@ -61,5 +61,42 @@ RSpec.describe EmailDelivery::AuditedDelivery do
       expect(EmailDelivery.last.status).to eq('queued')
       expect(EmailDelivery.last.related).to eq(ticket)
     end
+
+    it 'does not enqueue a duplicate when dedupe is on and one is already in flight' do
+      clear_enqueued_jobs
+
+      first = described_class.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [ticket],
+        related: ticket,
+        dedupe: true
+      )
+
+      expect do
+        second = described_class.deliver_later(
+          mailer_name: 'TicketMailer',
+          mailer_action: 'confirmation_email',
+          args: [ticket],
+          related: ticket,
+          dedupe: true
+        )
+        expect(second.id).to eq(first.id)
+      end.not_to change(EmailDelivery, :count)
+    end
+
+    it 'still enqueues duplicates when dedupe is off (default)' do
+      clear_enqueued_jobs
+
+      described_class.deliver_later(
+        mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
+      )
+
+      expect do
+        described_class.deliver_later(
+          mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
+        )
+      end.to change(EmailDelivery, :count).by(1)
+    end
   end
 end
