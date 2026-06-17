@@ -276,7 +276,8 @@ class Ticket < ApplicationRecord
       mailer_name: 'TicketMailer',
       mailer_action: 'confirmation_email',
       args: [self],
-      related: self
+      related: self,
+      dedupe: true
     )
   end
 

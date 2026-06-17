@@ -420,7 +420,8 @@ module V1
             mailer_name: 'TicketMailer',
             mailer_action: 'confirmation_email',
             args: [upgraded_ticket],
-            related: upgraded_ticket
+            related: upgraded_ticket,
+            dedupe: true
           )
         end
       end

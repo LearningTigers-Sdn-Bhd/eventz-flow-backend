@@ -24,7 +24,7 @@ class EmailDelivery::Resender
   def call
     return failure('Email is not eligible for resend') unless @delivery.eligible_for_manual_resend?
 
-    args = rebuild_args
+    args = EmailDelivery::ArgsRebuilder.call(@delivery)
     return failure('Email type is not supported for resend') unless args
 
     new_delivery = EmailDelivery::AuditedDelivery.deliver_later(
@@ -40,35 +40,6 @@ class EmailDelivery::Resender
   end
 
   private
-
-  def rebuild_args
-    case [@delivery.mailer_name, @delivery.mailer_action]
-    when ['TicketMailer', 'confirmation_email']
-      [@delivery.related].compact if @delivery.related.is_a?(Ticket)
-    when ['ExhibitorRegistrationMailer', 'registration_received_email'],
-         ['ExhibitorRegistrationMailer', 'payment_confirmed_email']
-      [@delivery.related].compact if @delivery.related.is_a?(ExhibitorKit)
-    when ['TicketApplicationMailer', 'acknowledgement'],
-         ['TicketApplicationMailer', 'rejection']
-      [@delivery.related].compact if @delivery.related.is_a?(TicketApplication)
-    when ['TicketApplicationMailer', 'rsvp_invitation']
-      return unless @delivery.related.is_a?(TicketApplication)
-
-      raw_token = @delivery.related.assign_rsvp_token!
-      @delivery.related.update!(rsvp_status: :sent, rsvp_sent_at: Time.current)
-      [@delivery.related, raw_token]
-    when ['UserMailer', 'verification_code']
-      return unless @delivery.related.is_a?(User)
-
-      code = EmailVerification.create_for_user(@delivery.related)
-      [@delivery.related, code]
-    when ['UserMailer', 'password_reset']
-      return unless @delivery.related.is_a?(User)
-
-      raw_token = PasswordReset.issue_for!(@delivery.related)
-      [@delivery.related, raw_token]
-    end
-  end
 
   def failure(message)
     Result.new(success: false, delivery: nil, errors: [message])
