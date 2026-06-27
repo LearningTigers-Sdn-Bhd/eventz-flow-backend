@@ -68,7 +68,12 @@ module V1
       if tpl[:background_image].present? && tpl[:background_image].respond_to?(:read)
         @template.background_image.attach(tpl[:background_image])
       elsif ActiveModel::Type::Boolean.new.cast(tpl[:remove_background_image])
-        @template.background_image.purge_later if @template.background_image.attached?
+        if @template.background_image.attached?
+          @template.background_image.purge_later
+          # A template can't be "ready" without a background, so downgrade to
+          # draft to keep the record in a valid, consistent state.
+          @template.status = :draft if @template.ready?
+        end
       end
     end
 
