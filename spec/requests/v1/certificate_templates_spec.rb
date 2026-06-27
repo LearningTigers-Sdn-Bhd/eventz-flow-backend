@@ -87,5 +87,23 @@ RSpec.describe 'V1::CertificateTemplates', type: :request do
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['status']).to eq('ready')
     end
+
+    context 'removing the background image' do
+      let!(:template) { create(:certificate_template, :ready, event: event) }
+
+      it 'purges the image and downgrades a ready template to draft' do
+        expect(template.background_image).to be_attached
+
+        patch "/v1/events/#{event.id}/certificate_template",
+              params: { certificate_template: { remove_background_image: true } },
+              headers: org_owner_headers
+
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body['status']).to eq('draft')
+        expect(body['background_image_url']).to be_nil
+        expect(template.reload.background_image).not_to be_attached
+      end
+    end
   end
 end
