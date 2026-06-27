@@ -228,6 +228,7 @@ module V1
         :public_registration_url,
         :use_sponsorship,
         :use_event_leads,
+        :use_certificate,
         :use_api_access,
         :reminders_enabled,
         :reminder_7_day,

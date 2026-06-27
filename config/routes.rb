@@ -155,6 +155,19 @@ Rails.application.routes.draw do
           post :resend_confirmation_email
         end
       end
+
+      # E-Certificates
+      resource :certificate_template, only: %i[show create update destroy],
+                                      controller: 'certificate_templates'
+      resources :certificates, only: [] do
+        collection do
+          post :send_batch
+          post :send_one
+          get :preview
+          get :participants
+          get :download_all
+        end
+      end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do

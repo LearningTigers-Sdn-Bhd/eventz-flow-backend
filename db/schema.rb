@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
+ActiveRecord::Schema[8.0].define(version: 2026_06_27_053200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -67,6 +67,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_business_host_assignments_on_event_id"
     t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
+  end
+
+  create_table "certificate_templates", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.integer "status", default: 0, null: false
+    t.string "orientation", default: "landscape", null: false
+    t.integer "canvas_width", default: 1123, null: false
+    t.integer "canvas_height", default: 794, null: false
+    t.jsonb "fields", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_certificate_templates_on_event_id", unique: true
+    t.index ["status"], name: "index_certificate_templates_on_status"
   end
 
   create_table "check_in_displays", force: :cascade do |t|
@@ -587,6 +600,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
     t.string "venue_address"
     t.boolean "use_voucher", default: true, null: false
     t.boolean "use_api_access", default: false, null: false
+    t.boolean "use_certificate", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1524,6 +1538,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_05_19_034924) do
   add_foreign_key "api_keys", "users"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
+  add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
   add_foreign_key "custom_requests", "exhibitor_kits"

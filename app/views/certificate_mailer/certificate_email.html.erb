@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #047857, #059669); color: white; padding: 40px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.85; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 16px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 24px; line-height: 1.7; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #059669; margin-bottom: 12px; }
+    .event-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .event-info table { width: 100%; border-collapse: collapse; }
+    .event-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
+    .event-info td:first-child { font-weight: bold; color: #374151; width: 130px; }
+    .event-info td:last-child { color: #555; }
+    @media only screen and (max-width: 480px) {
+      .event-info td { display: block !important; width: 100% !important; }
+      .event-info td:first-child { padding-bottom: 0 !important; }
+      .event-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
+    .certificate-section { text-align: center; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
+    .certificate-section h3 { margin: 0 0 8px; font-size: 16px; color: #047857; }
+    .certificate-section p { margin: 0; font-size: 14px; color: #047857; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; margin-bottom: 8px; }
+    .signature { font-size: 15px; color: #333; font-weight: bold; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Your Certificate Is Ready</h1>
+        <p>A token of appreciation for your participation</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Dear <strong><%= @ticket.attendee_name %></strong>,</p>
+
+        <p class="message">
+          Thank you for being part of <strong><%= @event.title %></strong>. It was a pleasure to have you with us, and we're pleased to share your certificate of participation as a small token of our appreciation.
+        </p>
+
+        <div class="section-title">Event Details</div>
+        <div class="event-info">
+          <table>
+            <tr>
+              <td>Event:</td>
+              <td><%= @event.title %></td>
+            </tr>
+            <tr>
+              <td>Date:</td>
+              <td>
+                <%= @event.start_date.strftime("%B %d, %Y") %>
+                <% if @event.end_date.present? && @event.end_date.to_date != @event.start_date.to_date %>
+                  &ndash; <%= @event.end_date.strftime("%B %d, %Y") %>
+                <% end %>
+              </td>
+            </tr>
+            <% if @event.event_locations.any? %>
+            <tr>
+              <td>Venue:</td>
+              <td><%= @event.event_locations.first.name %></td>
+            </tr>
+            <% end %>
+          </table>
+        </div>
+
+        <div class="section-title">Your Certificate</div>
+        <div class="certificate-section">
+          <h3>Attached as a PDF</h3>
+          <p>Open the attachment to view, download, and save your certificate.</p>
+        </div>
+
+        <p class="closing">
+          <% if @contact_email.present? %>
+            Should you have any questions, please feel free to reach out to us at <a href="mailto:<%= @contact_email %>" style="color: #059669; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>. Thank you once again for joining us.
+          <% else %>
+            Thank you once again for joining us.
+          <% end %>
+        </p>
+
+        <p class="closing">Warm regards,</p>
+        <p class="signature"><%= @sender_name %></p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated email from EventzFlow. Please do not reply to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
