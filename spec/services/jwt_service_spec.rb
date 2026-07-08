@@ -79,6 +79,19 @@ RSpec.describe JwtService do
       described_class.refresh_access_token(refresh_token, request)
     end
 
+    it 'rejects replay of a refresh token after rotation without corrupting the session' do
+      session = UserSession.find(tokens[:session_id])
+      new_tokens = described_class.refresh_access_token(refresh_token, request)
+      rotated_hash = described_class.hash_token(new_tokens[:refresh_token])
+
+      expect {
+        described_class.refresh_access_token(refresh_token, request)
+      }.to raise_error(CustomError::Unauthorized, 'Invalid or expired session')
+
+      expect(session.reload.refresh_token_hash).to eq(rotated_hash)
+      expect(UserSession.count).to eq(1)
+    end
+
     it 'raises error for invalid refresh token' do
       expect {
         described_class.refresh_access_token('invalid_token', request)
@@ -88,6 +101,8 @@ RSpec.describe JwtService do
     it 'raises error for revoked session' do
       session = UserSession.find(tokens[:session_id])
       session.revoke!
+
+      expect(Rails.logger).to receive(:warn).with("Security: Revoked refresh token reused for User #{user.id}")
 
       expect {
         described_class.refresh_access_token(refresh_token, request)
