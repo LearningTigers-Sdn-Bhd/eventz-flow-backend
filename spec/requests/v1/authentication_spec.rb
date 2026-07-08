@@ -139,6 +139,17 @@ RSpec.describe 'V1::Authentication', type: :request do
     end
 
     context 'with invalid refresh token' do
+      it 'does not clear the refresh cookie when refresh is rejected' do
+        post '/v1/auth/login', params: { email: user.email, password: 'password' }
+        original_cookie = response_signed_cookies['refresh_token']
+        UserSession.find(json_response['data']['session_id']).revoke!
+
+        post '/v1/auth/refresh_token'
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(response_signed_cookies['refresh_token']).to eq(original_cookie)
+      end
+
       it 'returns unprocessable_content if cookie is tampered and clears cookie' do
         # 1. Login to set cookie
         post '/v1/auth/login', params: { email: user.email, password: 'password' }

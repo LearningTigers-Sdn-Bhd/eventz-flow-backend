@@ -33,8 +33,8 @@ class JwtService
     end
 
     def generate_tokens(user, request = nil, existing_session = nil)
-      # 1. Generate new JTI for this specific session/token pair
-      session_jti = SecureRandom.uuid
+      # 1. Keep JTI stable for an existing session; only refresh credentials rotate.
+      session_jti = existing_session&.jti || SecureRandom.uuid
 
       # 2. Prepare payloads
       access_payload = {
@@ -46,7 +46,8 @@ class JwtService
       refresh_payload = {
         user_id: user.id,
         jti: session_jti, # Same JTI links access and refresh tokens
-        type: 'refresh'
+        type: 'refresh',
+        nonce: SecureRandom.uuid
       }
 
       # 3. Encode tokens
@@ -62,7 +63,6 @@ class JwtService
       if existing_session
         # Rotation: Update existing session
         existing_session.update!(
-          jti: session_jti,
           refresh_token_hash: refresh_hash,
           expires_at: refresh_token_exp,
           last_used_at: Time.current,
@@ -89,26 +89,28 @@ class JwtService
       payload = decode(refresh_token)
       raise CustomError::Unauthorized.new('Invalid refresh token') unless payload[:type] == 'refresh'
 
-      # Find session by hashed refresh token
       refresh_hash = hash_token(refresh_token)
-      session = UserSession.find_by(refresh_token_hash: refresh_hash)
 
-      # Validate session
-      unless session && session.active?
-        if session && session.revoked?
-            Rails.logger.warn "Security: Revoked refresh token reused for User #{session.user_id}"
+      UserSession.transaction do
+        session = UserSession.lock.find_by(refresh_token_hash: refresh_hash)
+
+        # Validate session
+        unless session && session.active?
+          if session && session.revoked?
+              Rails.logger.warn "Security: Revoked refresh token reused for User #{session.user_id}"
+          end
+          raise CustomError::Unauthorized.new('Invalid or expired session')
         end
-        raise CustomError::Unauthorized.new('Invalid or expired session')
+
+        # Validate User
+        user = session.user
+        raise CustomError::Unauthorized.new('User not found') unless user
+
+        # Rotate tokens (updates session)
+        tokens = generate_tokens(user, request, session)
+        tokens[:user] = user
+        tokens
       end
-
-      # Validate User
-      user = session.user
-      raise CustomError::Unauthorized.new('User not found') unless user
-
-      # Rotate tokens (updates session)
-      tokens = generate_tokens(user, request, session)
-      tokens[:user] = user
-      tokens
     end
 
     def decode_token(token)

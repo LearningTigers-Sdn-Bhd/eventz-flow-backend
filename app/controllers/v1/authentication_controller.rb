@@ -200,7 +200,6 @@ module V1
         message: 'Access token refreshed successfully'
       )
     rescue CustomError::Unauthorized => e
-      cookies.delete(:refresh_token)
       error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }],
                      status: :unauthorized)
     end
