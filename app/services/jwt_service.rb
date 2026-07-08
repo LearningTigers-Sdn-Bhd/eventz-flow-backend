@@ -33,8 +33,8 @@ class JwtService
     end
 
     def generate_tokens(user, request = nil, existing_session = nil)
-      # 1. Generate new JTI for this specific session/token pair
-      session_jti = SecureRandom.uuid
+      # 1. Keep JTI stable for an existing session; only refresh credentials rotate.
+      session_jti = existing_session&.jti || SecureRandom.uuid
 
       # 2. Prepare payloads
       access_payload = {
@@ -62,7 +62,6 @@ class JwtService
       if existing_session
         # Rotation: Update existing session
         existing_session.update!(
-          jti: session_jti,
           refresh_token_hash: refresh_hash,
           expires_at: refresh_token_exp,
           last_used_at: Time.current,

@@ -47,7 +47,7 @@ RSpec.describe JwtService do
     let!(:tokens) { described_class.generate_tokens(user, request) }
     let(:refresh_token) { tokens[:refresh_token] }
 
-    it 'rotates tokens and updates session' do
+    it 'rotates tokens and updates session without changing the session jti' do
       original_session = UserSession.find(tokens[:session_id])
       original_jti = original_session.jti
       original_hash = original_session.refresh_token_hash
@@ -60,9 +60,17 @@ RSpec.describe JwtService do
       
       # Session updated, not created
       expect(UserSession.count).to eq(1)
-      expect(original_session.jti).not_to eq(original_jti)
+      expect(original_session.jti).to eq(original_jti)
       expect(original_session.refresh_token_hash).not_to eq(original_hash)
       expect(original_session.refresh_token_hash).to eq(described_class.hash_token(new_tokens[:refresh_token]))
+    end
+
+    it 'keeps existing access tokens valid after refresh rotation' do
+      original_access_payload = described_class.decode(tokens[:access_token])
+
+      described_class.refresh_access_token(refresh_token, request)
+
+      expect(UserSession.find_by(jti: original_access_payload[:jti], user_id: user.id)).to be_active
     end
 
     it 'raises error for invalid refresh token' do
