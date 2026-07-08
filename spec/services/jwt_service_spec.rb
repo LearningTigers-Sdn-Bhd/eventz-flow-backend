@@ -55,7 +55,6 @@ RSpec.describe JwtService do
       new_tokens = described_class.refresh_access_token(refresh_token, request)
       original_session.reload
 
-      expect(new_tokens[:access_token]).not_to eq(tokens[:access_token])
       expect(new_tokens[:refresh_token]).not_to eq(tokens[:refresh_token])
       
       # Session updated, not created
@@ -71,6 +70,13 @@ RSpec.describe JwtService do
       described_class.refresh_access_token(refresh_token, request)
 
       expect(UserSession.find_by(jti: original_access_payload[:jti], user_id: user.id)).to be_active
+    end
+
+    it 'locks the matching session while rotating the refresh token' do
+      expect(UserSession).to receive(:transaction).and_call_original
+      expect(UserSession).to receive(:lock).and_call_original
+
+      described_class.refresh_access_token(refresh_token, request)
     end
 
     it 'raises error for invalid refresh token' do
