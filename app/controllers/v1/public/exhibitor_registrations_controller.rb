@@ -390,6 +390,7 @@ module V1
         profile = user.vendor_profile || user.reload.vendor_profile || user.build_vendor_profile
 
         profile.assign_attributes(
+          description: registration_params.dig(:custom_fields_data, :product_description),
           category: registration_params[:product_category],
           person_in_charge: registration_params[:pic_full_name],
           address: registration_params[:company_address]
