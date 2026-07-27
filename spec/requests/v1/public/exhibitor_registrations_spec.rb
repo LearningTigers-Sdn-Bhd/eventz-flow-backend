@@ -122,7 +122,8 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
         is_booth_manager: true,
         custom_fields_data: {
           preferred_booth_location: 'Hall A',
-          other_services: ['Advertising Opportunities']
+          other_services: ['Advertising Opportunities'],
+          product_description: 'Industrial pumps and offshore safety equipment'
         }
       }
     end
@@ -151,12 +152,14 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(kit.amount_paid.to_f).to eq(1500.0)
       expect(kit.payment_status).to eq('unpaid')
       expect(kit.custom_fields_data['preferred_booth_location']).to eq('Hall A')
+      expect(kit.custom_fields_data['product_description']).to eq('Industrial pumps and offshore safety equipment')
       expect(kit.custom_fields_data['zone']).to eq('zone_d')
       expect(kit.custom_fields_data['is_booth_manager']).to eq(true)
       expect(user.authenticate('TempPass123!')).to eq(user)
       expect(user.vendor_profile.category).to eq('Oil & Gas Equipment')
       expect(user.vendor_profile.person_in_charge).to eq('Amin Rahman')
       expect(user.vendor_profile.address).to eq('Kota Kinabalu')
+      expect(user.vendor_profile.description).to eq('Industrial pumps and offshore safety equipment')
     end
 
     it 'creates a booth manager team member and linked exhibitor ticket when requested' do
