@@ -67,6 +67,32 @@ class Rack::Attack
     end
   end
 
+  # 10. Public Registration Document Uploads (storage flooding)
+  # 5 documents per registration × a few retries
+  throttle('public_upload/ip', limit: 20, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/registration_uploads}) && req.post?
+      req.ip
+    end
+  end
+
+  throttle('exhibitor_ic_upload/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
+  end
+
+  # 11. Public Payment Proof Uploads
+  throttle('payment_proof/ip', limit: 10, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/tickets/.*/payment_proof}) && (req.post? || req.delete?)
+      req.ip
+    end
+  end
+
+  # 12. Field Availability Check (membership-number enumeration)
+  throttle('field_availability/ip', limit: 60, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/field_availability}) && req.get?
+      req.ip
+    end
+  end
+
   # Response for throttled requests
   self.throttled_responder = lambda do |env|
     match_data = env['rack.attack.match_data']

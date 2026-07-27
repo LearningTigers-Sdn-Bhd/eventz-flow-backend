@@ -3,8 +3,14 @@
 module V1
   module Public
     class ExhibitorRegistrationsController < ApplicationController
+      include PublicFileValidation
+
       class ZoneSoldOutError < StandardError; end
       class BoothPriceSoldOutError < StandardError; end
+
+      # Exhibitor flow historically also accepts GIF and up to 20MB.
+      PAYMENT_PROOF_CONTENT_TYPES = (PublicFileValidation::ALLOWED_CONTENT_TYPES + %w[image/gif]).freeze
+      MAX_PAYMENT_PROOF_SIZE = 20.megabytes
 
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
@@ -116,6 +122,8 @@ module V1
         }, status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_content
+      rescue ExhibitorIcCopyAttacher::Error => e
+        render json: { success: false, message: e.message }, status: :unprocessable_content
       rescue ZoneSoldOutError
         render json: { success: false, message: 'Selected zone is sold out' }, status: :unprocessable_content
       rescue BoothPriceSoldOutError
@@ -179,14 +187,14 @@ module V1
           return render json: { success: false, message: 'Payment proof is required' }, status: :unprocessable_content
         end
 
-        unless allowed_payment_proof_type?(payment_proof)
+        unless allowed_file_type?(payment_proof, allowed: PAYMENT_PROOF_CONTENT_TYPES)
           return render json: {
             success: false,
             message: 'Payment proof must be a JPEG, PNG, GIF, WebP, or PDF'
           }, status: :unprocessable_content
         end
 
-        if payment_proof.size.to_i > 20.megabytes
+        if file_too_large?(payment_proof, MAX_PAYMENT_PROOF_SIZE)
           return render json: {
             success: false,
             message: 'Payment proof is too large (max 20MB)'
@@ -261,6 +269,7 @@ module V1
 
             if exhibitor.present?
               kit = exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+              attach_ic_copy!(event: event, exhibitor_kit: kit)
               ensure_booth_manager_team_member!(kit)
               return kit
             end
@@ -268,6 +277,7 @@ module V1
             exhibitor = Exhibitor.new(event: event, vendor: user)
             exhibitor.build_exhibitor_kit(build_exhibitor_kit_attributes(booth_price))
             exhibitor.save!
+            attach_ic_copy!(event: event, exhibitor_kit: exhibitor.exhibitor_kit)
             ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
             exhibitor.exhibitor_kit
           end
@@ -352,8 +362,17 @@ module V1
           :exhibitor_booth_price_id,
           :booth_quantity,
           :is_booth_manager,
+          :ic_copy_signed_id,
           custom_fields_data: {}
         )
+      end
+
+      def attach_ic_copy!(event:, exhibitor_kit:)
+        ExhibitorIcCopyAttacher.new(
+          event: event,
+          exhibitor_kit: exhibitor_kit,
+          signed_id: registration_params[:ic_copy_signed_id]
+        ).call
       end
 
       def booth_manager_requested?
@@ -563,10 +582,6 @@ module V1
       def manual_payment_zone?(zone)
         zone_value = zone.to_s.downcase.gsub(/[^a-z0-9]/, '')
         %w[zonea zoneb zonec].include?(zone_value)
-      end
-
-      def allowed_payment_proof_type?(payment_proof)
-        payment_proof.content_type.in?(%w[image/jpeg image/png image/gif image/webp application/pdf])
       end
 
       def find_exhibitor_kit_for_event!(event:, exhibitor_kit_id:)

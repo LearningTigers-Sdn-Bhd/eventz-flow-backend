@@ -508,7 +508,15 @@ module V1
         allowed_params << :status
       end
 
-      params.require(:ticket).permit(*allowed_params)
+      permitted = params.require(:ticket).permit(*allowed_params)
+
+      # Reserved keys (e.g. _indemnity) are server-written audit records; even
+      # admins must not overwrite them through this endpoint.
+      if permitted[:custom_fields_data].present?
+        permitted[:custom_fields_data] = permitted[:custom_fields_data].except(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
+      end
+
+      permitted
     end
 
     def ticket_params_with_payment_sync

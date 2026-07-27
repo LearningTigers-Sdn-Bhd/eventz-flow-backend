@@ -9,6 +9,7 @@ class ExhibitorKit < ApplicationRecord
   has_many :exhibitor_kit_printings, dependent: :destroy
   has_many :custom_requests, dependent: :destroy
   has_one_attached :payment_proof, dependent: :purge_later
+  has_one_attached :ic_copy, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true

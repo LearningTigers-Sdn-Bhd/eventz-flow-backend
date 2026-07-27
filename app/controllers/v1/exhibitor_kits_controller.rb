@@ -1,7 +1,7 @@
 class V1::ExhibitorKitsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update submit_order]
+  before_action :set_exhibitor_kit, only: %i[show update submit_order ic_copy]
   before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
 
   def index
@@ -50,6 +50,16 @@ class V1::ExhibitorKitsController < ApplicationController
     end
   end
 
+  def ic_copy
+    authorize @exhibitor_kit, :download_ic_copy?
+    return render json: { error: 'IC copy not found' }, status: :not_found unless @exhibitor_kit.ic_copy.attached?
+
+    send_data @exhibitor_kit.ic_copy.download,
+              filename: @exhibitor_kit.ic_copy.filename.to_s,
+              type: @exhibitor_kit.ic_copy.content_type,
+              disposition: 'attachment'
+  end
+
   private
 
   def set_event
@@ -91,6 +101,7 @@ class V1::ExhibitorKitsController < ApplicationController
         { custom_requests: { only: %i[id description quantity status resolved_price response_notes] } }
       ]
     ).merge(
+      ic_copy_uploaded: kit.ic_copy.attached?,
       exhibitor_booth_price_label: kit.exhibitor_booth_price&.label,
       exhibitor_team_members: kit.exhibitor_team_members.as_json(
         only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]

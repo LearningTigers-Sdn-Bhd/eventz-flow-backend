@@ -202,4 +202,47 @@ RSpec.describe Ticket, type: :model do
       ticket.send_webhook_notification
     end
   end
+
+  describe 'unique custom fields within event' do
+    let(:event) { create(:event) }
+    let(:ticket_type) { create(:ticket_type, event: event) }
+
+    def build_with(fields, evt: event)
+      build(:ticket, event: evt, ticket_type: ticket_type, custom_fields_data: fields)
+    end
+
+    it 'allows blank values to repeat' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => '' })
+      expect(build_with({ 'membership_no' => '' })).to be_valid
+    end
+
+    it 'rejects the same membership_no with different case' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })
+      ticket = build_with({ 'membership_no' => 'a-1234' })
+
+      expect(ticket).not_to be_valid
+      expect(ticket.errors[:base].first).to include('already registered')
+    end
+
+    it 'rejects a duplicate ic_passport_no' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'ic_passport_no' => 'H12345678' })
+      expect(build_with({ 'ic_passport_no' => 'H12345678' })).not_to be_valid
+    end
+
+    it 'frees the value when the existing ticket is canceled' do
+      create(:ticket, event: event, ticket_type: ticket_type, status: :canceled,
+                      custom_fields_data: { 'membership_no' => 'A-1234' })
+      expect(build_with({ 'membership_no' => 'A-1234' })).to be_valid
+    end
+
+    it 'does not collide across events' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })
+      other_event = create(:event)
+      other_type = create(:ticket_type, event: other_event)
+      other = build(:ticket, event: other_event, ticket_type: other_type,
+                             custom_fields_data: { 'membership_no' => 'A-1234' })
+
+      expect(other).to be_valid
+    end
+  end
 end

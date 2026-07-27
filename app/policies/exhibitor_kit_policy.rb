@@ -17,6 +17,10 @@ class ExhibitorKitPolicy < ApplicationPolicy
     user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event_vendor.event) || record.event_vendor.vendor_id == user.id
   end
 
+  def download_ic_copy?
+    user.is_org_owner_or_organizer? || user.is_event_admin?(record.event)
+  end
+
   def permitted_attributes_for_create
     return exhibitor_kit_attributes if user.is_org_owner_or_organizer?
     return exhibitor_create_attributes if record.event_vendor&.vendor_id == user.id

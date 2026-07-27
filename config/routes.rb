@@ -49,6 +49,7 @@ Rails.application.routes.draw do
         post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
+        post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
         post 'register_exhibitor', to: 'exhibitor_registrations#create'
         patch 'register_exhibitor', to: 'exhibitor_registrations#update'
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
@@ -61,6 +62,10 @@ Rails.application.routes.draw do
         post 'exhibitor_payments/verify', to: 'exhibitor_payments#verify'
         match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
+        get 'field_availability', to: 'registrations#field_availability'
+        post 'registration_uploads', to: 'registration_uploads#create'
+        post 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#create'
+        delete 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#destroy'
       end
 
       # RSVP endpoints for wedding invitations
@@ -244,6 +249,7 @@ Rails.application.routes.draw do
       end
 
       resources :exhibitor_kits, only: %i[index show create update destroy] do
+        get :ic_copy, on: :member
         member do
           post :submit_order
         end

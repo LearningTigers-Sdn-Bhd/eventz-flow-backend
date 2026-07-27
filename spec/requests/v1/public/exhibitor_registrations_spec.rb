@@ -27,6 +27,32 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     )
   end
 
+  describe 'POST /v1/public/events/:event_slug/exhibitor_ic_upload' do
+    it 'uploads an event-bound IC copy and returns a signed ID' do
+      post "/v1/public/events/#{event.slug}/exhibitor_ic_upload",
+           params: { file: fixture_file_upload(Rails.root.join('spec/fixtures/files/test_image.png'), 'image/png') }
+
+      expect(response).to have_http_status(:created)
+      data = JSON.parse(response.body).fetch('data')
+      blob = ActiveStorage::Blob.find_signed!(data.fetch('signed_id'))
+      expect(blob.metadata).to include('document_key' => 'exhibitor_ic_copy', 'event_id' => event.id)
+    end
+
+    it 'rejects unsupported files' do
+      file = Tempfile.new(['ic', '.txt'])
+      file.write('not an image')
+      file.rewind
+
+      post "/v1/public/events/#{event.slug}/exhibitor_ic_upload",
+           params: { file: Rack::Test::UploadedFile.new(file.path, 'text/plain') }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['message']).to eq('IC copy must be a JPEG, PNG, WebP, or PDF')
+    ensure
+      file.close!
+    end
+  end
+
   describe 'GET /v1/public/events/:event_slug/exhibitor_booth_prices' do
     it 'returns published event booth prices' do
       get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
@@ -160,6 +186,37 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(user.vendor_profile.person_in_charge).to eq('Amin Rahman')
       expect(user.vendor_profile.address).to eq('Kota Kinabalu')
       expect(user.vendor_profile.description).to eq('Industrial pumps and offshore safety equipment')
+    end
+
+    it 'attaches a signed IC copy to the exhibitor kit' do
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: File.open(Rails.root.join('spec/fixtures/files/test_image.png')),
+        filename: 'ic-copy.png',
+        content_type: 'image/png',
+        metadata: { document_key: 'exhibitor_ic_copy', event_id: event.id }
+      )
+
+      post "/v1/public/events/#{event.slug}/register_exhibitor",
+           params: params.merge(ic_copy_signed_id: blob.signed_id)
+
+      expect(response).to have_http_status(:created)
+      expect(ExhibitorKit.order(created_at: :desc).first.ic_copy.blob).to eq(blob)
+    end
+
+    it 'rejects an IC copy uploaded for another event' do
+      other_event = create(:event, status: :published, use_exhibitor_kit: true)
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: File.open(Rails.root.join('spec/fixtures/files/test_image.png')),
+        filename: 'ic-copy.png',
+        content_type: 'image/png',
+        metadata: { document_key: 'exhibitor_ic_copy', event_id: other_event.id }
+      )
+
+      post "/v1/public/events/#{event.slug}/register_exhibitor",
+           params: params.merge(ic_copy_signed_id: blob.signed_id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['message']).to eq('IC copy does not belong to this event')
     end
 
     it 'creates a booth manager team member and linked exhibitor ticket when requested' do

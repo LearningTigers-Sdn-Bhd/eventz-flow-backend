@@ -218,6 +218,7 @@ module V1
         exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
         exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
         custom_fields_data: exhibitor_kit.custom_fields_data,
+        ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,
