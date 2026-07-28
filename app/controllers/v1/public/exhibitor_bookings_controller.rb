@@ -20,6 +20,15 @@ module V1
         render json: { success: true, data: PublicExhibitorBookingSerializer.detail(kit) }
       end
 
+      def booth_number_availability
+        authorize ExhibitorKit, :create?, policy_class: PublicExhibitorBookingPolicy
+        booth_number = params[:booth_number].to_s.strip
+        assigned = PublicExhibitorBookingService.new(event: @event, access: @public_access)
+          .booth_number_assigned?(booth_number)
+        message = assigned ? "Booth number #{booth_number} is already assigned" : nil
+        render json: { success: true, data: { available: !assigned, message: message }.compact }
+      end
+
       def create
         authorize ExhibitorKit, policy_class: PublicExhibitorBookingPolicy
         result = PublicExhibitorBookingService.call(event: @event, access: @public_access,
@@ -37,6 +46,10 @@ module V1
         render_booking_error('idempotency_key_reused', 'Idempotency-Key was already used for another booking', :conflict)
       rescue PublicExhibitorBookingService::SoldOut
         render_booking_error('booth_sold_out', 'Selected booth package is sold out', :conflict)
+      rescue PublicExhibitorBookingService::DuplicateBoothNumber => e
+        render_booking_error('duplicate_booth_number', e.message, :conflict)
+      rescue PublicExhibitorBookingService::AgreementRequired
+        render_booking_error('agreement_required', 'Participation and indemnity agreement must be accepted', :unprocessable_content)
       rescue PublicExhibitorBookingService::EmailRequiresAccess
         render_booking_error('email_requires_access', 'Account now exists. Request a secure access link.', :conflict)
       rescue ActiveRecord::RecordInvalid
@@ -79,7 +92,7 @@ module V1
         @event = Event.friendly.find(params[:event_slug])
         token = request.authorization.to_s.delete_prefix('Bearer ').presence
         @public_access = PublicExhibitorAccessSession.authenticate(event: @event, token: token)
-        if @public_access.nil? && action_name == 'create'
+        if @public_access.nil? && %w[create booth_number_availability].include?(action_name)
           @public_access = PublicExhibitorRegistrationToken.verify(
             token: request.headers['X-New-Registration-Token'], event: @event
           )
@@ -96,7 +109,7 @@ module V1
         params.permit(:exhibitor_booth_price_id, :company_name, :company_address, :name_on_fascia,
           :pic_full_name, :pic_position, :pic_contact_number, :country, :booth_number,
           :booth_quantity, :payment_option, :ic_copy_signed_id, :source_booking_public_id,
-          :reuse_ic_copy, custom_fields_data: {})
+          :reuse_ic_copy, :indemnity_signed, custom_fields_data: {})
       end
 
       def update_booking_params

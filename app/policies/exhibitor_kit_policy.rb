@@ -77,6 +77,7 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :pic_full_name, :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :qr_code_url, :is_raw_space, :indemnity_signed,
       :indemnity_document_url, :indemnity_link,
+      :payment_status, :amount_paid, :payment_note,
       { custom_fields_data: {} },
       { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },
       { exhibitor_kit_items_attributes: %i[id rentable_item_id quantity agreed_price notes _destroy] },

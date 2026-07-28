@@ -14,17 +14,12 @@ module V1
 
         existing = User.where('LOWER(email) = ?', email).exists? ||
           EventVendor.joins(:vendor).where(event: event).where('LOWER(users.email) = ?', email).exists?
-        if existing
-          access, challenge = PublicExhibitorAccessSession.issue_challenge!(event: event, email: email)
-          EmailDelivery::AuditedDelivery.deliver_later(
-            mailer_name: 'PublicExhibitorAccessMailer', mailer_action: 'access_link',
-            args: [event, email, challenge], related: access
-          )
-        end
-
-        data = { existing: existing }
+        has_booking = ExhibitorKit.joins(event_vendor: :vendor)
+          .where(event_vendors: { event_id: event.id, type: 'Exhibitor' })
+          .where('LOWER(users.email) = ?', email).exists?
+        data = { existing: existing, has_booking: has_booking }
         data[:new_registration_token] = PublicExhibitorRegistrationToken.issue(event: event, email: email) unless existing
-        render json: { success: true, data: data }, status: existing ? :accepted : :ok
+        render json: { success: true, data: data }, status: :ok
       end
 
       def create

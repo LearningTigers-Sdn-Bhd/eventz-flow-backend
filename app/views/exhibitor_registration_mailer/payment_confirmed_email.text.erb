@@ -13,10 +13,20 @@ Payment Receipt
 - Payment Status: Paid
 - Payment Date: <%= @exhibitor_payment&.paid_at.present? ? @exhibitor_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") : 'Not available' %>
 - Amount Paid: <%= (@exhibitor_payment&.gateway_response&.dig('currency').presence || 'MYR') %> <%= format('%.2f', (@exhibitor_payment&.amount || @exhibitor_kit.amount_paid).to_f) %>
-- Transaction ID: <%= @exhibitor_payment&.gateway_payment_id.presence || 'Not available' %>
-- Order ID: <%= @exhibitor_payment&.gateway_response&.dig('order_id').presence || 'Not available' %>
+<% if @exhibitor_payment&.gateway_payment_id.present? %>
+- Transaction ID: <%= @exhibitor_payment.gateway_payment_id %>
+<% end %>
+<% if @exhibitor_payment&.gateway_response&.dig('order_id').present? %>
+- Order ID: <%= @exhibitor_payment.gateway_response.dig('order_id') %>
+<% end %>
 
 Your booth registration is now fully confirmed.
+
+WHAT TO DO NEXT?
+Your booth payment is confirmed. To prepare your exhibitor passes:
+1. Log in to your exhibitor account at https://eventzflow.com.
+2. Add your team members under your exhibitor account.
+3. Each registered team member will receive an exhibitor pass with a QR code.
 
 <% if @manage_url.present? %>
 Securely manage this booking (email verification required): <%= @manage_url %>

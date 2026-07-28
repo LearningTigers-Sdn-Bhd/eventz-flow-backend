@@ -45,6 +45,7 @@ Rails.application.routes.draw do
         post 'exhibitor_access_sessions', to: 'exhibitor_access_sessions#create'
         get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
         delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
+        get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
         resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
@@ -257,6 +258,7 @@ Rails.application.routes.draw do
         get :ic_copy, on: :member
         member do
           post :submit_order
+          post :reject_payment_proof
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]

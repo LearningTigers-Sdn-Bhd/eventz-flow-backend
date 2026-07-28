@@ -41,6 +41,7 @@ class ExhibitorKit < ApplicationRecord
   before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
+  after_commit :sync_registration_payment_status, if: :just_marked_paid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
@@ -115,6 +116,15 @@ class ExhibitorKit < ApplicationRecord
 
   def should_send_payment_confirmed_email?
     pic_email_address.present? && saved_change_to_payment_status? && paid?
+  end
+
+  def just_marked_paid?
+    saved_change_to_payment_status? && paid? && exhibitor_registration_payment.present? && exhibitor_registration_payment.status != 'paid'
+  end
+
+  def sync_registration_payment_status
+    update!(booking_status: :paid, reservation_expires_at: nil) unless booking_paid?
+    exhibitor_registration_payment.update!(status: 'paid', paid_at: Time.current, payment_method: 'manual_bank_transfer')
   end
 
   def remove_payment_option_when_payment_is_settled

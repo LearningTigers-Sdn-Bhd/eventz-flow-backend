@@ -13,7 +13,7 @@ RSpec.describe PublicExhibitorBookingService do
   let(:price) { create(:exhibitor_booth_price, event: event, exhibitor_zone: zone, quota: 2, price: 100) }
   let(:attributes) do
     { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Pat',
-      pic_contact_number: '123', payment_option: 'later' }
+      pic_contact_number: '123', payment_option: 'later', indemnity_signed: true }
   end
   let(:deliveries) { [] }
   let(:welcome_deliveries) { deliveries.select { |delivery| delivery[:mailer_action] == 'welcome' } }
@@ -33,7 +33,7 @@ RSpec.describe PublicExhibitorBookingService do
     expect(result.idempotent_replay).to be(false)
     expect(welcome_deliveries.first).to include(
       mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
-      args: [user.email, password], related: user, metadata: {}, dedupe: true
+      args: [user.email, password, user.full_name], related: user, metadata: {}, dedupe: true
     )
     expect(password).to match(/\ASabah-[0-9A-F]{8}!\z/)
     expect(user.authenticate(password)).to eq(user)
@@ -100,12 +100,40 @@ RSpec.describe PublicExhibitorBookingService do
     }.to raise_error(described_class::SoldOut)
   end
 
+  it 'rejects a duplicate booth number within the event regardless of case or spaces' do
+    exhibitor
+    described_class.call(event: event, access: access, idempotency_key: 'key-1',
+      attributes: attributes.merge(booth_number: 'A-15'))
+
+    expect {
+      described_class.call(event: event, access: access, idempotency_key: 'key-2',
+        attributes: attributes.merge(booth_number: ' a-15 '))
+    }.to raise_error(described_class::DuplicateBoothNumber)
+  end
+
   it 'forces public bookings to one booth and snapshots one current price' do
     exhibitor
     result = described_class.call(event: event, access: access, idempotency_key: 'key-1',
       attributes: attributes.merge(booth_quantity: 9))
 
     expect(result.kit).to have_attributes(booth_quantity: 1, price_snapshot: 100, amount_paid: 100)
+  end
+
+  it 'persists accepted participation and indemnity agreement' do
+    exhibitor
+    result = described_class.call(event: event, access: access, idempotency_key: 'agreement',
+      attributes: attributes.merge(indemnity_signed: true))
+
+    expect(result.kit).to be_indemnity_signed
+  end
+
+  it 'rejects a booking without participation and indemnity agreement' do
+    exhibitor
+
+    expect {
+      described_class.call(event: event, access: access, idempotency_key: 'missing-agreement',
+        attributes: attributes.merge(indemnity_signed: false))
+    }.to raise_error(described_class::AgreementRequired)
   end
 
   it 'uses a replacement upload instead of a requested source IC copy' do

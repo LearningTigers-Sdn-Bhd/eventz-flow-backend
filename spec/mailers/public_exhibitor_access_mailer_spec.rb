@@ -8,7 +8,9 @@ RSpec.describe PublicExhibitorAccessMailer, type: :mailer do
     expect(mail.to).to eq(['vendor@example.com'])
     expect(mail.bcc).to be_blank
     expect(mail.body.encoded).to include('one-use-token')
-    expect(mail.body.encoded).not_to include('Booth', 'Payment')
+    expect(mail.body.encoded).to include('Access Your Booth Bookings', 'Access My Booth Bookings',
+      'expires in 15 minutes', 'upload payment proof', 'This is an automated email from EventzFlow')
+    expect(mail.body.encoded).not_to include('Company:', 'Amount Paid:', 'Payment Status:')
   end
 
   it 'allows a local HTTP registration URL outside production' do

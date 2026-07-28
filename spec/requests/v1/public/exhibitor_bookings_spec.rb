@@ -17,7 +17,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
     new_headers = { 'X-New-Registration-Token' => registration_token, 'Idempotency-Key' => 'first-booking' }
     price = create(:exhibitor_booth_price, event: event, price: 100)
     params = { exhibitor_booth_price_id: price.id, company_name: 'New Co', pic_full_name: 'New Owner',
-               pic_contact_number: '0123456789' }
+               pic_contact_number: '0123456789', indemnity_signed: true }
 
     post "/v1/public/events/#{event.slug}/exhibitor_bookings", params: params, headers: new_headers
 
@@ -39,7 +39,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     post "/v1/public/events/#{event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Raced Co', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789' },
+                 pic_contact_number: '0123456789', indemnity_signed: true },
       headers: { 'X-New-Registration-Token' => registration_token, 'Idempotency-Key' => 'raced-booking' }
 
     expect(response).to have_http_status(:conflict)
@@ -55,7 +55,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     post "/v1/public/events/#{other_event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Wrong Event', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789' },
+                   pic_contact_number: '0123456789', indemnity_signed: true },
       headers: { 'X-New-Registration-Token' => registration_token, 'Idempotency-Key' => 'wrong-event' }
 
     expect(response).to have_http_status(:unauthorized)
@@ -87,7 +87,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     post "/v1/public/events/#{event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789',
+                 pic_contact_number: '0123456789', indemnity_signed: true,
                 ic_copy_signed_id: blob.signed_id },
       headers: headers.merge('Idempotency-Key' => 'booking-with-ic')
 
@@ -113,7 +113,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     post "/v1/public/events/#{event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789', source_booking_public_id: source.public_id,
+                 pic_contact_number: '0123456789', indemnity_signed: true, source_booking_public_id: source.public_id,
                 reuse_ic_copy: true },
       headers: headers.merge('Idempotency-Key' => 'reused-ic')
 
@@ -124,7 +124,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
     foreign.ic_copy.attach(io: StringIO.new('foreign'), filename: 'foreign.pdf', content_type: 'application/pdf')
     post "/v1/public/events/#{event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789', source_booking_public_id: foreign.public_id,
+                 pic_contact_number: '0123456789', indemnity_signed: true, source_booking_public_id: foreign.public_id,
                 reuse_ic_copy: true },
       headers: headers.merge('Idempotency-Key' => 'foreign-ic')
 
@@ -138,7 +138,7 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     post "/v1/public/events/#{event.slug}/exhibitor_bookings",
       params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
-                pic_contact_number: '0123456789', source_booking_public_id: source.public_id,
+                 pic_contact_number: '0123456789', indemnity_signed: true, source_booking_public_id: source.public_id,
                 reuse_ic_copy: true },
       headers: headers.merge('Idempotency-Key' => 'missing-source-ic')
 
@@ -166,6 +166,19 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
     get "/v1/public/events/#{event.slug}/exhibitor_bookings/#{owned.public_id}", headers: headers
 
     expect(response).to have_http_status(:ok)
+  end
+
+  it 'reports whether a booth number is already assigned in the event' do
+    create(:exhibitor_kit, event_vendor: exhibitor, booth_number: 'A-15')
+
+    get "/v1/public/events/#{event.slug}/exhibitor_booth_number_availability",
+      params: { booth_number: ' a-15 ' }, headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to eq(
+      'success' => true,
+      'data' => { 'available' => false, 'message' => 'Booth number a-15 is already assigned' }
+    )
   end
 
   it 'requires idempotency key and exact optimistic version for updates' do

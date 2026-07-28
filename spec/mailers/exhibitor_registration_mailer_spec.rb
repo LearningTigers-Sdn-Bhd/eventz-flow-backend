@@ -84,6 +84,19 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
       expect(mail.body.encoded).to include('order_exhibitor_123')
     end
 
+    it 'includes next steps for exhibitor passes' do
+      expect(mail.body.encoded).to include('What To Do Next?', 'Add your team members', 'exhibitor passes', 'QR code', 'eventzflow.com')
+    end
+
+    it 'hides unavailable transaction and order identifiers' do
+      payment = exhibitor_kit.exhibitor_registration_payment
+      payment.update!(gateway_payment_id: nil, gateway_response: {})
+
+      body = described_class.payment_confirmed_email(exhibitor_kit).body.encoded
+
+      expect(body).not_to include('Transaction ID:', 'Order ID:', 'Not available')
+    end
+
     it 'styles payment receipt labels with distinct header color' do
       expect(mail.body.encoded).to include('color: #166534;')
     end

@@ -7,6 +7,8 @@ class PublicExhibitorBookingService
   ImmutableBooking = Class.new(StandardError)
   StaleBooking = Class.new(StandardError)
   EmailRequiresAccess = Class.new(StandardError)
+  DuplicateBoothNumber = Class.new(StandardError)
+  AgreementRequired = Class.new(StandardError)
 
   RESERVATION_TTL = 48.hours
   FINGERPRINT_KEY = '_public_booking_fingerprint'
@@ -24,6 +26,7 @@ class PublicExhibitorBookingService
     raise ArgumentError, 'Idempotency-Key is required' if idempotency_key.blank?
 
     normalized = normalize(attributes)
+    raise AgreementRequired unless ActiveModel::Type::Boolean.new.cast(normalized['indemnity_signed'])
     fingerprint = Digest::SHA256.hexdigest(JSON.generate(normalized))
 
     result, new_user, password = ExhibitorKit.transaction do
@@ -40,6 +43,7 @@ class PublicExhibitorBookingService
       end
 
       source = source_booking(normalized)
+      reject_duplicate_booth_number!(normalized['booth_number'])
       booth_price = event.exhibitor_booth_prices.find(normalized.fetch('exhibitor_booth_price_id'))
       ExhibitorBookingCapacity.lock!(booth_price, quantity: 1)
       price = booth_price.current_price
@@ -72,7 +76,7 @@ class PublicExhibitorBookingService
     if new_user
       EmailDelivery::AuditedDelivery.deliver_now(
         mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
-        args: [new_user.email, password], related: new_user, metadata: {}, dedupe: true
+        args: [new_user.email, password, new_user.full_name], related: new_user, metadata: {}, dedupe: true
       )
     end
     result
@@ -99,6 +103,17 @@ class PublicExhibitorBookingService
       kit.update!(changes)
       kit
     end
+  end
+
+  def booth_number_assigned?(booth_number)
+    return false if booth_number.blank?
+
+    normalized_number = normalize_booth_number(booth_number)
+    ExhibitorKit.joins(:event_vendor)
+      .where(event_vendors: { event_id: event.id }, booking_status: %i[active paid])
+      .pluck(:booth_number)
+      .compact
+      .any? { |existing| normalize_booth_number(existing) == normalized_number }
   end
 
   private
@@ -131,6 +146,16 @@ class PublicExhibitorBookingService
     source
   end
 
+  def reject_duplicate_booth_number!(booth_number)
+    return if booth_number.blank?
+
+    raise DuplicateBoothNumber, "Booth number #{booth_number.strip} is already assigned" if booth_number_assigned?(booth_number)
+  end
+
+  def normalize_booth_number(value)
+    value.to_s.downcase.gsub(/\s+/, '')
+  end
+
   def normalize(value)
     case value
     when ActionController::Parameters then normalize(value.to_h)
@@ -142,6 +167,6 @@ class PublicExhibitorBookingService
   end
 
   def booking_fields
-    %w[company_name company_address name_on_fascia pic_full_name pic_position pic_contact_number country booth_number]
+    %w[company_name company_address name_on_fascia pic_full_name pic_position pic_contact_number country booth_number indemnity_signed]
   end
 end

@@ -1,6 +1,41 @@
 require 'rails_helper'
 
 RSpec.describe ExhibitorKitService, type: :service do
+  describe '#update' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:user) { create(:user, :organizer) }
+    let(:exhibitor_kit) do
+      create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event),
+        payment_status: :unpaid, booking_status: :active, reservation_expires_at: 1.day.from_now)
+    end
+    let!(:registration_payment) do
+      create(:exhibitor_registration_payment, exhibitor_kit: exhibitor_kit, status: 'submitted')
+    end
+    let(:params) do
+      ActionController::Parameters.new(
+        exhibitor_kit: { payment_status: 'paid', amount_paid: '1500.00', payment_note: 'Bank transfer verified' }
+      )
+    end
+
+    it 'lets an organizer approve a registration payment' do
+      result = described_class.new(user: user, event: event, params: params).update(exhibitor_kit)
+
+      expect(result).to be_success
+      expect(exhibitor_kit.reload).to have_attributes(
+        payment_status: 'paid',
+        booking_status: 'paid',
+        reservation_expires_at: nil,
+        amount_paid: 1500,
+        payment_note: 'Bank transfer verified'
+      )
+      expect(registration_payment.reload).to have_attributes(
+        status: 'paid',
+        payment_method: 'manual_bank_transfer'
+      )
+      expect(registration_payment.paid_at).to be_present
+    end
+  end
+
   describe '#create' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:user) { create(:user, :vendor) }

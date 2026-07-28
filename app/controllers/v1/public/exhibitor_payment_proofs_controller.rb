@@ -3,7 +3,7 @@ module V1
     class ExhibitorPaymentProofsController < ApplicationController
       include PublicFileValidation
 
-      MAX_FILE_SIZE = 10.megabytes
+      MAX_FILE_SIZE = 15.megabytes
 
       before_action :authenticate_public_exhibitor!
       skip_before_action :authenticate_user!
@@ -12,6 +12,7 @@ module V1
       def create
         kit = owned_kit!
         authorize kit, :update?, policy_class: PublicExhibitorBookingPolicy
+        return render_error('Payment proof can no longer be changed after approval') if kit.paid?
         file = params[:payment_proof]
         unless file&.respond_to?(:content_type)
           return render_error('Payment proof is required')
@@ -23,8 +24,12 @@ module V1
           return render_error("Payment proof is too large (max #{MAX_FILE_SIZE / 1.megabyte}MB)")
         end
 
-        kit.payment_proof.attach(file)
-        render_proof(kit, uploaded: true)
+        payment = kit.exhibitor_registration_payment || kit.build_exhibitor_registration_payment(
+          amount: kit.price_snapshot, currency: kit.currency, status: 'pending', payment_method: 'bank_transfer'
+        )
+        payment.payment_proof.attach(file)
+        payment.update!(status: 'submitted', payment_method: 'bank_transfer', note: nil)
+        render_proof(kit, payment)
       rescue ActiveRecord::RecordNotFound
         render json: { success: false, message: 'Booking not found' }, status: :not_found
       end
@@ -32,8 +37,11 @@ module V1
       def destroy
         kit = owned_kit!
         authorize kit, :update?, policy_class: PublicExhibitorBookingPolicy
-        kit.payment_proof.purge_later if kit.payment_proof.attached?
-        render_proof(kit, uploaded: false)
+        return render_error('Payment proof can no longer be changed after approval') if kit.paid?
+        payment = kit.exhibitor_registration_payment
+        payment&.payment_proof&.purge_later
+        payment&.update!(status: 'pending') if payment&.status.in?(%w[submitted rejected])
+        render_proof(kit, payment)
       rescue ActiveRecord::RecordNotFound
         render json: { success: false, message: 'Booking not found' }, status: :not_found
       end
@@ -56,10 +64,12 @@ module V1
           .find_by!(public_id: params[:public_id])
       end
 
-      def render_proof(kit, uploaded:)
+      def render_proof(kit, payment)
         render json: { success: true, data: { public_id: kit.public_id,
-          payment_proof_uploaded: uploaded,
-          payment_proof_url: uploaded ? url_for(kit.payment_proof) : nil } }
+          payment_status: kit.payment_status,
+          payment_proof_status: payment&.status || 'pending',
+          payment_proof_uploaded: payment&.payment_proof&.attached? || false,
+          payment_proof_url: payment&.payment_proof&.attached? ? url_for(payment.payment_proof) : nil } }
       end
 
       def render_error(message)

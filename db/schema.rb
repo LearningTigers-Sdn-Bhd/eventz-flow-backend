@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_28_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -769,6 +769,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_120000) do
     t.datetime "order_expires_at"
     t.string "currency", default: "MYR", null: false
     t.integer "lock_version", default: 0, null: false
+    t.text "note"
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_registration_payments_on_exhibitor_kit_id", unique: true
     t.index ["gateway_order_id"], name: "index_exhibitor_registration_payments_on_gateway_order_id", unique: true, where: "(gateway_order_id IS NOT NULL)"
     t.index ["gateway_payment_id"], name: "index_exhibitor_registration_payments_on_gateway_payment_id", unique: true, where: "(gateway_payment_id IS NOT NULL)"

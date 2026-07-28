@@ -1,5 +1,6 @@
 class PublicExhibitorBookingSerializer
   def self.summary(kit)
+    payment = kit.exhibitor_registration_payment
     {
       public_id: kit.public_id,
       booking_reference: kit.public_id,
@@ -10,6 +11,9 @@ class PublicExhibitorBookingSerializer
       amount: kit.price_snapshot,
       currency: kit.currency,
       payment_status: kit.payment_status,
+      payment_proof_status: payment&.status || 'pending',
+      payment_proof_uploaded: payment&.payment_proof&.attached? || false,
+      payment_note: payment&.note,
       booking_status: kit.booking_status,
       reservation_expires_at: kit.reservation_expires_at,
       lock_version: kit.lock_version
