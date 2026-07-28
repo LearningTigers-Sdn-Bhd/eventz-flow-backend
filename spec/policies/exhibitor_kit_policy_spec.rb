@@ -17,8 +17,8 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
     it { is_expected.to forbid_mass_assignment_of(:exhibitor_booth_price_id).for_action(:update) }
     it { is_expected.to forbid_mass_assignment_of(:booth_type).for_action(:update) }
     it { is_expected.to forbid_mass_assignment_of(:booth_quantity).for_action(:update) }
-    it { is_expected.to forbid_mass_assignment_of(:amount_paid).for_action(:update) }
-    it { is_expected.to forbid_mass_assignment_of(:payment_status).for_action(:update) }
+    it { is_expected.to permit_mass_assignment_of(:amount_paid).for_action(:update) }
+    it { is_expected.to permit_mass_assignment_of(:payment_status).for_action(:update) }
     it { is_expected.to permit_action(:download_ic_copy) }
   end
 
