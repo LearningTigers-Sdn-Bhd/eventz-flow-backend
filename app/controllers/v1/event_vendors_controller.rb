@@ -12,8 +12,7 @@ module V1
       merchants = @event.event_vendors.merchants.includes(:vendor)
       exhibitors = @event.event_vendors.exhibitors.includes(
         :vendor,
-        :exhibitor_kit,
-        exhibitor_kit: [
+        exhibitor_kits: [
           :exhibitor_team_members,
           :exhibitor_kit_items,
           :exhibitor_kit_printings,
@@ -42,8 +41,7 @@ module V1
         # Reload to get associations
         event_vendor = EventVendor.find(result.data.id) # Find the record
         if event_vendor.is_a?(Exhibitor)
-          event_vendor = EventVendor.includes(:vendor, :exhibitor_kit,
-                                              exhibitor_kit: [:exhibitor_team_members]).find(result.data.id)
+          event_vendor = EventVendor.includes(:vendor, exhibitor_kits: [:exhibitor_team_members]).find(result.data.id)
         else # Merchant
           event_vendor = EventVendor.includes(:vendor).find(result.data.id)
         end
@@ -64,12 +62,13 @@ module V1
       success = ActiveRecord::Base.transaction do
         raise ActiveRecord::Rollback unless @event_vendor.update(vendor_attributes)
 
-        if params[:vendor][:exhibitor_kit_attributes].present? && @event_vendor.is_a?(Exhibitor) && @event_vendor.exhibitor_kit
-          permitted_attrs_structure_for_kit = policy(@event_vendor.exhibitor_kit).permitted_attributes_for_update
+        if params[:vendor][:exhibitor_kit_attributes].present? && @event_vendor.is_a?(Exhibitor)
+          exhibitor_kit = @event_vendor.exhibitor_kits.find(params[:vendor][:exhibitor_kit_attributes][:id])
+          permitted_attrs_structure_for_kit = policy(exhibitor_kit).permitted_attributes_for_update
           strong_exhibitor_kit_params = params[:vendor][:exhibitor_kit_attributes].permit(*permitted_attrs_structure_for_kit)
 
-          if strong_exhibitor_kit_params.present? && !@event_vendor.exhibitor_kit.update(strong_exhibitor_kit_params)
-            @event_vendor.errors.add(:exhibitor_kit, @event_vendor.exhibitor_kit.errors.full_messages.to_sentence)
+          if strong_exhibitor_kit_params.present? && !exhibitor_kit.update(strong_exhibitor_kit_params)
+            @event_vendor.errors.add(:exhibitor_kit, exhibitor_kit.errors.full_messages.to_sentence)
             raise ActiveRecord::Rollback
           end
         end
@@ -112,8 +111,7 @@ module V1
       if @event_vendor.is_a?(Exhibitor)
         @event_vendor = @event.event_vendors.exhibitors.includes(
           :vendor,
-          :exhibitor_kit,
-          exhibitor_kit: [
+          exhibitor_kits: [
             :exhibitor_team_members,
             :exhibitor_kit_items,
             :exhibitor_kit_printings,
@@ -168,8 +166,9 @@ module V1
         }
       }
 
-      if @event.use_exhibitor_kit? && event_vendor.is_a?(Exhibitor) && event_vendor.exhibitor_kit
-        response[:exhibitor_kit] = format_exhibitor_kit(event_vendor.exhibitor_kit)
+      if @event.use_exhibitor_kit? && event_vendor.is_a?(Exhibitor)
+        response[:exhibitor_kits] = event_vendor.exhibitor_kits.map { |kit| format_exhibitor_kit(kit) }
+        response[:exhibitor_kit] = response[:exhibitor_kits].first
       end
 
       response
@@ -217,6 +216,7 @@ module V1
         indemnity_link: exhibitor_kit.indemnity_link,
         exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
         exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
+        exhibitor_booth_price_zone: exhibitor_kit.exhibitor_booth_price&.zone,
         custom_fields_data: exhibitor_kit.custom_fields_data,
         ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id

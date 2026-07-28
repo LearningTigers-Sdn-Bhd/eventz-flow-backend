@@ -14,6 +14,8 @@ class ExhibitorTeamMemberAttendeeSyncService
     upgraded_reused_ticket = false
     ticket = if @team_member.attendee.is_a?(Ticket)
                update_ticket(@team_member.attendee)
+             elsif (shared_ticket = ExhibitorTeamMemberTicketReconciliationService.shared_ticket(@team_member))
+               update_ticket(shared_ticket)
              elsif (upgraded_reused_ticket = reusable_conference_ticket_before_upgrade?) || (reusable_ticket = reusable_borneo_exhibitor_ticket)
                reusable_ticket ||= reusable_borneo_exhibitor_ticket
                update_ticket(reusable_ticket)
@@ -149,36 +151,10 @@ class ExhibitorTeamMemberAttendeeSyncService
   end
 
   def desired_ticket_state(ticket = nil)
-    return %i[pending_payment pending] unless @team_member.exhibitor_kit.paid?
-    return %i[pending_payment pending] if excess_member_requiring_payment?
+    return %i[pending_payment pending] unless ExhibitorTeamMemberTicketReconciliationService.entitled?(@team_member)
     return %i[purchased paid] if ticket&.purchased? && ticket&.paid?
 
     %i[purchased paid]
-  end
-
-  # Returns true if this team member sits in an excess position (beyond the free limit)
-  # AND the event is configured to charge an extra fee for those members.
-  #
-  # Position is determined by ordering all team members for this kit by their database id
-  # (ascending), which preserves insertion order. The first `team_member_limit` members
-  # (0-indexed positions 0 … limit-1) are free; every member at position >= limit is excess.
-  def excess_member_requiring_payment?
-    kit = @team_member.exhibitor_kit
-
-    # No limit configured — all members are free
-    return false unless kit.has_team_member_limit?
-
-    # Limit is configured but no extra fee — excess members are still free
-    return false unless kit.extra_team_member_fee.to_f > 0
-
-    # Determine the 0-based position of this member among all members for this kit
-    all_member_ids = kit.exhibitor_team_members.order(:id).pluck(:id)
-    position = all_member_ids.index(@team_member.id)
-
-    # Guard against the member not being found (should not happen after commit)
-    return false if position.nil?
-
-    position >= kit.team_member_limit
   end
 
   def event

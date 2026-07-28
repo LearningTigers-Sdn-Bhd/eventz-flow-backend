@@ -76,6 +76,25 @@ RSpec.describe 'V1::ReceivedPayments', type: :request do
           end
         end
 
+
+        context 'with two booths owned by one exhibitor' do
+          let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
+          let!(:sibling_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booth_number: 'B456') }
+          let!(:sibling_payment) do
+            create(:exhibitor_kit_payment, exhibitor_kit: sibling_kit, payee: contractor_user)
+          end
+
+          run_test! do |response|
+            data = JSON.parse(response.body)
+            expect(data.pluck('exhibitor_kit_id')).to contain_exactly(exhibitor_kit.id, sibling_kit.id)
+            expect(data.pluck('event_vendor_id').uniq).to eq([exhibitor.id])
+            expect(data.pluck('exhibitor_info').pluck('booth_number')).to contain_exactly(
+              exhibitor_kit.booth_number,
+              sibling_kit.booth_number
+            )
+          end
+        end
+
         context 'as a vendor (exhibitor) - returns empty if not a payee' do
           let(:Authorization) { "Bearer #{jwt_token(vendor_user)}" }
 

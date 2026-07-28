@@ -31,6 +31,12 @@ Rails.application.config.after_initialize do
     )
 
     Sidekiq::Cron::Job.create(
+      name: 'Expire public exhibitor reservations - every minute',
+      cron: '* * * * *',
+      class: 'ExpirePublicExhibitorReservationsJob'
+    )
+
+    Sidekiq::Cron::Job.create(
       name: 'Purge unattached blobs - daily at 4am',
       cron: '0 4 * * *',
       class: 'PurgeUnattachedBlobsJob'

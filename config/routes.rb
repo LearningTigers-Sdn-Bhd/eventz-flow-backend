@@ -40,6 +40,16 @@ Rails.application.routes.draw do
       # Public registration for walk-ins
       post 'payments/webhook', to: 'payments#webhook'
       scope 'events/:event_slug' do
+        post 'exhibitor_email_status', to: 'exhibitor_access_requests#status'
+        post 'exhibitor_access_requests', to: 'exhibitor_access_requests#create'
+        post 'exhibitor_access_sessions', to: 'exhibitor_access_sessions#create'
+        get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
+        delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
+        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
+        post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
+        post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
+        post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'
+        delete 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#destroy'
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
@@ -50,17 +60,12 @@ Rails.application.routes.draw do
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
-        post 'register_exhibitor', to: 'exhibitor_registrations#create'
-        patch 'register_exhibitor', to: 'exhibitor_registrations#update'
-        get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
-        post 'exhibitor_payment_proof', to: 'exhibitor_registrations#upload_payment_proof'
-        delete 'exhibitor_payment_proof', to: 'exhibitor_registrations#remove_payment_proof'
+        match 'register_exhibitor', to: 'exhibitor_registrations#gone', via: %i[post patch]
+        get 'exhibitor_registration_status', to: 'exhibitor_registrations#gone'
+        match 'exhibitor_payment_proof', to: 'exhibitor_registrations#gone', via: %i[post delete]
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
         match 'payments/callback', to: 'payments#callback', via: %i[get post]
-        post 'exhibitor_payments/create_order', to: 'exhibitor_payments#create_order'
-        post 'exhibitor_payments/verify', to: 'exhibitor_payments#verify'
-        match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
         get 'field_availability', to: 'registrations#field_availability'
         post 'registration_uploads', to: 'registration_uploads#create'

@@ -3,6 +3,9 @@ class ExhibitorRegistrationPayment < ApplicationRecord
 
   validates :amount, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :status, inclusion: { in: %w[pending paid failed refunded] }
+  validates :currency, presence: true
+  validates :gateway_order_id, uniqueness: true, allow_nil: true
+  validates :gateway_payment_id, uniqueness: true, allow_nil: true
 
   scope :pending, -> { where(status: "pending") }
   scope :paid, -> { where(status: "paid") }

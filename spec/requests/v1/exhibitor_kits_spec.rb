@@ -76,9 +76,12 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       let(:admin_user) { create(:user, :org_owner) }
       let(:exhibitor_user) { create(:user, :vendor) }
       let!(:exhibitor) { create(:exhibitor, event: event, vendor: exhibitor_user) } # Ensure exhibitor exists
+      let(:booth_price) { create(:exhibitor_booth_price, event: event, quota: 2, price: 100) }
       let(:exhibitor_kit_attributes) do
         {
           event_vendor_id: exhibitor.id,
+          exhibitor_booth_price_id: booth_price.id,
+          booth_quantity: 1,
           booth_number: 'A1',
           booth_type: 'shell_scheme',
           name_on_fascia: 'Test Company',
@@ -94,7 +97,12 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       response(201, 'created') do
         context 'as an exhibitor creating their own kit' do
           let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
-          run_test!
+          let!(:existing_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
+
+          run_test! do |response|
+            expect(exhibitor.reload.exhibitor_kits.count).to eq(2)
+            expect(JSON.parse(response.body)['id']).not_to eq(existing_kit.id)
+          end
         end
 
         context 'as an admin creating a kit for an exhibitor' do
@@ -123,6 +131,17 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
           run_test!
         end
       end
+
+      response(404, 'event vendor belongs to another event') do
+        let(:foreign_event) { create(:event, use_exhibitor_kit: true) }
+        let(:foreign_exhibitor) { create(:exhibitor, event: foreign_event, vendor: exhibitor_user) }
+        let(:exhibitor_kit) do
+          { exhibitor_kit: exhibitor_kit_attributes.merge(event_vendor_id: foreign_exhibitor.id) }
+        end
+        let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
+
+        run_test!
+      end
     end
   end
 
@@ -139,6 +158,21 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, booth_number: 'A1')
     end
     let(:id) { exhibitor_kit_record.id }
+
+    get('show exhibitor_kit') do
+      tags 'Exhibitor Kits'
+      produces 'application/json'
+      security [{ bearerAuth: [] }]
+
+      response(404, 'not found for a foreign event') do
+        let(:other_event) { create(:event, use_exhibitor_kit: true) }
+        let(:other_exhibitor) { create(:exhibitor, event: other_event, vendor: create(:user, :vendor)) }
+        let(:id) { create(:exhibitor_kit, event_vendor: other_exhibitor).id }
+        let(:Authorization) { "Bearer #{jwt_token(admin_user)}" }
+
+        run_test!
+      end
+    end
 
     patch('update exhibitor_kit') do
       tags 'Exhibitor Kits'
@@ -162,23 +196,6 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
             data = JSON.parse(response.body)
             expect(data['booth_number']).to eq('B2')
             expect(data['company_name']).to eq('Admin Changed Co.')
-          end
-        end
-
-        context 'as a contractor updating contractor-managed fields (e.g., payment_status)' do
-          let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
-          # Use the one created with the user
-          let!(:contractor_profile) do
-            contractor_user.reload.exhibition_contractor_profile
-          end
-          let!(:event_contractor) do
-            create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
-          end
-          let(:exhibitor_kit) { { exhibitor_kit: { payment_status: 'paid' } } }
-          let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
-          run_test! do |response|
-            data = JSON.parse(response.body)
-            expect(data['payment_status']).to eq('paid')
           end
         end
 
@@ -244,6 +261,18 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       end
 
       response(403, 'forbidden') do
+        context 'as a contractor attempting to update payment status' do
+          let(:contractor_user) { create(:user, :exhibition_contractor, with_profile: true) }
+          let(:contractor_profile) { contractor_user.reload.exhibition_contractor_profile }
+          let!(:event_contractor) do
+            create(:event_exhibition_contractor, event: event, exhibition_contractor_profile: contractor_profile)
+          end
+          let(:exhibitor_kit) { { exhibitor_kit: { payment_status: 'paid' } } }
+          let(:Authorization) { "Bearer #{jwt_token(contractor_user)}" }
+
+          run_test!
+        end
+
         context 'as an exhibitor updating their own fields (e.g., company_name)' do
           let(:exhibitor_kit) { { exhibitor_kit: { company_name: 'Updated Exhibitor Co.' } } } # Attempt to update
           let(:Authorization) { "Bearer #{jwt_token(exhibitor_user)}" }
@@ -274,6 +303,107 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
           end
         end
       end
+
+      response(404, 'not found for a foreign event') do
+        let(:other_event) { create(:event, use_exhibitor_kit: true) }
+        let(:other_exhibitor) { create(:exhibitor, event: other_event, vendor: create(:user, :vendor)) }
+        let(:id) { create(:exhibitor_kit, event_vendor: other_exhibitor).id }
+        let(:exhibitor_kit) { { exhibitor_kit: { booth_number: 'B2' } } }
+        let(:Authorization) { "Bearer #{jwt_token(admin_user)}" }
+
+        run_test!
+      end
+    end
+  end
+
+  describe 'POST /v1/events/:event_id/exhibitor_kits booking rules' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, quota: 1, price: 100) }
+    let(:headers) { { 'Authorization' => "Bearer #{jwt_token(organizer)}" } }
+    let(:attributes) do
+      attributes_for(:exhibitor_kit).slice(
+        :booth_number, :name_on_fascia, :company_name, :company_address,
+        :pic_full_name, :pic_contact_number, :pic_email_address
+      ).merge(event_vendor_id: exhibitor.id, exhibitor_booth_price_id: booth_price.id, booth_quantity: 1)
+    end
+
+    it 'returns unprocessable content when capacity is exhausted' do
+      create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+        booth_quantity: 1, booking_status: :active)
+
+      post "/v1/events/#{event.id}/exhibitor_kits", params: { exhibitor_kit: attributes }, headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(exhibitor.reload.exhibitor_kits.count).to eq(1)
+    end
+  end
+
+  describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let!(:exhibitor_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, booking_status: :active)
+    end
+    let!(:sibling_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
+    let(:headers) { { 'Authorization' => "Bearer #{jwt_token(organizer)}" } }
+
+    it 'cancels only the requested unpaid active kit and preserves its vendor' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}", headers: headers
+
+      expect(response).to have_http_status(:no_content)
+      expect(exhibitor_kit.reload).to be_booking_cancelled
+      expect(ExhibitorKit.exists?(sibling_kit.id)).to be(true)
+      expect(EventVendor.exists?(exhibitor.id)).to be(true)
+    end
+
+    it 'does not expose a kit through another event' do
+      other_event = create(:event, use_exhibitor_kit: true)
+
+      delete "/v1/events/#{other_event.id}/exhibitor_kits/#{exhibitor_kit.id}", headers: headers
+
+      expect(response).to have_http_status(:not_found)
+      expect(exhibitor_kit.reload).to be_booking_active
+    end
+
+    it 'rejects a paid kit without changing it' do
+      exhibitor_kit.update!(payment_status: :paid)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(exhibitor_kit.reload).to be_booking_active
+    end
+
+    it 'rejects a non-active kit without changing it' do
+      exhibitor_kit.update!(booking_status: :expired)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(exhibitor_kit.reload).to be_booking_expired
+    end
+
+    it 'rejects cancellation while a gateway order remains active' do
+      create(:exhibitor_registration_payment, exhibitor_kit: exhibitor_kit,
+        gateway_order_id: 'order_active', order_expires_at: 10.minutes.from_now)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(exhibitor_kit.reload).to be_booking_active
+    end
+
+    it 'forbids an exhibitor from cancelling a kit' do
+      exhibitor_user = exhibitor.vendor
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}",
+        headers: { 'Authorization' => "Bearer #{jwt_token(exhibitor_user)}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(exhibitor_kit.reload).to be_booking_active
     end
   end
 end

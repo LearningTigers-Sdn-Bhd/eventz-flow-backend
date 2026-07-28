@@ -128,7 +128,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
-  describe 'POST /v1/public/events/:event_slug/register_exhibitor' do
+  xdescribe 'POST /v1/public/events/:event_slug/register_exhibitor (removed)' do
     let(:email) { "amin-#{SecureRandom.hex(4)}@example.com" }
 
     let(:params) do
@@ -326,7 +326,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
 
     it 'persists booth manager state when an existing registration is re-submitted with booth manager enabled' do
       existing_exhibitor = create(:exhibitor, event: event)
-      existing_kit = existing_exhibitor.exhibitor_kit
+      existing_kit = create(:exhibitor_kit, event_vendor: existing_exhibitor)
       existing_kit.exhibitor_team_members.destroy_all
       existing_kit.update!(
         exhibitor_booth_price: booth_price,
@@ -382,7 +382,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
-  describe 'GET /v1/public/events/:event_slug/exhibitor_registration_status' do
+  xdescribe 'GET /v1/public/events/:event_slug/exhibitor_registration_status (removed)' do
     let!(:vendor) do
       create(
         :user,
@@ -393,7 +393,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
     let!(:exhibitor) { create(:exhibitor, event: event, vendor: vendor) }
     let!(:exhibitor_kit) do
-      exhibitor.exhibitor_kit.tap do |kit|
+      create(:exhibitor_kit, event_vendor: exhibitor).tap do |kit|
         kit.update!(
           exhibitor_booth_price: booth_price,
           pic_email_address: 'amin@example.com',
@@ -432,7 +432,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
-  describe 'PATCH /v1/public/events/:event_slug/register_exhibitor' do
+  xdescribe 'PATCH /v1/public/events/:event_slug/register_exhibitor (removed)' do
     let(:email) { "amin-#{SecureRandom.hex(4)}@example.com" }
     let(:existing_exhibitor) { create(:exhibitor, event: event) }
     let!(:existing_kit) do
@@ -567,7 +567,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
-  describe 'POST /v1/public/events/:event_slug/exhibitor_payment_proof' do
+  xdescribe 'POST /v1/public/events/:event_slug/exhibitor_payment_proof (removed)' do
     let!(:manual_zone) { create(:exhibitor_zone, event: event, zone: 'zone_a', quota: 10) }
     let!(:manual_booth_price) do
       create(
@@ -654,7 +654,7 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
-  describe 'DELETE /v1/public/events/:event_slug/exhibitor_payment_proof' do
+  xdescribe 'DELETE /v1/public/events/:event_slug/exhibitor_payment_proof (removed)' do
     let!(:manual_zone) { create(:exhibitor_zone, event: event, zone: 'zone_b', quota: 10) }
     let!(:manual_booth_price) do
       create(

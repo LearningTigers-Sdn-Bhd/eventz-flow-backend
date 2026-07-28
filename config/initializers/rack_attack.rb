@@ -1,3 +1,5 @@
+require 'digest'
+
 class Rack::Attack
   # 1. Allow all Localhost traffic (Development/Test)
   safelist('allow-localhost') do |req|
@@ -77,6 +79,42 @@ class Rack::Attack
 
   throttle('exhibitor_ic_upload/ip', limit: 10, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
+  end
+
+  throttle('exhibitor_access_request/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
+  end
+
+  throttle('exhibitor_access_request/email', limit: 3, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
+      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
+    end
+  end
+
+  throttle('exhibitor_email_status/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
+  end
+
+  throttle('exhibitor_email_status/email', limit: 5, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
+      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
+    end
+  end
+
+  throttle('exhibitor_access_session/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_sessions$}) && req.post?
+  end
+
+  throttle('public_exhibitor_booking/ip', limit: 30, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
+      req.ip
+    end
+  end
+
+  throttle('public_exhibitor_booking/session', limit: 20, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
+      Digest::SHA256.hexdigest(req.get_header('HTTP_AUTHORIZATION').to_s)
+    end
   end
 
   # 11. Public Payment Proof Uploads

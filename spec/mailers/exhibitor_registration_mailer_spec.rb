@@ -31,6 +31,9 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     it 'includes booth and amount details' do
       expect(mail.body.encoded).to include('International')
       expect(mail.body.encoded).to include('RM 9000.0')
+      expect(mail.body.encoded).to include(exhibitor_kit.public_id)
+      expect(mail.body.encoded).to include('Securely manage this booking')
+      expect(mail.bcc).to be_blank
     end
   end
 
@@ -74,7 +77,7 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     it 'includes payment receipt details' do
       expect(mail.body.encoded).to include('Payment Receipt')
       expect(mail.body.encoded).to include('Receipt No')
-      expect(mail.body.encoded).to include("EXH-#{exhibitor_kit.id}")
+      expect(mail.body.encoded).to include("EXH-#{exhibitor_kit.public_id}")
       expect(mail.body.encoded).to include('Amount Paid')
       expect(mail.body.encoded).to include('MYR 9000.00')
       expect(mail.body.encoded).to include('pay_exhibitor_123')
@@ -84,5 +87,17 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     it 'styles payment receipt labels with distinct header color' do
       expect(mail.body.encoded).to include('color: #166534;')
     end
+  end
+
+
+  it 'keeps sibling booking references separate' do
+    sibling = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+      pic_email_address: exhibitor_kit.pic_email_address)
+    first = described_class.registration_received_email(exhibitor_kit)
+    second = described_class.registration_received_email(sibling)
+
+    expect(first.body.encoded).to include(exhibitor_kit.public_id)
+    expect(first.body.encoded).not_to include(sibling.public_id)
+    expect(second.body.encoded).to include(sibling.public_id)
   end
 end

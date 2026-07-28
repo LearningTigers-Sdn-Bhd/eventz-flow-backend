@@ -48,6 +48,10 @@
         <div class="info">
           <table>
             <tr>
+              <td>Booking Reference:</td>
+              <td><%= @booking_reference %></td>
+            </tr>
+            <tr>
               <td>Event:</td>
               <td><%= @event.title %></td>
             </tr>
@@ -80,6 +84,10 @@
           <div class="notice">
             Your selected booth requires price negotiation. Please await further instructions regarding pricing.
           </div>
+        <% end %>
+
+        <% if @manage_url.present? %>
+          <p class="closing"><a href="<%= @manage_url %>" style="color: #2563eb; font-weight: bold;">Securely manage this booking</a>. Email verification is required.</p>
         <% end %>
 
         <% if @contact_email.present? %>

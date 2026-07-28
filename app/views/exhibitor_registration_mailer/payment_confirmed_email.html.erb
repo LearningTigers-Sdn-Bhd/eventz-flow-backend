@@ -52,6 +52,10 @@
         <div class="info">
           <table>
             <tr>
+              <td>Booking Reference:</td>
+              <td><%= @booking_reference %></td>
+            </tr>
+            <tr>
               <td>Event:</td>
               <td><%= @event.title %></td>
             </tr>
@@ -79,7 +83,7 @@
           <table>
             <tr>
               <td>Receipt No:</td>
-              <td>EXH-<%= @exhibitor_kit.id %></td>
+              <td>EXH-<%= @booking_reference %></td>
             </tr>
             <tr>
               <td>Payment Status:</td>
@@ -116,6 +120,10 @@
         <div class="notice">
           Your registration and booth reservation are fully confirmed. We look forward to welcoming you.
         </div>
+
+        <% if @manage_url.present? %>
+          <p class="closing"><a href="<%= @manage_url %>" style="color: #16a34a; font-weight: bold;">Securely manage this booking</a>. Email verification is required.</p>
+        <% end %>
 
         <% if @contact_email.present? %>
           <p class="closing">If you need support, contact us at <a href="mailto:<%= @contact_email %>" style="color: #16a34a; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.</p>

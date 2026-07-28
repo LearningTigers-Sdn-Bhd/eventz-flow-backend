@@ -15,6 +15,11 @@ module V1
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
+      def gone
+        render json: { success: false, code: 'legacy_exhibitor_endpoint_removed',
+          message: 'This exhibitor endpoint is no longer available' }, status: :gone
+      end
+
       def booth_prices
         event = Event.friendly.find(params[:event_slug])
 
@@ -260,26 +265,27 @@ module V1
           event.with_lock do
             exhibitor = Exhibitor.find_by(event: event, vendor: user)
 
-            if exhibitor&.exhibitor_kit.present?
-              ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
-              return exhibitor.exhibitor_kit
+            if exhibitor&.legacy_exhibitor_kit.present?
+              ensure_booth_manager_team_member!(exhibitor.legacy_exhibitor_kit)
+              return exhibitor.legacy_exhibitor_kit
             end
 
             ensure_zone_capacity!(booth_price: booth_price)
 
             if exhibitor.present?
-              kit = exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+              kit = exhibitor.exhibitor_kits.create!(build_exhibitor_kit_attributes(booth_price))
               attach_ic_copy!(event: event, exhibitor_kit: kit)
               ensure_booth_manager_team_member!(kit)
               return kit
             end
 
             exhibitor = Exhibitor.new(event: event, vendor: user)
-            exhibitor.build_exhibitor_kit(build_exhibitor_kit_attributes(booth_price))
+            exhibitor.exhibitor_kits.build(build_exhibitor_kit_attributes(booth_price))
             exhibitor.save!
-            attach_ic_copy!(event: event, exhibitor_kit: exhibitor.exhibitor_kit)
-            ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
-            exhibitor.exhibitor_kit
+            kit = exhibitor.legacy_exhibitor_kit
+            attach_ic_copy!(event: event, exhibitor_kit: kit)
+            ensure_booth_manager_team_member!(kit)
+            kit
           end
         end
       end
@@ -524,11 +530,10 @@ module V1
 
       def find_existing_registration(event:, email:)
         event.exhibitors
-             .joins(:exhibitor_kit, :vendor)
+             .joins(:exhibitor_kits, :vendor)
              .where('LOWER(exhibitor_kits.pic_email_address) = :email OR LOWER(users.email) = :email', email: email)
-             .includes(exhibitor_kit: :exhibitor_booth_price)
-             .map(&:exhibitor_kit)
-             .compact
+             .includes(exhibitor_kits: :exhibitor_booth_price)
+             .flat_map(&:exhibitor_kits)
              .max_by(&:created_at)
       end
 

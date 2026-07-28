@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_26_083000) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_28_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -731,8 +731,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_26_083000) do
     t.bigint "exhibitor_booth_price_id"
     t.string "booth_type"
     t.integer "booth_quantity", default: 1, null: false
+    t.string "public_id", default: -> { "(gen_random_uuid())::text" }, null: false
+    t.string "idempotency_key"
+    t.integer "booking_status", default: 0, null: false
+    t.datetime "reservation_expires_at"
+    t.decimal "price_snapshot", precision: 10, scale: 2, default: "0.0", null: false
+    t.string "currency", default: "MYR", null: false
+    t.integer "lock_version", default: 0, null: false
+    t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
+    t.index ["public_id"], name: "index_exhibitor_kits_on_public_id", unique: true
   end
 
   create_table "exhibitor_owners", force: :cascade do |t|
@@ -756,8 +765,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_26_083000) do
     t.datetime "paid_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "gateway_order_id"
+    t.datetime "order_expires_at"
+    t.string "currency", default: "MYR", null: false
+    t.integer "lock_version", default: 0, null: false
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_registration_payments_on_exhibitor_kit_id", unique: true
-    t.index ["gateway_payment_id"], name: "index_exhibitor_registration_payments_on_gateway_payment_id"
+    t.index ["gateway_order_id"], name: "index_exhibitor_registration_payments_on_gateway_order_id", unique: true, where: "(gateway_order_id IS NOT NULL)"
+    t.index ["gateway_payment_id"], name: "index_exhibitor_registration_payments_on_gateway_payment_id", unique: true, where: "(gateway_payment_id IS NOT NULL)"
   end
 
   create_table "exhibitor_team_member_limits", force: :cascade do |t|
@@ -1008,6 +1022,24 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_26_083000) do
     t.datetime "updated_at", null: false
     t.index ["item_category_id"], name: "index_printing_services_on_item_category_id"
     t.index ["user_id"], name: "index_printing_services_on_user_id"
+  end
+
+  create_table "public_exhibitor_access_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "normalized_email", null: false
+    t.string "challenge_digest", null: false
+    t.datetime "challenge_expires_at", null: false
+    t.datetime "challenge_consumed_at"
+    t.string "session_digest"
+    t.datetime "expires_at"
+    t.datetime "revoked_at"
+    t.datetime "last_used_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_digest"], name: "index_public_exhibitor_access_sessions_on_challenge_digest", unique: true
+    t.index ["event_id", "normalized_email"], name: "idx_on_event_id_normalized_email_b1c25e2564"
+    t.index ["event_id"], name: "index_public_exhibitor_access_sessions_on_event_id"
+    t.index ["session_digest"], name: "index_public_exhibitor_access_sessions_on_session_digest", unique: true, where: "(session_digest IS NOT NULL)"
   end
 
   create_table "registration_form_rsvp_settings", force: :cascade do |t|
@@ -1647,6 +1679,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_26_083000) do
   add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
   add_foreign_key "printing_services", "users"
+  add_foreign_key "public_exhibitor_access_sessions", "events"
   add_foreign_key "registration_form_rsvp_settings", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "registration_forms"
   add_foreign_key "registration_form_ticket_types", "ticket_types"

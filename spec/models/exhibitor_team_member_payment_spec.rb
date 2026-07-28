@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe ExhibitorTeamMemberPayment, type: :model do
   let(:event) { create(:event, status: :published, use_exhibitor_kit: true) }
   let(:vendor) { create(:user, :vendor) }
-  let(:exhibitor) { create(:exhibitor, event: event, vendor: vendor) }
+  let(:exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event, vendor: vendor) }
   let(:kit) { exhibitor.exhibitor_kit }
 
   describe 'validations for payment_gateway source' do

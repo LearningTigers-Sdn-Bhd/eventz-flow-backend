@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe 'Event vendor extra team member payment mode', type: :request do
   let(:vendor_user) { create(:user, :vendor) }
   let(:event) { create(:event, use_exhibitor_kit: true) }
-  let!(:exhibitor) { create(:exhibitor, event: event, vendor: vendor_user) }
+  let!(:exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event, vendor: vendor_user) }
 
   describe 'GET /v1/events/:event_id/vendors' do
     it 'returns payment_gateway mode when the event has a custom gateway' do
