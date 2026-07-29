@@ -69,6 +69,7 @@ Rails.application.routes.draw do
         match 'payments/callback', to: 'payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
         get 'field_availability', to: 'registrations#field_availability'
+        get 'vehicle_registration', to: 'registrations#vehicle_registration'
         post 'registration_uploads', to: 'registration_uploads#create'
         post 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#create'
         delete 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#destroy'

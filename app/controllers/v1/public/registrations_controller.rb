@@ -171,6 +171,53 @@ module V1
         }
       end
 
+      def vehicle_registration
+        event = Event.friendly.find(params[:event_slug])
+        form = event.registration_forms.active.find_by(slug: params[:form_slug])
+        return render json: { success: false, message: 'Registration form not found' }, status: :not_found unless form
+
+        plate = VehicleRegistration.normalize_plate(params[:plate])
+        if plate.blank?
+          return render json: { success: false, message: 'Car plate number is required' },
+                        status: :unprocessable_content
+        end
+
+        rules = VehicleRegistrationRules.new(form)
+        vehicle = VehicleRegistration.includes(:registration_form, :base_ticket_type)
+                                     .find_by(event: event, normalized_plate: plate)
+        vehicle ||= VehicleRegistrationLegacyAdopter.call(event: event, normalized_plate: plate)
+
+        if vehicle && vehicle.registration_form_id != form.id
+          return render json: {
+            success: true,
+            data: {
+              status: 'wrong_form',
+              plate: plate,
+              occupancy: vehicle.active_tickets.count,
+              capacity: VehicleRegistrationRules.new(vehicle.registration_form).capacity,
+              registered_form_slug: vehicle.registration_form.slug,
+              registered_form_name: vehicle.registration_form.name,
+              allowed_ticket_type_ids: []
+            }
+          }
+        end
+
+        render json: {
+          success: true,
+          data: {
+            status: rules.status(vehicle),
+            plate: plate,
+            occupancy: vehicle&.active_tickets&.count || 0,
+            capacity: rules.capacity,
+            registered_form_slug: vehicle&.registration_form&.slug,
+            registered_form_name: vehicle&.registration_form&.name,
+            allowed_ticket_type_ids: rules.allowed_ticket_types(vehicle).pluck(:id)
+          }
+        }
+      rescue VehicleRegistrationRules::UnsupportedForm => e
+        render json: { success: false, message: e.message }, status: :unprocessable_content
+      end
+
       def create
         event = Event.friendly.find(params[:event_slug])
         form = nil
@@ -206,6 +253,13 @@ module V1
         end
 
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
+        if form.nil? && vehicle_registration_ticket_type?(event: event, ticket_type: ticket_type)
+          return render json: {
+            success: false,
+            message: 'Registration form is required for this vehicle ticket'
+          }, status: :unprocessable_content
+        end
+
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
         approval_enabled = delegate_approval_enabled_for_form?(form)
@@ -257,7 +311,22 @@ module V1
         end
 
         begin
-          saved = ticket.save
+          saved = if VehicleRegistrationRules::FORM_RULES.key?(form&.slug)
+                    VehicleRegistrationAssignment.new(
+                      event: event,
+                      form: form,
+                      ticket: ticket,
+                      plate: params[:vehicle_plate]
+                    ).save
+                  else
+                    ticket.save
+                  end
+        rescue VehicleRegistrationAssignment::Error => e
+          return render json: {
+            success: false,
+            code: 'vehicle_registration_conflict',
+            message: e.message
+          }, status: :unprocessable_content
         rescue ActiveRecord::RecordNotUnique
           # The model validation races under concurrent submits; the partial
           # unique index does not. Same message either way.
@@ -329,6 +398,14 @@ module V1
       end
 
       private
+
+      def vehicle_registration_ticket_type?(event:, ticket_type:)
+        event.registration_forms
+             .where(slug: VehicleRegistrationRules::FORM_RULES.keys)
+             .joins(:registration_form_ticket_types)
+             .where(registration_form_ticket_types: { ticket_type_id: ticket_type.id })
+             .exists?
+      end
 
       def registration_params
         permitted = params.permit(

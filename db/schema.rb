@@ -1400,6 +1400,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.string "role"
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
+    t.bigint "vehicle_registration_id"
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL))"
     t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
@@ -1414,6 +1415,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
+    t.index ["vehicle_registration_id"], name: "index_tickets_on_vehicle_registration_id"
   end
 
   create_table "user_sessions", force: :cascade do |t|
@@ -1452,6 +1454,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.index ["email"], name: "index_users_on_email"
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["status"], name: "index_users_on_status"
+  end
+
+  create_table "vehicle_registrations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.bigint "base_ticket_type_id", null: false
+    t.string "plate", null: false
+    t.string "normalized_plate", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["base_ticket_type_id"], name: "index_vehicle_registrations_on_base_ticket_type_id"
+    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true
+    t.index ["event_id"], name: "index_vehicle_registrations_on_event_id"
+    t.index ["registration_form_id"], name: "index_vehicle_registrations_on_registration_form_id"
   end
 
   create_table "vendor_profiles", force: :cascade do |t|
@@ -1721,8 +1737,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "tickets", "vehicle_registrations"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
+  add_foreign_key "vehicle_registrations", "events"
+  add_foreign_key "vehicle_registrations", "registration_forms"
+  add_foreign_key "vehicle_registrations", "ticket_types", column: "base_ticket_type_id"
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
   add_foreign_key "visitors", "events"
   add_foreign_key "visitors", "users", column: "scanned_by_id"
