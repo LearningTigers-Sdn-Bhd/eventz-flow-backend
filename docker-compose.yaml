@@ -20,6 +20,7 @@ services:
   web:
     build: .
     image: eventz-flow-backend:latest
+    pull_policy: build
     depends_on:
       postgres-db:
         condition: service_healthy
@@ -44,6 +45,7 @@ services:
 
   sidekiq:
     image: eventz-flow-backend:latest
+    pull_policy: if_not_present
     command: bundle exec sidekiq
     depends_on:
       postgres-db:
