@@ -34,6 +34,7 @@ module V1
           total_events: 0,
           active_events: 0,
           total_exhibitors: 0,
+          total_booths: 0,
           total_received_amount: 0.0,
           pending_payments_count: 0,
           verified_payments_count: 0
@@ -53,7 +54,7 @@ module V1
 
     def build_event_data(event)
       payments = payments_for_event(event)
-      exhibitors_count = exhibitors_count_for_event(event)
+      exhibitors_count, booths_count = exhibitor_counts_for_event(event)
 
       {
         id: event.id,
@@ -62,6 +63,7 @@ module V1
         start_date: event.start_date&.iso8601,
         end_date: event.end_date&.iso8601,
         exhibitors_count: exhibitors_count,
+        booths_count: booths_count,
         total_received_amount: payments.verified.sum(:amount).to_f,
         pending_payments_count: payments.pending.count + payments.submitted.count,
         verified_payments_count: payments.verified.count
@@ -75,14 +77,14 @@ module V1
         .where(event_vendors: { event_id: event.id })
     end
 
-    def exhibitors_count_for_event(event)
-      ExhibitorKit
+    def exhibitor_counts_for_event(event)
+      kits = ExhibitorKit
         .joins(event_vendor: :event)
         .joins(exhibitor_kit_payments: {})
         .where(event_vendors: { event_id: event.id })
         .where(exhibitor_kit_payments: { payee_id: current_user.id })
-        .distinct
-        .count
+
+      [kits.distinct.count(:event_vendor_id), kits.distinct.count(:id)]
     end
 
     def build_summary(events_data)
@@ -90,6 +92,7 @@ module V1
         total_events: events_data.count,
         active_events: events_data.count { |e| e[:status] == 'published' },
         total_exhibitors: events_data.sum { |e| e[:exhibitors_count] },
+        total_booths: events_data.sum { |e| e[:booths_count] },
         total_received_amount: events_data.sum { |e| e[:total_received_amount] },
         pending_payments_count: events_data.sum { |e| e[:pending_payments_count] },
         verified_payments_count: events_data.sum { |e| e[:verified_payments_count] }

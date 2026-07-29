@@ -1,6 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe ExhibitorKit, type: :model do
+  it 'generates a short public id for new kits' do
+    kit = build(:exhibitor_kit)
+
+    expect(kit).to be_valid
+    expect(kit.public_id).to match(/\A[1-9A-HJ-NP-Za-km-z]{22}\z/)
+  end
   include ActiveJob::TestHelper
   let(:event) { create(:event, use_ticket: true) }
   let(:vendor_user) { create(:user, :vendor) }
@@ -8,7 +14,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
   subject { build(:exhibitor_kit, event_vendor: exhibitor) }
 
-  it { should belong_to(:event_vendor) }
+  it { should belong_to(:event_vendor).inverse_of(:exhibitor_kits) }
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
   it { should validate_presence_of(:booth_type) }
 
@@ -16,6 +22,39 @@ RSpec.describe ExhibitorKit, type: :model do
 
   it { should validate_presence_of(:pic_full_name) }
   it { should validate_presence_of(:pic_contact_number) }
+
+  it do
+    should define_enum_for(:booking_status)
+      .with_values(active: 0, paid: 1, cancelled: 2, expired: 3)
+      .with_prefix(:booking)
+  end
+
+  it { should validate_uniqueness_of(:public_id).ignoring_case_sensitivity }
+  it { should validate_uniqueness_of(:idempotency_key).scoped_to(:event_vendor_id).allow_nil }
+
+  it 'allows multiple legacy rows without idempotency keys' do
+    create(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: nil)
+
+    expect(build(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: nil)).to be_valid
+  end
+
+  it 'allows the same idempotency key for different exhibitors' do
+    create(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: 'registration-1')
+    other_exhibitor = create(:exhibitor)
+
+    expect(build(:exhibitor_kit, event_vendor: other_exhibitor, idempotency_key: 'registration-1')).to be_valid
+  end
+
+  it 'generates a short public id and lifecycle defaults' do
+    exhibitor_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+    expect(exhibitor_kit.public_id).to match(/\A[1-9A-HJ-NP-Za-km-z]{22}\z/)
+    expect(exhibitor_kit).to be_booking_active
+    expect(exhibitor_kit.price_snapshot).to eq(0)
+    expect(exhibitor_kit.currency).to eq('MYR')
+    expect(exhibitor_kit.lock_version).to eq(0)
+    expect(exhibitor_kit.reservation_expires_at).to be_nil
+  end
 
   it { should allow_value('test@example.com').for(:pic_email_address) }
   it { should_not allow_value('invalid-email').for(:pic_email_address) }

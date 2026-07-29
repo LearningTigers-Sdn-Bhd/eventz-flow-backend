@@ -775,7 +775,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
 
     it 'marks exhibitor registration payment as paid for exhibitor webhook notes' do
       vendor = create(:user, :vendor, email: 'exhibitor@example.com')
-      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event, vendor: vendor)
       booth_price = create(:exhibitor_booth_price, event: event, booth_type: 'shell_scheme', label: 'Malaysian',
                                                    price: 1500)
       exhibitor_kit = exhibitor.exhibitor_kit
@@ -823,7 +823,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     it 'uses the event-specific gateway when exhibitor webhook notes include event_slug' do
       gateway_event = create(:event, status: :published)
       vendor = create(:user, :vendor, email: 'event-gateway@example.com')
-      exhibitor = create(:exhibitor, event: gateway_event, vendor: vendor)
+      exhibitor = create(:exhibitor, :with_exhibitor_kit, event: gateway_event, vendor: vendor)
       booth_price = create(:exhibitor_booth_price, event: gateway_event, booth_type: 'shell_scheme',
                                                    label: 'Premium', price: 1800)
       exhibitor_kit = exhibitor.exhibitor_kit
@@ -867,7 +867,7 @@ RSpec.describe 'V1::Public::Payments', type: :request do
 
     it 'returns ok and keeps exhibitor registration paid when payment.captured is replayed' do
       vendor = create(:user, :vendor, email: 'replay@example.com')
-      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event, vendor: vendor)
       booth_price = create(:exhibitor_booth_price, event: event, booth_type: 'shell_scheme', label: 'Replay',
                                                    price: 2000)
       exhibitor_kit = exhibitor.exhibitor_kit
@@ -922,7 +922,9 @@ RSpec.describe 'V1::Public::Payments', type: :request do
     context 'extra_team_member payment type' do
       let(:extra_team_member_event) { create(:event, status: :published, use_exhibitor_kit: true) }
       let(:vendor) { create(:user, :vendor) }
-      let(:exhibitor) { create(:exhibitor, event: extra_team_member_event, vendor: vendor) }
+      let(:exhibitor) do
+        create(:exhibitor, :with_exhibitor_kit, event: extra_team_member_event, vendor: vendor)
+      end
       let(:kit) { exhibitor.exhibitor_kit }
       let!(:payment) do
         kit.exhibitor_team_member_payments.create!(

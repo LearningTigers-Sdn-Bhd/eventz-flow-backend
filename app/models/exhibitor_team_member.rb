@@ -25,6 +25,7 @@ class ExhibitorTeamMember < ApplicationRecord
   def destroy_attendee_record
     return attendee&.destroy! unless attendee.is_a?(Ticket)
     return unless attendee.ticket_type&.name == ExhibitorTeamMemberAttendeeSyncService::EXHIBITOR_TICKET_TYPE_NAME
+    return if ExhibitorTeamMemberTicketReconciliationService.shared?(self, excluding: self)
 
     attendee.destroy!
   end
@@ -36,6 +37,8 @@ class ExhibitorTeamMember < ApplicationRecord
   def reconcile_tickets_after_destroy
     return if @exhibitor_kit_for_reconciliation.blank?
 
-    ExhibitorTeamMemberTicketReconciliationService.new(@exhibitor_kit_for_reconciliation).call
+    @exhibitor_kit_for_reconciliation.event_vendor.exhibitor_kits.each do |kit|
+      ExhibitorTeamMemberTicketReconciliationService.new(kit).call
+    end
   end
 end

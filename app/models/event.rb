@@ -22,6 +22,7 @@ class Event < ApplicationRecord
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
+  has_many :public_exhibitor_access_sessions, dependent: :destroy
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
   has_many :wishes, dependent: :destroy

@@ -18,6 +18,7 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
           'total_events' => 0,
           'active_events' => 0,
           'total_exhibitors' => 0,
+          'total_booths' => 0,
           'total_received_amount' => 0.0,
           'pending_payments_count' => 0,
           'verified_payments_count' => 0
@@ -58,6 +59,7 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
           'title' => event1.title,
           'status' => 'published',
           'exhibitors_count' => 0,
+          'booths_count' => 0,
           'total_received_amount' => 0.0,
           'pending_payments_count' => 0,
           'verified_payments_count' => 0
@@ -75,7 +77,7 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
                exhibition_contractor_profile: contractor_profile)
       end
       let!(:exhibitor) { create(:exhibitor, event: event) }
-      let!(:exhibitor_kit) { exhibitor.exhibitor_kit }
+      let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
 
       let!(:verified_payment) do
         create(:exhibitor_kit_payment, :verified,
@@ -114,6 +116,31 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
         expect(event_data['pending_payments_count']).to eq(2)
         expect(event_data['verified_payments_count']).to eq(1)
         expect(event_data['exhibitors_count']).to eq(1)
+        expect(event_data['booths_count']).to eq(1)
+      end
+    end
+
+    context 'as exhibition contractor with one exhibitor using two booths' do
+      let!(:event) { create(:event, status: :published) }
+      let!(:event_contractor) do
+        create(:event_exhibition_contractor,
+               event: event,
+               exhibition_contractor_profile: contractor_profile)
+      end
+      let!(:exhibitor) { create(:exhibitor, event: event) }
+
+      before do
+        create_list(:exhibitor_kit, 2, event_vendor: exhibitor).each do |kit|
+          create(:exhibitor_kit_payment, :verified, exhibitor_kit: kit, payee: contractor)
+        end
+      end
+
+      it 'counts the exhibitor and booths separately' do
+        get '/v1/contractor/dashboard', headers: auth_headers(contractor)
+
+        event_data = json_body['events'].find { |item| item['id'] == event.id }
+        expect(event_data).to include('exhibitors_count' => 1, 'booths_count' => 2)
+        expect(json_body['summary']).to include('total_exhibitors' => 1, 'total_booths' => 2)
       end
     end
 
@@ -126,14 +153,16 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
       end
       let!(:exhibitor1) { create(:exhibitor, event: event) }
       let!(:exhibitor2) { create(:exhibitor, event: event) }
+      let!(:exhibitor1_kit) { create(:exhibitor_kit, event_vendor: exhibitor1) }
+      let!(:exhibitor2_kit) { create(:exhibitor_kit, event_vendor: exhibitor2) }
 
       before do
         create(:exhibitor_kit_payment, :verified,
-               exhibitor_kit: exhibitor1.exhibitor_kit,
+               exhibitor_kit: exhibitor1_kit,
                payee: contractor,
                amount: 100.00)
         create(:exhibitor_kit_payment, :verified,
-               exhibitor_kit: exhibitor2.exhibitor_kit,
+               exhibitor_kit: exhibitor2_kit,
                payee: contractor,
                amount: 200.00)
       end
@@ -193,16 +222,17 @@ RSpec.describe 'V1::ContractorDashboard', type: :request do
                exhibition_contractor_profile: contractor_profile)
       end
       let!(:exhibitor) { create(:exhibitor, event: event) }
+      let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
 
       before do
         # Payment to current contractor
         create(:exhibitor_kit_payment, :verified,
-               exhibitor_kit: exhibitor.exhibitor_kit,
+               exhibitor_kit: exhibitor_kit,
                payee: contractor,
                amount: 100.00)
         # Payment to other contractor (should not be included)
         create(:exhibitor_kit_payment, :verified,
-               exhibitor_kit: exhibitor.exhibitor_kit,
+               exhibitor_kit: exhibitor_kit,
                payee: other_contractor,
                amount: 999.00)
       end

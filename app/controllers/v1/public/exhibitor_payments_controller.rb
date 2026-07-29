@@ -1,210 +1,163 @@
 # frozen_string_literal: true
 
-require 'cgi'
-
 module V1
   module Public
     class ExhibitorPaymentsController < ApplicationController
+      ORDER_TTL = 30.minutes
+      ACCEPTED_PAYMENT_STATUSES = %w[authorized captured].freeze
+
+      before_action :authenticate_public_exhibitor!
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
       def create_order
-        event = Event.friendly.find(params[:event_slug])
-        exhibitor_kit = find_exhibitor_kit!(event)
+        kit = owned_kit!
+        authorize kit, :show?, policy_class: PublicExhibitorBookingPolicy
+        gateway = Payments::RazorpayGateway.for_event(@event)
+        response = nil
 
-        if exhibitor_kit.paid?
-          return render json: {
-            success: true,
-            data: {
-              already_paid: true,
-              exhibitor_kit_id: exhibitor_kit.id,
-              payment_status: exhibitor_kit.payment_status
-            }
-          }, status: :ok
+        ExhibitorKit.transaction do
+          kit.lock!
+          return render_paid(kit) if kit.paid?
+          ensure_payable!(kit)
+
+          payment = kit.exhibitor_registration_payment || kit.create_exhibitor_registration_payment!(
+            gateway: 'razorpay', amount: kit.price_snapshot, currency: kit.currency, status: 'pending'
+          )
+          payment.lock!
+          if reusable_order?(payment, kit)
+            response = payment.gateway_response
+          else
+            response = gateway.create_order(
+              amount_subunits: amount_subunits(kit), receipt: "exh_#{kit.public_id.delete('-')}",
+              notes: { type: 'exhibitor_registration', event_slug: @event.slug, booking_public_id: kit.public_id }
+            )
+            order_id = response['id'].presence || response['order_id'].presence
+            raise PaymentError, 'invalid_gateway_order' if order_id.blank?
+            payment.update!(amount: kit.price_snapshot, currency: kit.currency, status: 'pending',
+              gateway_order_id: order_id, order_expires_at: ORDER_TTL.from_now, gateway_response: response)
+          end
         end
 
-        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
-        reusable_order = reusable_gateway_order(payment)
-
-        gateway = Payments::RazorpayGateway.for_event(event)
-
-        order = if reusable_order.present?
-                  reusable_order
-                else
-                  created_order = gateway.create_order(
-                    amount_subunits: (exhibitor_kit.amount_paid.to_f * 100).round,
-                    receipt: "exhibitor_kit_#{exhibitor_kit.id}",
-                    notes: {
-                      type: 'exhibitor_registration',
-                      event_slug: event.slug,
-                      exhibitor_kit_id: exhibitor_kit.id
-                    }
-                  )
-
-                  payment.update!(
-                    amount: exhibitor_kit.amount_paid.to_f,
-                    status: 'pending',
-                    gateway_response: created_order
-                  )
-
-                  created_order
-                end
-
-        callback_url = url_for(
-          controller: 'v1/public/exhibitor_payments',
-          action: 'callback',
-          event_slug: event.slug,
-          exhibitor_kit_id: exhibitor_kit.id,
-          only_path: false
-        )
-
-        render json: {
-          success: true,
-          data: {
-            exhibitor_kit_id: exhibitor_kit.id,
-            key_id: gateway.key_id,
-            order_id: order['id'] || order['order_id'],
-            amount: order['amount'],
-            currency: order['currency'] || 'MYR',
-            callback_url: callback_url
-          }
-        }, status: :ok
+        render json: { success: true, data: { public_id: kit.public_id, key_id: gateway.key_id,
+          order_id: response['id'] || response['order_id'], amount: response['amount'], currency: kit.currency } }
       rescue ActiveRecord::RecordNotFound
-        render json: { success: false, message: 'Event or exhibitor kit not found' }, status: :not_found
-      rescue KeyError => e
-        render json: { success: false, message: "Payment config missing: #{e.message}" }, status: :unprocessable_content
+        render_payment_error('booking_not_found', 'Booking not found', :not_found)
+      rescue PaymentError => e
+        render_payment_error(e.message, 'Booking cannot be paid', :unprocessable_content)
       rescue StandardError => e
-        render json: { success: false, message: e.message }, status: :unprocessable_content
+        Rails.logger.error("Exhibitor payment order failed: #{e.class}")
+        render_payment_error('payment_order_failed', 'Unable to create payment order', :unprocessable_content)
       end
 
       def verify
-        event = Event.friendly.find(params[:event_slug])
-        exhibitor_kit = find_exhibitor_kit!(event)
+        kit = owned_kit!
+        authorize kit, :show?, policy_class: PublicExhibitorBookingPolicy
+        order_id = payment_params[:razorpay_order_id].to_s
+        payment_id = payment_params[:razorpay_payment_id].to_s
+        payment = kit.exhibitor_registration_payment
+        return render_paid(kit) if kit.paid? && payment&.gateway_payment_id == payment_id
 
-        if exhibitor_kit.paid?
-          return render json: {
-            success: true,
-            data: {
-              already_paid: true,
-              exhibitor_kit_id: exhibitor_kit.id,
-              payment_status: exhibitor_kit.payment_status
-            }
-          }, status: :ok
-        end
-
-        order_id = params[:razorpay_order_id].to_s
-        payment_id = params[:razorpay_payment_id].to_s
-        signature = params[:razorpay_signature].to_s
-
-        gateway = Payments::RazorpayGateway.for_event(event)
+        gateway = Payments::RazorpayGateway.for_event(@event)
 
         unless gateway.valid_signature?(order_id: order_id, payment_id: payment_id,
-                                                          signature: signature)
-          return render json: { success: false, message: 'Invalid payment signature' }, status: :unprocessable_content
+                                        signature: payment_params[:razorpay_signature].to_s)
+          return render_payment_error('invalid_payment_signature', 'Invalid payment signature', :unprocessable_content)
         end
 
-        payment_entity = gateway.fetch_payment(payment_id)
-
-        mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature, gateway_response: payment_entity)
-
-        render json: {
-          success: true,
-          data: {
-            exhibitor_kit_id: exhibitor_kit.id,
-            payment_status: exhibitor_kit.reload.payment_status
-          }
-        }, status: :ok
+        entity = gateway.fetch_payment(payment_id)
+        validate_entity!(entity, order_id: order_id, payment_id: payment_id, kit: kit)
+        already_paid = mark_paid!(kit, order_id: order_id, payment_id: payment_id, entity: entity)
+        render json: { success: true, data: { already_paid: already_paid, public_id: kit.public_id,
+          payment_status: kit.reload.payment_status } }
       rescue ActiveRecord::RecordNotFound
-        render json: { success: false, message: 'Event or exhibitor kit not found' }, status: :not_found
+        render_payment_error('booking_not_found', 'Booking not found', :not_found)
+      rescue ActiveRecord::RecordNotUnique
+        render_payment_error('payment_already_used', 'Payment was already applied', :conflict)
+      rescue PaymentError => e
+        render_payment_error(e.message, 'Payment could not be verified', :unprocessable_content)
       rescue StandardError => e
-        render json: { success: false, message: e.message }, status: :unprocessable_content
-      end
-
-      def callback
-        event = Event.friendly.find(params[:event_slug])
-        exhibitor_kit = find_exhibitor_kit!(event)
-        frontend_url = public_registration_url_for!(event)
-
-        if exhibitor_kit.paid?
-          return redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
-                             allow_other_host: true
-        end
-
-        order_id = params[:razorpay_order_id].to_s
-        payment_id = params[:razorpay_payment_id].to_s
-        signature = params[:razorpay_signature].to_s
-
-        gateway = Payments::RazorpayGateway.for_event(event)
-
-        unless gateway.valid_signature?(order_id: order_id, payment_id: payment_id,
-                                                          signature: signature)
-          return redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=invalid_signature&kit=#{exhibitor_kit.id}",
-                             allow_other_host: true
-        end
-
-        payment_entity = gateway.fetch_payment(payment_id)
-
-        mark_exhibitor_kit_paid!(exhibitor_kit: exhibitor_kit, payment_id: payment_id, order_id: order_id,
-                                 signature: signature, gateway_response: payment_entity)
-        redirect_to "#{frontend_url}/exhibitor-registration?step=success&kit=#{exhibitor_kit.id}",
-                    allow_other_host: true
-      rescue StandardError => e
-        if defined?(frontend_url) && frontend_url.present?
-          redirect_to "#{frontend_url}/exhibitor-registration?step=payment&error=#{CGI.escape(e.message)}",
-                      allow_other_host: true
-        else
-          render_public_registration_error_page(
-            title: 'Registration Redirect Not Configured',
-            message: e.message.include?('public_registration_url') ? 'This event does not have a public registration URL configured yet. Please contact the organizer or try again later.' : e.message
-          )
-        end
+        Rails.logger.error("Exhibitor payment verification failed: #{e.class}")
+        render_payment_error('payment_verification_failed', 'Payment could not be verified', :unprocessable_content)
       end
 
       private
 
-      def find_exhibitor_kit!(event)
-        ExhibitorKit
-          .joins(:event_vendor)
-          .find_by!(id: params[:exhibitor_kit_id], event_vendors: { event_id: event.id, type: 'Exhibitor' })
+      PaymentError = Class.new(StandardError)
+
+      def pundit_user
+        @public_access
       end
 
-      def mark_exhibitor_kit_paid!(exhibitor_kit:, payment_id:, order_id:, signature:, gateway_response: nil)
-        payment = exhibitor_kit.exhibitor_registration_payment || exhibitor_kit.build_exhibitor_registration_payment(gateway: 'razorpay')
-
-        payment.update!(
-          amount: exhibitor_kit.amount_paid.to_f,
-          status: 'paid',
-          paid_at: Time.current,
-          gateway_payment_id: payment_id,
-          payment_method: gateway_response&.dig('method').to_s.presence,
-          gateway_response: gateway_response.presence || {
-            order_id: order_id,
-            payment_id: payment_id,
-            signature: signature
-          }
-        )
-
-        exhibitor_kit.update!(payment_status: :paid)
+      def authenticate_public_exhibitor!
+        @event = Event.friendly.find(params[:event_slug])
+        token = request.authorization.to_s.delete_prefix('Bearer ').presence
+        @public_access = PublicExhibitorAccessSession.authenticate(event: @event, token: token)
+        raise CustomError::Unauthorized, 'Invalid or expired exhibitor session' unless @public_access
       end
 
-      def public_registration_url_for!(event)
-        url = event.normalized_public_registration_url
-        raise KeyError, 'public_registration_url' if url.blank?
-
-        url
+      def owned_kit!
+        PublicExhibitorBookingPolicy::Scope.new(@public_access, ExhibitorKit).resolve
+          .find_by!(public_id: params[:public_id])
       end
 
-      def reusable_gateway_order(payment)
-        return nil unless payment.status == 'pending'
+      def payment_params
+        params.permit(:razorpay_order_id, :razorpay_payment_id, :razorpay_signature)
+      end
 
-        gateway_response = payment.gateway_response
-        return nil unless gateway_response.is_a?(Hash)
+      def reusable_order?(payment, kit)
+        payment.status == 'pending' && payment.gateway_order_id.present? && payment.order_expires_at&.future? &&
+          payment.amount == kit.price_snapshot && payment.currency == kit.currency &&
+          payment.gateway_response.is_a?(Hash)
+      end
 
-        order_id = gateway_response['id'].presence || gateway_response['order_id'].presence
-        return nil if order_id.blank? || !order_id.to_s.start_with?('order_')
+      def validate_entity!(entity, order_id:, payment_id:, kit:)
+        raise PaymentError, 'payment_id_mismatch' unless entity['id'] == payment_id
+        raise PaymentError, 'payment_order_mismatch' unless entity['order_id'] == order_id
+        raise PaymentError, 'payment_amount_mismatch' unless entity['amount'].to_i == amount_subunits(kit)
+        raise PaymentError, 'payment_currency_mismatch' unless entity['currency'] == kit.currency
+        raise PaymentError, 'payment_status_invalid' unless ACCEPTED_PAYMENT_STATUSES.include?(entity['status'])
+      end
 
-        gateway_response
+      def mark_paid!(kit, order_id:, payment_id:, entity:)
+        ExhibitorKit.transaction do
+          kit.lock!
+          payment = kit.exhibitor_registration_payment
+          raise PaymentError, 'payment_order_missing' unless payment
+          payment.lock!
+          return true if kit.paid? && payment.gateway_payment_id == payment_id
+          ensure_payable!(kit)
+          raise PaymentError, 'payment_order_mismatch' unless payment.gateway_order_id == order_id
+          raise PaymentError, 'payment_order_expired' unless payment.order_expires_at&.future?
+          raise PaymentError, 'payment_amount_mismatch' unless payment.amount == kit.price_snapshot
+          raise PaymentError, 'payment_currency_mismatch' unless payment.currency == kit.currency
+
+          payment.update!(status: 'paid', paid_at: Time.current, gateway_payment_id: payment_id,
+            payment_method: entity['method'].presence, gateway_response: entity)
+          kit.update!(payment_status: :paid, booking_status: :paid, reservation_expires_at: nil)
+          false
+        end
+      end
+
+      def amount_subunits(kit)
+        (kit.price_snapshot * 100).round
+      end
+
+      def ensure_payable!(kit)
+        if kit.booking_expired? || !kit.booking_active? ||
+           (kit.reservation_expires_at.present? && kit.reservation_expires_at <= Time.current)
+          raise PaymentError, 'booking_expired'
+        end
+        raise PaymentError, 'booking_not_payable' unless kit.unpaid?
+      end
+
+      def render_paid(kit)
+        render json: { success: true, data: { already_paid: true, public_id: kit.public_id,
+          payment_status: kit.payment_status } }
+      end
+
+      def render_payment_error(code, message, status)
+        render json: { success: false, code: code, message: message }, status: status
       end
     end
   end

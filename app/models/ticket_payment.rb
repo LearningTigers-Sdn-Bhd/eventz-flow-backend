@@ -2,6 +2,8 @@ class TicketPayment < ApplicationRecord
   belongs_to :ticket
   belongs_to :received_by, class_name: 'User', optional: true
 
+  has_one_attached :payment_proof, dependent: :purge_later
+
   validates :amount, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :status, inclusion: { in: %w[pending paid failed refunded] }
 
