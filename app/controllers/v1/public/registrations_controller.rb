@@ -144,6 +144,33 @@ module V1
         }
       end
 
+      # Pre-submit duplicate check for uniquely-constrained custom fields.
+      # The key allowlist stops this becoming an unauthenticated read oracle
+      # over arbitrary jsonb.
+      def field_availability
+        event = Event.friendly.find(params[:event_slug])
+
+        key = params[:key].to_s
+        unless Ticket::UNIQUE_CUSTOM_FIELD_KEYS.include?(key)
+          return render json: { success: false, message: 'Unsupported field key' }, status: :unprocessable_content
+        end
+
+        value = params[:value].to_s.strip
+        if value.blank?
+          return render json: { success: false, message: 'Value is required' }, status: :unprocessable_content
+        end
+
+        taken = event.tickets
+                     .where.not(status: :canceled)
+                     .where('lower(custom_fields_data->>?) = ?', key, value.downcase)
+                     .exists?
+
+        render json: {
+          success: true,
+          data: { key: key, value: value, available: !taken }
+        }
+      end
+
       def create
         event = Event.friendly.find(params[:event_slug])
         form = nil
@@ -221,7 +248,26 @@ module V1
           end
         end
 
-        if ticket.save
+        apply_indemnity!(ticket)
+
+        begin
+          RegistrationDocumentAttacher.new(event: event, ticket: ticket, documents: params[:documents] || {}).call
+        rescue RegistrationDocumentAttacher::Error => e
+          return render json: { success: false, message: e.message }, status: :unprocessable_content
+        end
+
+        begin
+          saved = ticket.save
+        rescue ActiveRecord::RecordNotUnique
+          # The model validation races under concurrent submits; the partial
+          # unique index does not. Same message either way.
+          return render json: {
+            success: false,
+            errors: ['This membership or IC/passport number is already registered for this event']
+          }, status: :unprocessable_content
+        end
+
+        if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
 
           render json: {
@@ -285,13 +331,37 @@ module V1
       private
 
       def registration_params
-        params.permit(
+        permitted = params.permit(
           :attendee_name,
           :attendee_email,
           :attendee_phone,
           :role,
           :registered_by_email,
           custom_fields_data: {}
+        )
+
+        # Reserved keys are server-written; a client must not forge them.
+        if permitted[:custom_fields_data].present?
+          permitted[:custom_fields_data] = permitted[:custom_fields_data].except(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
+        end
+
+        permitted
+      end
+
+      def indemnity_params
+        params.fetch(:indemnity, {}).permit(:accepted, :method, :signed_name)
+      end
+
+      def apply_indemnity!(ticket)
+        return unless ActiveModel::Type::Boolean.new.cast(indemnity_params[:accepted])
+
+        ticket.custom_fields_data = (ticket.custom_fields_data || {}).merge(
+          '_indemnity' => {
+            'accepted' => true,
+            'method' => indemnity_params[:method].to_s.presence,
+            'signed_name' => indemnity_params[:signed_name].to_s.presence,
+            'signed_at' => Time.current.utc.iso8601 # server clock, never client-supplied
+          }.compact
         )
       end
 
@@ -307,8 +377,21 @@ module V1
           price: ticket_type.current_price,
           payment_status: ticket.payment_status,
           custom_fields_data: ticket.custom_fields_data,
-          qr_code_data: ticket.public_id
+          qr_code_data: ticket.public_id,
+          documents: serialize_documents(ticket)
         }
+      end
+
+      def serialize_documents(ticket)
+        return [] unless ticket.persisted?
+
+        ticket.registration_documents.map do |attachment|
+          {
+            key: attachment.blob.metadata['document_key'],
+            filename: attachment.blob.filename.to_s,
+            url: url_for(attachment)
+          }
+        end
       end
 
       def serialize_status_ticket(ticket)

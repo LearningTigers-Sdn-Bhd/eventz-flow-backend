@@ -167,6 +167,30 @@ RSpec.describe EventVendorService, type: :service do
       expect(result.data.vendor_id).to eq(vendor.id)
     end
 
+    it 'updates the legacy kit without appending a kit when assignment is retried' do
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: 'A1')
+
+      result = EventVendorService.assign_existing_vendor(
+        event, vendor.id, params, 'Exhibitor', { booth_number: 'B2' }
+      )
+
+      expect(result).to be_success
+      expect(exhibitor.reload.exhibitor_kits).to contain_exactly(kit)
+      expect(kit.reload.booth_number).to eq('B2')
+    end
+
+    it 'does not create a kit when an assignment without one is retried' do
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+
+      result = EventVendorService.assign_existing_vendor(
+        event, vendor.id, params, 'Exhibitor', { booth_number: 'B2' }
+      )
+
+      expect(result).to be_success
+      expect(exhibitor.reload.exhibitor_kits).to be_empty
+    end
+
     it 'returns error when vendor not found' do
       result = EventVendorService.assign_existing_vendor(event, 99999, params, 'Exhibitor')
 

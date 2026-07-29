@@ -47,6 +47,7 @@ module V1
           { exhibitor_kit_printings: { include: :printing_service } }
         ]
       ).merge(
+        event_vendor_id: event_vendor&.id,
         payment_proof_url: payment.payment_proof.attached? ? url_for(payment.payment_proof) : payment[:payment_proof_url],
         payee_name: payment.payee&.full_name,
         payee_payment_detail: payment.payee&.payment_detail&.as_json(only: [:bank_name, :account_number, :account_name]),

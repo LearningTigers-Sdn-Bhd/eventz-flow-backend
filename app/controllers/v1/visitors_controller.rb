@@ -103,28 +103,25 @@ module V1
     # PATCH /v1/visitors/:id/unscan
     # Org owner only - unscan a visitor (reset check-in status)
     def unscan
-      @visitor = Visitor.find_by(id: params[:id]) || Visitor.find_by!(public_id: params[:id])
+      @visitor = Visitor.find_by(public_id: params[:id]) || Visitor.find_by!(id: params[:id])
 
       authorize @visitor, :unscan?
 
-      unless @visitor.checked_in?
+      unscanned = @visitor.with_lock do
+        next false unless @visitor.reload.checked_in?
+
+        @visitor.update_columns(checked_in: false, check_in_at: nil, scanned_by_id: nil)
+        true
+      end
+
+      unless unscanned
         render json: { error: 'Visitor is not checked in' }, status: :unprocessable_content and return
       end
 
-      @visitor.assign_attributes(
-        checked_in: false,
-        check_in_at: nil,
-        scanned_by_id: nil
-      )
-
-      if @visitor.save(validate: false)
-        render json: {
-          message: 'Visitor successfully unscanned',
-          visitor: @visitor.as_json
-        }, status: :ok
-      else
-        render json: @visitor.errors, status: :unprocessable_content
-      end
+      render json: {
+        message: 'Visitor successfully unscanned',
+        visitor: @visitor.reload.as_json
+      }, status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Visitor not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError

@@ -1,5 +1,5 @@
 class ExhibitorKit < ApplicationRecord
-  belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kit
+  belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
   has_one :exhibitor_registration_payment, dependent: :destroy
@@ -9,6 +9,7 @@ class ExhibitorKit < ApplicationRecord
   has_many :exhibitor_kit_printings, dependent: :destroy
   has_many :custom_requests, dependent: :destroy
   has_one_attached :payment_proof, dependent: :purge_later
+  has_one_attached :ic_copy, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true
@@ -19,6 +20,9 @@ class ExhibitorKit < ApplicationRecord
 
   validates :booth_type, presence: true
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
+  enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
+  validates :public_id, uniqueness: true
+  validates :idempotency_key, uniqueness: { scope: :event_vendor_id }, allow_nil: true
 
   # Booth/company info - optional but validated if provided
   validates :booth_number, presence: true, allow_blank: true
@@ -34,8 +38,10 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   before_save :remove_payment_option_when_payment_is_settled
+  before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
+  after_commit :sync_registration_payment_status, if: :just_marked_paid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
@@ -100,12 +106,25 @@ class ExhibitorKit < ApplicationRecord
 
   private
 
+  def set_public_id
+    self.public_id ||= SecureRandom.base58(22)
+  end
+
   def should_send_registration_received_email?
     pic_email_address.present?
   end
 
   def should_send_payment_confirmed_email?
     pic_email_address.present? && saved_change_to_payment_status? && paid?
+  end
+
+  def just_marked_paid?
+    saved_change_to_payment_status? && paid? && exhibitor_registration_payment.present? && exhibitor_registration_payment.status != 'paid'
+  end
+
+  def sync_registration_payment_status
+    update!(booking_status: :paid, reservation_expires_at: nil) unless booking_paid?
+    exhibitor_registration_payment.update!(status: 'paid', paid_at: Time.current, payment_method: 'manual_bank_transfer')
   end
 
   def remove_payment_option_when_payment_is_settled
@@ -121,7 +140,8 @@ class ExhibitorKit < ApplicationRecord
       mailer_name: 'ExhibitorRegistrationMailer',
       mailer_action: 'registration_received_email',
       args: [self],
-      related: self
+      related: self,
+      dedupe: true
     )
   end
 
@@ -130,7 +150,8 @@ class ExhibitorKit < ApplicationRecord
       mailer_name: 'ExhibitorRegistrationMailer',
       mailer_action: 'payment_confirmed_email',
       args: [self],
-      related: self
+      related: self,
+      dedupe: true
     )
   end
 

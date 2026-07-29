@@ -12,6 +12,10 @@ RSpec.describe EmailDeliveryJob, type: :job do
     )
   end
 
+  it 'does not log job arguments containing email credentials' do
+    expect(described_class.log_arguments).to be(false)
+  end
+
   it 'sends the queued audited delivery' do
     service = instance_double(EmailDelivery::AuditedDelivery, deliver_now: delivery)
     allow(EmailDelivery::AuditedDelivery).to receive(:new).and_return(service)

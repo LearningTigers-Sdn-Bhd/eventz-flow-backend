@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; padding: 36px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.9; }
+    .content { padding: 32px 30px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 22px; }
+    .button { background: #2563eb; color: #ffffff !important; display: inline-block; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+    .notice { background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #9a3412; margin: 22px 0; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Access Your Booth Bookings</h1>
+        <p><%= @event.title %></p>
+      </div>
+
+      <div class="content">
+        <p class="message">Use the secure one-time link below to access your exhibitor bookings. No password is required.</p>
+
+        <p style="text-align: center;"><a href="<%= @access_url %>" class="button">Access My Booth Bookings</a></p>
+
+        <div class="notice">
+          This link expires in 15 minutes and can only be used once. If you did not request this email, you can safely ignore it.
+        </div>
+
+        <p class="closing">You can use your booth dashboard to view existing bookings, upload payment proof, or register another booth.</p>
+        <p class="closing">Warm regards,<br><strong>EventzFlow Team</strong></p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated email from EventzFlow. Please do not reply directly to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

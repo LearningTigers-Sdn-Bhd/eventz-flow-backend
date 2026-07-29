@@ -263,7 +263,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         ticket_type = create(:ticket_type, event: event, price: 50.00)
         create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :purchased)
 
-        exhibitor = create(:exhibitor, event: event)
+        exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event)
         create(
           :exhibitor_registration_payment,
           exhibitor_kit: exhibitor.exhibitor_kit,
@@ -271,7 +271,7 @@ RSpec.describe 'V1::Analytics', type: :request do
           status: "paid",
         )
 
-        another_exhibitor = create(:exhibitor, event: event)
+        another_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event)
         create(
           :exhibitor_registration_payment,
           exhibitor_kit: another_exhibitor.exhibitor_kit,
@@ -413,7 +413,7 @@ RSpec.describe 'V1::Analytics', type: :request do
         ticket_type = create(:ticket_type, event: event, price: 80.00)
         create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :purchased)
 
-        exhibitor = create(:exhibitor, event: event)
+        exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event)
         create(
           :exhibitor_registration_payment,
           exhibitor_kit: exhibitor.exhibitor_kit,
@@ -421,7 +421,7 @@ RSpec.describe 'V1::Analytics', type: :request do
           status: "paid",
         )
 
-        another_exhibitor = create(:exhibitor, event: event)
+        another_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event)
         create(
           :exhibitor_registration_payment,
           exhibitor_kit: another_exhibitor.exhibitor_kit,

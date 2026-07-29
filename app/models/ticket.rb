@@ -1,6 +1,17 @@
 class Ticket < ApplicationRecord
   include TimeSeriesAnalytics
 
+  # Custom-field keys that must be unique per event (backed by partial unique
+  # indexes idx_tickets_unique_* — the validation is the readable message, the
+  # index is the race-proof backstop).
+  UNIQUE_CUSTOM_FIELD_KEYS = %w[membership_no ic_passport_no].freeze
+
+  # Allowed document slots for public registration uploads.
+  DOCUMENT_KEYS = %w[passport_copy photo_1 photo_2 indemnity_form signature].freeze
+
+  # Server-written custom_fields_data keys — stripped from all client input.
+  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity].freeze
+
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
@@ -32,6 +43,8 @@ class Ticket < ApplicationRecord
   has_many :event_leads, as: :leadable, dependent: :destroy
   has_many :event_reminder_logs, dependent: :destroy
   
+  has_many_attached :registration_documents, dependent: :purge_later
+
   has_many :table_assignments, dependent: :destroy
   has_many :assigned_tables, through: :table_assignments, source: :plan_object
   has_one :event_seating_group_member, as: :participant, dependent: :destroy
@@ -67,6 +80,7 @@ class Ticket < ApplicationRecord
                              allow_blank: true
   validates :status, presence: true # Although redundant with enum presence check, it's clear.
   validates :payment_status, presence: true
+  validate :unique_custom_fields_within_event
 
   # --- Scopes ---
   scope :checked_in, -> { where(checked_in: true) }
@@ -126,6 +140,22 @@ class Ticket < ApplicationRecord
   def set_public_id
     # Generates a UUID only if it hasn't been set by the database or another source.
     self.public_id ||= SecureRandom.uuid
+  end
+
+  def unique_custom_fields_within_event
+    return if event_id.blank?
+
+    UNIQUE_CUSTOM_FIELD_KEYS.each do |key|
+      value = custom_fields_data.to_h[key].to_s.strip
+      next if value.blank?
+
+      taken = Ticket.where(event_id: event_id)
+                    .where.not(id: id)
+                    .where.not(status: :canceled)
+                    .where('lower(custom_fields_data->>?) = ?', key, value.downcase)
+                    .exists?
+      errors.add(:base, "#{key.humanize} #{value} is already registered for this event") if taken
+    end
   end
 
   def normalize_attendee_fields

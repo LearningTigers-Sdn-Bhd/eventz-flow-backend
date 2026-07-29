@@ -102,12 +102,47 @@ RSpec.describe EventVendor, type: :model do
     let(:vendor_user) { create(:user, :vendor) }
     let(:exhibitor) { create(:exhibitor, event: event, vendor: vendor_user) }
 
-    it 'has one exhibitor_kit' do
-      expect(exhibitor).to have_one(:exhibitor_kit).dependent(:destroy).with_foreign_key(:event_vendor_id)
+    it 'has many ordered exhibitor_kits' do
+      expect(exhibitor).to have_many(:exhibitor_kits).dependent(:destroy).with_foreign_key(:event_vendor_id)
     end
 
-    it 'has many exhibitor_team_members through exhibitor_kit' do
-      expect(exhibitor).to have_many(:exhibitor_team_members).through(:exhibitor_kit)
+    it 'has many exhibitor_team_members through exhibitor_kits' do
+      expect(exhibitor).to have_many(:exhibitor_team_members).through(:exhibitor_kits)
+    end
+
+    it 'retains multiple kits in creation order and returns the oldest for legacy reads' do
+      newer_kit = create(:exhibitor_kit, event_vendor: exhibitor, created_at: 1.hour.ago)
+      older_kit = create(:exhibitor_kit, event_vendor: exhibitor, created_at: 2.hours.ago)
+
+      expect(exhibitor.exhibitor_kits).to eq([older_kit, newer_kit])
+      expect(exhibitor.legacy_exhibitor_kit).to eq(older_kit)
+      expect(exhibitor.exhibitor_kit).to eq(older_kit)
+    end
+
+    it 'destroys all kits when the exhibitor is destroyed' do
+      create_list(:exhibitor_kit, 2, event_vendor: exhibitor)
+
+      expect { exhibitor.destroy! }.to change(ExhibitorKit, :count).by(-2)
+    end
+
+    it 'aggregates team members from every kit' do
+      kits = create_list(:exhibitor_kit, 2, event_vendor: exhibitor)
+
+      expect(exhibitor.exhibitor_team_members).to match_array(kits.flat_map(&:exhibitor_team_members))
+    end
+
+    it 'accepts plural nested kit attributes' do
+      exhibitor = build(:exhibitor)
+      exhibitor.exhibitor_kits_attributes = [attributes_for(:exhibitor_kit)]
+
+      expect(exhibitor.exhibitor_kits.size).to eq(1)
+    end
+
+    it 'allows an exhibitor with no kits' do
+      exhibitor = create(:exhibitor)
+
+      expect(exhibitor).to be_valid
+      expect(exhibitor.exhibitor_kits).to be_empty
     end
   end
 end

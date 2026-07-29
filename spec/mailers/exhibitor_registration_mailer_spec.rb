@@ -31,6 +31,9 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     it 'includes booth and amount details' do
       expect(mail.body.encoded).to include('International')
       expect(mail.body.encoded).to include('RM 9000.0')
+      expect(mail.body.encoded).to include(exhibitor_kit.public_id)
+      expect(mail.body.encoded).to include('Securely manage this booking')
+      expect(mail.bcc).to be_blank
     end
   end
 
@@ -74,15 +77,40 @@ RSpec.describe ExhibitorRegistrationMailer, type: :mailer do
     it 'includes payment receipt details' do
       expect(mail.body.encoded).to include('Payment Receipt')
       expect(mail.body.encoded).to include('Receipt No')
-      expect(mail.body.encoded).to include("EXH-#{exhibitor_kit.id}")
+      expect(mail.body.encoded).to include("EXH-#{exhibitor_kit.public_id}")
       expect(mail.body.encoded).to include('Amount Paid')
       expect(mail.body.encoded).to include('MYR 9000.00')
       expect(mail.body.encoded).to include('pay_exhibitor_123')
       expect(mail.body.encoded).to include('order_exhibitor_123')
     end
 
+    it 'includes next steps for exhibitor passes' do
+      expect(mail.body.encoded).to include('What To Do Next?', 'Add your team members', 'exhibitor passes', 'QR code', 'eventzflow.com')
+    end
+
+    it 'hides unavailable transaction and order identifiers' do
+      payment = exhibitor_kit.exhibitor_registration_payment
+      payment.update!(gateway_payment_id: nil, gateway_response: {})
+
+      body = described_class.payment_confirmed_email(exhibitor_kit).body.encoded
+
+      expect(body).not_to include('Transaction ID:', 'Order ID:', 'Not available')
+    end
+
     it 'styles payment receipt labels with distinct header color' do
       expect(mail.body.encoded).to include('color: #166534;')
     end
+  end
+
+
+  it 'keeps sibling booking references separate' do
+    sibling = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+      pic_email_address: exhibitor_kit.pic_email_address)
+    first = described_class.registration_received_email(exhibitor_kit)
+    second = described_class.registration_received_email(sibling)
+
+    expect(first.body.encoded).to include(exhibitor_kit.public_id)
+    expect(first.body.encoded).not_to include(sibling.public_id)
+    expect(second.body.encoded).to include(sibling.public_id)
   end
 end

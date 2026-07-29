@@ -122,11 +122,7 @@ class EventVendorService
       if existing_vendor.save
         # Handle exhibitor_kit attributes if it's an Exhibitor
         if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
-          if existing_vendor.exhibitor_kit
-            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
-          else
-            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
-          end
+          existing_vendor.legacy_exhibitor_kit&.update(exhibitor_kit_attributes)
         end
         Result.new(success: true, data: existing_vendor.reload)
       else
@@ -141,14 +137,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
+        vendor_attributes[:exhibitor_kits_attributes] = [exhibitor_kit_attributes] if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: vendor_user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: vendor_user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(exhibitor_kits: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end
@@ -225,11 +221,7 @@ class EventVendorService
       if existing_vendor.save
         # Handle exhibitor_kit attributes if it's an Exhibitor
         if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
-          if existing_vendor.exhibitor_kit
-            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
-          else
-            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
-          end
+          existing_vendor.legacy_exhibitor_kit&.update(exhibitor_kit_attributes)
         end
         Result.new(success: true, data: existing_vendor.reload)
       else
@@ -244,14 +236,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
+        vendor_attributes[:exhibitor_kits_attributes] = [exhibitor_kit_attributes] if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(exhibitor_kits: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end

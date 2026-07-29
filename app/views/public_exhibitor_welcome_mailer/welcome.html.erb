@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; padding: 36px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.9; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 14px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 22px; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 10px; }
+    .info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 22px; }
+    .info table { width: 100%; border-collapse: collapse; }
+    .info td { padding: 7px 0; font-size: 14px; vertical-align: top; word-break: break-word; }
+    .info td:first-child { font-weight: bold; color: #374151; width: 150px; }
+    .info td:last-child { color: #555; }
+    @media only screen and (max-width: 480px) {
+      .info td { display: block !important; width: 100% !important; }
+      .info td:first-child { padding-bottom: 0 !important; }
+      .info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
+    .button { background: #2563eb; color: #ffffff !important; display: inline-block; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+    .notice { background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #9a3412; margin: 22px 0; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Welcome to EventzFlow!</h1>
+        <p>Your exhibitor account is ready</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Hi <strong><%= @name.presence || 'there' %></strong>,</p>
+        <p class="message">Your exhibitor account is ready. Sign in to manage your booths, update exhibitor details where available, add team members, and order items and services.</p>
+
+        <div class="section-title">Account Details</div>
+        <div class="info">
+          <table>
+            <tr>
+              <td>Email:</td>
+              <td><%= @email %></td>
+            </tr>
+            <tr>
+              <td>Temporary password:</td>
+              <td><%= @temporary_password %></td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="text-align: center;"><a href="<%= @login_url %>" class="button">Log in to EventzFlow</a></p>
+
+        <div class="notice">For security, please update your password promptly after signing in.</div>
+
+        <p class="closing">We look forward to helping you prepare for your event.</p>
+        <p class="closing">Warm regards,<br><strong>EventzFlow Team</strong></p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated email from EventzFlow. Please do not reply directly to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

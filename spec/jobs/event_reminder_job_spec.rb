@@ -10,7 +10,7 @@ RSpec.describe EventReminderJob, type: :job do
         reminder_1_day: true
       )
     end
-    let(:ticket) { create(:ticket, event: event, attendee_email: "test@example.com") }
+    let(:ticket) { create(:ticket, :paid, event: event, attendee_email: "test@example.com") }
 
     before { ticket }
 
@@ -52,6 +52,27 @@ RSpec.describe EventReminderJob, type: :job do
           described_class.new.perform
         }.not_to have_enqueued_job(EmailDeliveryJob)
       end
+    end
+
+    it 'does not send to a pending-payment ticket' do
+      ticket.update!(status: :pending_payment, payment_status: :pending)
+
+      expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    it 'does not send to a paid ticket with a pending or rejected application' do
+      application = create(:ticket_application, ticket: ticket, review_status: :pending_review)
+
+      expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+
+      application.update!(review_status: :rejected)
+      expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    it 'sends to a paid ticket with an approved application' do
+      create(:ticket_application, ticket: ticket, review_status: :approved)
+
+      expect { described_class.new.perform }.to have_enqueued_job(EmailDeliveryJob)
     end
   end
 end
