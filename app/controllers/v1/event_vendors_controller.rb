@@ -195,6 +195,7 @@ module V1
         event_vendor_id: exhibitor_kit.event_vendor_id,
         created_at: exhibitor_kit.created_at,
         updated_at: exhibitor_kit.updated_at,
+        booking_status: exhibitor_kit.booking_status,
         booth_number: exhibitor_kit.booth_number,
         booth_type: exhibitor_kit.booth_type,
         booth_dimensions: exhibitor_kit.booth_dimensions,
