@@ -8,10 +8,11 @@ module V1
       def index
         authorize ExhibitorKit, policy_class: PublicExhibitorBookingPolicy
         scope = policy_scope(ExhibitorKit, policy_scope_class: PublicExhibitorBookingPolicy::Scope)
-        limit = [[params.fetch(:limit, 5).to_i, 1].max, 5].min
-        bookings = scope.includes(:exhibitor_booth_price).order(created_at: :desc, id: :desc).limit(limit)
+          .includes(:exhibitor_booth_price).order(created_at: :desc, id: :desc)
+        per_page = pagination_params[:per_page] || 5
+        @pagy, bookings = pagy(scope, limit: per_page)
         render json: { success: true, data: bookings.map { |kit| PublicExhibitorBookingSerializer.summary(kit) },
-          meta: { total_count: scope.count, can_register_another: true } }
+          meta: { can_register_another: true }, pagination: pagy_metadata(@pagy) }
       end
 
       def show
