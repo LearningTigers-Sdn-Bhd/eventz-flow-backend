@@ -3,6 +3,50 @@
 require 'rails_helper'
 
 RSpec.describe EventVendorService, type: :service do
+  describe '.enrich_exhibitor_kit_attributes with a package' do
+    let(:event) { create(:event) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 5000.0) }
+    let!(:package) { create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, price: 7000.0) }
+
+    it 'prices from the package when one is supplied' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id
+      })
+
+      expect(attrs[:amount_paid]).to eq(7000.0)
+      expect(attrs[:exhibitor_package_id]).to eq(package.id)
+    end
+
+    it 'multiplies the package price by booth quantity' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id, booth_quantity: 2
+      })
+
+      expect(attrs[:amount_paid]).to eq(14_000.0)
+    end
+
+    it 'drops a package attached to a different booth price' do
+      other = create(:exhibitor_package, event: event,
+        exhibitor_booth_price: create(:exhibitor_booth_price, event: event,
+          exhibitor_zone: booth_price.exhibitor_zone))
+
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: other.id
+      })
+
+      expect(attrs[:exhibitor_package_id]).to be_nil
+      expect(attrs[:amount_paid]).to eq(5000.0)
+    end
+
+    it 'still prices from the booth price when no package is supplied' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id
+      })
+
+      expect(attrs[:amount_paid]).to eq(5000.0)
+    end
+  end
+
   describe '.determine_vendor_type' do
     context 'when event.use_ticket is true' do
       let(:event) { create(:event, use_ticket: true) }

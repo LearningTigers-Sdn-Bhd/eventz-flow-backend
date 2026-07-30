@@ -65,6 +65,42 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
       expect(booth['active_price_tier_label']).to eq('Early Bird')
     end
 
+    it 'exposes packages attached to each booth price' do
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price,
+        name: 'Package A | Standard Booth', price: 7000.0, quota: 40, inclusions: '6D5N hotel')
+
+      get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
+
+      expect(response).to have_http_status(:ok)
+      payload = json_response['data'].find { |row| row['id'] == booth_price.id }
+      expect(payload['packages'].size).to eq(1)
+      expect(payload['packages'].first).to include(
+        'id' => package.id, 'name' => 'Package A | Standard Booth', 'inclusions' => '6D5N hotel',
+        'quota' => 40, 'remaining' => 40, 'available' => true
+      )
+      expect(payload['packages'].first['price'].to_f).to eq(7000.0)
+    end
+
+    it 'marks a package unavailable when its quota is consumed' do
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, quota: 1)
+      create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event), exhibitor_booth_price: booth_price,
+        exhibitor_package: package, booth_quantity: 1, booking_status: :paid)
+
+      get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
+
+      payload = json_response['data'].find { |row| row['id'] == booth_price.id }
+      expect(payload['packages'].first).to include('sold_count' => 1, 'remaining' => 0, 'available' => false)
+    end
+
+    it 'reports an unlimited package as available' do
+      create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, quota: nil)
+
+      get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"
+
+      payload = json_response['data'].find { |row| row['id'] == booth_price.id }
+      expect(payload['packages'].first).to include('quota' => nil, 'remaining' => nil, 'available' => true)
+    end
+
     it 'marks booth price unavailable when zone quota is full even if booth quota remains' do
       booth_price.update!(quota: 8)
       zone.update!(quota: 10)

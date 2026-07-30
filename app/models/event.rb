@@ -33,6 +33,7 @@ class Event < ApplicationRecord
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
   has_many :exhibitor_booth_prices, dependent: :destroy
+  has_many :exhibitor_packages, dependent: :destroy
   has_many :exhibitor_booths, dependent: :destroy
   has_many :exhibitor_zones, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy

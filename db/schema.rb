@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_30_120100) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_30_130100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -754,9 +754,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_30_120100) do
     t.decimal "price_snapshot", precision: 10, scale: 2, default: "0.0", null: false
     t.string "currency", default: "MYR", null: false
     t.integer "lock_version", default: 0, null: false
+    t.bigint "exhibitor_package_id"
     t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
+    t.index ["exhibitor_package_id"], name: "index_exhibitor_kits_on_exhibitor_package_id"
     t.index ["public_id"], name: "index_exhibitor_kits_on_public_id", unique: true
   end
 
@@ -768,6 +770,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_30_120100) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_exhibitor_owners_on_name"
+  end
+
+  create_table "exhibitor_packages", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "exhibitor_booth_price_id", null: false
+    t.string "name", null: false
+    t.text "inclusions"
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.integer "quota"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "name"], name: "index_exhibitor_packages_on_event_id_and_name", unique: true
+    t.index ["event_id"], name: "index_exhibitor_packages_on_event_id"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_packages_on_exhibitor_booth_price_id"
   end
 
   create_table "exhibitor_registration_payments", force: :cascade do |t|
@@ -1686,6 +1702,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_30_120100) do
   add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_kits", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_kits", "exhibitor_packages"
+  add_foreign_key "exhibitor_packages", "events"
+  add_foreign_key "exhibitor_packages", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_registration_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_limits", "events"
   add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"

@@ -145,6 +145,9 @@ class V1::ExhibitorKitsController < ApplicationController
       payment_note: kit.exhibitor_registration_payment&.note || kit.payment_note,
       exhibitor_booth_price_label: kit.exhibitor_booth_price&.label,
       exhibitor_booth_price_zone: kit.exhibitor_booth_price&.zone,
+      exhibitor_package_id: kit.exhibitor_package_id,
+      exhibitor_package_name: kit.exhibitor_package&.name,
+      exhibitor_package_inclusions: kit.exhibitor_package&.inclusions,
       exhibitor_team_members: kit.exhibitor_team_members.as_json(
         only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]
       ),

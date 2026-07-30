@@ -190,6 +190,130 @@ RSpec.describe PublicExhibitorBookingService do
     end
   end
 
+  describe 'package selection' do
+    let!(:package) do
+      create(:exhibitor_package, event: event, exhibitor_booth_price: price,
+        name: 'Package A | Standard Booth', price: 7000.00)
+    end
+
+    it 'prices the booking from the package, not the booth price' do
+      result = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes.merge('exhibitor_package_id' => package.id))
+
+      expect(result.kit.exhibitor_package_id).to eq(package.id)
+      expect(result.kit.price_snapshot).to eq(7000.00)
+      expect(result.kit.amount_paid).to eq(7000.00)
+    end
+
+    it 'leaves the booking Local when no package is submitted' do
+      result = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes)
+
+      expect(result.kit.exhibitor_package_id).to be_nil
+      expect(result.kit.price_snapshot).to eq(price.current_price)
+    end
+
+    it 'rejects a package attached to a different booth price' do
+      other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone)
+      foreign = create(:exhibitor_package, event: event, exhibitor_booth_price: other_price, name: 'Package B')
+
+      expect {
+        described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+          attributes: attributes.merge('exhibitor_package_id' => foreign.id))
+      }.to raise_error(PublicExhibitorBookingService::PackageMismatch)
+    end
+
+    it 'raises SoldOut when the package quota is exhausted' do
+      package.update!(quota: 0)
+
+      expect {
+        described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+          attributes: attributes.merge('exhibitor_package_id' => package.id))
+      }.to raise_error(ExhibitorBookingCapacity::SoldOut)
+    end
+
+    it 'rejects a package id from another event' do
+      foreign = create(:exhibitor_package)
+
+      expect {
+        described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+          attributes: attributes.merge('exhibitor_package_id' => foreign.id))
+      }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+  end
+
+  describe '#update package changes' do
+    let!(:package) do
+      create(:exhibitor_package, event: event, exhibitor_booth_price: price, price: 7000.00)
+    end
+
+    it 'reprices when a package is added to a Local booking' do
+      kit = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes).kit
+
+      updated = described_class.new(event: event, access: access).update(
+        kit: kit, expected_lock_version: kit.lock_version,
+        attributes: { 'exhibitor_package_id' => package.id }
+      )
+
+      expect(updated.exhibitor_package_id).to eq(package.id)
+      expect(updated.price_snapshot).to eq(7000.00)
+      expect(updated.amount_paid).to eq(7000.00)
+    end
+
+    it 'reprices back to the booth price when the package is cleared' do
+      kit = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes.merge('exhibitor_package_id' => package.id)).kit
+
+      updated = described_class.new(event: event, access: access).update(
+        kit: kit, expected_lock_version: kit.lock_version,
+        attributes: { 'exhibitor_package_id' => '' }
+      )
+
+      expect(updated.exhibitor_package_id).to be_nil
+      expect(updated.price_snapshot).to eq(price.current_price)
+    end
+
+    it 'rejects a package that does not match the booking booth price' do
+      kit = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes).kit
+      other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone)
+      foreign = create(:exhibitor_package, event: event, exhibitor_booth_price: other_price)
+
+      expect {
+        described_class.new(event: event, access: access).update(
+          kit: kit, expected_lock_version: kit.lock_version,
+          attributes: { 'exhibitor_package_id' => foreign.id }
+        )
+      }.to raise_error(PublicExhibitorBookingService::PackageMismatch)
+    end
+
+    it 'raises SoldOut when the target package quota is full' do
+      kit = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes).kit
+      package.update!(quota: 0)
+
+      expect {
+        described_class.new(event: event, access: access).update(
+          kit: kit, expected_lock_version: kit.lock_version,
+          attributes: { 'exhibitor_package_id' => package.id }
+        )
+      }.to raise_error(ExhibitorBookingCapacity::SoldOut)
+    end
+
+    it 'leaves the package untouched when the attribute is absent' do
+      kit = described_class.call(event: event, access: access, idempotency_key: SecureRandom.uuid,
+        attributes: attributes.merge('exhibitor_package_id' => package.id)).kit
+
+      updated = described_class.new(event: event, access: access).update(
+        kit: kit, expected_lock_version: kit.lock_version, attributes: { 'company_name' => 'Renamed Sdn Bhd' }
+      )
+
+      expect(updated.exhibitor_package_id).to eq(package.id)
+      expect(updated.price_snapshot).to eq(7000.00)
+    end
+  end
+
   describe 'booth inventory' do
     let!(:booth) { create(:exhibitor_booth, event: event, exhibitor_booth_price: price, number: 'S045') }
     let(:inventory_attributes) { attributes.merge(booth_number: 'S045') }

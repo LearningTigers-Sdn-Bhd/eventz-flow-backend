@@ -186,6 +186,7 @@ Rails.application.routes.draw do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
       resources :exhibitor_booth_prices, only: %i[index create]
+      resources :exhibitor_packages, only: %i[index create]
       resources :exhibitor_booths, only: %i[index create] do
         post :bulk, on: :collection
       end
@@ -629,6 +630,7 @@ Rails.application.routes.draw do
     end
 
     resources :exhibitor_booth_prices, only: %i[update destroy]
+    resources :exhibitor_packages, only: %i[update destroy]
     resources :exhibitor_booths, only: %i[update destroy] do
       post :release, on: :member
     end

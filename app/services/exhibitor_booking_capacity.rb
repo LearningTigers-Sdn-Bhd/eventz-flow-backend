@@ -28,4 +28,18 @@ class ExhibitorBookingCapacity
     raise SoldOut if booth_price.quota && consuming + quantity > booth_price.quota
     raise SoldOut if booth_price.exhibitor_zone&.quota && zone_consuming + quantity > booth_price.exhibitor_zone.quota
   end
+
+  # Package quota is independent of booth capacity: the booth is already counted once
+  # on the booth price. This only caps how many of those booths sell as this package.
+  def self.lock_package!(package, quantity:, excluding: nil)
+    package.lock!
+    return if package.quota.nil?
+
+    consuming = ExhibitorKit.where(exhibitor_package_id: package.id).where.not(id: excluding&.id)
+      .where('booking_status = ? OR (booking_status = ? AND (reservation_expires_at IS NULL OR reservation_expires_at > ?))',
+        ExhibitorKit.booking_statuses[:paid], ExhibitorKit.booking_statuses[:active], Time.current)
+      .sum(:booth_quantity)
+
+    raise SoldOut if consuming + quantity > package.quota
+  end
 end

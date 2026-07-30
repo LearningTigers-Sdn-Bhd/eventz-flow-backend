@@ -24,9 +24,16 @@ class ExhibitorKitService < BaseService
       booth_price = event.exhibitor_booth_prices.find(permitted[:exhibitor_booth_price_id])
       quantity = 1
       ExhibitorBookingCapacity.lock!(booth_price, quantity: quantity)
-      price = booth_price.current_price
+      package = if permitted[:exhibitor_package_id].present?
+        event.exhibitor_packages.find(permitted[:exhibitor_package_id])
+      end
+      raise ActiveRecord::RecordNotFound if package && !package.matches_booth_price?(booth_price.id)
+
+      ExhibitorBookingCapacity.lock_package!(package, quantity: quantity) if package
+      price = package&.price || booth_price.current_price
       exhibitor_kit.assign_attributes(
         exhibitor_booth_price: booth_price,
+        exhibitor_package: package,
         booth_type: booth_price.booth_type,
         booth_quantity: quantity,
         amount_paid: price * quantity,
@@ -76,7 +83,8 @@ class ExhibitorKitService < BaseService
 
   def create_params
     event_vendor = event.event_vendors.exhibitors.find_by(id: params.dig(:exhibitor_kit, :event_vendor_id))
-    params.require(:exhibitor_kit).permit(*policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create)
+    permitted_attributes = policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create
+    params.require(:exhibitor_kit).permit(*permitted_attributes, :exhibitor_package_id)
   end
 
   def update_params(exhibitor_kit)

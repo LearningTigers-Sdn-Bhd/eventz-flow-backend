@@ -1,6 +1,7 @@
 class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
+  belongs_to :exhibitor_package, optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
   has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy

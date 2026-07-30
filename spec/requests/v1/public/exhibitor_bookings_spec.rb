@@ -10,6 +10,63 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
   end
   let(:headers) { { 'Authorization' => "Bearer #{token}" } }
 
+  it 'creates a packaged booking priced from the package' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 5000.00)
+    package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, price: 7000.00)
+    valid_booking_params = {
+      exhibitor_booth_price_id: booth_price.id, company_name: 'Acme', pic_full_name: 'Owner',
+      pic_contact_number: '0123456789', indemnity_signed: true
+    }
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: valid_booking_params.merge(exhibitor_package_id: package.id),
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:created)
+    expect(json_response['data']['amount'].to_f).to eq(7000.00)
+  end
+
+  it 'returns 422 package_mismatch for a package on another booth price' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 5000.00)
+    other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: booth_price.exhibitor_zone)
+    foreign = create(:exhibitor_package, event: event, exhibitor_booth_price: other_price)
+    valid_booking_params = {
+      exhibitor_booth_price_id: booth_price.id, company_name: 'Acme', pic_full_name: 'Owner',
+      pic_contact_number: '0123456789', indemnity_signed: true
+    }
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: valid_booking_params.merge(exhibitor_package_id: foreign.id),
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(json_response['code']).to eq('package_mismatch')
+  end
+
+  it 'returns null exhibitor_package for a Local booking' do
+    booth_price = create(:exhibitor_booth_price, event: event)
+    kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price)
+
+    get "/v1/public/events/#{event.slug}/exhibitor_bookings/#{kit.public_id}", headers: headers
+
+    expect(json_response['data']['exhibitor_package']).to be_nil
+  end
+
+  it 'returns the package on a packaged booking' do
+    booth_price = create(:exhibitor_booth_price, event: event)
+    package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price,
+      name: 'Package A | Standard Booth', price: 7000.0, inclusions: '6D5N hotel')
+    kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+      exhibitor_package: package)
+
+    get "/v1/public/events/#{event.slug}/exhibitor_bookings/#{kit.public_id}", headers: headers
+
+    expect(json_response['data']['exhibitor_package']).to include(
+      'id' => package.id, 'name' => 'Package A | Standard Booth', 'inclusions' => '6D5N hotel'
+    )
+    expect(json_response['data']['exhibitor_package_id']).to eq(package.id)
+  end
+
   it 'creates first booking from a new-registration token and returns a payment session' do
     new_email = 'brand-new@example.com'
     post "/v1/public/events/#{event.slug}/exhibitor_email_status", params: { email: new_email }

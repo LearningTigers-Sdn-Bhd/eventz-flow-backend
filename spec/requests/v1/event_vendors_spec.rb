@@ -832,6 +832,21 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
     let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(admin)[:access_token]}" } }
     let!(:exhibitor) { create(:exhibitor, event: event, vendor: create(:user, :vendor)) }
 
+    it 'exposes the package name on the kit payload' do
+      booth_price = create(:exhibitor_booth_price, event: event)
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price,
+        name: 'Package B | Prime Booth')
+      create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+        exhibitor_package: package)
+
+      get "/v1/events/#{event.id}/vendors", headers: headers
+
+      exhibitor_payload = json_response.find { |vendor| vendor['id'] == exhibitor.id }
+      kit_payload = exhibitor_payload['exhibitor_kits'].first
+      expect(kit_payload['exhibitor_package_id']).to eq(package.id)
+      expect(kit_payload['exhibitor_package_name']).to eq('Package B | Prime Booth')
+    end
+
     it 'returns empty plural array and nil legacy kit for zero kits' do
       get "/v1/events/#{event.id}/vendors", headers: headers
 

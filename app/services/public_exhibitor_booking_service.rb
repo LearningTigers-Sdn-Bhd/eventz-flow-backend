@@ -13,6 +13,7 @@ class PublicExhibitorBookingService
   BoothNotFound = Class.new(StandardError)
   BoothUnavailable = Class.new(StandardError)
   BoothPriceMismatch = Class.new(StandardError)
+  PackageMismatch = Class.new(StandardError)
 
   FINGERPRINT_KEY = '_public_booking_fingerprint'
 
@@ -54,7 +55,9 @@ class PublicExhibitorBookingService
         ExhibitorBookingCapacity.lock!(booth_price, quantity: 1)
         nil
       end
-      price = booth_price.current_price
+      package = selected_package(normalized, booth_price)
+      ExhibitorBookingCapacity.lock_package!(package, quantity: 1) if package
+      price = package&.price || booth_price.current_price
       custom_fields = normalized.fetch('custom_fields_data', {}).merge(
         FINGERPRINT_KEY => fingerprint,
         'payment_option' => normalized.fetch('payment_option', 'now'),
@@ -63,6 +66,7 @@ class PublicExhibitorBookingService
 
       kit = exhibitor.exhibitor_kits.create!(normalized.slice(*booking_fields).merge(
         exhibitor_booth_price: booth_price,
+        exhibitor_package: package,
         booth_type: booth_price.booth_type,
         booth_quantity: 1,
         booth_number: booth&.number || normalized['booth_number'],
@@ -121,6 +125,16 @@ class PublicExhibitorBookingService
       elsif kit.exhibitor_booth_price&.inventory? && booth_number_changed?(kit, normalized)
         booth = move_booth!(kit, kit.exhibitor_booth_price, normalized['booth_number'])
         changes[:booth_number] = booth.number
+      end
+
+      # Absent key means "leave the package alone"; a present-but-blank key means "clear it".
+      if normalized.key?('exhibitor_package_id')
+        effective_price = target_price || kit.exhibitor_booth_price
+        package = selected_package(normalized, effective_price)
+        ExhibitorBookingCapacity.lock_package!(package, quantity: kit.booth_quantity, excluding: kit) if package
+        package_price = package&.price || effective_price.current_price
+        changes.merge!(exhibitor_package: package, price_snapshot: package_price,
+          amount_paid: package_price * kit.booth_quantity)
       end
       kit.update!(changes)
       kit
@@ -212,6 +226,17 @@ class PublicExhibitorBookingService
 
   def normalize_booth_number(value)
     value.to_s.downcase.gsub(/\s+/, '')
+  end
+
+  # Scoped to the event, so a package id from another event is a 404, not a mispriced booking.
+  def selected_package(normalized, booth_price)
+    package_id = normalized['exhibitor_package_id']
+    return nil if package_id.blank?
+
+    package = event.exhibitor_packages.find(package_id)
+    raise PackageMismatch unless package.matches_booth_price?(booth_price.id)
+
+    package
   end
 
   def normalize(value)

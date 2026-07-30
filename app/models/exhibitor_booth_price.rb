@@ -4,6 +4,7 @@ class ExhibitorBoothPrice < ApplicationRecord
   has_many :exhibitor_kits, dependent: :nullify
   has_many :exhibitor_booth_price_tiers, dependent: :destroy
   has_many :exhibitor_booths, dependent: :restrict_with_error
+  has_many :exhibitor_packages, dependent: :destroy
 
   delegate :zone, to: :exhibitor_zone, allow_nil: true
 

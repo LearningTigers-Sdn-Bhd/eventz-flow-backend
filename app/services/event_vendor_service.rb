@@ -79,9 +79,16 @@ class EventVendorService
     qty = 1 if qty <= 0
     attrs[:booth_quantity] = qty if attrs.respond_to?(:[]=)
 
+    package_id = attrs[:exhibitor_package_id] || attrs['exhibitor_package_id']
+    package = package_id.present? ? event.exhibitor_packages.find_by(id: package_id) : nil
+    # A package that does not belong to the chosen booth price is dropped, never mispriced.
+    package = nil if package && !package.matches_booth_price?(booth_price.id)
+    attrs[:exhibitor_package_id] = package&.id if attrs.respond_to?(:[]=)
+
     amount_paid = attrs[:amount_paid] || attrs['amount_paid']
     if amount_paid.blank?
-      attrs[:amount_paid] = booth_price.current_price * qty if attrs.respond_to?(:[]=)
+      unit_price = package&.price || booth_price.current_price
+      attrs[:amount_paid] = unit_price * qty if attrs.respond_to?(:[]=)
     end
 
     attrs
