@@ -46,6 +46,7 @@ Rails.application.routes.draw do
         get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
         delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
         get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
+        get 'exhibitor_booths', to: 'exhibitor_booths#index'
         resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
@@ -185,6 +186,9 @@ Rails.application.routes.draw do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
       resources :exhibitor_booth_prices, only: %i[index create]
+      resources :exhibitor_booths, only: %i[index create] do
+        post :bulk, on: :collection
+      end
       resources :exhibitor_zones, only: %i[index create]
 
       # Payment gateway settings (singular - one per event)
@@ -625,6 +629,9 @@ Rails.application.routes.draw do
     end
 
     resources :exhibitor_booth_prices, only: %i[update destroy]
+    resources :exhibitor_booths, only: %i[update destroy] do
+      post :release, on: :member
+    end
     resources :exhibitor_zones, only: %i[update destroy]
   end
 end

@@ -7,6 +7,7 @@ class ExhibitorKit < ApplicationRecord
   has_many :exhibitor_team_members, dependent: :destroy
   has_many :exhibitor_kit_items, dependent: :destroy
   has_many :exhibitor_kit_printings, dependent: :destroy
+  has_many :exhibitor_booths, dependent: :nullify
   has_many :custom_requests, dependent: :destroy
   has_one_attached :payment_proof, dependent: :purge_later
   has_one_attached :ic_copy, dependent: :purge_later
@@ -38,6 +39,7 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   before_save :remove_payment_option_when_payment_is_settled
+  after_save :sync_booth_status, if: :saved_change_to_booking_status?
   before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
@@ -133,6 +135,18 @@ class ExhibitorKit < ApplicationRecord
     return unless custom_fields_data.key?('payment_option') || custom_fields_data.key?(:payment_option)
 
     self.custom_fields_data = custom_fields_data.except('payment_option', :payment_option)
+  end
+
+  # Booking status is changed from several payment and admin paths. Syncing here rather than in
+  # each caller means future paths are covered too. after_save, not after_commit, so a rollback
+  # takes the booth change with it.
+  def sync_booth_status
+    case booking_status
+    when 'paid'
+      exhibitor_booths.update_all(status: ExhibitorBooth.statuses[:booked])
+    when 'cancelled', 'expired'
+      exhibitor_booths.update_all(status: ExhibitorBooth.statuses[:available], exhibitor_kit_id: nil)
+    end
   end
 
   def send_registration_received_email

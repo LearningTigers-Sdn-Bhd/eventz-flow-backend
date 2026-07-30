@@ -51,6 +51,15 @@ module V1
         render_booking_error('duplicate_booth_number', e.message, :conflict)
       rescue PublicExhibitorBookingService::AgreementRequired
         render_booking_error('agreement_required', 'Participation and indemnity agreement must be accepted', :unprocessable_content)
+      rescue PublicExhibitorBookingService::BoothNumberRequired
+        render_booking_error('booth_number_required', 'Select a booth number', :unprocessable_content)
+      rescue PublicExhibitorBookingService::BoothNotFound
+        render_booking_error('booth_not_found', 'Booth number does not exist for this event', :not_found)
+      rescue PublicExhibitorBookingService::BoothPriceMismatch
+        render_booking_error('booth_price_mismatch', 'Booth does not belong to the selected package',
+          :unprocessable_content)
+      rescue PublicExhibitorBookingService::BoothUnavailable
+        render_booking_error('booth_unavailable', 'Selected booth is no longer available', :conflict)
       rescue PublicExhibitorBookingService::EmailRequiresAccess
         render_booking_error('email_requires_access', 'Account now exists. Request a secure access link.', :conflict)
       rescue ActiveRecord::RecordInvalid
