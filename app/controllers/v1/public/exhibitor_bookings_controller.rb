@@ -65,6 +65,10 @@ module V1
       rescue PublicExhibitorBookingService::PackageMismatch
         render_booking_error('package_mismatch', 'Selected package does not belong to the selected booth',
           :unprocessable_content)
+      rescue ExhibitorVoucherRedemption::InvalidVoucher => e
+        render_booking_error('voucher_invalid', e.message, :unprocessable_content)
+      rescue ExhibitorVoucherRedemption::VoucherMismatch => e
+        render_booking_error('voucher_mismatch', e.message, :unprocessable_content)
       rescue ActiveRecord::RecordInvalid
         render_booking_error('booking_invalid', 'Booking details are invalid', :unprocessable_content)
       rescue ExhibitorIcCopyAttacher::Error
@@ -122,8 +126,9 @@ module V1
       end
 
       def create_booking_params
-        params.permit(:exhibitor_booth_price_id, :exhibitor_package_id, :company_name, :company_address, :name_on_fascia,
-          :pic_full_name, :pic_position, :pic_contact_number, :country, :booth_number,
+        params.permit(:exhibitor_booth_price_id, :exhibitor_package_id, :voucher_code,
+          :company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
+          :pic_contact_number, :country, :booth_number,
           :booth_quantity, :payment_option, :ic_copy_signed_id, :source_booking_public_id,
           :reuse_ic_copy, :indemnity_signed, custom_fields_data: {})
       end

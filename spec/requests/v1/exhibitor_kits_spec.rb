@@ -340,6 +340,55 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'POST /v1/events/:event_id/exhibitor_kits with a voucher' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 1000) }
+    let!(:voucher) do
+      create(:exhibitor_voucher, :fixed_amount, event: event, discount_value: 400)
+    end
+    let(:headers) { { 'Authorization' => "Bearer #{jwt_token(organizer)}" } }
+    let(:attributes) do
+      attributes_for(:exhibitor_kit).slice(
+        :booth_number, :name_on_fascia, :company_name, :company_address,
+        :pic_full_name, :pic_contact_number, :pic_email_address
+      ).merge(
+        event_vendor_id: exhibitor.id,
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code
+      )
+    end
+
+    it 'prices the kit from the voucher and redeems it' do
+      post "/v1/events/#{event.id}/exhibitor_kits",
+        params: { exhibitor_kit: attributes },
+        headers: headers
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body['price_snapshot'].to_f).to eq(600)
+      expect(voucher.reload).to have_attributes(
+        status: 'redeemed',
+        redeemed_by_exhibitor_kit_id: response.parsed_body['id']
+      )
+    end
+
+    it 'rejects an already-redeemed voucher code' do
+      voucher.update!(
+        status: :redeemed,
+        redeemed_by_exhibitor_kit: create(:exhibitor_kit),
+        redeemed_at: Time.current
+      )
+
+      post "/v1/events/#{event.id}/exhibitor_kits",
+        params: { exhibitor_kit: attributes },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors']).to eq('Voucher code is invalid or already used')
+    end
+  end
+
   describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:organizer) { create(:user, :organizer) }
@@ -422,6 +471,20 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
       expect(response).to have_http_status(:no_content)
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(false)
+    end
+
+    it 'nullifies the audit link when hard-deleting a kit that redeemed a voucher' do
+      voucher = create(:exhibitor_voucher, event: event, status: :redeemed,
+        redeemed_by_exhibitor_kit: exhibitor_kit, redeemed_at: Time.current)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(voucher.reload).to have_attributes(
+        status: 'redeemed',
+        redeemed_by_exhibitor_kit_id: nil
+      )
     end
 
     it 'forbids an organizer from using the force delete escape hatch' do

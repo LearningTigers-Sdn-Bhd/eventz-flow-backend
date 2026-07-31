@@ -79,5 +79,16 @@ RSpec.describe 'V1::ExhibitorPackages', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(ExhibitorPackage.exists?(package.id)).to be true
     end
+
+    it 'refuses to delete a package used to scope a voucher' do
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price)
+      create(:exhibitor_voucher, event: event, exhibitor_booth_price: booth_price,
+        exhibitor_package: package)
+
+      delete "/v1/exhibitor_packages/#{package.id}", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ExhibitorPackage.exists?(package.id)).to be(true)
+    end
   end
 end

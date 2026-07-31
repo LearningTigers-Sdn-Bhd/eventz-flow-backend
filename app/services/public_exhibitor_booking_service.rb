@@ -57,7 +57,15 @@ class PublicExhibitorBookingService
       end
       package = selected_package(normalized, booth_price)
       ExhibitorBookingCapacity.lock_package!(package, quantity: 1) if package
-      price = package&.price || booth_price.current_price
+      base_price = package&.price || booth_price.current_price
+      voucher_result = ExhibitorVoucherRedemption.preview(
+        event: event,
+        code: normalized['voucher_code'],
+        booth_price: booth_price,
+        package: package,
+        base_price: base_price
+      )
+      price = voucher_result[:price]
       custom_fields = normalized.fetch('custom_fields_data', {}).merge(
         FINGERPRINT_KEY => fingerprint,
         'payment_option' => normalized.fetch('payment_option', 'now'),
@@ -80,6 +88,12 @@ class PublicExhibitorBookingService
         idempotency_key: idempotency_key,
         custom_fields_data: custom_fields
       ))
+      if voucher_result[:voucher]
+        ExhibitorVoucherRedemption.redeem!(
+          voucher: voucher_result[:voucher],
+          exhibitor_kit: kit
+        )
+      end
       booth&.update!(status: :reserved, exhibitor_kit: kit)
       ExhibitorIcCopyAttacher.new(event: event, exhibitor_kit: kit,
         signed_id: normalized['ic_copy_signed_id']).call

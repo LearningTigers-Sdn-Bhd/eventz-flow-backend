@@ -47,6 +47,7 @@ Rails.application.routes.draw do
         delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
         get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
         get 'exhibitor_booths', to: 'exhibitor_booths#index'
+        post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
         resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
@@ -187,6 +188,7 @@ Rails.application.routes.draw do
       end
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_packages, only: %i[index create]
+      resources :exhibitor_vouchers, only: %i[index create]
       resources :exhibitor_booths, only: %i[index create] do
         post :bulk, on: :collection
       end
@@ -632,6 +634,7 @@ Rails.application.routes.draw do
 
     resources :exhibitor_booth_prices, only: %i[update destroy]
     resources :exhibitor_packages, only: %i[update destroy]
+    resources :exhibitor_vouchers, only: %i[destroy]
     resources :exhibitor_booths, only: %i[update destroy] do
       post :release, on: :member
     end

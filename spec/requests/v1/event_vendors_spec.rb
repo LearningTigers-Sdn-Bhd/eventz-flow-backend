@@ -865,4 +865,105 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       expect(payload['exhibitor_kit']['id']).to eq(older.id)
     end
   end
+
+  describe 'POST /v1/events/:event_id/vendors with a voucher' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:admin) { create(:user, :organizer) }
+    let(:vendor) { create(:user, :vendor) }
+    let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(admin)[:access_token]}" } }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 1000) }
+    let!(:voucher) do
+      create(:exhibitor_voucher, event: event, discount_type: :fixed_amount_off, discount_value: 400)
+    end
+    let(:kit_attributes) do
+      {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Ada',
+        pic_contact_number: '123'
+      }
+    end
+
+    it 'permits, applies, and redeems the voucher' do
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      kit = EventVendor.find_by!(event: event, vendor: vendor).exhibitor_kits.last
+      expect(response).to have_http_status(:created)
+      expect(kit.amount_paid).to eq(600)
+      expect(kit.price_snapshot).to eq(600)
+      expect(voucher.reload).to be_redeemed
+      expect(voucher.redeemed_by_exhibitor_kit).to eq(kit)
+    end
+
+    it 'rejects an invalid voucher without creating the assignment' do
+      post "/v1/events/#{event.id}/vendors",
+        params: {
+          vendor: {
+            vendor_id: vendor.id,
+            exhibitor_kit_attributes: kit_attributes.merge(voucher_code: 'NOPE1234')
+          }
+        },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: event, vendor: vendor)).to be_nil
+      expect(voucher.reload).to be_active
+    end
+
+    it 'rolls back the assignment if redemption loses a race after preview' do
+      allow(ExhibitorVoucherRedemption).to receive(:redeem!).and_raise(
+        ExhibitorVoucherRedemption::InvalidVoucher,
+        ExhibitorVoucherRedemption::INVALID_MESSAGE
+      )
+
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: event, vendor: vendor)).to be_nil
+      expect(voucher.reload).to be_active
+    end
+
+    it 'rejects a voucher when the vendor is already assigned' do
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      older_kit = create(:exhibitor_kit, event_vendor: exhibitor, amount_paid: 111)
+      newer_kit = create(:exhibitor_kit, event_vendor: exhibitor, amount_paid: 222)
+
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(older_kit.reload.amount_paid).to eq(111)
+      expect(newer_kit.reload.amount_paid).to eq(222)
+      expect(voucher.reload).to be_active
+      expect(voucher.redeemed_by_exhibitor_kit).to be_nil
+    end
+
+    it 'rejects a voucher when the event creates merchants instead of exhibitors' do
+      merchant_event = create(:event, use_ticket: false, use_exhibitor_kit: false)
+      merchant_booth_price = create(:exhibitor_booth_price, event: merchant_event, price: 1000)
+      merchant_voucher = create(:exhibitor_voucher, event: merchant_event)
+
+      post "/v1/events/#{merchant_event.id}/vendors",
+        params: {
+          vendor: {
+            vendor_id: vendor.id,
+            exhibitor_kit_attributes: kit_attributes.merge(
+              exhibitor_booth_price_id: merchant_booth_price.id,
+              voucher_code: merchant_voucher.code
+            )
+          }
+        },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: merchant_event, vendor: vendor)).to be_nil
+      expect(merchant_voucher.reload).to be_active
+    end
+  end
 end

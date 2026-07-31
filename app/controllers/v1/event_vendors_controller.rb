@@ -138,7 +138,7 @@ module V1
           :pic_contact_number, :pic_email_address, :special_requirements,
           :digital_brochure_link, :qr_code_url, :is_raw_space,
           :indemnity_signed, :indemnity_document_url,
-          :exhibitor_booth_price_id, :exhibitor_package_id, :booth_quantity, :_destroy,
+          :exhibitor_booth_price_id, :exhibitor_package_id, :voucher_code, :booth_quantity, :_destroy,
           { custom_fields_data: {} },
           { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] }
         ]

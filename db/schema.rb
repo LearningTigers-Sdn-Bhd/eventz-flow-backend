@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_30_130100) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -849,6 +849,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_30_130100) do
     t.bigint "attendee_id"
     t.index ["attendee_type", "attendee_id"], name: "index_exhibitor_team_members_on_attendee"
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_members_on_exhibitor_kit_id"
+  end
+
+  create_table "exhibitor_vouchers", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "exhibitor_booth_price_id"
+    t.bigint "exhibitor_package_id"
+    t.string "code", null: false
+    t.integer "discount_type", null: false
+    t.decimal "discount_value", precision: 10, scale: 2, null: false
+    t.integer "status", default: 0, null: false
+    t.bigint "redeemed_by_exhibitor_kit_id"
+    t.datetime "redeemed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_exhibitor_vouchers_on_code", unique: true
+    t.index ["event_id"], name: "index_exhibitor_vouchers_on_event_id"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_vouchers_on_exhibitor_booth_price_id"
+    t.index ["exhibitor_package_id"], name: "index_exhibitor_vouchers_on_exhibitor_package_id"
+    t.index ["redeemed_by_exhibitor_kit_id"], name: "index_exhibitor_vouchers_on_redeemed_by_exhibitor_kit_id"
   end
 
   create_table "exhibitor_zones", force: :cascade do |t|
@@ -1710,6 +1729,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_30_130100) do
   add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_payments", "users", column: "payee_id"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
+  add_foreign_key "exhibitor_vouchers", "events"
+  add_foreign_key "exhibitor_vouchers", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_vouchers", "exhibitor_kits", column: "redeemed_by_exhibitor_kit_id", on_delete: :nullify
+  add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
   add_foreign_key "gift_winners", "gifts"
