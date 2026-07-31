@@ -4,7 +4,7 @@ module V1
   class ExhibitorBoothsController < ApplicationController
     before_action :authenticate_user!
     before_action :set_event, only: %i[index create bulk]
-    before_action :set_booth, only: %i[update destroy release]
+    before_action :set_booth, only: %i[update destroy release assign]
 
     def index
       booths = policy_scope(@event.exhibitor_booths.includes(:exhibitor_booth_price, :exhibitor_kit))
@@ -59,12 +59,42 @@ module V1
       authorize @booth, :update?
 
       ExhibitorBooth.transaction do
+        @booth.lock!
         kit = @booth.exhibitor_kit
+        kit&.lock!
         @booth.update!(status: :available, exhibitor_kit: nil)
         kit&.update!(booth_number: nil)
       end
 
       render json: serialize(@booth)
+    end
+
+    def assign
+      authorize @booth, :update?
+
+      kit = ExhibitorKit.find(assign_params[:exhibitor_kit_id])
+
+      if kit.event.id != @booth.event_id
+        return render json: { errors: ['Exhibitor kit does not belong to this event'] },
+          status: :unprocessable_content
+      end
+
+      ExhibitorBooth.transaction do
+        @booth.lock!
+        kit.lock!
+        unless @booth.available? || @booth.exhibitor_kit_id == kit.id
+          return render json: { errors: ['Booth is not available'] }, status: :unprocessable_content
+        end
+
+        kit.exhibitor_booths.where.not(id: @booth.id)
+          .update_all(status: :available, exhibitor_kit_id: nil)
+        @booth.update!(status: :booked, exhibitor_kit: kit)
+        kit.update!(booth_number: @booth.number)
+      end
+
+      render json: serialize(@booth)
+    rescue ActiveRecord::RecordNotFound
+      render json: { errors: ['Exhibitor kit not found'] }, status: :not_found
     end
 
     def destroy
@@ -91,6 +121,10 @@ module V1
 
     def booth_params
       params.require(:exhibitor_booth).permit(:exhibitor_booth_price_id, :number, :status)
+    end
+
+    def assign_params
+      params.require(:exhibitor_booth).permit(:exhibitor_kit_id)
     end
 
     def bulk_params

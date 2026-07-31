@@ -637,6 +637,7 @@ Rails.application.routes.draw do
     resources :exhibitor_vouchers, only: %i[destroy]
     resources :exhibitor_booths, only: %i[update destroy] do
       post :release, on: :member
+      post :assign, on: :member
     end
     resources :exhibitor_zones, only: %i[update destroy]
   end

@@ -1,6 +1,29 @@
 require 'swagger_helper'
 
 RSpec.describe 'V1::ExhibitorKits', type: :request do
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id booth link' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
+
+    it 'returns the linked exhibitor booth id' do
+      booth = create(:exhibitor_booth, event: event, exhibitor_kit: kit)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_booth_id']).to eq(booth.id)
+    end
+
+    it 'returns nil when no exhibitor booth is linked' do
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('exhibitor_booth_id' => nil)
+    end
+  end
+
   path '/v1/events/{event_id}/exhibitor_kits' do
     parameter name: 'event_id', in: :path, type: :string, description: 'ID of the event'
 

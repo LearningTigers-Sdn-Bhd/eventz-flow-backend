@@ -77,6 +77,96 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
     end
   end
 
+  describe 'POST /v1/exhibitor_booths/:id/assign' do
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, booth_number: nil) }
+    let(:booth) do
+      create(:exhibitor_booth, event: event, exhibitor_booth_price: price, number: 'S045')
+    end
+    let(:assign_params) { { exhibitor_booth: { exhibitor_kit_id: kit.id } } }
+
+    it 'assigns an available booth to a kit in the same event' do
+      post "/v1/exhibitor_booths/#{booth.id}/assign", params: assign_params,
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
+      expect(kit.reload.booth_number).to eq('S045')
+    end
+
+    it 'rejects a booth booked by a different kit without changing state' do
+      other_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: 'S045')
+      booth.update!(status: :booked, exhibitor_kit: other_kit)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign", params: assign_params,
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: other_kit.id)
+      expect(kit.reload.booth_number).to be_nil
+    end
+
+    it 'allows assigning the kit own booth again' do
+      booth.update!(status: :booked, exhibitor_kit: kit)
+      kit.update!(booth_number: booth.number)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign", params: assign_params,
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
+      expect(kit.reload.booth_number).to eq('S045')
+    end
+
+    it 'releases the kit previous booth when assigning another booth' do
+      old_booth = create(:exhibitor_booth, event: event, exhibitor_booth_price: price,
+        number: 'S044', status: :booked, exhibitor_kit: kit)
+      kit.update!(booth_number: old_booth.number)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign", params: assign_params,
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(old_booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
+      expect(kit.reload.booth_number).to eq('S045')
+    end
+
+    it 'rejects a kit from another event without changing state' do
+      other_event = create(:event)
+      other_exhibitor = create(:exhibitor, event: other_event)
+      other_kit = create(:exhibitor_kit, event_vendor: other_exhibitor, booth_number: nil)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: other_kit.id } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(other_kit.reload.booth_number).to be_nil
+    end
+
+    it 'forbids a vendor from assigning a booth without changing state' do
+      vendor = create(:user, :vendor)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign", params: assign_params,
+        headers: auth_headers(vendor), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(kit.reload.booth_number).to be_nil
+    end
+
+    it 'returns not found for an unknown exhibitor kit' do
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: 0 } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+    end
+  end
+
   describe 'DELETE /v1/exhibitor_booths/:id' do
     it 'deletes an available booth' do
       booth = create(:exhibitor_booth, event: event, exhibitor_booth_price: price)

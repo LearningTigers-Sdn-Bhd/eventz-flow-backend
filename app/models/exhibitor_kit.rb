@@ -10,6 +10,8 @@ class ExhibitorKit < ApplicationRecord
   has_many :exhibitor_kit_printings, dependent: :destroy
   has_many :exhibitor_booths, dependent: :nullify
   has_many :custom_requests, dependent: :destroy
+  has_one :applied_voucher, class_name: 'ExhibitorVoucher', foreign_key: :redeemed_by_exhibitor_kit_id,
+    inverse_of: :redeemed_by_exhibitor_kit
   has_one_attached :payment_proof, dependent: :purge_later
   has_one_attached :ic_copy, dependent: :purge_later
 
