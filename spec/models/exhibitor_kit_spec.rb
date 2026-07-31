@@ -311,4 +311,33 @@ RSpec.describe ExhibitorKit, type: :model do
       end.not_to(change { booth.reload.status })
     end
   end
+
+  describe 'reverting booking status when payment is unmarked as paid' do
+    let(:event) { create(:event) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :paid, booking_status: :paid)
+    end
+
+    it 'reverts booking_status to active when payment_status is manually set back to unpaid' do
+      kit.update!(payment_status: :unpaid)
+
+      expect(kit.reload.booking_status).to eq('active')
+    end
+
+    it 'leaves booking_status alone when it was not paid to begin with' do
+      active_kit = create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid,
+        booking_status: :cancelled)
+
+      active_kit.update!(payment_status: :unpaid)
+
+      expect(active_kit.reload.booking_status).to eq('cancelled')
+    end
+
+    it 'leaves booking_status alone when an unrelated field changes' do
+      kit.update!(company_name: 'Renamed Sdn Bhd')
+
+      expect(kit.reload.booking_status).to eq('paid')
+    end
+  end
 end

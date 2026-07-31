@@ -45,6 +45,7 @@ class ExhibitorKit < ApplicationRecord
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
   after_commit :sync_registration_payment_status, if: :just_marked_paid?
+  after_commit :revert_booking_status_when_unpaid, if: :just_marked_unpaid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
@@ -128,6 +129,17 @@ class ExhibitorKit < ApplicationRecord
   def sync_registration_payment_status
     update!(booking_status: :paid, reservation_expires_at: nil) unless booking_paid?
     exhibitor_registration_payment.update!(status: 'paid', paid_at: Time.current, payment_method: 'manual_bank_transfer')
+  end
+
+  # Manually reverting payment_status (e.g. via admin "Manage Payment") only flips that column,
+  # but booking_status was left stuck on 'paid' from the earlier sync above, which blocks
+  # cancellation (Cancel Kit requires booking_status active). Revert it symmetrically.
+  def just_marked_unpaid?
+    saved_change_to_payment_status? && unpaid? && booking_paid?
+  end
+
+  def revert_booking_status_when_unpaid
+    update!(booking_status: :active)
   end
 
   def remove_payment_option_when_payment_is_settled
