@@ -219,6 +219,25 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
     expect(exhibitor.exhibitor_kits.find_by!(idempotency_key: 'booking-with-ic').ic_copy.blob).to eq(blob)
   end
 
+  it 'optionally attaches an event-bound customs declaration to a new booking' do
+    price = create(:exhibitor_booth_price, event: event, price: 100)
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new('declaration'), filename: 'customs.pdf',
+      content_type: 'application/pdf', metadata: { document_key: 'customs_declaration_form', event_id: event.id })
+    exhibitor
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
+                pic_contact_number: '0123456789', indemnity_signed: true,
+                customs_declaration_signed_id: blob.signed_id },
+      headers: headers.merge('Idempotency-Key' => 'booking-with-customs-declaration')
+
+    expect(response).to have_http_status(:created)
+    kit = exhibitor.exhibitor_kits.find_by!(idempotency_key: 'booking-with-customs-declaration')
+    expect(kit.customs_declaration_form.blob).to eq(blob)
+    expect(response.parsed_body.fetch('data')).to include('customs_declaration_uploaded' => true)
+    expect(response.body).not_to include('signed_id', 'blob_url', 'token')
+  end
+
   it 'reports whether booking detail has an IC copy without exposing blob credentials' do
     kit = create(:exhibitor_kit, event_vendor: exhibitor)
     kit.ic_copy.attach(io: StringIO.new('identity'), filename: 'ic.pdf', content_type: 'application/pdf')

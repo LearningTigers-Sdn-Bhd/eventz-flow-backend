@@ -39,6 +39,7 @@ class PublicExhibitorBookingSerializer
       exhibitor_package_id: kit.exhibitor_package_id,
       booth_quantity: kit.booth_quantity,
       ic_copy_uploaded: kit.ic_copy.attached?,
+      customs_declaration_uploaded: kit.customs_declaration_form.attached?,
       custom_fields_data: kit.custom_fields_data.except(PublicExhibitorBookingService::FINGERPRINT_KEY)
     )
   end

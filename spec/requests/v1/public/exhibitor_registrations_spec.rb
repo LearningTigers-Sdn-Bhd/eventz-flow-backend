@@ -34,6 +34,35 @@ RSpec.describe 'V1::Public::ExhibitorRegistrations', type: :request do
     end
   end
 
+  describe 'POST /v1/public/events/:event_slug/customs_declaration_upload' do
+    it 'uploads an event-bound customs declaration up to 20MB' do
+      file = Tempfile.new(['customs-declaration', '.pdf'])
+      file.truncate(15.megabytes)
+
+      post "/v1/public/events/#{event.slug}/customs_declaration_upload",
+        params: { file: Rack::Test::UploadedFile.new(file.path, 'application/pdf') }
+
+      expect(response).to have_http_status(:created)
+      blob = ActiveStorage::Blob.find_signed!(response.parsed_body.dig('data', 'signed_id'))
+      expect(blob.metadata).to include('document_key' => 'customs_declaration_form', 'event_id' => event.id)
+    ensure
+      file.close!
+    end
+
+    it 'rejects customs declarations larger than 20MB' do
+      file = Tempfile.new(['customs-declaration', '.pdf'])
+      file.truncate(20.megabytes + 1)
+
+      post "/v1/public/events/#{event.slug}/customs_declaration_upload",
+        params: { file: Rack::Test::UploadedFile.new(file.path, 'application/pdf') }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['message']).to eq('Customs declaration form is too large (max 20MB)')
+    ensure
+      file.close!
+    end
+  end
+
   describe 'GET /v1/public/events/:event_slug/exhibitor_booth_prices' do
     it 'returns published event booth prices' do
       get "/v1/public/events/#{event.slug}/exhibitor_booth_prices"

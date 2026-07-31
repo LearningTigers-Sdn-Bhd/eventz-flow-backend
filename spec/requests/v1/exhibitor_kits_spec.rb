@@ -1,6 +1,23 @@
 require 'swagger_helper'
 
 RSpec.describe 'V1::ExhibitorKits', type: :request do
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id/customs_declaration' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event)) }
+
+    it 'downloads the customs declaration for an authorized organizer' do
+      kit.customs_declaration_form.attach(io: StringIO.new('declaration'), filename: 'customs.pdf',
+        content_type: 'application/pdf')
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/customs_declaration", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq('declaration')
+      expect(response.headers['Content-Disposition']).to include('customs.pdf')
+    end
+  end
+
   describe 'GET /v1/events/:event_id/exhibitor_kits/:id booth link' do
     let(:admin_user) { create(:user, :org_owner) }
     let(:event) { create(:event, use_exhibitor_kit: true) }

@@ -14,6 +14,7 @@ class ExhibitorKit < ApplicationRecord
     inverse_of: :redeemed_by_exhibitor_kit
   has_one_attached :payment_proof, dependent: :purge_later
   has_one_attached :ic_copy, dependent: :purge_later
+  has_one_attached :customs_declaration_form, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true

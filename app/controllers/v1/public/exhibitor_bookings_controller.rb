@@ -73,6 +73,9 @@ module V1
         render_booking_error('booking_invalid', 'Booking details are invalid', :unprocessable_content)
       rescue ExhibitorIcCopyAttacher::Error
         render_booking_error('ic_copy_invalid', 'IC copy upload is invalid or unavailable', :unprocessable_content)
+      rescue CustomsDeclarationAttacher::Error
+        render_booking_error('customs_declaration_invalid', 'Customs declaration upload is invalid or unavailable',
+          :unprocessable_content)
       rescue ActiveRecord::RecordNotFound
         render_booking_error('booth_package_not_found', 'Booth package not found', :not_found)
       end
@@ -129,7 +132,8 @@ module V1
         params.permit(:exhibitor_booth_price_id, :exhibitor_package_id, :voucher_code,
           :company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
           :pic_contact_number, :country, :booth_number,
-          :booth_quantity, :payment_option, :ic_copy_signed_id, :source_booking_public_id,
+          :booth_quantity, :payment_option, :ic_copy_signed_id, :customs_declaration_signed_id,
+          :source_booking_public_id,
           :reuse_ic_copy, :indemnity_signed, custom_fields_data: {})
       end
 

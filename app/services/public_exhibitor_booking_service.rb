@@ -97,6 +97,8 @@ class PublicExhibitorBookingService
       booth&.update!(status: :reserved, exhibitor_kit: kit)
       ExhibitorIcCopyAttacher.new(event: event, exhibitor_kit: kit,
         signed_id: normalized['ic_copy_signed_id']).call
+      CustomsDeclarationAttacher.new(event: event, exhibitor_kit: kit,
+        signed_id: normalized['customs_declaration_signed_id']).call
       kit.ic_copy.attach(source.ic_copy.blob) if normalized['ic_copy_signed_id'].blank? && source&.ic_copy&.attached?
       [Result.new(kit: kit, idempotent_replay: false), new_user, password]
     end

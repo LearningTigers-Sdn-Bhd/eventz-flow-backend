@@ -63,6 +63,7 @@ Rails.application.routes.draw do
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
+        post 'customs_declaration_upload', to: 'customs_declaration_uploads#create'
         match 'register_exhibitor', to: 'exhibitor_registrations#gone', via: %i[post patch]
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#gone'
         match 'exhibitor_payment_proof', to: 'exhibitor_registrations#gone', via: %i[post delete]
@@ -263,6 +264,7 @@ Rails.application.routes.draw do
 
       resources :exhibitor_kits, only: %i[index show create update destroy] do
         get :ic_copy, on: :member
+        get :customs_declaration, on: :member
         member do
           post :submit_order
           post :reject_payment_proof
