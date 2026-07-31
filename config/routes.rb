@@ -265,6 +265,7 @@ Rails.application.routes.draw do
           post :submit_order
           post :reject_payment_proof
           delete :permanently_delete
+          delete :force_delete
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]

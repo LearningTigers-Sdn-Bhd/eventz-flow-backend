@@ -406,4 +406,40 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       expect(exhibitor_kit.reload).to be_booking_active
     end
   end
+
+  describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id/force_delete' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:org_owner) { create(:user, :org_owner) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let!(:exhibitor_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :paid, booking_status: :active)
+    end
+
+    it 'lets an org owner hard-delete a paid, active kit without cancelling it first' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(false)
+    end
+
+    it 'forbids an organizer from using the force delete escape hatch' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(organizer)}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
+    end
+
+    it 'forbids an exhibitor from using the force delete escape hatch' do
+      exhibitor_user = exhibitor.vendor
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(exhibitor_user)}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
+    end
+  end
 end

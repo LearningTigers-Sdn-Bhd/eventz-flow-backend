@@ -21,6 +21,12 @@ class ExhibitorKitPolicy < ApplicationPolicy
     user.is_org_owner_or_organizer?
   end
 
+  # Org-owner-only escape hatch: hard-deletes a kit regardless of payment/booking state,
+  # bypassing the cancel-first requirement that #destroy? / #permanently_delete enforce.
+  def force_destroy?
+    user.is_org_owner?
+  end
+
   def download_ic_copy?
     user.is_org_owner_or_organizer? || user.is_event_admin?(record.event)
   end

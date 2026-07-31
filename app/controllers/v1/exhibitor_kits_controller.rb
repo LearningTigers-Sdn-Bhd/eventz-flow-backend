@@ -1,7 +1,7 @@
 class V1::ExhibitorKitsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy permanently_delete]
+  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy permanently_delete force_delete]
   before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
 
   def index
@@ -65,6 +65,15 @@ class V1::ExhibitorKitsController < ApplicationController
       return render json: { error: 'Only cancelled exhibitor kits can be permanently deleted' },
                     status: :unprocessable_content
     end
+
+    @exhibitor_kit.destroy!
+    head :no_content
+  end
+
+  # Org-owner-only: hard-deletes a kit in any state, bypassing the cancel-first requirement
+  # that #permanently_delete enforces for organizers.
+  def force_delete
+    authorize @exhibitor_kit, :force_destroy?
 
     @exhibitor_kit.destroy!
     head :no_content
