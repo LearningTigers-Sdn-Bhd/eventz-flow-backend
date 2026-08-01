@@ -1,6 +1,39 @@
 require 'rails_helper'
 
 RSpec.describe ExhibitorKitService, type: :service do
+  describe '#create with a package' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:base_kit_params) { attributes_for(:exhibitor_kit).merge(event_vendor_id: exhibitor.id) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 5000.0) }
+    let!(:package) { create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, price: 7000.0) }
+
+    it 'prices the kit from the package' do
+      params = ActionController::Parameters.new(exhibitor_kit: base_kit_params.merge(
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id
+      ))
+      result = described_class.new(user: organizer, event: event, params: params).create
+
+      expect(result).to be_success
+      expect(result.data.exhibitor_package_id).to eq(package.id)
+      expect(result.data.price_snapshot).to eq(7000.0)
+      expect(result.data.amount_paid).to eq(7000.0)
+    end
+
+    it 'fails when the package quota is exhausted' do
+      package.update!(quota: 0)
+
+      params = ActionController::Parameters.new(exhibitor_kit: base_kit_params.merge(
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id
+      ))
+      result = described_class.new(user: organizer, event: event, params: params).create
+
+      expect(result).not_to be_success
+      expect(result.errors).to eq('Booth capacity is sold out')
+    end
+  end
+
   describe '#update' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:user) { create(:user, :organizer) }

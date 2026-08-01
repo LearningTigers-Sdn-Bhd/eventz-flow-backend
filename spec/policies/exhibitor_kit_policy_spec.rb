@@ -12,6 +12,7 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
     let(:user) { create(:user, :org_owner) }
 
     it { is_expected.to permit_actions(%i[show create update destroy]) }
+    it { is_expected.to permit_action(:force_destroy) }
     it { is_expected.to permit_mass_assignment_of(:booth_number).for_action(:create) }
     it { is_expected.to permit_mass_assignment_of(:booth_number).for_action(:update) }
     it { is_expected.to forbid_mass_assignment_of(:exhibitor_booth_price_id).for_action(:update) }
@@ -20,6 +21,13 @@ RSpec.describe ExhibitorKitPolicy, type: :policy do
     it { is_expected.to permit_mass_assignment_of(:amount_paid).for_action(:update) }
     it { is_expected.to permit_mass_assignment_of(:payment_status).for_action(:update) }
     it { is_expected.to permit_action(:download_ic_copy) }
+  end
+
+  context 'for an organizer' do
+    let(:user) { create(:user, :organizer) }
+
+    it { is_expected.to permit_actions(%i[show create update destroy]) }
+    it { is_expected.to forbid_action(:force_destroy) }
   end
 
   context 'for an event contractor' do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -601,6 +601,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.boolean "use_voucher", default: true, null: false
     t.boolean "use_api_access", default: false, null: false
     t.boolean "use_certificate", default: false, null: false
+    t.integer "exhibitor_reservation_ttl_hours"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -644,6 +645,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.index ["event_id", "booth_type", "exhibitor_zone_id", "label"], name: "idx_exhibitor_booth_prices_unique", unique: true
     t.index ["event_id"], name: "index_exhibitor_booth_prices_on_event_id"
     t.index ["exhibitor_zone_id"], name: "index_exhibitor_booth_prices_on_exhibitor_zone_id"
+  end
+
+  create_table "exhibitor_booths", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "exhibitor_booth_price_id", null: false
+    t.bigint "exhibitor_kit_id"
+    t.string "number", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "number"], name: "index_exhibitor_booths_on_event_id_and_number", unique: true
+    t.index ["event_id"], name: "index_exhibitor_booths_on_event_id"
+    t.index ["exhibitor_booth_price_id", "status"], name: "index_exhibitor_booths_on_exhibitor_booth_price_id_and_status"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_booths_on_exhibitor_booth_price_id"
+    t.index ["exhibitor_kit_id"], name: "index_exhibitor_booths_on_exhibitor_kit_id"
   end
 
   create_table "exhibitor_kit_admin_notes", force: :cascade do |t|
@@ -738,9 +754,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.decimal "price_snapshot", precision: 10, scale: 2, default: "0.0", null: false
     t.string "currency", default: "MYR", null: false
     t.integer "lock_version", default: 0, null: false
+    t.bigint "exhibitor_package_id"
     t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
+    t.index ["exhibitor_package_id"], name: "index_exhibitor_kits_on_exhibitor_package_id"
     t.index ["public_id"], name: "index_exhibitor_kits_on_public_id", unique: true
   end
 
@@ -752,6 +770,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_exhibitor_owners_on_name"
+  end
+
+  create_table "exhibitor_packages", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "exhibitor_booth_price_id", null: false
+    t.string "name", null: false
+    t.text "inclusions"
+    t.decimal "price", precision: 10, scale: 2, null: false
+    t.integer "quota"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "name"], name: "index_exhibitor_packages_on_event_id_and_name", unique: true
+    t.index ["event_id"], name: "index_exhibitor_packages_on_event_id"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_packages_on_exhibitor_booth_price_id"
   end
 
   create_table "exhibitor_registration_payments", force: :cascade do |t|
@@ -817,6 +849,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.bigint "attendee_id"
     t.index ["attendee_type", "attendee_id"], name: "index_exhibitor_team_members_on_attendee"
     t.index ["exhibitor_kit_id"], name: "index_exhibitor_team_members_on_exhibitor_kit_id"
+  end
+
+  create_table "exhibitor_vouchers", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "exhibitor_booth_price_id"
+    t.bigint "exhibitor_package_id"
+    t.string "code", null: false
+    t.integer "discount_type", null: false
+    t.decimal "discount_value", precision: 10, scale: 2, null: false
+    t.integer "status", default: 0, null: false
+    t.bigint "redeemed_by_exhibitor_kit_id"
+    t.datetime "redeemed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_exhibitor_vouchers_on_code", unique: true
+    t.index ["event_id"], name: "index_exhibitor_vouchers_on_event_id"
+    t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_vouchers_on_exhibitor_booth_price_id"
+    t.index ["exhibitor_package_id"], name: "index_exhibitor_vouchers_on_exhibitor_package_id"
+    t.index ["redeemed_by_exhibitor_kit_id"], name: "index_exhibitor_vouchers_on_redeemed_by_exhibitor_kit_id"
   end
 
   create_table "exhibitor_zones", force: :cascade do |t|
@@ -1400,6 +1451,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.string "role"
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
+    t.bigint "vehicle_registration_id"
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL))"
     t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
@@ -1414,6 +1466,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
+    t.index ["vehicle_registration_id"], name: "index_tickets_on_vehicle_registration_id"
   end
 
   create_table "user_sessions", force: :cascade do |t|
@@ -1452,6 +1505,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
     t.index ["email"], name: "index_users_on_email"
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["status"], name: "index_users_on_status"
+  end
+
+  create_table "vehicle_registrations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "registration_form_id", null: false
+    t.bigint "base_ticket_type_id", null: false
+    t.string "plate", null: false
+    t.string "normalized_plate", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["base_ticket_type_id"], name: "index_vehicle_registrations_on_base_ticket_type_id"
+    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true
+    t.index ["event_id"], name: "index_vehicle_registrations_on_event_id"
+    t.index ["registration_form_id"], name: "index_vehicle_registrations_on_registration_form_id"
   end
 
   create_table "vendor_profiles", force: :cascade do |t|
@@ -1639,6 +1706,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
   add_foreign_key "exhibitor_booth_price_tiers", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_booth_prices", "events"
   add_foreign_key "exhibitor_booth_prices", "exhibitor_zones"
+  add_foreign_key "exhibitor_booths", "events"
+  add_foreign_key "exhibitor_booths", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_booths", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_admin_notes", "exhibitor_kits"
   add_foreign_key "exhibitor_kit_admin_notes", "users"
   add_foreign_key "exhibitor_kit_items", "exhibitor_kit_payments"
@@ -1651,11 +1721,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
   add_foreign_key "exhibitor_kit_printings", "printing_services"
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_kits", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_kits", "exhibitor_packages"
+  add_foreign_key "exhibitor_packages", "events"
+  add_foreign_key "exhibitor_packages", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_registration_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_limits", "events"
   add_foreign_key "exhibitor_team_member_payments", "exhibitor_kits"
   add_foreign_key "exhibitor_team_member_payments", "users", column: "payee_id"
   add_foreign_key "exhibitor_team_members", "exhibitor_kits"
+  add_foreign_key "exhibitor_vouchers", "events"
+  add_foreign_key "exhibitor_vouchers", "exhibitor_booth_prices"
+  add_foreign_key "exhibitor_vouchers", "exhibitor_kits", column: "redeemed_by_exhibitor_kit_id", on_delete: :nullify
+  add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
   add_foreign_key "gift_winners", "gifts"
@@ -1721,8 +1798,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_28_133000) do
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
+  add_foreign_key "tickets", "vehicle_registrations"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
+  add_foreign_key "vehicle_registrations", "events"
+  add_foreign_key "vehicle_registrations", "registration_forms"
+  add_foreign_key "vehicle_registrations", "ticket_types", column: "base_ticket_type_id"
   add_foreign_key "vendor_profiles", "users", column: "vendor_id"
   add_foreign_key "visitors", "events"
   add_foreign_key "visitors", "users", column: "scanned_by_id"

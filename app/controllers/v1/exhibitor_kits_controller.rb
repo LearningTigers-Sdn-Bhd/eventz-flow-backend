@@ -1,7 +1,7 @@
 class V1::ExhibitorKitsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy permanently_delete]
+  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration permanently_delete force_delete]
   before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
 
   def index
@@ -70,6 +70,15 @@ class V1::ExhibitorKitsController < ApplicationController
     head :no_content
   end
 
+  # Org-owner-only: hard-deletes a kit in any state, bypassing the cancel-first requirement
+  # that #permanently_delete enforces for organizers.
+  def force_delete
+    authorize @exhibitor_kit, :force_destroy?
+
+    @exhibitor_kit.destroy!
+    head :no_content
+  end
+
   def submit_order
     authorize @exhibitor_kit, :update?
 
@@ -99,6 +108,18 @@ class V1::ExhibitorKitsController < ApplicationController
     send_data @exhibitor_kit.ic_copy.download,
               filename: @exhibitor_kit.ic_copy.filename.to_s,
               type: @exhibitor_kit.ic_copy.content_type,
+              disposition: 'attachment'
+  end
+
+  def customs_declaration
+    authorize @exhibitor_kit, :download_ic_copy?
+    unless @exhibitor_kit.customs_declaration_form.attached?
+      return render json: { error: 'Customs declaration form not found' }, status: :not_found
+    end
+
+    send_data @exhibitor_kit.customs_declaration_form.download,
+              filename: @exhibitor_kit.customs_declaration_form.filename.to_s,
+              type: @exhibitor_kit.customs_declaration_form.content_type,
               disposition: 'attachment'
   end
 
@@ -140,11 +161,20 @@ class V1::ExhibitorKitsController < ApplicationController
       ]
     ).merge(
       ic_copy_uploaded: kit.ic_copy.attached?,
+      customs_declaration_uploaded: kit.customs_declaration_form.attached?,
+      booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       payment_proof_url: kit.exhibitor_registration_payment&.payment_proof&.attached? ? url_for(kit.exhibitor_registration_payment.payment_proof) : nil,
       payment_proof_status: kit.exhibitor_registration_payment&.status || 'pending',
       payment_note: kit.exhibitor_registration_payment&.note || kit.payment_note,
+      exhibitor_booth_id: kit.exhibitor_booths.first&.id,
       exhibitor_booth_price_label: kit.exhibitor_booth_price&.label,
       exhibitor_booth_price_zone: kit.exhibitor_booth_price&.zone,
+      exhibitor_package_id: kit.exhibitor_package_id,
+      exhibitor_package_name: kit.exhibitor_package&.name,
+      exhibitor_package_inclusions: kit.exhibitor_package&.inclusions,
+      exhibitor_voucher_code: kit.applied_voucher&.code,
+      exhibitor_voucher_discount_type: kit.applied_voucher&.discount_type,
+      exhibitor_voucher_discount_value: kit.applied_voucher&.discount_value,
       exhibitor_team_members: kit.exhibitor_team_members.as_json(
         only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]
       ),

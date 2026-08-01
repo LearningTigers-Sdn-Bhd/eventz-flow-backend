@@ -32,8 +32,12 @@ module V1
 
     def destroy
       authorize @exhibitor_booth_price
-      @exhibitor_booth_price.destroy
-      head :no_content
+
+      if @exhibitor_booth_price.destroy
+        head :no_content
+      else
+        render json: @exhibitor_booth_price.errors, status: :unprocessable_content
+      end
     end
 
     private

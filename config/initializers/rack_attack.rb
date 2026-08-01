@@ -81,6 +81,10 @@ class Rack::Attack
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
   end
 
+  throttle('customs_declaration_upload/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/customs_declaration_upload}) && req.post?
+  end
+
   throttle('exhibitor_access_request/ip', limit: 10, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
   end
