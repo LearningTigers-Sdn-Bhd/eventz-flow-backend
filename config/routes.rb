@@ -46,6 +46,7 @@ Rails.application.routes.draw do
         get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
         delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
         get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
+        post 'exhibitor_bookings/batch', to: 'exhibitor_bookings#create_batch'
         get 'exhibitor_booths', to: 'exhibitor_booths#index'
         post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
         resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]

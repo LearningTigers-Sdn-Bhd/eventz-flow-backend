@@ -21,6 +21,10 @@ class PublicExhibitorBookingService
     new(event:, access:).create(idempotency_key:, attributes:, new_registration: new_registration)
   end
 
+  def self.call_batch(event:, access:, idempotency_key:, shared_attributes:, booths:, new_registration: false)
+    new(event:, access:).create_batch(idempotency_key:, shared_attributes:, booths:, new_registration: new_registration)
+  end
+
   def initialize(event:, access:)
     @event = event
     @access = access
@@ -35,72 +39,8 @@ class PublicExhibitorBookingService
 
     result, new_user, password = ExhibitorKit.transaction do
       event.lock!
-      if new_registration && User.where('LOWER(email) = ?', access.normalized_email).exists?
-        raise EmailRequiresAccess
-      end
-      exhibitor, new_user, password = find_or_create_exhibitor!(normalized)
-      existing = exhibitor.exhibitor_kits.lock.find_by(idempotency_key: idempotency_key)
-      if existing
-        raise IdempotencyConflict unless existing.custom_fields_data[FINGERPRINT_KEY] == fingerprint
-
-        next [Result.new(kit: existing, idempotent_replay: true), nil, nil]
-      end
-
-      source = source_booking(normalized)
-      booth_price = event.exhibitor_booth_prices.find(normalized.fetch('exhibitor_booth_price_id'))
-      booth = if booth_price.inventory?
-        claim_booth!(booth_price, normalized['booth_number'])
-      else
-        reject_duplicate_booth_number!(normalized['booth_number'])
-        ExhibitorBookingCapacity.lock!(booth_price, quantity: 1)
-        nil
-      end
-      package = selected_package(normalized, booth_price)
-      ExhibitorBookingCapacity.lock_package!(package, quantity: 1) if package
-      base_price = package&.price || booth_price.current_price
-      voucher_result = ExhibitorVoucherRedemption.preview(
-        event: event,
-        code: normalized['voucher_code'],
-        booth_price: booth_price,
-        package: package,
-        base_price: base_price
-      )
-      price = voucher_result[:price]
-      custom_fields = normalized.fetch('custom_fields_data', {}).merge(
-        FINGERPRINT_KEY => fingerprint,
-        'payment_option' => normalized.fetch('payment_option', 'now'),
-        'zone' => booth_price.zone
-      )
-
-      kit = exhibitor.exhibitor_kits.create!(normalized.slice(*booking_fields).merge(
-        exhibitor_booth_price: booth_price,
-        exhibitor_package: package,
-        booth_type: booth_price.booth_type,
-        booth_quantity: 1,
-        booth_number: booth&.number || normalized['booth_number'],
-        pic_email_address: exhibitor.vendor.email,
-        amount_paid: price,
-        price_snapshot: price,
-        currency: 'MYR',
-        payment_status: :unpaid,
-        booking_status: :active,
-        reservation_expires_at: reservation_expiry(normalized),
-        idempotency_key: idempotency_key,
-        custom_fields_data: custom_fields
-      ))
-      if voucher_result[:voucher]
-        ExhibitorVoucherRedemption.redeem!(
-          voucher: voucher_result[:voucher],
-          exhibitor_kit: kit
-        )
-      end
-      booth&.update!(status: :reserved, exhibitor_kit: kit)
-      ExhibitorIcCopyAttacher.new(event: event, exhibitor_kit: kit,
-        signed_id: normalized['ic_copy_signed_id']).call
-      CustomsDeclarationAttacher.new(event: event, exhibitor_kit: kit,
-        signed_id: normalized['customs_declaration_signed_id']).call
-      kit.ic_copy.attach(source.ic_copy.blob) if normalized['ic_copy_signed_id'].blank? && source&.ic_copy&.attached?
-      [Result.new(kit: kit, idempotent_replay: false), new_user, password]
+      create_one!(normalized: normalized, idempotency_key: idempotency_key, new_registration: new_registration,
+        allow_reuse: false, fingerprint: fingerprint)
     end
 
     if new_user
@@ -110,6 +50,59 @@ class PublicExhibitorBookingService
       )
     end
     result
+  rescue ActiveRecord::RecordNotUnique
+    retry
+  end
+
+  def create_batch(idempotency_key:, shared_attributes:, booths:, new_registration: false)
+    raise ArgumentError, 'Idempotency-Key is required' if idempotency_key.blank?
+
+    normalized_shared = normalize(shared_attributes)
+    normalized_booths = normalize(booths)
+    raise AgreementRequired unless ActiveModel::Type::Boolean.new.cast(normalized_shared['indemnity_signed'])
+    fingerprint = Digest::SHA256.hexdigest(JSON.generate(shared_attributes: normalized_shared, booths: normalized_booths))
+    batch_id = SecureRandom.uuid
+
+    results, new_user, password = ExhibitorKit.transaction do
+      event.lock!
+      if new_registration && User.where('LOWER(email) = ?', access.normalized_email).exists?
+        raise EmailRequiresAccess
+      end
+
+      exhibitor, new_user, password = find_or_create_exhibitor!(normalized_shared)
+      existing = exhibitor.exhibitor_kits.lock.where(idempotency_key: normalized_booths.each_index.map {
+        |index| batch_idempotency_key(idempotency_key, index)
+      })
+      if existing.exists?
+        kits = existing.order(:id).to_a
+        unless kits.first.custom_fields_data[FINGERPRINT_KEY] == fingerprint
+          raise IdempotencyConflict
+        end
+
+        next [kits.map { |kit| Result.new(kit: kit, idempotent_replay: true) }, nil, nil]
+      end
+
+      results = normalized_booths.each_with_index.map do |booth, index|
+        normalized = normalized_shared.merge(booth).merge(
+          'custom_fields_data' => normalized_shared.fetch('custom_fields_data', {}).merge('booking_batch_id' => batch_id)
+        )
+        create_one!(normalized: normalized, idempotency_key: batch_idempotency_key(idempotency_key, index),
+          new_registration: false, allow_reuse: index.positive?, fingerprint: fingerprint).first
+      rescue StandardError => e
+        e.define_singleton_method(:failed_booth_number) { booth['booth_number'] }
+        raise
+      end
+      [results, new_user, password]
+    end
+
+    if new_user
+      EmailDelivery::AuditedDelivery.deliver_now(
+        mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
+        args: [new_user.email, password, new_user.full_name], related: new_user, metadata: {}, dedupe: true
+      )
+    end
+    { batch_id: results.first.kit.custom_fields_data['booking_batch_id'], results: results,
+      combined_amount: results.sum { |result| result.kit.amount_paid } }
   rescue ActiveRecord::RecordNotUnique
     retry
   end
@@ -176,6 +169,75 @@ class PublicExhibitorBookingService
   private
 
   attr_reader :event, :access
+
+  def create_one!(normalized:, idempotency_key:, new_registration:, allow_reuse:, fingerprint:)
+    if new_registration && User.where('LOWER(email) = ?', access.normalized_email).exists?
+      raise EmailRequiresAccess
+    end
+    exhibitor, new_user, password = find_or_create_exhibitor!(normalized)
+    existing = exhibitor.exhibitor_kits.lock.find_by(idempotency_key: idempotency_key)
+    if existing
+      raise IdempotencyConflict unless existing.custom_fields_data[FINGERPRINT_KEY] == fingerprint
+
+      return [Result.new(kit: existing, idempotent_replay: true), nil, nil]
+    end
+
+    source = source_booking(normalized)
+    booth_price = event.exhibitor_booth_prices.find(normalized.fetch('exhibitor_booth_price_id'))
+    booth = if booth_price.inventory?
+      claim_booth!(booth_price, normalized['booth_number'])
+    else
+      reject_duplicate_booth_number!(normalized['booth_number'])
+      ExhibitorBookingCapacity.lock!(booth_price, quantity: 1)
+      nil
+    end
+    package = selected_package(normalized, booth_price)
+    ExhibitorBookingCapacity.lock_package!(package, quantity: 1) if package
+    base_price = package&.price || booth_price.current_price
+    voucher_result = ExhibitorVoucherRedemption.preview(
+      event: event,
+      code: normalized['voucher_code'],
+      booth_price: booth_price,
+      package: package,
+      base_price: base_price
+    )
+    price = voucher_result[:price]
+    custom_fields = normalized.fetch('custom_fields_data', {}).merge(
+      FINGERPRINT_KEY => fingerprint,
+      'payment_option' => normalized.fetch('payment_option', 'now'),
+      'zone' => booth_price.zone
+    )
+
+    kit = exhibitor.exhibitor_kits.create!(normalized.slice(*booking_fields).merge(
+      exhibitor_booth_price: booth_price,
+      exhibitor_package: package,
+      booth_type: booth_price.booth_type,
+      booth_quantity: 1,
+      booth_number: booth&.number || normalized['booth_number'],
+      pic_email_address: exhibitor.vendor.email,
+      amount_paid: price,
+      price_snapshot: price,
+      currency: 'MYR',
+      payment_status: :unpaid,
+      booking_status: :active,
+      reservation_expires_at: reservation_expiry(normalized),
+      idempotency_key: idempotency_key,
+      custom_fields_data: custom_fields
+    ))
+    if voucher_result[:voucher]
+      ExhibitorVoucherRedemption.redeem!(
+        voucher: voucher_result[:voucher],
+        exhibitor_kit: kit
+      )
+    end
+    booth&.update!(status: :reserved, exhibitor_kit: kit)
+    ExhibitorIcCopyAttacher.new(event: event, exhibitor_kit: kit,
+      signed_id: normalized['ic_copy_signed_id'], allow_reuse: allow_reuse).call
+    CustomsDeclarationAttacher.new(event: event, exhibitor_kit: kit,
+      signed_id: normalized['customs_declaration_signed_id'], allow_reuse: allow_reuse).call
+    kit.ic_copy.attach(source.ic_copy.blob) if normalized['ic_copy_signed_id'].blank? && source&.ic_copy&.attached?
+    [Result.new(kit: kit, idempotent_replay: false), new_user, password]
+  end
 
   def reservation_expiry(normalized)
     return nil unless normalized.fetch('payment_option', 'now') == 'later'
@@ -267,5 +329,9 @@ class PublicExhibitorBookingService
 
   def booking_fields
     %w[company_name company_address name_on_fascia pic_full_name pic_position pic_contact_number country booth_number indemnity_signed]
+  end
+
+  def batch_idempotency_key(key, index)
+    "#{key}:#{index}"
   end
 end

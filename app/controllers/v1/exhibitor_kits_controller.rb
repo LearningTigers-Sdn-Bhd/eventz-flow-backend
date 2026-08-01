@@ -162,6 +162,7 @@ class V1::ExhibitorKitsController < ApplicationController
     ).merge(
       ic_copy_uploaded: kit.ic_copy.attached?,
       customs_declaration_uploaded: kit.customs_declaration_form.attached?,
+      booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       payment_proof_url: kit.exhibitor_registration_payment&.payment_proof&.attached? ? url_for(kit.exhibitor_registration_payment.payment_proof) : nil,
       payment_proof_status: kit.exhibitor_registration_payment&.status || 'pending',
       payment_note: kit.exhibitor_registration_payment&.note || kit.payment_note,

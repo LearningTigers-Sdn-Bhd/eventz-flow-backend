@@ -3,10 +3,11 @@
 class CustomsDeclarationAttacher
   Error = Class.new(StandardError)
 
-  def initialize(event:, exhibitor_kit:, signed_id:)
+  def initialize(event:, exhibitor_kit:, signed_id:, allow_reuse: false)
     @event = event
     @exhibitor_kit = exhibitor_kit
     @signed_id = signed_id
+    @allow_reuse = allow_reuse
   end
 
   def call
@@ -18,7 +19,7 @@ class CustomsDeclarationAttacher
       raise Error, 'Uploaded file is not a customs declaration form'
     end
     raise Error, 'Customs declaration does not belong to this event' unless blob.metadata['event_id'].to_i == @event.id
-    raise Error, 'Customs declaration upload was already used' if blob.attachments.exists?
+    raise Error, 'Customs declaration upload was already used' if !@allow_reuse && blob.attachments.exists?
 
     @exhibitor_kit.customs_declaration_form.attach(blob)
   end

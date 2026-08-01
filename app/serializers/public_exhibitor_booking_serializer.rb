@@ -22,6 +22,7 @@ class PublicExhibitorBookingSerializer
       payment_note: payment&.note,
       booking_status: kit.booking_status,
       reservation_expires_at: kit.reservation_expires_at,
+      booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       lock_version: kit.lock_version
     }
   end
