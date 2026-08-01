@@ -267,4 +267,77 @@ RSpec.describe ExhibitorKit, type: :model do
       )
     end
   end
+
+  describe 'booth status sync' do
+    let(:event) { create(:event) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:price) { create(:exhibitor_booth_price, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
+    let!(:booth) do
+      create(:exhibitor_booth, event: event, exhibitor_booth_price: price, status: :reserved,
+        exhibitor_kit: kit)
+    end
+
+    it 'marks the booth booked when the booking is paid' do
+      kit.update!(booking_status: :paid)
+
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
+    end
+
+    it 'releases the booth when the booking is cancelled' do
+      kit.update!(booking_status: :cancelled)
+
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+    end
+
+    it 'releases the booth when the booking expires' do
+      kit.update!(booking_status: :expired)
+
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+    end
+
+    it 'leaves the booth alone when an unrelated field changes' do
+      kit.update!(company_name: 'Renamed Sdn Bhd')
+
+      expect(booth.reload).to have_attributes(status: 'reserved', exhibitor_kit_id: kit.id)
+    end
+
+    it 'does not persist the booth change when the transaction rolls back' do
+      expect do
+        ExhibitorKit.transaction do
+          kit.update!(booking_status: :paid)
+          raise ActiveRecord::Rollback
+        end
+      end.not_to(change { booth.reload.status })
+    end
+  end
+
+  describe 'reverting booking status when payment is unmarked as paid' do
+    let(:event) { create(:event) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :paid, booking_status: :paid)
+    end
+
+    it 'reverts booking_status to active when payment_status is manually set back to unpaid' do
+      kit.update!(payment_status: :unpaid)
+
+      expect(kit.reload.booking_status).to eq('active')
+    end
+
+    it 'leaves booking_status alone when it was not paid to begin with' do
+      active_kit = create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid,
+        booking_status: :cancelled)
+
+      active_kit.update!(payment_status: :unpaid)
+
+      expect(active_kit.reload.booking_status).to eq('cancelled')
+    end
+
+    it 'leaves booking_status alone when an unrelated field changes' do
+      kit.update!(company_name: 'Renamed Sdn Bhd')
+
+      expect(kit.reload.booking_status).to eq('paid')
+    end
+  end
 end

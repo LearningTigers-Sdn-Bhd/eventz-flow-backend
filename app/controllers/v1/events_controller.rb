@@ -217,6 +217,7 @@ module V1
         :use_ticket,
         :use_seat_ticketing,
         :use_exhibitor_kit,
+        :exhibitor_reservation_ttl_hours,
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,

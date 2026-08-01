@@ -16,7 +16,7 @@ class ExhibitorKitService < BaseService
 
     permitted = create_params
 
-    exhibitor_kit = event_vendor.exhibitor_kits.build(permitted)
+    exhibitor_kit = event_vendor.exhibitor_kits.build(permitted.except(:voucher_code))
     authorize exhibitor_kit, :create?
 
     ExhibitorKit.transaction do
@@ -24,9 +24,24 @@ class ExhibitorKitService < BaseService
       booth_price = event.exhibitor_booth_prices.find(permitted[:exhibitor_booth_price_id])
       quantity = 1
       ExhibitorBookingCapacity.lock!(booth_price, quantity: quantity)
-      price = booth_price.current_price
+      package = if permitted[:exhibitor_package_id].present?
+        event.exhibitor_packages.find(permitted[:exhibitor_package_id])
+      end
+      raise ActiveRecord::RecordNotFound if package && !package.matches_booth_price?(booth_price.id)
+
+      ExhibitorBookingCapacity.lock_package!(package, quantity: quantity) if package
+      base_price = package&.price || booth_price.current_price
+      voucher_result = ExhibitorVoucherRedemption.preview(
+        event: event,
+        code: permitted[:voucher_code],
+        booth_price: booth_price,
+        package: package,
+        base_price: base_price
+      )
+      price = voucher_result[:price]
       exhibitor_kit.assign_attributes(
         exhibitor_booth_price: booth_price,
+        exhibitor_package: package,
         booth_type: booth_price.booth_type,
         booth_quantity: quantity,
         amount_paid: price * quantity,
@@ -37,12 +52,20 @@ class ExhibitorKitService < BaseService
         reservation_expires_at: nil
       )
       exhibitor_kit.save!
+      if voucher_result[:voucher]
+        ExhibitorVoucherRedemption.redeem!(
+          voucher: voucher_result[:voucher],
+          exhibitor_kit: exhibitor_kit
+        )
+      end
     end
     ServiceResult.new(success: true, data: exhibitor_kit, status: :created)
   rescue ActiveRecord::RecordInvalid => e
     ServiceResult.new(success: false, errors: e.record.errors.full_messages, status: :unprocessable_content)
   rescue ExhibitorBookingCapacity::SoldOut
     ServiceResult.new(success: false, errors: 'Booth capacity is sold out', status: :unprocessable_content)
+  rescue ExhibitorVoucherRedemption::InvalidVoucher, ExhibitorVoucherRedemption::VoucherMismatch => e
+    ServiceResult.new(success: false, errors: e.message, status: :unprocessable_content)
   end
 
   def update(exhibitor_kit)
@@ -76,7 +99,8 @@ class ExhibitorKitService < BaseService
 
   def create_params
     event_vendor = event.event_vendors.exhibitors.find_by(id: params.dig(:exhibitor_kit, :event_vendor_id))
-    params.require(:exhibitor_kit).permit(*policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create)
+    permitted_attributes = policy(ExhibitorKit.new(event_vendor: event_vendor)).permitted_attributes_for_create
+    params.require(:exhibitor_kit).permit(*permitted_attributes, :exhibitor_package_id)
   end
 
   def update_params(exhibitor_kit)
