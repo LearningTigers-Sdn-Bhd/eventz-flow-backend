@@ -115,6 +115,10 @@ module V1
         render_booking_error('email_requires_access', 'Account now exists. Request a secure access link.', :conflict)
       rescue PublicExhibitorBookingService::PackageMismatch => e
         render_batch_booking_error('package_mismatch', 'Selected package does not belong to the selected booth', :unprocessable_content, e)
+      rescue ExhibitorVoucherRedemption::InvalidVoucher => e
+        render_batch_booking_error('voucher_invalid', e.message, :unprocessable_content, e)
+      rescue ExhibitorVoucherRedemption::VoucherMismatch => e
+        render_batch_booking_error('voucher_mismatch', e.message, :unprocessable_content, e)
       rescue ActiveRecord::RecordInvalid => e
         render_batch_booking_error('booking_invalid', 'Booking details are invalid', :unprocessable_content, e)
       rescue ExhibitorIcCopyAttacher::Error => e
@@ -187,7 +191,7 @@ module V1
         params.permit(:company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
           :pic_contact_number, :country, :payment_option, :ic_copy_signed_id, :customs_declaration_signed_id,
           :source_booking_public_id, :reuse_ic_copy, :indemnity_signed, custom_fields_data: {},
-          booths: %i[exhibitor_booth_price_id exhibitor_package_id booth_number])
+          booths: %i[exhibitor_booth_price_id exhibitor_package_id booth_number voucher_code])
       end
 
       def update_booking_params
