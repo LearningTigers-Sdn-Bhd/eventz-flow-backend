@@ -94,6 +94,33 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
       expect(kit.reload.booth_number).to eq('S045')
     end
 
+    it 'assigns a booth matching the kit own booth price' do
+      priced_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: nil,
+        exhibitor_booth_price: price)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: priced_kit.id } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: priced_kit.id)
+    end
+
+    it 'rejects a booth from a different price tier than the kit was billed at' do
+      other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone)
+      priced_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: nil,
+        exhibitor_booth_price: other_price)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: priced_kit.id } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors']).to include("Booth does not match the kit's booth price")
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(priced_kit.reload.booth_number).to be_nil
+    end
+
     it 'rejects a booth booked by a different kit without changing state' do
       other_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: 'S045')
       booth.update!(status: :booked, exhibitor_kit: other_kit)
