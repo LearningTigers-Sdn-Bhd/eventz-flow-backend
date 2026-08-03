@@ -429,6 +429,39 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id batch voucher display' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:voucher) { create(:exhibitor_voucher, event: event, discount_value: 10) }
+    let(:first_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+    let(:sibling_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+
+    it 'shows the shared voucher on every kit in the batch, not just the redeeming kit' do
+      voucher.update!(status: :redeemed, redeemed_by_exhibitor_kit: first_kit, redeemed_at: Time.current)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{sibling_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to eq(voucher.code)
+    end
+
+    it 'returns nil when the kit has no batch or voucher' do
+      solo_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{solo_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to be_nil
+    end
+  end
+
   describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:organizer) { create(:user, :organizer) }

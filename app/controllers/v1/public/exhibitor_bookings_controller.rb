@@ -190,7 +190,7 @@ module V1
       def create_batch_params
         params.permit(:company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
           :pic_contact_number, :country, :payment_option, :ic_copy_signed_id, :customs_declaration_signed_id,
-          :source_booking_public_id, :reuse_ic_copy, :indemnity_signed, custom_fields_data: {},
+          :source_booking_public_id, :reuse_ic_copy, :indemnity_signed, :voucher_code, custom_fields_data: {},
           booths: %i[exhibitor_booth_price_id exhibitor_package_id booth_number voucher_code])
       end
 
