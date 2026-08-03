@@ -7,6 +7,7 @@ RSpec.describe SendEventCertificatesJob, type: :job do
   let!(:ticket_with_email) { create(:ticket, event: event, attendee_email: 'a@example.com') }
   let!(:ticket_checked_in) { create(:ticket, :checked_in, event: event, attendee_email: 'b@example.com') }
   let!(:ticket_no_email)   { create(:ticket, event: event, attendee_email: nil) }
+  let!(:ticket_waiting_list) { create(:ticket, event: event, attendee_email: 'c@example.com', waiting_list: true) }
 
   describe '#perform' do
     it 'enqueues a delivery per eligible ticket (all audience)' do
@@ -52,6 +53,11 @@ RSpec.describe SendEventCertificatesJob, type: :job do
     it 'excludes blank-email tickets' do
       ids = described_class.recipient_scope(event, 'all').pluck(:id)
       expect(ids).to contain_exactly(ticket_with_email.id, ticket_checked_in.id)
+    end
+
+    it 'excludes waiting-list tickets' do
+      ids = described_class.recipient_scope(event, 'all').pluck(:id)
+      expect(ids).not_to include(ticket_waiting_list.id)
     end
 
     context 'unsent audience' do

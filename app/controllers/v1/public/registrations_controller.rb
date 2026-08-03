@@ -43,7 +43,7 @@ module V1
           email: email
         )
         if form_slug.present?
-          form = event.registration_forms.active.find_by(slug: form_slug)
+          form = event.registration_forms.find_by(slug: form_slug)
           tickets = tickets.where(ticket_type_id: registration_status_ticket_type_ids(event:, form:)) if form
         end
 
@@ -186,12 +186,19 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.active.find_by(slug: params[:form_slug])
+          form = event.registration_forms.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
               message: 'Registration form not found'
             }, status: :not_found
+          end
+
+          if form.closed?
+            return render json: {
+              success: false,
+              message: 'Registration is closed for this form'
+            }, status: :unprocessable_content
           end
 
           allowed_ticket_type_ids = form.ticket_type_ids
@@ -233,8 +240,9 @@ module V1
           ticket = event.tickets.new(registration_params)
           ticket.ticket_type = ticket_type
           ticket.pass_bundle = bundle if bundle.present?
+          ticket.waiting_list = form&.waiting_list? || false
 
-          if approval_enabled
+          if ticket.waiting_list || approval_enabled
             ticket.status = 'pending_payment'
             ticket.payment_status = 'pending'
           elsif bundle.present?
@@ -290,7 +298,7 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.active.find_by(slug: params[:form_slug])
+          form = event.registration_forms.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
@@ -376,6 +384,7 @@ module V1
           ticket_type: ticket_type.name,
           price: ticket_type.current_price,
           payment_status: ticket.payment_status,
+          waiting_list: ticket.waiting_list,
           custom_fields_data: ticket.custom_fields_data,
           qr_code_data: ticket.public_id,
           documents: serialize_documents(ticket)
@@ -407,6 +416,7 @@ module V1
           price: ticket.ticket_type&.current_price || 0,
           payment_status: ticket.payment_status,
           status: ticket.status,
+          waiting_list: ticket.waiting_list,
           created_at: ticket.created_at,
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id

@@ -156,6 +156,18 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       end
     end
 
+    context 'when the ticket is on the waiting list' do
+      let!(:ticket) do
+        create(:ticket, :pending_payment, event: event, attendee_email: 'waiting@example.com', waiting_list: true)
+      end
+
+      it 'skips the reminder' do
+        expect do
+          perform_job
+        end.not_to have_enqueued_job(EmailDeliveryJob)
+      end
+    end
+
     context 'when the ticket payment status is failed' do
       let!(:ticket) do
         create(:ticket, event: event, attendee_email: 'failed@example.com', payment_status: :failed, status: :purchased)

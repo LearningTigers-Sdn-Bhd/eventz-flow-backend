@@ -168,6 +168,7 @@ Rails.application.routes.draw do
           patch :cancel_ticket
           patch :restore
           post :resend_confirmation_email
+          patch :accept_waiting_list
         end
       end
 

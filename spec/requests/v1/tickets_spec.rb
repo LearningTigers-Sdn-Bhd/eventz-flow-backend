@@ -517,6 +517,74 @@ RSpec.describe 'V1::Tickets', type: :request do
     end
   end
 
+  # ---------------------------------------------------------------------
+  # --- PATCH - Accept Waiting List Ticket ---
+  # ---------------------------------------------------------------------
+  path '/v1/events/{event_id}/tickets/{id}/accept_waiting_list' do
+    parameter name: :event_id, in: :path, type: :integer
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
+
+    let!(:waiting_list_ticket) do
+      create(
+        :ticket,
+        event: organizer_event,
+        ticket_type: general_ticket_type,
+        status: :pending_payment,
+        payment_status: :pending,
+        waiting_list: true,
+        attendee_name: 'Waiting List Attendee'
+      )
+    end
+
+    patch 'Accepts a waiting-list ticket, moving it to a purchased seat' do
+      tags 'Tickets'
+      security [{ BearerAuth: [] }]
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      let(:event_id) { organizer_event.id }
+      let(:id) { waiting_list_ticket.public_id }
+
+      response '200', 'Ticket successfully accepted off the waiting list' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        run_test! do
+          waiting_list_ticket.reload
+          expect(waiting_list_ticket.waiting_list).to eq(false)
+          expect(waiting_list_ticket.status).to eq('purchased')
+          expect(waiting_list_ticket.payment_status).to eq('paid')
+        end
+      end
+
+      response '403', 'Forbidden for an unassigned member' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        run_test!
+      end
+
+      response '422', 'Ticket is not on the waiting list' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { purchased_ticket.public_id }
+        run_test!
+      end
+
+      response '422', 'No seats available for the ticket type' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          general_ticket_type.update!(quantity: 1)
+          purchased_ticket.update!(payment_status: :paid)
+        end
+
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
+        run_test!
+      end
+    end
+  end
+
   # =========================================================================
   # Custom Route: /v1/tickets/:public_id/check_in
   # =========================================================================

@@ -1452,6 +1452,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
     t.bigint "vehicle_registration_id"
+    t.boolean "waiting_list", default: false, null: false
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL))"
     t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
@@ -1467,6 +1468,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
     t.index ["vehicle_registration_id"], name: "index_tickets_on_vehicle_registration_id"
+    t.index ["waiting_list"], name: "index_tickets_on_waiting_list"
   end
 
   create_table "user_sessions", force: :cascade do |t|
