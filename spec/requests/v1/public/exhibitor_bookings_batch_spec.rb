@@ -32,6 +32,36 @@ RSpec.describe 'Public exhibitor booking batches', type: :request do
     expect(data.fetch('kits').map { |kit| kit.fetch('booking_batch_id') }.uniq).to eq([data.fetch('batch_id')])
   end
 
+  it 'redeems an independent voucher code per booth in the same batch' do
+    exhibitor
+    standard_voucher = create(:exhibitor_voucher, event: event, exhibitor_booth_price: standard) # 10% off -> 90
+    premium_voucher = create(:exhibitor_voucher, :fixed_amount, event: event, exhibitor_booth_price: premium) # -500 -> clamped 0
+    voucher_params = params.deep_dup
+    voucher_params[:booths][0][:voucher_code] = standard_voucher.code
+    voucher_params[:booths][1][:voucher_code] = premium_voucher.code
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings/batch", params: voucher_params, headers: headers
+
+    expect(response).to have_http_status(:created)
+    data = response.parsed_body.fetch('data')
+    expect(data.fetch('combined_amount').to_f).to eq(90 + 0 + 100)
+    expect(standard_voucher.reload).to be_redeemed
+    expect(premium_voucher.reload).to be_redeemed
+  end
+
+  it 'rolls back the whole batch when one booth voucher code is invalid' do
+    exhibitor
+    invalid_params = params.deep_dup
+    invalid_params[:booths][0][:voucher_code] = 'NOPE1234'
+
+    expect {
+      post "/v1/public/events/#{event.slug}/exhibitor_bookings/batch", params: invalid_params, headers: headers
+    }.not_to change(ExhibitorKit, :count)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body.fetch('code')).to eq('voucher_invalid')
+  end
+
   it 'rolls back every booth and identifies duplicate booth number' do
     exhibitor
     duplicate_params = params.deep_dup

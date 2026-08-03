@@ -4,7 +4,7 @@ class ExhibitorPackage < ApplicationRecord
   has_many :exhibitor_kits, dependent: :restrict_with_error
   has_many :exhibitor_vouchers, dependent: :restrict_with_error
 
-  validates :name, presence: true, uniqueness: { scope: :event_id }
+  validates :name, presence: true, uniqueness: { scope: %i[event_id exhibitor_booth_price_id] }
   validates :price, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :quota, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validate :booth_price_must_belong_to_event
