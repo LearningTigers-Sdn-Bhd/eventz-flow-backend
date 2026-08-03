@@ -200,7 +200,6 @@ module V1
         message: 'Access token refreshed successfully'
       )
     rescue CustomError::Unauthorized => e
-      cookies.delete(:refresh_token)
       error_response(message: 'Invalid refresh token', errors: [{ field: 'refresh_token', message: e.message }],
                      status: :unauthorized)
     end
@@ -287,7 +286,7 @@ module V1
         event_vendor_attrs = invited_event_vendor_params || {}
 
         if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
-          event_vendor_attrs[:exhibitor_kit_attributes] = exhibitor_kit_params.to_h
+          event_vendor_attrs[:exhibitor_kits_attributes] = [exhibitor_kit_params.to_h]
         end
 
         event_vendor = EventVendor.create_for_event(event, @user, event_vendor_attrs)
@@ -505,9 +504,9 @@ module V1
         poster_url: params.dig(:event_vendor, :poster_url)
       }
 
-      # Include exhibitor_kit as nested attributes if event uses it (required for Exhibitor in production)
+      # Include exhibitor kit as nested attributes if event uses it (required for Exhibitor in production)
       if event.use_exhibitor_kit? && params[:exhibitor_kit].present?
-        event_vendor_attrs[:exhibitor_kit_attributes] = exhibitor_kit_params.to_h
+        event_vendor_attrs[:exhibitor_kits_attributes] = [exhibitor_kit_params.to_h]
       end
 
       event_vendor = EventVendor.new(event_vendor_attrs)

@@ -147,4 +147,12 @@ class ApplicationController < ActionController::API
 			p[:per_page] = [[p[:per_page].to_i, 100].min, 1].max if p[:per_page].present?
 		end
 	end
+
+  def public_registration_url_for(event)
+    url = event.normalized_public_registration_url
+    return url if url.present?
+
+    frontend_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', '')).to_s.chomp('/')
+    "#{frontend_url}/events/#{event.slug}"
+  end
 end

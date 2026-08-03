@@ -3,20 +3,32 @@
 module V1
   module Public
     class ExhibitorRegistrationsController < ApplicationController
+      include PublicFileValidation
+
       class ZoneSoldOutError < StandardError; end
       class BoothPriceSoldOutError < StandardError; end
+
+      # Exhibitor flow historically also accepts GIF and up to 20MB.
+      PAYMENT_PROOF_CONTENT_TYPES = (PublicFileValidation::ALLOWED_CONTENT_TYPES + %w[image/gif]).freeze
+      MAX_PAYMENT_PROOF_SIZE = 20.megabytes
 
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
+      def gone
+        render json: { success: false, code: 'legacy_exhibitor_endpoint_removed',
+          message: 'This exhibitor endpoint is no longer available' }, status: :gone
+      end
+
       def booth_prices
         event = Event.friendly.find(params[:event_slug])
 
-        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_booth_price_tiers).order(
-          :booth_type, :label
-        )
+        prices = event.exhibitor_booth_prices
+          .includes(:exhibitor_zone, :exhibitor_booth_price_tiers, :exhibitor_packages)
+          .order(:booth_type, :label)
         zone_sold_map = zone_sold_counts(event)
         booth_price_sold_map = booth_price_sold_counts(event)
+        package_sold_map = package_sold_counts(event)
 
         render json: {
           success: true,
@@ -47,7 +59,22 @@ module V1
               booth_price_quota: booth_price_quota,
               booth_price_sold_count: booth_price_sold_count,
               booth_price_remaining: booth_price_remaining,
-              booth_price_available: zone_available && booth_quota_available
+              booth_price_available: zone_available && booth_quota_available,
+              packages: price.exhibitor_packages.sort_by(&:name).map do |package|
+                package_sold_count = package_sold_map[package.id].to_i
+                package_remaining = package.quota.nil? ? nil : [package.quota - package_sold_count, 0].max
+                {
+                  id: package.id,
+                  name: package.name,
+                  price: package.price,
+                  inclusions: package.inclusions,
+                  quota: package.quota,
+                  sold_count: package_sold_count,
+                  remaining: package_remaining,
+                  available: zone_available && booth_quota_available &&
+                    (package_remaining.nil? || package_remaining.positive?)
+                }
+              end
             }
           end
         }
@@ -116,6 +143,8 @@ module V1
         }, status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_content
+      rescue ExhibitorIcCopyAttacher::Error => e
+        render json: { success: false, message: e.message }, status: :unprocessable_content
       rescue ZoneSoldOutError
         render json: { success: false, message: 'Selected zone is sold out' }, status: :unprocessable_content
       rescue BoothPriceSoldOutError
@@ -179,14 +208,14 @@ module V1
           return render json: { success: false, message: 'Payment proof is required' }, status: :unprocessable_content
         end
 
-        unless allowed_payment_proof_type?(payment_proof)
+        unless allowed_file_type?(payment_proof, allowed: PAYMENT_PROOF_CONTENT_TYPES)
           return render json: {
             success: false,
             message: 'Payment proof must be a JPEG, PNG, GIF, WebP, or PDF'
           }, status: :unprocessable_content
         end
 
-        if payment_proof.size.to_i > 20.megabytes
+        if file_too_large?(payment_proof, MAX_PAYMENT_PROOF_SIZE)
           return render json: {
             success: false,
             message: 'Payment proof is too large (max 20MB)'
@@ -252,24 +281,27 @@ module V1
           event.with_lock do
             exhibitor = Exhibitor.find_by(event: event, vendor: user)
 
-            if exhibitor&.exhibitor_kit.present?
-              ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
-              return exhibitor.exhibitor_kit
+            if exhibitor&.legacy_exhibitor_kit.present?
+              ensure_booth_manager_team_member!(exhibitor.legacy_exhibitor_kit)
+              return exhibitor.legacy_exhibitor_kit
             end
 
             ensure_zone_capacity!(booth_price: booth_price)
 
             if exhibitor.present?
-              kit = exhibitor.create_exhibitor_kit!(build_exhibitor_kit_attributes(booth_price))
+              kit = exhibitor.exhibitor_kits.create!(build_exhibitor_kit_attributes(booth_price))
+              attach_ic_copy!(event: event, exhibitor_kit: kit)
               ensure_booth_manager_team_member!(kit)
               return kit
             end
 
             exhibitor = Exhibitor.new(event: event, vendor: user)
-            exhibitor.build_exhibitor_kit(build_exhibitor_kit_attributes(booth_price))
+            exhibitor.exhibitor_kits.build(build_exhibitor_kit_attributes(booth_price))
             exhibitor.save!
-            ensure_booth_manager_team_member!(exhibitor.exhibitor_kit)
-            exhibitor.exhibitor_kit
+            kit = exhibitor.legacy_exhibitor_kit
+            attach_ic_copy!(event: event, exhibitor_kit: kit)
+            ensure_booth_manager_team_member!(kit)
+            kit
           end
         end
       end
@@ -352,8 +384,17 @@ module V1
           :exhibitor_booth_price_id,
           :booth_quantity,
           :is_booth_manager,
+          :ic_copy_signed_id,
           custom_fields_data: {}
         )
+      end
+
+      def attach_ic_copy!(event:, exhibitor_kit:)
+        ExhibitorIcCopyAttacher.new(
+          event: event,
+          exhibitor_kit: exhibitor_kit,
+          signed_id: registration_params[:ic_copy_signed_id]
+        ).call
       end
 
       def booth_manager_requested?
@@ -390,6 +431,7 @@ module V1
         profile = user.vendor_profile || user.reload.vendor_profile || user.build_vendor_profile
 
         profile.assign_attributes(
+          description: registration_params.dig(:custom_fields_data, :product_description),
           category: registration_params[:product_category],
           person_in_charge: registration_params[:pic_full_name],
           address: registration_params[:company_address]
@@ -504,11 +546,10 @@ module V1
 
       def find_existing_registration(event:, email:)
         event.exhibitors
-             .joins(:exhibitor_kit, :vendor)
+             .joins(:exhibitor_kits, :vendor)
              .where('LOWER(exhibitor_kits.pic_email_address) = :email OR LOWER(users.email) = :email', email: email)
-             .includes(exhibitor_kit: :exhibitor_booth_price)
-             .map(&:exhibitor_kit)
-             .compact
+             .includes(exhibitor_kits: :exhibitor_booth_price)
+             .flat_map(&:exhibitor_kits)
              .max_by(&:created_at)
       end
 
@@ -552,6 +593,14 @@ module V1
           .sum(:booth_quantity)
       end
 
+      def package_sold_counts(event)
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event.id })
+          .where.not(exhibitor_kits: { exhibitor_package_id: nil })
+          .group('exhibitor_kits.exhibitor_package_id')
+          .sum(:booth_quantity)
+      end
+
       def booth_price_sold_count(booth_price_id:, event_id:)
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event_id })
@@ -562,10 +611,6 @@ module V1
       def manual_payment_zone?(zone)
         zone_value = zone.to_s.downcase.gsub(/[^a-z0-9]/, '')
         %w[zonea zoneb zonec].include?(zone_value)
-      end
-
-      def allowed_payment_proof_type?(payment_proof)
-        payment_proof.content_type.in?(%w[image/jpeg image/png image/gif image/webp application/pdf])
       end
 
       def find_exhibitor_kit_for_event!(event:, exhibitor_kit_id:)

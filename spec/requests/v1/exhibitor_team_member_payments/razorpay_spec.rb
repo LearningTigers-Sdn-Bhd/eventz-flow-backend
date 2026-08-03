@@ -6,7 +6,7 @@ RSpec.describe 'V1::ExhibitorTeamMemberPayments::Razorpay', type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:event) { create(:event, status: :published, use_exhibitor_kit: true, use_ticket: true, user: org_owner) }
   let(:vendor) { create(:user, :vendor, email: 'vendor@example.com') }
-  let(:exhibitor) { create(:exhibitor, event: event, vendor: vendor) }
+  let(:exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event, vendor: vendor) }
   let(:kit) { exhibitor.exhibitor_kit }
 
   let(:gateway_instance) do

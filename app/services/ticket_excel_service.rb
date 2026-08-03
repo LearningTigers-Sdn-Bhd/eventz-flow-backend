@@ -7,7 +7,7 @@ class TicketExcelService
   # @return [Hash] { file_path: String, export_log: ExportLog }
   def self.export(event_id, from: nil, to: nil)
     event = Event.find(event_id)
-    tickets = event.tickets.includes(:ticket_type, :event)
+    tickets = event.tickets.includes(:ticket_type, :event, :ticket_application)
     tickets = tickets.where('created_at >= ?', from.beginning_of_day) if from.present?
     tickets = tickets.where('created_at <= ?', to.end_of_day) if to.present?
 
@@ -56,7 +56,8 @@ class TicketExcelService
         'QR Code',
         'Payment Status',
         'Checked In',
-        'Created At'
+        'Created At',
+        'Review Status'
       ]
       # Add label columns (using display names)
       all_label_keys.each do |key|
@@ -77,7 +78,8 @@ class TicketExcelService
           '', # QR Code column - will be filled with formula below
           ticket.payment_status,
           ticket.checked_in,
-          ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S')
+          ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S'),
+          ticket.ticket_application&.review_status&.titleize || ''
         ]
 
         # Add values from ticket.custom_fields_data for each label key

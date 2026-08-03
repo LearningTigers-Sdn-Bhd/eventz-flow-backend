@@ -16,7 +16,18 @@ class EventReminderJob < ApplicationJob
                   .where(start_date: target_date.beginning_of_day..target_date.end_of_day)
 
     events.find_each do |event|
-      event.tickets.where.not(attendee_email: [nil, '']).find_each do |ticket|
+      event.tickets
+        .left_outer_joins(:ticket_application)
+        .where(payment_status: :paid, status: %i[purchased scanned])
+        .where(ticket_applications: { id: nil })
+        .or(
+          event.tickets
+            .left_outer_joins(:ticket_application)
+            .where(payment_status: :paid, status: %i[purchased scanned])
+            .where(ticket_applications: { review_status: TicketApplication.review_statuses[:approved] })
+        )
+        .where.not(attendee_email: [nil, ''])
+        .find_each do |ticket|
         next if already_sent?(ticket, reminder_type)
         send_and_log(ticket, event, reminder_type)
       end

@@ -1,5 +1,6 @@
 class EmailDeliveryJob < ApplicationJob
   queue_as :mailers
+  self.log_arguments = false
 
   def perform(delivery_id, mailer_name, mailer_action, args)
     delivery = EmailDelivery.find(delivery_id)

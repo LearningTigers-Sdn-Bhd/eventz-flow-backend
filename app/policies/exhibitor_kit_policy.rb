@@ -17,6 +17,20 @@ class ExhibitorKitPolicy < ApplicationPolicy
     user.is_org_owner_or_organizer? || user.exhibition_contractor_for?(record.event_vendor.event) || record.event_vendor.vendor_id == user.id
   end
 
+  def destroy?
+    user.is_org_owner_or_organizer?
+  end
+
+  # Org-owner-only escape hatch: hard-deletes a kit regardless of payment/booking state,
+  # bypassing the cancel-first requirement that #destroy? / #permanently_delete enforce.
+  def force_destroy?
+    user.is_org_owner?
+  end
+
+  def download_ic_copy?
+    user.is_org_owner_or_organizer? || user.is_event_admin?(record.event)
+  end
+
   def permitted_attributes_for_create
     return exhibitor_kit_attributes if user.is_org_owner_or_organizer?
     return exhibitor_create_attributes if record.event_vendor&.vendor_id == user.id
@@ -26,7 +40,7 @@ class ExhibitorKitPolicy < ApplicationPolicy
 
   def permitted_attributes_for_update
     if user.is_org_owner_or_organizer? || user.is_event_admin?(record.event)
-      exhibitor_kit_attributes
+      exhibitor_kit_update_attributes
     elsif user.exhibition_contractor_for?(record.event_vendor.event)
       contractor_attributes
     elsif record.event_vendor.present? && record.event_vendor.vendor_id == user.id
@@ -45,7 +59,7 @@ class ExhibitorKitPolicy < ApplicationPolicy
       :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
       :digital_brochure_link, :qr_code_url, :is_raw_space,
       :indemnity_signed, :indemnity_document_url,
-      :exhibitor_booth_price_id, :booth_quantity,
+      :exhibitor_booth_price_id, :booth_quantity, :voucher_code,
       :payment_status, :amount_paid, :payment_note, :indemnity_link,
       { custom_fields_data: {} },
       { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },
@@ -57,15 +71,31 @@ class ExhibitorKitPolicy < ApplicationPolicy
   end
 
   def contractor_attributes
-    %i[
-      payment_status amount_paid payment_note indemnity_link
-    ] + [
+    [
       { custom_requests_attributes: %i[id status resolved_price response_notes] }
     ]
   end
 
+  def exhibitor_kit_update_attributes
+    [
+      :booth_number, :booth_dimensions, :side_wall_left_required, :side_wall_right_required,
+      :name_on_fascia, :fascia_upgrade_required, :company_name, :company_address, :country,
+      :pic_full_name, :pic_position, :pic_contact_number, :pic_email_address, :special_requirements,
+      :digital_brochure_link, :qr_code_url, :is_raw_space, :indemnity_signed,
+      :indemnity_document_url, :indemnity_link,
+      :payment_status, :amount_paid, :payment_note,
+      { custom_fields_data: {} },
+      { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] },
+      { exhibitor_kit_items_attributes: %i[id rentable_item_id quantity agreed_price notes _destroy] },
+      { exhibitor_kit_printings_attributes: %i[id printing_service_id quantity agreed_price file_reference notes _destroy] },
+      { custom_requests_attributes: %i[id description quantity status resolved_price response_notes _destroy] },
+      { exhibitor_kit_admin_notes_attributes: %i[id note user_id _destroy] }
+    ]
+  end
+
   def exhibitor_create_attributes
-    exhibitor_update_attributes + %i[booth_number booth_type company_name]
+    exhibitor_update_attributes +
+      %i[booth_number booth_type company_name exhibitor_booth_price_id booth_quantity voucher_code]
   end
 
   def exhibitor_update_attributes

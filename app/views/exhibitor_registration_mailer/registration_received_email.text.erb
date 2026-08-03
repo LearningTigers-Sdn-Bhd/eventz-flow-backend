@@ -2,6 +2,7 @@ Hi <%= @exhibitor_kit.pic_full_name %>,
 
 We have received your exhibitor registration for <%= @event.title %>.
 
+Booking Reference: <%= @booking_reference %>
 Company: <%= @exhibitor_kit.company_name %>
 Booth: <%= @booth_label %>
 <% if @exhibitor_kit.amount_paid.to_f > 0 %>
@@ -13,6 +14,10 @@ Payment Status: <%= @exhibitor_kit.payment_status.humanize %>
 If you selected pay later, please complete payment to secure your booth.
 <% else %>
 Your selected booth requires price negotiation. Please await further instructions regarding pricing.
+<% end %>
+
+<% if @manage_url.present? %>
+Securely manage this booking (email verification required): <%= @manage_url %>
 <% end %>
 
 <% if @contact_email.present? %>

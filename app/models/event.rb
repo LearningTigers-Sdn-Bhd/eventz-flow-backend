@@ -22,6 +22,7 @@ class Event < ApplicationRecord
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
+  has_many :public_exhibitor_access_sessions, dependent: :destroy
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
   has_many :wishes, dependent: :destroy
@@ -32,12 +33,16 @@ class Event < ApplicationRecord
   has_many :event_printing_services, dependent: :destroy
   has_many :event_rentable_items, dependent: :destroy
   has_many :exhibitor_booth_prices, dependent: :destroy
+  has_many :exhibitor_packages, dependent: :destroy
+  has_many :exhibitor_vouchers, dependent: :destroy
+  has_many :exhibitor_booths, dependent: :destroy
   has_many :exhibitor_zones, dependent: :destroy
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
+  has_one :certificate_template, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
   has_one :event_payment_gateway, dependent: :destroy
 

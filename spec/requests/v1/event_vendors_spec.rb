@@ -80,6 +80,11 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         nullable: true,
         description: 'ExhibitorKit object (only present for Exhibitor type)',
         properties: EXHIBITOR_KIT_SCHEMA[:properties]
+      },
+      exhibitor_kits: {
+        type: :array,
+        description: 'All ExhibitorKit objects owned by the event vendor, oldest first',
+        items: { type: :object, properties: EXHIBITOR_KIT_SCHEMA[:properties] }
       }
     },
     required: %w[id event_id vendor_id type redirect_url]
@@ -162,9 +167,10 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
         end
         let!(:exhibitor_user) { create(:user, role: :vendor, full_name: 'Expo Vendor', email: 'expo@example.com') }
         let!(:exhibitor) { create(:exhibitor, event: event, vendor: exhibitor_user) }
+        let!(:exhibitor_kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
 
         before do
-          exhibitor.exhibitor_kit.update!(exhibitor_booth_price: booth_price)
+          exhibitor_kit.update!(exhibitor_booth_price: booth_price)
         end
 
         schema type: :array,
@@ -175,6 +181,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           exhibitor_payload = data.find { |vendor| vendor['id'] == exhibitor.id }
 
           expect(exhibitor_payload).to be_present
+          expect(exhibitor_payload['exhibitor_kits'].map { |kit| kit['id'] }).to eq([exhibitor_kit.id])
           expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_id']).to eq(booth_price.id)
           expect(exhibitor_payload['exhibitor_kit']['exhibitor_booth_price_label']).to eq('Shell Scheme Booth (3m x 3m)')
           expect(exhibitor_payload['exhibitor_kit']).not_to have_key('exhibitor_booth_price_conferences_included')
@@ -545,7 +552,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
 
           run_test! do |response|
             data = JSON.parse(response.body)
-            expect(data['errors']).to include('Exhibitor kit name on fascia is too long (maximum is 30 characters)')
+            expect(data['errors']).to include('Exhibitor kits name on fascia is too long (maximum is 30 characters)')
           end
         end
       end
@@ -677,8 +684,7 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           )
         end
         let!(:existing_exhibitor) do
-          EventVendor.exhibitors.includes(:exhibitor_kit,
-                                          exhibitor_kit: [:exhibitor_team_members]).find(service_result.data.id)
+          EventVendor.exhibitors.includes(exhibitor_kits: [:exhibitor_team_members]).find(service_result.data.id)
         end
         let!(:existing_exhibitor_kit) { existing_exhibitor.exhibitor_kit }
         before do
@@ -780,6 +786,25 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
         end
 
+        response '404', 'Foreign exhibitor kit cannot be updated through vendor' do
+          let!(:foreign_exhibitor) { create(:exhibitor, event: event, vendor: create(:user, :vendor)) }
+          let!(:foreign_kit) { create(:exhibitor_kit, event_vendor: foreign_exhibitor) }
+          let(:body) do
+            {
+              vendor: {
+                exhibitor_kit_attributes: {
+                  id: foreign_kit.id,
+                  booth_number: 'STOLEN'
+                }
+              }
+            }
+          end
+
+          run_test! do
+            expect(foreign_kit.reload.booth_number).not_to eq('STOLEN')
+          end
+        end
+
         response '403', 'Forbidden for non-event-admin or non-owner' do
           let(:body) do
             {
@@ -796,6 +821,149 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
           end
         end
       end
+    end
+  end
+
+
+  describe 'plural exhibitor kit compatibility response' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:admin) { create(:user, :organizer) }
+    let!(:assignment) { create(:event_assignment, event: event, user: admin, role: 'event_admin') }
+    let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(admin)[:access_token]}" } }
+    let!(:exhibitor) { create(:exhibitor, event: event, vendor: create(:user, :vendor)) }
+
+    it 'exposes the package name on the kit payload' do
+      booth_price = create(:exhibitor_booth_price, event: event)
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price,
+        name: 'Package B | Prime Booth')
+      create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+        exhibitor_package: package)
+
+      get "/v1/events/#{event.id}/vendors", headers: headers
+
+      exhibitor_payload = json_response.find { |vendor| vendor['id'] == exhibitor.id }
+      kit_payload = exhibitor_payload['exhibitor_kits'].first
+      expect(kit_payload['exhibitor_package_id']).to eq(package.id)
+      expect(kit_payload['exhibitor_package_name']).to eq('Package B | Prime Booth')
+    end
+
+    it 'returns empty plural array and nil legacy kit for zero kits' do
+      get "/v1/events/#{event.id}/vendors", headers: headers
+
+      payload = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }
+      expect(payload).to include('exhibitor_kits' => [], 'exhibitor_kit' => nil)
+    end
+
+    it 'returns every kit oldest first and keeps oldest legacy kit' do
+      newer = create(:exhibitor_kit, event_vendor: exhibitor, created_at: 1.hour.ago)
+      older = create(:exhibitor_kit, event_vendor: exhibitor, created_at: 2.hours.ago)
+
+      get "/v1/events/#{event.id}/vendors", headers: headers
+
+      payload = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }
+      expect(payload['exhibitor_kits'].map { |kit| kit['id'] }).to eq([older.id, newer.id])
+      expect(payload['exhibitor_kit']['id']).to eq(older.id)
+    end
+  end
+
+  describe 'POST /v1/events/:event_id/vendors with a voucher' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:admin) { create(:user, :organizer) }
+    let(:vendor) { create(:user, :vendor) }
+    let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(admin)[:access_token]}" } }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 1000) }
+    let!(:voucher) do
+      create(:exhibitor_voucher, event: event, discount_type: :fixed_amount_off, discount_value: 400)
+    end
+    let(:kit_attributes) do
+      {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Ada',
+        pic_contact_number: '123'
+      }
+    end
+
+    it 'permits, applies, and redeems the voucher' do
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      kit = EventVendor.find_by!(event: event, vendor: vendor).exhibitor_kits.last
+      expect(response).to have_http_status(:created)
+      expect(kit.amount_paid).to eq(600)
+      expect(kit.price_snapshot).to eq(600)
+      expect(voucher.reload).to be_redeemed
+      expect(voucher.redeemed_by_exhibitor_kit).to eq(kit)
+    end
+
+    it 'rejects an invalid voucher without creating the assignment' do
+      post "/v1/events/#{event.id}/vendors",
+        params: {
+          vendor: {
+            vendor_id: vendor.id,
+            exhibitor_kit_attributes: kit_attributes.merge(voucher_code: 'NOPE1234')
+          }
+        },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: event, vendor: vendor)).to be_nil
+      expect(voucher.reload).to be_active
+    end
+
+    it 'rolls back the assignment if redemption loses a race after preview' do
+      allow(ExhibitorVoucherRedemption).to receive(:redeem!).and_raise(
+        ExhibitorVoucherRedemption::InvalidVoucher,
+        ExhibitorVoucherRedemption::INVALID_MESSAGE
+      )
+
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: event, vendor: vendor)).to be_nil
+      expect(voucher.reload).to be_active
+    end
+
+    it 'rejects a voucher when the vendor is already assigned' do
+      exhibitor = create(:exhibitor, event: event, vendor: vendor)
+      older_kit = create(:exhibitor_kit, event_vendor: exhibitor, amount_paid: 111)
+      newer_kit = create(:exhibitor_kit, event_vendor: exhibitor, amount_paid: 222)
+
+      post "/v1/events/#{event.id}/vendors",
+        params: { vendor: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes } },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(older_kit.reload.amount_paid).to eq(111)
+      expect(newer_kit.reload.amount_paid).to eq(222)
+      expect(voucher.reload).to be_active
+      expect(voucher.redeemed_by_exhibitor_kit).to be_nil
+    end
+
+    it 'rejects a voucher when the event creates merchants instead of exhibitors' do
+      merchant_event = create(:event, use_ticket: false, use_exhibitor_kit: false)
+      merchant_booth_price = create(:exhibitor_booth_price, event: merchant_event, price: 1000)
+      merchant_voucher = create(:exhibitor_voucher, event: merchant_event)
+
+      post "/v1/events/#{merchant_event.id}/vendors",
+        params: {
+          vendor: {
+            vendor_id: vendor.id,
+            exhibitor_kit_attributes: kit_attributes.merge(
+              exhibitor_booth_price_id: merchant_booth_price.id,
+              voucher_code: merchant_voucher.code
+            )
+          }
+        },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EventVendor.find_by(event: merchant_event, vendor: vendor)).to be_nil
+      expect(merchant_voucher.reload).to be_active
     end
   end
 end

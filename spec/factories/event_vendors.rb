@@ -17,10 +17,14 @@ FactoryBot.define do
     end
 
     factory :exhibitor, class: 'Exhibitor', traits: [:exhibitor] do
-      # The presence of exhibitor_kit is validated in Exhibitor model,
-      # so ensure a kit is built when creating an exhibitor in tests.
-      after(:create) do |exhibitor|
-        exhibitor.exhibitor_kit ||= create(:exhibitor_kit, event_vendor: exhibitor)
+      trait :with_exhibitor_kit do
+        after(:create) { |exhibitor| create(:exhibitor_kit, event_vendor: exhibitor) }
+      end
+
+      trait :with_multiple_exhibitor_kits do
+        after(:create) do |exhibitor|
+          create_list(:exhibitor_kit, 2, event_vendor: exhibitor)
+        end
       end
     end
 

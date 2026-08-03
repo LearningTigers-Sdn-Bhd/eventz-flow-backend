@@ -1,6 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe ExhibitorKit, type: :model do
+  it 'generates a short public id for new kits' do
+    kit = build(:exhibitor_kit)
+
+    expect(kit).to be_valid
+    expect(kit.public_id).to match(/\A[1-9A-HJ-NP-Za-km-z]{22}\z/)
+  end
   include ActiveJob::TestHelper
   let(:event) { create(:event, use_ticket: true) }
   let(:vendor_user) { create(:user, :vendor) }
@@ -8,7 +14,7 @@ RSpec.describe ExhibitorKit, type: :model do
 
   subject { build(:exhibitor_kit, event_vendor: exhibitor) }
 
-  it { should belong_to(:event_vendor) }
+  it { should belong_to(:event_vendor).inverse_of(:exhibitor_kits) }
   it { should have_many(:exhibitor_team_members).dependent(:destroy) }
   it { should validate_presence_of(:booth_type) }
 
@@ -16,6 +22,39 @@ RSpec.describe ExhibitorKit, type: :model do
 
   it { should validate_presence_of(:pic_full_name) }
   it { should validate_presence_of(:pic_contact_number) }
+
+  it do
+    should define_enum_for(:booking_status)
+      .with_values(active: 0, paid: 1, cancelled: 2, expired: 3)
+      .with_prefix(:booking)
+  end
+
+  it { should validate_uniqueness_of(:public_id).ignoring_case_sensitivity }
+  it { should validate_uniqueness_of(:idempotency_key).scoped_to(:event_vendor_id).allow_nil }
+
+  it 'allows multiple legacy rows without idempotency keys' do
+    create(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: nil)
+
+    expect(build(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: nil)).to be_valid
+  end
+
+  it 'allows the same idempotency key for different exhibitors' do
+    create(:exhibitor_kit, event_vendor: exhibitor, idempotency_key: 'registration-1')
+    other_exhibitor = create(:exhibitor)
+
+    expect(build(:exhibitor_kit, event_vendor: other_exhibitor, idempotency_key: 'registration-1')).to be_valid
+  end
+
+  it 'generates a short public id and lifecycle defaults' do
+    exhibitor_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+    expect(exhibitor_kit.public_id).to match(/\A[1-9A-HJ-NP-Za-km-z]{22}\z/)
+    expect(exhibitor_kit).to be_booking_active
+    expect(exhibitor_kit.price_snapshot).to eq(0)
+    expect(exhibitor_kit.currency).to eq('MYR')
+    expect(exhibitor_kit.lock_version).to eq(0)
+    expect(exhibitor_kit.reservation_expires_at).to be_nil
+  end
 
   it { should allow_value('test@example.com').for(:pic_email_address) }
   it { should_not allow_value('invalid-email').for(:pic_email_address) }
@@ -226,6 +265,79 @@ RSpec.describe ExhibitorKit, type: :model do
       expect(exhibitor_kit.reload.custom_fields_data).to eq(
         'preferred_booth_location' => 'Near entrance'
       )
+    end
+  end
+
+  describe 'booth status sync' do
+    let(:event) { create(:event) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:price) { create(:exhibitor_booth_price, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
+    let!(:booth) do
+      create(:exhibitor_booth, event: event, exhibitor_booth_price: price, status: :reserved,
+        exhibitor_kit: kit)
+    end
+
+    it 'marks the booth booked when the booking is paid' do
+      kit.update!(booking_status: :paid)
+
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
+    end
+
+    it 'releases the booth when the booking is cancelled' do
+      kit.update!(booking_status: :cancelled)
+
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+    end
+
+    it 'releases the booth when the booking expires' do
+      kit.update!(booking_status: :expired)
+
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+    end
+
+    it 'leaves the booth alone when an unrelated field changes' do
+      kit.update!(company_name: 'Renamed Sdn Bhd')
+
+      expect(booth.reload).to have_attributes(status: 'reserved', exhibitor_kit_id: kit.id)
+    end
+
+    it 'does not persist the booth change when the transaction rolls back' do
+      expect do
+        ExhibitorKit.transaction do
+          kit.update!(booking_status: :paid)
+          raise ActiveRecord::Rollback
+        end
+      end.not_to(change { booth.reload.status })
+    end
+  end
+
+  describe 'reverting booking status when payment is unmarked as paid' do
+    let(:event) { create(:event) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :paid, booking_status: :paid)
+    end
+
+    it 'reverts booking_status to active when payment_status is manually set back to unpaid' do
+      kit.update!(payment_status: :unpaid)
+
+      expect(kit.reload.booking_status).to eq('active')
+    end
+
+    it 'leaves booking_status alone when it was not paid to begin with' do
+      active_kit = create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid,
+        booking_status: :cancelled)
+
+      active_kit.update!(payment_status: :unpaid)
+
+      expect(active_kit.reload.booking_status).to eq('cancelled')
+    end
+
+    it 'leaves booking_status alone when an unrelated field changes' do
+      kit.update!(company_name: 'Renamed Sdn Bhd')
+
+      expect(kit.reload.booking_status).to eq('paid')
     end
   end
 end

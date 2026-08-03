@@ -1,3 +1,5 @@
+require 'digest'
+
 class Rack::Attack
   # 1. Allow all Localhost traffic (Development/Test)
   safelist('allow-localhost') do |req|
@@ -64,6 +66,72 @@ class Rack::Attack
   throttle("public_registration/email", limit: 3, period: 1.hour) do |req|
     if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
       req.params['attendee_email'].presence
+    end
+  end
+
+  # 10. Public Registration Document Uploads (storage flooding)
+  # 5 documents per registration × a few retries
+  throttle('public_upload/ip', limit: 20, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/registration_uploads}) && req.post?
+      req.ip
+    end
+  end
+
+  throttle('exhibitor_ic_upload/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
+  end
+
+  throttle('customs_declaration_upload/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/customs_declaration_upload}) && req.post?
+  end
+
+  throttle('exhibitor_access_request/ip', limit: 10, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
+  end
+
+  throttle('exhibitor_access_request/email', limit: 3, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
+      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
+    end
+  end
+
+  throttle('exhibitor_email_status/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
+  end
+
+  throttle('exhibitor_email_status/email', limit: 5, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
+      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
+    end
+  end
+
+  throttle('exhibitor_access_session/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_sessions$}) && req.post?
+  end
+
+  throttle('public_exhibitor_booking/ip', limit: 30, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
+      req.ip
+    end
+  end
+
+  throttle('public_exhibitor_booking/session', limit: 20, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
+      Digest::SHA256.hexdigest(req.get_header('HTTP_AUTHORIZATION').to_s)
+    end
+  end
+
+  # 11. Public Payment Proof Uploads
+  throttle('payment_proof/ip', limit: 10, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/tickets/.*/payment_proof}) && (req.post? || req.delete?)
+      req.ip
+    end
+  end
+
+  # 12. Field Availability Check (membership-number enumeration)
+  throttle('field_availability/ip', limit: 60, period: 1.hour) do |req|
+    if req.path.match?(%r{/v1/public/events/.*/field_availability}) && req.get?
+      req.ip
     end
   end
 

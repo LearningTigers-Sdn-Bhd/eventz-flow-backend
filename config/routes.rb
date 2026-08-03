@@ -40,6 +40,20 @@ Rails.application.routes.draw do
       # Public registration for walk-ins
       post 'payments/webhook', to: 'payments#webhook'
       scope 'events/:event_slug' do
+        post 'exhibitor_email_status', to: 'exhibitor_access_requests#status'
+        post 'exhibitor_access_requests', to: 'exhibitor_access_requests#create'
+        post 'exhibitor_access_sessions', to: 'exhibitor_access_sessions#create'
+        get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
+        delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
+        get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
+        post 'exhibitor_bookings/batch', to: 'exhibitor_bookings#create_batch'
+        get 'exhibitor_booths', to: 'exhibitor_booths#index'
+        post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
+        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
+        post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
+        post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
+        post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'
+        delete 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#destroy'
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
@@ -49,18 +63,19 @@ Rails.application.routes.draw do
         post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
-        post 'register_exhibitor', to: 'exhibitor_registrations#create'
-        patch 'register_exhibitor', to: 'exhibitor_registrations#update'
-        get 'exhibitor_registration_status', to: 'exhibitor_registrations#status'
-        post 'exhibitor_payment_proof', to: 'exhibitor_registrations#upload_payment_proof'
-        delete 'exhibitor_payment_proof', to: 'exhibitor_registrations#remove_payment_proof'
+        post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
+        post 'customs_declaration_upload', to: 'customs_declaration_uploads#create'
+        match 'register_exhibitor', to: 'exhibitor_registrations#gone', via: %i[post patch]
+        get 'exhibitor_registration_status', to: 'exhibitor_registrations#gone'
+        match 'exhibitor_payment_proof', to: 'exhibitor_registrations#gone', via: %i[post delete]
         post 'payments/create_order', to: 'payments#create_order'
         post 'payments/verify', to: 'payments#verify'
         match 'payments/callback', to: 'payments#callback', via: %i[get post]
-        post 'exhibitor_payments/create_order', to: 'exhibitor_payments#create_order'
-        post 'exhibitor_payments/verify', to: 'exhibitor_payments#verify'
-        match 'exhibitor_payments/callback', to: 'exhibitor_payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
+        get 'field_availability', to: 'registrations#field_availability'
+        post 'registration_uploads', to: 'registration_uploads#create'
+        post 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#create'
+        delete 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#destroy'
       end
 
       # RSVP endpoints for wedding invitations
@@ -155,12 +170,30 @@ Rails.application.routes.draw do
           post :resend_confirmation_email
         end
       end
+
+      # E-Certificates
+      resource :certificate_template, only: %i[show create update destroy],
+                                      controller: 'certificate_templates'
+      resources :certificates, only: [] do
+        collection do
+          post :send_batch
+          post :send_one
+          get :preview
+          get :participants
+          get :download_all
+        end
+      end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
       resources :exhibitor_booth_prices, only: %i[index create]
+      resources :exhibitor_packages, only: %i[index create]
+      resources :exhibitor_vouchers, only: %i[index create]
+      resources :exhibitor_booths, only: %i[index create] do
+        post :bulk, on: :collection
+      end
       resources :exhibitor_zones, only: %i[index create]
 
       # Payment gateway settings (singular - one per event)
@@ -195,6 +228,7 @@ Rails.application.routes.draw do
           patch 'application/approve', to: 'ticket_applications#approve'
           patch 'application/reject', to: 'ticket_applications#reject'
           post 'application/resend_rsvp', to: 'ticket_applications#resend_rsvp'
+          patch 'application/approve_rsvp', to: 'ticket_applications#approve_rsvp'
         end
       end
 
@@ -230,8 +264,13 @@ Rails.application.routes.draw do
       end
 
       resources :exhibitor_kits, only: %i[index show create update destroy] do
+        get :ic_copy, on: :member
+        get :customs_declaration, on: :member
         member do
           post :submit_order
+          post :reject_payment_proof
+          delete :permanently_delete
+          delete :force_delete
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]
@@ -597,6 +636,12 @@ Rails.application.routes.draw do
     end
 
     resources :exhibitor_booth_prices, only: %i[update destroy]
+    resources :exhibitor_packages, only: %i[update destroy]
+    resources :exhibitor_vouchers, only: %i[destroy]
+    resources :exhibitor_booths, only: %i[update destroy] do
+      post :release, on: :member
+      post :assign, on: :member
+    end
     resources :exhibitor_zones, only: %i[update destroy]
   end
 end

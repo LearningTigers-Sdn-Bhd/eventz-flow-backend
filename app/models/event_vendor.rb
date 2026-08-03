@@ -22,10 +22,9 @@ class EventVendor < ApplicationRecord
   # --- Custom Associations / Methods ---
   def exhibitor_kit
     if is_a?(Exhibitor)
-      super
+      legacy_exhibitor_kit
     else
       nil
     end
   end
 end
-

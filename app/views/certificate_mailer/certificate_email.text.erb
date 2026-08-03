@@ -1,0 +1,25 @@
+Your Certificate Is Ready
+
+Hi <%= @ticket.attendee_name %>,
+
+Thank you for being part of <%= @event.title %>. It was a pleasure to have you with us, and we're pleased to share your certificate of participation as a small token of our appreciation.
+
+Event Details
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %><% if @event.end_date.present? && @event.end_date.to_date != @event.start_date.to_date %> - <%= @event.end_date.strftime("%B %d, %Y") %><% end %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+
+Your certificate is attached to this email as a PDF. Open the attachment to view, download, and save it.
+
+<% if @contact_email.present? %>
+Should you have any questions, please reach out to us at <%= @contact_email %>.
+<% end %>
+Thank you once again for joining us.
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

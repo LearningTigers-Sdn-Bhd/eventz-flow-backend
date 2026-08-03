@@ -24,23 +24,70 @@ class EventVendorService
   # @param event [Event] The event to assign the vendor to
   # @param params [Hash] Vendor parameters (vendor_id, full_name, email, phone, password, password_confirmation, redirect_url, exhibitor_kit_attributes)
   def self.create(event:, params:, current_user:)
-    # Determine vendor type based on event.use_ticket
-    vendor_type = determine_vendor_type(event)
-    exhibitor_kit_attrs = enrich_exhibitor_kit_attributes(event, params[:exhibitor_kit_attributes])
-    
-    # If vendor_id is provided, assign existing vendor
-    if params[:vendor_id].present?
-      result = assign_existing_vendor(event, params[:vendor_id], params, vendor_type, exhibitor_kit_attrs)
-      return result
-    else
-      # Create new vendor user (only organizers can do this)
-      unless current_user.is_organizer?
-        return Result.new(success: false, errors: ['Only organizers can create new vendor users'])
+    raw_kit_attrs = params[:exhibitor_kit_attributes]
+    voucher_requested = raw_kit_attrs.present? &&
+      (raw_kit_attrs[:voucher_code] || raw_kit_attrs['voucher_code']).present?
+    voucher = nil
+    result = nil
+
+    EventVendor.transaction do
+      event.lock!
+
+      # Determine vendor type based on event.use_ticket
+      vendor_type = determine_vendor_type(event)
+      exhibitor_kit_attrs = enrich_exhibitor_kit_attributes(
+        event,
+        params[:exhibitor_kit_attributes]
+      ) { |matched_voucher| voucher = matched_voucher }
+      if voucher && (
+        vendor_type != 'Exhibitor' || existing_vendor_assignment?(event, params)
+      )
+        raise ExhibitorVoucherRedemption::VoucherMismatch,
+          ExhibitorVoucherRedemption::MISMATCH_MESSAGE
       end
 
-      result = create_vendor_user(params, event, vendor_type, current_user, exhibitor_kit_attrs)
-      return result
+      # If vendor_id is provided, assign existing vendor
+      result = if params[:vendor_id].present?
+        assign_existing_vendor(event, params[:vendor_id], params, vendor_type, exhibitor_kit_attrs)
+      else
+        # Create new vendor user (only organizers can do this)
+        if current_user.is_organizer?
+          create_vendor_user(params, event, vendor_type, current_user, exhibitor_kit_attrs)
+        else
+          Result.new(success: false, errors: ['Only organizers can create new vendor users'])
+        end
+      end
+
+      if result.success? && voucher
+        unless result.data.is_a?(Exhibitor)
+          raise ExhibitorVoucherRedemption::VoucherMismatch,
+            ExhibitorVoucherRedemption::MISMATCH_MESSAGE
+        end
+
+        exhibitor_kit = result.data.exhibitor_kits.last
+        unless exhibitor_kit
+          raise ExhibitorVoucherRedemption::VoucherMismatch,
+            ExhibitorVoucherRedemption::MISMATCH_MESSAGE
+        end
+
+        ExhibitorVoucherRedemption.redeem!(
+          voucher: voucher,
+          exhibitor_kit: exhibitor_kit
+        )
+      end
     end
+
+    result
+  rescue ExhibitorVoucherRedemption::InvalidVoucher,
+         ExhibitorVoucherRedemption::VoucherMismatch => e
+    Result.new(success: false, errors: [e.message])
+  rescue ActiveRecord::RecordNotUnique
+    message = if voucher_requested
+      ExhibitorVoucherRedemption::MISMATCH_MESSAGE
+    else
+      'Vendor is already assigned to this event'
+    end
+    Result.new(success: false, errors: [message])
   end
 
   # Determine vendor type based on event.use_ticket or use_exhibitor_kit
@@ -64,10 +111,19 @@ class EventVendorService
   def self.enrich_exhibitor_kit_attributes(event, attrs)
     return attrs if attrs.blank?
 
+    voucher_code = attrs.delete(:voucher_code) || attrs.delete('voucher_code')
     booth_price_id = attrs[:exhibitor_booth_price_id] || attrs['exhibitor_booth_price_id']
+    if booth_price_id.blank? && voucher_code.present?
+      raise ExhibitorVoucherRedemption::VoucherMismatch,
+        ExhibitorVoucherRedemption::MISMATCH_MESSAGE
+    end
     return attrs if booth_price_id.blank?
 
     booth_price = event.exhibitor_booth_prices.find_by(id: booth_price_id)
+    if booth_price.nil? && voucher_code.present?
+      raise ExhibitorVoucherRedemption::VoucherMismatch,
+        ExhibitorVoucherRedemption::MISMATCH_MESSAGE
+    end
     return attrs unless booth_price
 
     booth_type = attrs[:booth_type] || attrs['booth_type']
@@ -79,9 +135,29 @@ class EventVendorService
     qty = 1 if qty <= 0
     attrs[:booth_quantity] = qty if attrs.respond_to?(:[]=)
 
+    package_id = attrs[:exhibitor_package_id] || attrs['exhibitor_package_id']
+    package = package_id.present? ? event.exhibitor_packages.find_by(id: package_id) : nil
+    # A package that does not belong to the chosen booth price is dropped, never mispriced.
+    package = nil if package && !package.matches_booth_price?(booth_price.id)
+    attrs[:exhibitor_package_id] = package&.id if attrs.respond_to?(:[]=)
+
+    base_price = package&.price || booth_price.current_price
+    voucher_result = ExhibitorVoucherRedemption.preview(
+      event: event,
+      code: voucher_code,
+      booth_price: booth_price,
+      package: package,
+      base_price: base_price
+    )
+    yield voucher_result[:voucher] if block_given?
+
     amount_paid = attrs[:amount_paid] || attrs['amount_paid']
-    if amount_paid.blank?
-      attrs[:amount_paid] = booth_price.current_price * qty if attrs.respond_to?(:[]=)
+    if amount_paid.blank? || voucher_result[:voucher]
+      unit_price = voucher_result[:price]
+      if attrs.respond_to?(:[]=)
+        attrs[:amount_paid] = unit_price * qty
+        attrs[:price_snapshot] = unit_price
+      end
     end
 
     attrs
@@ -122,11 +198,7 @@ class EventVendorService
       if existing_vendor.save
         # Handle exhibitor_kit attributes if it's an Exhibitor
         if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
-          if existing_vendor.exhibitor_kit
-            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
-          else
-            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
-          end
+          existing_vendor.legacy_exhibitor_kit&.update(exhibitor_kit_attributes)
         end
         Result.new(success: true, data: existing_vendor.reload)
       else
@@ -141,14 +213,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
+        vendor_attributes[:exhibitor_kits_attributes] = [exhibitor_kit_attributes] if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: vendor_user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: vendor_user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(exhibitor_kits: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end
@@ -225,11 +297,7 @@ class EventVendorService
       if existing_vendor.save
         # Handle exhibitor_kit attributes if it's an Exhibitor
         if existing_vendor.is_a?(Exhibitor) && exhibitor_kit_attributes.present?
-          if existing_vendor.exhibitor_kit
-            existing_vendor.exhibitor_kit.update(exhibitor_kit_attributes)
-          else
-            existing_vendor.create_exhibitor_kit(exhibitor_kit_attributes)
-          end
+          existing_vendor.legacy_exhibitor_kit&.update(exhibitor_kit_attributes)
         end
         Result.new(success: true, data: existing_vendor.reload)
       else
@@ -244,14 +312,14 @@ class EventVendorService
       }
 
       if vendor_type == 'Exhibitor'
-        vendor_attributes[:exhibitor_kit_attributes] = exhibitor_kit_attributes if exhibitor_kit_attributes.present?
+        vendor_attributes[:exhibitor_kits_attributes] = [exhibitor_kit_attributes] if exhibitor_kit_attributes.present?
         event_vendor = event.exhibitors.build(vendor_attributes.merge(vendor: user))
       else
         event_vendor = event.merchants.build(vendor_attributes.merge(vendor: user))
       end
 
       if event_vendor.save
-        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(:exhibitor_kit, exhibitor_kit: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
+        Result.new(success: true, data: event_vendor.is_a?(Exhibitor) ? EventVendor.exhibitors.includes(exhibitor_kits: [:exhibitor_team_members]).find(event_vendor.id) : event_vendor.reload)
       else
         Result.new(success: false, errors: event_vendor.errors.full_messages)
       end
@@ -273,6 +341,15 @@ class EventVendorService
   end
 
   private
+
+  def self.existing_vendor_assignment?(event, params)
+    vendor_id = params[:vendor_id]
+    if vendor_id.blank? && params[:email].present?
+      vendor_id = User.find_by('LOWER(email) = ?', params[:email].to_s.strip.downcase)&.id
+    end
+
+    vendor_id.present? && event.event_vendors.exists?(vendor_id: vendor_id)
+  end
 
   # Convert text to URL-friendly slug
   #
