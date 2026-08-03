@@ -79,6 +79,11 @@ module V1
           status: :unprocessable_content
       end
 
+      if kit.exhibitor_booth_price_id.present? && kit.exhibitor_booth_price_id != @booth.exhibitor_booth_price_id
+        return render json: { errors: ["Booth does not match the kit's booth price"] },
+          status: :unprocessable_content
+      end
+
       ExhibitorBooth.transaction do
         @booth.lock!
         kit.lock!

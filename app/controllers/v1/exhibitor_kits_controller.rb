@@ -155,6 +155,7 @@ class V1::ExhibitorKitsController < ApplicationController
                   end
     end
 
+    voucher = batch_voucher(kit)
     kit.as_json(
       include: [
         { custom_requests: { only: %i[id description quantity status resolved_price response_notes] } }
@@ -172,15 +173,30 @@ class V1::ExhibitorKitsController < ApplicationController
       exhibitor_package_id: kit.exhibitor_package_id,
       exhibitor_package_name: kit.exhibitor_package&.name,
       exhibitor_package_inclusions: kit.exhibitor_package&.inclusions,
-      exhibitor_voucher_code: kit.applied_voucher&.code,
-      exhibitor_voucher_discount_type: kit.applied_voucher&.discount_type,
-      exhibitor_voucher_discount_value: kit.applied_voucher&.discount_value,
+      exhibitor_voucher_code: voucher&.code,
+      exhibitor_voucher_discount_type: voucher&.discount_type,
+      exhibitor_voucher_discount_value: voucher&.discount_value,
       exhibitor_team_members: kit.exhibitor_team_members.as_json(
         only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]
       ),
       exhibitor_kit_items: items.map { |item| format_kit_item(item) },
       exhibitor_kit_printings: printings.map { |printing| format_kit_printing(printing) }
     )
+  end
+
+  # A batch redeems its shared voucher once, tied to the batch's first kit — every
+  # sibling kit in the batch still needs to show the voucher that discounted it.
+  def batch_voucher(kit)
+    return kit.applied_voucher if kit.applied_voucher
+
+    batch_id = kit.custom_fields_data['booking_batch_id']
+    return nil if batch_id.blank?
+
+    sibling_ids = ExhibitorKit.joins(:event_vendor)
+      .where(event_vendors: { event_id: kit.event.id })
+      .where("custom_fields_data ->> 'booking_batch_id' = ?", batch_id)
+      .pluck(:id)
+    ExhibitorVoucher.find_by(redeemed_by_exhibitor_kit_id: sibling_ids)
   end
 
   def format_kit_item(item)

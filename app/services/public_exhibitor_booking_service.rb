@@ -82,15 +82,26 @@ class PublicExhibitorBookingService
         next [kits.map { |kit| Result.new(kit: kit, idempotent_replay: true) }, nil, nil]
       end
 
+      batch_vouchers = {}
       results = normalized_booths.each_with_index.map do |booth, index|
         normalized = normalized_shared.merge(booth).merge(
           'custom_fields_data' => normalized_shared.fetch('custom_fields_data', {}).merge('booking_batch_id' => batch_id)
         )
-        create_one!(normalized: normalized, idempotency_key: batch_idempotency_key(idempotency_key, index),
-          new_registration: false, allow_reuse: index.positive?, fingerprint: fingerprint).first
+        result, _new_user, _password, voucher = create_one!(
+          normalized: normalized, idempotency_key: batch_idempotency_key(idempotency_key, index),
+          new_registration: false, allow_reuse: index.positive?, fingerprint: fingerprint,
+          redeem_voucher: false
+        )
+        batch_vouchers[voucher.code] ||= voucher if voucher
+        result
       rescue StandardError => e
         e.define_singleton_method(:failed_booth_number) { booth['booth_number'] }
         raise
+      end
+      # Each distinct voucher code used across the batch is redeemed once, not once per booth,
+      # so a single code can cover every booth without a per-booth quota unit being consumed.
+      batch_vouchers.each_value do |voucher|
+        ExhibitorVoucherRedemption.redeem!(voucher: voucher, exhibitor_kit: results.first.kit)
       end
       [results, new_user, password]
     end
@@ -170,7 +181,7 @@ class PublicExhibitorBookingService
 
   attr_reader :event, :access
 
-  def create_one!(normalized:, idempotency_key:, new_registration:, allow_reuse:, fingerprint:)
+  def create_one!(normalized:, idempotency_key:, new_registration:, allow_reuse:, fingerprint:, redeem_voucher: true)
     if new_registration && User.where('LOWER(email) = ?', access.normalized_email).exists?
       raise EmailRequiresAccess
     end
@@ -224,7 +235,7 @@ class PublicExhibitorBookingService
       idempotency_key: idempotency_key,
       custom_fields_data: custom_fields
     ))
-    if voucher_result[:voucher]
+    if voucher_result[:voucher] && redeem_voucher
       ExhibitorVoucherRedemption.redeem!(
         voucher: voucher_result[:voucher],
         exhibitor_kit: kit
@@ -236,7 +247,7 @@ class PublicExhibitorBookingService
     CustomsDeclarationAttacher.new(event: event, exhibitor_kit: kit,
       signed_id: normalized['customs_declaration_signed_id'], allow_reuse: allow_reuse).call
     kit.ic_copy.attach(source.ic_copy.blob) if normalized['ic_copy_signed_id'].blank? && source&.ic_copy&.attached?
-    [Result.new(kit: kit, idempotent_replay: false), new_user, password]
+    [Result.new(kit: kit, idempotent_replay: false), new_user, password, redeem_voucher ? nil : voucher_result[:voucher]]
   end
 
   def reservation_expiry(normalized)
