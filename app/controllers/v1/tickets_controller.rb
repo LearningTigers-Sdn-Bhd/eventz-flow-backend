@@ -4,7 +4,7 @@ module V1
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it
-    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email]
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email, :accept_waiting_list]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
@@ -109,6 +109,30 @@ module V1
       end
     end
 
+    def accept_waiting_list
+      authorize @ticket, :update?
+
+      unless @ticket.waiting_list?
+        return render json: { error: 'Ticket is not on the waiting list' }, status: :unprocessable_content
+      end
+
+      @ticket.ticket_type.with_lock do
+        ticket_type = @ticket.ticket_type
+        if ticket_type.quantity.present? && ticket_type.tickets
+          .where(payment_status: :paid, status: %i[purchased scanned])
+          .where.not(id: @ticket.id)
+          .count >= ticket_type.quantity
+          return render json: { error: 'No seats are currently available for this ticket type' }, status: :unprocessable_content
+        end
+
+        unless @ticket.update(waiting_list: false, payment_status: :paid, status: :purchased)
+          return render json: @ticket.errors, status: :unprocessable_content
+        end
+      end
+
+      render json: ticket_response(@ticket), status: :ok
+    end
+
     def destroy
       # Authorization check: Can the user (Organizer/Admin) archive this ticket?
       authorize @ticket, :destroy?
@@ -159,6 +183,10 @@ module V1
 
       if @ticket.attendee_email.blank?
         return render json: { errors: ['Ticket does not have an attendee email'] }, status: :unprocessable_content
+      end
+
+      if @ticket.waiting_list?
+        return render json: { errors: ['Ticket is on the waiting list and has not been confirmed'] }, status: :unprocessable_content
       end
 
       delivery = EmailDelivery::AuditedDelivery.deliver_later(
@@ -493,6 +521,7 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
+        :waiting_list,
         :payment_method,
         :transaction_id,
         :payment_screenshot_url,

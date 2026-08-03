@@ -112,6 +112,11 @@ module V1
                       status: :unprocessable_content
       end
 
+      if ticket.waiting_list?
+        return render json: { errors: ['Ticket is on the waiting list and has not been confirmed'] },
+                      status: :unprocessable_content
+      end
+
       delivery = EmailDelivery::AuditedDelivery.deliver_later(
         mailer_name: 'CertificateMailer',
         mailer_action: 'certificate_email',

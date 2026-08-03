@@ -30,6 +30,7 @@ class PendingPaymentReminderJob < ApplicationJob
     Ticket.joins(:event)
           .includes(:event, :ticket_type)
           .where(payment_status: :pending)
+          .where(waiting_list: false)
           .where.not(status: %i[canceled refunded])
           .where.not(attendee_email: [nil, ''])
           .where('events.start_date > ?', Time.current)

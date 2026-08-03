@@ -52,5 +52,22 @@ RSpec.describe 'V1::Tickets resend confirmation email', type: :request do
         metadata: hash_including(source: 'ticket_actions_menu_manual_resend', event_id: event.id)
       )
     end
+
+    it 'rejects resend for a waiting-list ticket without sending anything' do
+      waiting_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: 'waiting@example.com',
+        waiting_list: true
+      )
+      headers = auth_headers(org_owner)
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      post "/v1/events/#{event.id}/tickets/#{waiting_ticket.public_id}/resend_confirmation_email", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
+    end
   end
 end
