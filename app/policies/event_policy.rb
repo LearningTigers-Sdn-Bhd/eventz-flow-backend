@@ -144,6 +144,12 @@ class EventPolicy < ApplicationPolicy
         return scope.where(id: vendor_event_ids, visibility: true).distinct
       end
 
+      # For exhibitors: See events they are business hosts for
+      if actual_user.exhibitor?
+        host_event_ids = actual_user.business_host_assignments.pluck(:event_id)
+        return scope.where(id: host_event_ids, visibility: true).distinct
+      end
+
       # For exhibition contractors: See only events they are assigned to
       if actual_user.exhibition_contractor?
         return scope.none unless actual_user.exhibition_contractor_profile.present?

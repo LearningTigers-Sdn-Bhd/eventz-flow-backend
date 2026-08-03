@@ -28,6 +28,44 @@ module V1
         render json: { errors: e.message }, status: :internal_server_error
       end
 
+      # GET /v1/business_matching/events/:event_id/host_profile
+      def show
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        unless current_user.is_business_host?(event)
+          return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
+        end
+
+        service_result = BusinessMatchingService.new(current_user).fetch_host_profile(event.id)
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
+        end
+      end
+
+      # PUT/PATCH /v1/business_matching/events/:event_id/host_profile
+      def update
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        unless current_user.is_business_host?(event)
+          return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
+        end
+
+        profile_params = params.permit(:description, :sourcing_intent, :capabilities, interest_tags: [], offering_tags: [])
+        service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
+        
+        if service_result.success?
+          Rails.cache.delete("business_matching_events_#{event.id}")
+          ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        end
+      end
+
       # POST /v1/business_matching/events/:event_id/hosts/join
       def join
         event = Event.find_by(id: params[:event_id])

@@ -69,6 +69,76 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
   end
 
+  create_table "business_matching_availabilities", force: :cascade do |t|
+    t.bigint "business_matching_session_id", null: false
+    t.bigint "host_user_id"
+    t.date "day", null: false
+    t.string "start_time", null: false
+    t.string "end_time", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "business_matching_participant_id"
+    t.index ["business_matching_participant_id"], name: "index_bm_availabilities_on_participant_id"
+    t.index ["business_matching_session_id", "host_user_id", "day"], name: "idx_bm_availabilities_unique"
+    t.index ["business_matching_session_id"], name: "index_bm_availabilities_on_bm_session_id"
+    t.index ["host_user_id"], name: "index_business_matching_availabilities_on_host_user_id"
+  end
+
+  create_table "business_matching_bookings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.bigint "business_matching_session_id", null: false
+    t.bigint "host_user_id"
+    t.string "name", null: false
+    t.string "email", null: false
+    t.string "phone", null: false
+    t.date "booking_date", null: false
+    t.string "booking_time", null: false
+    t.integer "duration", default: 30, null: false
+    t.string "status", default: "Pending", null: false
+    t.string "payment_status", default: "Pending", null: false
+    t.string "attendance"
+    t.text "host_comment"
+    t.decimal "potential_deal_value", precision: 12, scale: 2, default: "0.0"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "requester_participant_id"
+    t.bigint "receiver_participant_id"
+    t.index ["business_matching_session_id"], name: "index_bm_bookings_on_bm_session_id"
+    t.index ["host_user_id", "booking_date", "booking_time"], name: "index_bm_bookings_host_time_unique", unique: true, where: "((status)::text <> 'Cancelled'::text)"
+    t.index ["host_user_id"], name: "index_business_matching_bookings_on_host_user_id"
+    t.index ["receiver_participant_id", "booking_date", "booking_time"], name: "index_bm_bookings_receiver_time_unique", unique: true, where: "((status)::text <> 'Cancelled'::text)"
+    t.index ["receiver_participant_id"], name: "index_bm_bookings_on_receiver_participant_id"
+    t.index ["requester_participant_id"], name: "index_bm_bookings_on_requester_participant_id"
+  end
+
+  create_table "business_matching_participants", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "registerable_type", null: false
+    t.bigint "registerable_id", null: false
+    t.string "magic_token", null: false
+    t.jsonb "profile_data", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "registerable_type", "registerable_id"], name: "index_bm_participants_uniqueness", unique: true
+    t.index ["event_id"], name: "index_business_matching_participants_on_event_id"
+    t.index ["magic_token"], name: "index_business_matching_participants_on_magic_token", unique: true
+    t.index ["registerable_type", "registerable_id"], name: "index_business_matching_participants_on_registerable"
+  end
+
+  create_table "business_matching_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "title", null: false
+    t.integer "slot_duration", default: 30, null: false
+    t.string "location"
+    t.string "admin_email"
+    t.string "admin_wa_number"
+    t.string "start_time", default: "09:00", null: false
+    t.string "end_time", default: "17:00", null: false
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_business_matching_sessions_on_event_id"
+  end
+
   create_table "certificate_templates", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.integer "status", default: 0, null: false
@@ -102,8 +172,60 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.bigint "active_plan_id"
     t.string "seating_announcement_template"
     t.integer "seating_plan_duration"
+    t.jsonb "elevenlabs_settings", default: {}
+    t.jsonb "voice_rules", default: []
+    t.string "script_tone"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
+  end
+
+  create_table "cloned_voices", force: :cascade do |t|
+    t.bigint "event_id"
+    t.bigint "creator_id", null: false
+    t.string "elevenlabs_id"
+    t.string "name", null: false
+    t.integer "status", default: 0, null: false
+    t.jsonb "settings", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["creator_id"], name: "index_cloned_voices_on_creator_id"
+    t.index ["elevenlabs_id"], name: "index_cloned_voices_on_elevenlabs_id", unique: true
+    t.index ["event_id"], name: "index_cloned_voices_on_event_id"
+    t.index ["owner_id"], name: "index_cloned_voices_on_owner_id"
+  end
+
+  create_table "credit_deductions", force: :cascade do |t|
+    t.bigint "event_id"
+    t.string "channel", null: false
+    t.integer "credits", null: false
+    t.string "recipient"
+    t.integer "status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["event_id"], name: "index_credit_deductions_on_event_id"
+    t.index ["owner_id"], name: "index_credit_deductions_on_owner_id"
+  end
+
+  create_table "credit_transactions", force: :cascade do |t|
+    t.bigint "credit_wallet_id", null: false
+    t.integer "transaction_type", null: false
+    t.integer "amount", null: false
+    t.integer "balance_after", null: false
+    t.string "description"
+    t.jsonb "metadata", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["credit_wallet_id"], name: "index_credit_transactions_on_credit_wallet_id"
+  end
+
+  create_table "credit_wallets", force: :cascade do |t|
+    t.integer "balance", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["owner_id"], name: "index_credit_wallets_on_owner_id", unique: true
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -276,7 +398,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -585,15 +707,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
-    t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
-    t.boolean "use_event_leads", default: false, null: false
     t.boolean "auto_approve_wishes", default: false, null: false
+    t.boolean "use_event_leads", default: false, null: false
     t.boolean "enable_exhibitor_management", default: false, null: false
     t.string "public_registration_url"
     t.string "venue_name"
@@ -1189,6 +1311,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
+    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -1200,7 +1323,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -1642,9 +1764,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_090000) do
   add_foreign_key "api_keys", "users"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
+  add_foreign_key "business_matching_availabilities", "business_matching_participants"
+  add_foreign_key "business_matching_availabilities", "business_matching_sessions"
+  add_foreign_key "business_matching_availabilities", "users", column: "host_user_id"
+  add_foreign_key "business_matching_bookings", "business_matching_participants", column: "receiver_participant_id"
+  add_foreign_key "business_matching_bookings", "business_matching_participants", column: "requester_participant_id"
+  add_foreign_key "business_matching_bookings", "business_matching_sessions"
+  add_foreign_key "business_matching_bookings", "users", column: "host_user_id"
+  add_foreign_key "business_matching_participants", "events"
+  add_foreign_key "business_matching_sessions", "events"
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
+  add_foreign_key "cloned_voices", "events"
+  add_foreign_key "cloned_voices", "users", column: "creator_id"
+  add_foreign_key "cloned_voices", "users", column: "owner_id"
+  add_foreign_key "credit_deductions", "events"
+  add_foreign_key "credit_deductions", "users", column: "owner_id"
+  add_foreign_key "credit_transactions", "credit_wallets"
+  add_foreign_key "credit_wallets", "users", column: "owner_id"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"

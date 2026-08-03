@@ -1,930 +1,612 @@
-# app/services/business_matching_service.rb
-require 'net/http'
-require 'json'
-require 'openssl'
+# frozen_string_literal: true
 
 class BusinessMatchingService < BaseService
-  WEBHOOK_URL = "https://webhook.saleschatalyst.com/webhook/693921fb30946fd02504c059".freeze
-
   def fetch_events(event_id, force_refresh: false)
-    cache_key = "business_matching_events_#{event_id}"
-    raw_cache_key = "business_matching_events_raw_#{event_id}"
-    pending_key = "business_matching_events_pending_#{event_id}" # Still useful for initial async request
-
-    if force_refresh
-      Rails.logger.info "Force refresh requested. Clearing business matching cache for event #{event_id}"
-      # delete_matched with Regex is slow/unreliable in Redis. Use explicit keys instead.
-      Rails.cache.delete(cache_key)
-      Rails.cache.delete(raw_cache_key)
-      Rails.cache.delete(pending_key)
-    end
-
-    unless force_refresh
-      cached_data = Rails.cache.read(cache_key)
-      return BaseService::ServiceResult.new(success: true, data: cached_data) if cached_data.present?
-
-      # Try to reconstruct from RAW cache if available (avoids hitting external API just for local host updates)
-      raw_data = Rails.cache.read(raw_cache_key)
-      if raw_data.present?
-        Rails.logger.info "Re-transforming events from RAW cache for event #{event_id}"
-        events = _transform_events(raw_data, event_id)
-        Rails.cache.write(cache_key, events, expires_in: 1.hour)
-        return BaseService::ServiceResult.new(success: true, data: events)
-      end
-
-      if Rails.cache.read(pending_key)
-        Rails.logger.info "Fetch Events request pending, returning empty data."
-        return BaseService::ServiceResult.new(success: true, data: [])
-      end
-    end
-
-    payload = {
-      action: "Fetch Events",
-      event_id: event_id,
-      user_email: user&.email,
-      user_name: user&.full_name,
-      user_id: user&.id
-    }
-    Rails.logger.info "BusinessMatching Request Payload (Fetch Events): #{payload.inspect}"
-    response = _send_request(payload)
+    sessions = BusinessMatchingSession.where(event_id: event_id, is_active: true)
+    host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        # Async response. Mark as pending to avoid loop and return empty array.
-        Rails.cache.write(pending_key, true, expires_in: 2.minutes)
-        Rails.logger.info "Fetch Events request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: [])
-      elsif response.data.is_a?(Array)
-         # Direct array response
-         raw_events = response.data
-         Rails.cache.write(raw_cache_key, raw_events, expires_in: 1.hour) # Cache RAW data
-
-         events = _transform_events(raw_events, event_id)
-         Rails.cache.write(cache_key, events, expires_in: 1.hour)
-         Rails.cache.delete(pending_key) # Data received, no longer pending
-         Rails.logger.info "Fetch Events synchronous response received and cached."
-         return BaseService::ServiceResult.new(success: true, data: events)
-      elsif response.data.is_a?(Hash) && (response.data["output"].is_a?(Array) || response.data["data"].is_a?(Array) || response.data["results"].is_a?(Array))
-        # Synchronous response
-        raw_events = response.data["output"] || response.data["data"] || response.data["results"]
-        Rails.cache.write(raw_cache_key, raw_events, expires_in: 1.hour) # Cache RAW data
-
-        events = _transform_events(raw_events, event_id)
-        Rails.cache.write(cache_key, events, expires_in: 1.hour)
-        Rails.cache.delete(pending_key) # Data received, no longer pending
-        Rails.logger.info "Fetch Events synchronous response received and cached."
-        return BaseService::ServiceResult.new(success: true, data: events)
-      else
-        # Fallback or unexpected synchronous response
-        Rails.logger.warn "Fetch Events: Unexpected data format from 3rd party for synchronous response."
-        return BaseService::ServiceResult.new(success: true, data: [])
+    host_lookup = host_assignments.each_with_object({}) do |assignment, memo|
+      if assignment.business_matching_event_id.present? && assignment.user.present?
+        memo[assignment.business_matching_event_id.to_s] = assignment.user
       end
-    else
-      response # Propagate error from _send_request
     end
+
+    host_users = host_assignments.map(&:user).compact
+    participants = BusinessMatchingParticipant.where(
+      event_id: event_id,
+      registerable_type: 'User',
+      registerable_id: host_users.map(&:id)
+    )
+    participant_lookup = participants.each_with_object({}) do |p, memo|
+      memo[p.registerable_id] = p
+    end
+
+    booking_counts = BusinessMatchingBooking.where(business_matching_session_id: sessions.pluck(:id))
+                                             .where.not(status: 'Cancelled')
+                                             .group(:business_matching_session_id)
+                                             .count
+
+    data = sessions.map do |session|
+      host_user = host_lookup[session.id.to_s]
+      h_profile = host_user ? participant_lookup[host_user.id] : nil
+      offering_tags = h_profile&.offering_tags.presence || default_offering_tags_for(session.title)
+      interest_tags = h_profile&.interest_tags.presence || default_interest_tags_for(session.title)
+      
+      {
+        id: session.id.to_s,
+        event_id: event_id.to_s,
+        title: session.title,
+        duration: session.slot_duration,
+        location: session.location,
+        admin_email: session.admin_email,
+        admin_wa_number: session.admin_wa_number,
+        offering_tags: offering_tags,
+        interest_tags: interest_tags,
+        created_at: session.created_at.iso8601,
+        updated_at: session.updated_at.iso8601,
+        bookings_count: booking_counts[session.id] || 0,
+        host: host_user ? {
+          id: host_user.id,
+          full_name: host_user.full_name,
+          email: host_user.email,
+          phone: host_user.phone,
+          offering_tags: offering_tags,
+          interest_tags: interest_tags,
+          description: h_profile&.profile_data&.[]('description').presence || "Professional host available for business matchmaking, partnerships, and collaborations.",
+          sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
+          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution."
+        } : nil
+      }
+    end
+
+    BaseService::ServiceResult.new(success: true, data: data)
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_availability(bm_event_id, event_id, force_refresh: false)
-    # This method is for general event availability, not host-specific.
-    # The new fetch_host_availability will handle host-specific requests.
-    cache_key = "business_matching_availability_#{event_id}_#{bm_event_id}"
-    
-    Rails.cache.delete(cache_key) if force_refresh
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
 
-    cached_data = Rails.cache.read(cache_key)
+    assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)
+    host_user_id = assignment&.user_id
 
-    if !force_refresh && cached_data.present?
-      Rails.logger.info "Serving cached availability data for event #{event_id} (BM ID: #{bm_event_id})"
-      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    availabilities = if host_user_id
+                       BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id)
+                     else
+                       BusinessMatchingAvailability.none
+                     end
+
+    if availabilities.empty?
+      availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: nil)
     end
 
-    payload = {
-      action: "Fetch Available Date",
-      bm_event_id: bm_event_id,
-      event_id: event_id,
-      user_email: user&.email,
-      user_name: user&.full_name,
-      user_id: user&.id
-    }
-    response = _send_request(payload)
-
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        Rails.logger.info "Fetch Available Date request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: { dates: [] })
-      else
-        raw_data = if response.data.is_a?(Hash)
-                     response.data["output"] || response.data["data"] || response.data
-                   else
-                     response.data
-                   end
-        
-        if raw_data.is_a?(Array)
-            dates = raw_data.map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        elsif raw_data.is_a?(Hash) && raw_data["dates"].is_a?(Array)
-            dates = raw_data["dates"].map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        elsif raw_data.is_a?(Hash) && raw_data["date"].is_a?(Array)
-            dates = raw_data["date"].map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        else
-            Rails.logger.warn "Fetch Available Date: Unexpected data format from 3rd party for synchronous response."
-            return BaseService::ServiceResult.new(success: true, data: { dates: [] })
-        end
+    availabilities_by_day = {}
+    if availabilities.present?
+      availabilities.each do |av|
+        availabilities_by_day[av.day] ||= []
+        availabilities_by_day[av.day] << av
       end
     else
-      response
+      event = session.event
+      start_date = event.start_date&.to_date || Time.zone.today
+      end_date = event.end_date&.to_date || start_date
+      (start_date..end_date).each do |day|
+        availabilities_by_day[day] = [
+          BusinessMatchingAvailability.new(
+            business_matching_session_id: session.id,
+            day: day,
+            start_time: session.start_time || "09:00",
+            end_time: session.end_time || "17:00"
+          )
+        ]
+      end
     end
+
+    formatted_dates = []
+    availabilities_by_day.each do |day, avs|
+      all_slots = []
+      avs.each do |av|
+        all_slots.concat(_generate_slots_for_availability(av, session))
+      end
+      all_slots.uniq!
+
+      booked_times = if host_user_id
+                       BusinessMatchingBooking.where(
+                         host_user_id: host_user_id,
+                         booking_date: day
+                       ).where.not(status: "Cancelled").pluck(:booking_time)
+                     else
+                       BusinessMatchingBooking.where(
+                         business_matching_session_id: session.id,
+                         booking_date: day
+                       ).where.not(status: "Cancelled").pluck(:booking_time)
+                     end
+
+      available_slots = all_slots.reject { |slot_time| booked_times.include?(slot_time) }
+
+      formatted_dates << {
+        day: day.strftime("%A"),
+        date: day.strftime("%-d %B %Y"),
+        slots: available_slots.size
+      }
+    end
+
+    formatted_dates.sort_by! { |d| Date.parse(d[:date]) }
+
+    BaseService::ServiceResult.new(success: true, data: { dates: formatted_dates })
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_host_availability(event_id, host_user_id, force_refresh: false)
-    # The external system uses event_id and host_user_id to fetch host-specific availability.
-    
-    cache_key = "business_matching_host_availability_#{event_id}_#{host_user_id}"
-    
-    Rails.cache.delete(cache_key) if force_refresh
-
-    cached_data = Rails.cache.read(cache_key)
-
-    if !force_refresh && cached_data.present?
-      Rails.logger.info "Serving cached host availability data for event #{event_id} (Host ID: #{host_user_id})"
-      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    assignment = BusinessHostAssignment.find_by(event_id: event_id, user_id: host_user_id)
+    unless assignment
+      return BaseService::ServiceResult.new(success: false, errors: "Host assignment not found", status: :not_found)
     end
 
-    payload = {
-      action: "Fetch Host Available Date", # New action for the webhook
-      event_id: event_id,
-      host_user_id: host_user_id, # Pass the host's user ID
-      user_email: user.email, # Current user making the request
-      user_name: user.full_name,
-      user_id: user.id
-    }
-    Rails.logger.info "BusinessMatching Request Payload (Fetch Host Availability): #{payload.inspect}"
-    response = _send_request(payload)
+    bm_event_id = assignment.business_matching_event_id
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    unless session
+      return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found)
+    end
 
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        Rails.logger.info "Fetch Host Available Date request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: { dates: [] })
-      else
-        raw_data = if response.data.is_a?(Hash)
-                     response.data["output"] || response.data["data"] || response.data
-                   else
-                     response.data
-                   end
-        
-        if raw_data.is_a?(Array)
-            dates = raw_data.map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        elsif raw_data.is_a?(Hash) && raw_data["dates"].is_a?(Array)
-            dates = raw_data["dates"].map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        elsif raw_data.is_a?(Hash) && raw_data["date"].is_a?(Array)
-            dates = raw_data["date"].map do |item|
-                {
-                    day: item["day"],
-                    date: item["date"],
-                    slots: item["slots"].to_i
-                }
-            end
-            Rails.cache.write(cache_key, { dates: dates }, expires_in: 1.hour) # Cache immediate response
-            return BaseService::ServiceResult.new(success: true, data: { dates: dates })
-        else
-            Rails.logger.warn "Fetch Host Available Date: Unexpected data format from 3rd party for synchronous response."
-            return BaseService::ServiceResult.new(success: true, data: { dates: [] })
-        end
+    availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id)
+    if availabilities.empty?
+      availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: nil)
+    end
+
+    availabilities_by_day = {}
+    if availabilities.present?
+      availabilities.each do |av|
+        availabilities_by_day[av.day] ||= []
+        availabilities_by_day[av.day] << av
       end
     else
-      response
+      event = session.event
+      start_date = event.start_date&.to_date || Time.zone.today
+      end_date = event.end_date&.to_date || start_date
+      (start_date..end_date).each do |day|
+        availabilities_by_day[day] = [
+          BusinessMatchingAvailability.new(
+            business_matching_session_id: session.id,
+            day: day,
+            start_time: session.start_time || "09:00",
+            end_time: session.end_time || "17:00"
+          )
+        ]
+      end
     end
+
+    formatted_dates = []
+    availabilities_by_day.each do |day, avs|
+      all_slots = []
+      avs.each do |av|
+        all_slots.concat(_generate_slots_for_availability(av, session))
+      end
+      all_slots.uniq!
+
+      booked_times = BusinessMatchingBooking.where(
+                       host_user_id: host_user_id,
+                       booking_date: day
+                     ).where.not(status: "Cancelled").pluck(:booking_time)
+
+      available_slots = all_slots.reject { |slot_time| booked_times.include?(slot_time) }
+
+      formatted_dates << {
+        day: day.strftime("%A"),
+        date: day.strftime("%-d %B %Y"),
+        slots: available_slots.size
+      }
+    end
+
+    formatted_dates.sort_by! { |d| Date.parse(d[:date]) }
+
+    BaseService::ServiceResult.new(success: true, data: { dates: formatted_dates })
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_detailed_slots(bm_event_id, date, event_id, force_refresh: false)
-    cache_key = "business_matching_detailed_slots_#{event_id}_#{bm_event_id}_#{date.parameterize}" # Use date in key
-    Rails.logger.info "DEBUG: fetch_detailed_slots key: #{cache_key}"
-    
-    Rails.cache.delete(cache_key) if force_refresh
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
 
-    cached_data = Rails.cache.read(cache_key)
+    parsed_date = Date.parse(date) rescue Time.zone.today
 
-    if !force_refresh && cached_data.present?
-      Rails.logger.info "Serving cached detailed slots data for event #{event_id} (BM ID: #{bm_event_id}) on #{date}"
-      
-      # Perform post-cache filtering based on bookings to ensure accuracy
-      # This handles cases where the cache is stale or external API is slow to update
-      slots = cached_data[:slots]
-      
-      # Fetch bookings for this day to exclude taken slots
-      # We use a short cache or direct fetch for bookings to be safe
-      bookings_result = fetch_bookings(bm_event_id, event_id, force_refresh: force_refresh)
-      
-      if bookings_result.success? && bookings_result.data[:bookings].present?
-         bookings = bookings_result.data[:bookings]
-         # date format from fetch_detailed_slots is "d MMMM yyyy" (e.g. 20 December 2025)
-         # bookings have "date" field, need to normalize.
-         
-         booked_times = bookings.select do |b| 
-           # Normalize booking date to match requested date
-           # Booking date might be "2025-12-20" or "20 December 2025"
-           b_date = b[:date] || b[:booking_date]
-           
-           begin
-             parsed_b_date = Date.parse(b_date).strftime("%-d %B %Y")
-             parsed_req_date = Date.parse(date).strftime("%-d %B %Y")
-             parsed_b_date == parsed_req_date
-           rescue
-             false
-           end
-         end.map { |b| b[:time] || b[:booking_time] }
-         
-         Rails.logger.info "DEBUG: filtering slots. Booked times for #{date}: #{booked_times}"
-         
-         if booked_times.any?
-           filtered_slots = slots.reject { |s| booked_times.include?(s["slot"] || s[:slot]) }
-           return BaseService::ServiceResult.new(success: true, data: { slots: filtered_slots })
-         end
-      end
+    assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)
+    host_user_id = assignment&.user_id
 
-      return BaseService::ServiceResult.new(success: true, data: cached_data)
+    availabilities = if host_user_id
+                       BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id, day: parsed_date)
+                     else
+                       BusinessMatchingAvailability.none
+                     end
+
+    if availabilities.empty?
+      availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: nil, day: parsed_date)
     end
 
-    # If not in cache, request from 3rd party (data will come asynchronously via receive)
-    payload = {
-      action: "Fetch Available Slots",
-      bm_event_id: bm_event_id,
-      event_id: event_id,      
-      date: date,
-      user_email: user&.email,
-      user_name: user&.full_name,
-      user_id: user&.id
-    }
-    response = _send_request(payload)
+    if availabilities.empty?
+      availabilities = [
+        BusinessMatchingAvailability.new(
+          business_matching_session_id: session.id,
+          day: parsed_date,
+          start_time: session.start_time || "09:00",
+          end_time: session.end_time || "17:00"
+        )
+      ]
+    end
 
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        Rails.logger.info "Fetch Detailed Slots request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: { slots: [] }) # Return empty array for async
-      else
-        raw_data = if response.data.is_a?(Hash)
-                     response.data["output"] || response.data["data"] || response.data
+    all_slots = []
+    availabilities.each do |av|
+      all_slots.concat(_generate_slots_for_availability(av, session))
+    end
+    all_slots.uniq!
+
+    booked_times = if host_user_id
+                     BusinessMatchingBooking.where(
+                       host_user_id: host_user_id,
+                       booking_date: parsed_date
+                     ).where.not(status: "Cancelled").pluck(:booking_time)
                    else
-                     response.data
+                     BusinessMatchingBooking.where(
+                       business_matching_session_id: session.id,
+                       booking_date: parsed_date
+                     ).where.not(status: "Cancelled").pluck(:booking_time)
                    end
 
-        if raw_data.is_a?(Array)
-          final_slots = raw_data
-          
-          # Initial Filter on fresh data
-          bookings_result = fetch_bookings(bm_event_id, event_id)
-          if bookings_result.success? && bookings_result.data[:bookings].present?
-             bookings = bookings_result.data[:bookings]
-             booked_times = bookings.select do |b| 
-               b_date = b[:date] || b[:booking_date]
-               begin
-                 Date.parse(b_date).strftime("%-d %B %Y") == Date.parse(date).strftime("%-d %B %Y")
-               rescue
-                 false
-               end
-             end.map { |b| b[:time] || b[:booking_time] }
-             
-             if booked_times.any?
-               final_slots = raw_data.reject { |s| booked_times.include?(s["slot"] || s[:slot]) }
-             end
-          end
-          
-          # Cache the RAW slots, not the filtered ones, so we can re-filter later if bookings change?
-          # Actually, safer to cache the raw from API and filter on read.
-          # But for now, let's cache the result. 
-          # Wait, if we cache filtered result, and a booking is cancelled, we might hide a slot.
-          # Better to cache raw_data and filter in the "cached_data" block above?
-          # Yes. But here we must return filtered data.
-          
-          Rails.cache.write(cache_key, { slots: raw_data }, expires_in: 1.hour) # Cache RAW response
-          return BaseService::ServiceResult.new(success: true, data: { slots: final_slots })
-          
-        elsif raw_data.is_a?(Hash) && raw_data["slots"].is_a?(Array)
-          final_slots = raw_data["slots"]
-          
-           # Initial Filter on fresh data
-          bookings_result = fetch_bookings(bm_event_id, event_id)
-          if bookings_result.success? && bookings_result.data[:bookings].present?
-             bookings = bookings_result.data[:bookings]
-             booked_times = bookings.select do |b| 
-               b_date = b[:date] || b[:booking_date]
-               begin
-                 Date.parse(b_date).strftime("%-d %B %Y") == Date.parse(date).strftime("%-d %B %Y")
-               rescue
-                 false
-               end
-             end.map { |b| b[:time] || b[:booking_time] }
-             
-             if booked_times.any?
-               final_slots = raw_data["slots"].reject { |s| booked_times.include?(s["slot"] || s[:slot]) }
-             end
-          end
+    available_slots = all_slots.reject { |slot_time| booked_times.include?(slot_time) }
 
-          Rails.cache.write(cache_key, { slots: raw_data["slots"] }, expires_in: 1.hour) # Cache RAW response
-          return BaseService::ServiceResult.new(success: true, data: { slots: final_slots })
-        else
-          Rails.logger.warn "Fetch Detailed Slots: Unexpected data format from 3rd party for synchronous response."
-          return BaseService::ServiceResult.new(success: true, data: { slots: [] })
-        end
-      end
-    else
-      response
+    slots_data = available_slots.map do |slot_time|
+      {
+        slot: slot_time,
+        date: date
+      }
     end
+
+    BaseService::ServiceResult.new(success: true, data: { slots: slots_data })
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_bookings(bm_event_id, event_id, force_refresh: false)
-    cache_key = "business_matching_bookings_#{event_id}_#{bm_event_id}"
-    
-    Rails.cache.delete(cache_key) if force_refresh
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
 
-    cached_data = Rails.cache.read(cache_key)
-
-    if !force_refresh && cached_data.present?
-      Rails.logger.info "Serving cached bookings data for event #{event_id} (BM ID: #{bm_event_id})"
-      return BaseService::ServiceResult.new(success: true, data: cached_data)
-    end
+    bookings = BusinessMatchingBooking.where(business_matching_session_id: session.id).includes(:host_user)
 
     event = Event.find_by(id: event_id)
-    year = event&.start_date&.year || Time.current.year
+    if event.present? && user&.is_business_host?(event) && !user&.is_org_owner_or_organizer?
+      bookings = bookings.where(host_user_id: user.id)
+    end
 
-    payload = {
-      action: "Search in Bookings",
-      bm_event_id: bm_event_id,
-      event_id: event_id,
-      user_email: user.email,
-      user_name: user.full_name,
-      user_id: user.id
-    }
-    response = _send_request(payload)
+    formatted_bookings = _transform_local_bookings(bookings, session)
 
-          if response.success?
-            if response.data.is_a?(Hash) && response.data["accepted"] == true
-                Rails.logger.info "Search in Bookings request accepted, waiting for async callback."
-                
-                if force_refresh # Only wait if force_refresh is true (for reports)
-                    Rails.logger.info "FORCE REFRESH: Polling cache for bookings data for BM ID: #{bm_event_id}"
-                    max_attempts = 60 # Check for 60 seconds
-                    attempts = 0
-                    
-                    loop do
-                        cached_data = Rails.cache.read(cache_key) # Check for data in cache
-                        if cached_data.present? && cached_data[:bookings].present?
-                            Rails.logger.info "FORCE REFRESH: Bookings data found in cache."
-                            return BaseService::ServiceResult.new(success: true, data: cached_data)
-                        end
-                        
-                        attempts += 1
-                        break if attempts >= max_attempts
-                        sleep 1 # Wait 1 second before next attempt
-                    end
-                    Rails.logger.warn "FORCE REFRESH: Bookings data not found in cache after timeout for BM ID: #{bm_event_id}. Returning empty list to avoid blocking report."
-                    return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
-                else
-                    return BaseService::ServiceResult.new(success: true, data: { bookings: [] }) # For normal async flow
-                end
-            elsif response.data.is_a?(Hash) && (response.data["output"] || response.data["data"])
-                # Synchronous response
-                raw_data = response.data["output"] || response.data["data"]
-                
-                bookings_to_process = []
-                if raw_data.is_a?(Array)
-                  bookings_to_process = raw_data
-                elsif raw_data.is_a?(Hash) && raw_data["bookings"].is_a?(Array)
-                  bookings_to_process = raw_data["bookings"]
-                end
-    
-                # Filter bookings if the user is a business host for this event
-                event = Event.find_by(id: event_id) # Need event object to check roles
-                if event.present? && user&.is_business_host?(event) && !user&.is_org_owner_or_organizer?
-                  Rails.logger.info "Filtering bookings for business host #{user.id} in event #{event_id}"
-                  bookings_to_process = bookings_to_process.select do |booking|
-                    booking["host_user_id"].to_s == user.id.to_s
-                  end
-                end
-    
-                if bookings_to_process.any?
-                  bookings = _transform_bookings(bookings_to_process, year)
-                  Rails.cache.write(cache_key, { bookings: bookings }, expires_in: 1.hour)
-                  return BaseService::ServiceResult.new(success: true, data: { bookings: bookings })
-                else
-                  Rails.logger.warn "Search in Bookings: Unexpected data format from 3rd party or no bookings after host filter."
-                  return BaseService::ServiceResult.new(success: true, data: { bookings: [] })
-                end
-            else
-                Rails.logger.info "Search in Bookings synchronous response received."
-                return BaseService::ServiceResult.new(success: true, data: response.data)
-            end
-        else
-          response
-        end
-      rescue StandardError => e
-        BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
-      end
+    BaseService::ServiceResult.new(success: true, data: { bookings: formatted_bookings })
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
   def create_booking(bm_event_id, event_id, booking_params)
-    payload = {
-      action: "Create Booking",
-      bm_event_id: bm_event_id,
-      event_id: event_id,
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
+
+    assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)
+    host_user_id = assignment&.user_id
+    return BaseService::ServiceResult.new(success: false, errors: "No host assigned to this session", status: :unprocessable_entity) unless host_user_id
+
+    booking = BusinessMatchingBooking.new(
+      business_matching_session: session,
+      host_user_id: host_user_id,
       name: booking_params[:name],
       email: booking_params[:email],
       phone: booking_params[:phone],
-      note: booking_params[:note],
-      date: booking_params[:date],
-      time: booking_params[:time],
-      user_email: user.email,
-      user_name: user.full_name,
-      user_id: user.id
-    }
-    Rails.logger.info "BusinessMatching Request Payload (Create Booking): #{payload.inspect}"
-    response = _send_request(payload)
+      booking_date: Date.parse(booking_params[:date]),
+      booking_time: booking_params[:time],
+      duration: session.slot_duration,
+      status: "Confirmed",
+      payment_status: "Pending"
+    )
 
-    if response.success?
-        if response.data.is_a?(Hash) && response.data["accepted"] == true
-            Rails.logger.info "Create Booking request accepted, waiting for async callback."
-            return BaseService::ServiceResult.new(success: true, data: { message: "Booking creation queued" })
-        else
-            Rails.logger.info "Create Booking synchronous response received."
-            return BaseService::ServiceResult.new(success: true, data: response.data)
-        end
+    if booking.save
+      ActionCable.server.broadcast("business_matching_event_#{event_id}", { action: "booking_created" })
+      
+      transformed = _transform_local_bookings([booking], session).first
+      BaseService::ServiceResult.new(success: true, data: transformed)
     else
-      response
+      BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def public_create_booking(bm_event_id, event_id, host_user_id, booking_params)
-    payload = {
-      action: "Public Create Booking", # A new action for the webhook
-      bm_event_id: bm_event_id,
-      event_id: event_id,
-      host_user_id: host_user_id, # The host for whom the booking is made
+    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
+
+    target_host_id = host_user_id.presence
+    unless target_host_id
+      assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)
+      target_host_id = assignment&.user_id
+    end
+    return BaseService::ServiceResult.new(success: false, errors: "No host assigned", status: :unprocessable_entity) unless target_host_id
+
+    booking = BusinessMatchingBooking.new(
+      business_matching_session: session,
+      host_user_id: target_host_id,
       name: booking_params[:name],
       email: booking_params[:email],
       phone: booking_params[:phone],
-      date: booking_params[:date],
-      time: booking_params[:time],
-      user_email: user&.email, # The user creating the booking
-      user_name: user&.full_name,
-      user_id: user&.id
-    }
-    Rails.logger.info "BusinessMatching Request Payload (Public Create Booking): #{payload.inspect}"
-    response = _send_request(payload)
+      booking_date: Date.parse(booking_params[:date]),
+      booking_time: booking_params[:time],
+      duration: session.slot_duration,
+      status: "Approved",
+      payment_status: "Pending",
+      host_comment: booking_params[:note]
+    )
 
-    if response.success?
-        if response.data.is_a?(Hash) && response.data["accepted"] == true
-            Rails.logger.info "Public Create Booking request accepted, but processing synchronously to send email and confirm UI."
-            
-            main_event = Event.find_by(id: event_id)
-            main_event_title = main_event&.title || "Event"
-            
-            # Attempt to fetch details (title, location) from BM event
-            bm_event_title = main_event_title # Fallback
-            location = "To be confirmed"
-            
-            begin
-                events_result = fetch_events(event_id)
-                if events_result.success? && events_result.data.is_a?(Array)
-                    target_bm_event = events_result.data.find { |e| e[:id].to_s == bm_event_id.to_s }
-                    if target_bm_event
-                        location = target_bm_event[:location] if target_bm_event[:location].present?
-                        bm_event_title = target_bm_event[:title] if target_bm_event[:title].present?
-                    end
-                end
-            rescue => e
-                Rails.logger.warn "Failed to fetch BM details for temp booking: #{e.message}"
-            end
+    if booking.save
+      ActionCable.server.broadcast("business_matching_event_#{event_id}", { action: "booking_created" })
 
-            temp_booking_data = {
-              name: booking_params[:name],
-              email: booking_params[:email],
-              phone: booking_params[:phone],
-              booking_date: booking_params[:date], # Added for frontend compatibility
-              booking_time: booking_params[:time], # Added for frontend compatibility
-              event_title: bm_event_title, # Use BM session title
-              location: location,
-              cancel_link: "", # Default value
-              reschedule_link: "", # Default value
-              meeting_approval_link: "", # Default value
-              payment_status: "Pending", # Default value
-              created_at: Time.current.iso8601,
-              host_comment: "", # Default value
-              potential_deal_value: "", # Default value
-              attendance: "" # Default value
-            }.with_indifferent_access
-            
-            temp_booking_data[:id] = "Pending-#{SecureRandom.hex(4)}"
-            
-            Rails.logger.info "TEMP DATA DEBUG: #{temp_booking_data.inspect}"
-            Rails.logger.info "DEBUG: ENTERING OPTIMISTIC UPDATE BLOCK"
+      transformed = _transform_local_bookings([booking], session).first
 
-            # Send email immediately
-            EmailDelivery::AuditedDelivery.deliver_now(
-              mailer_name: 'BookingMailer',
-              mailer_action: 'confirmation_email',
-              args: [temp_booking_data, bm_event_title, event_id],
-              related: nil,
-              metadata: { event_id: event_id, booking_id: temp_booking_data[:id] }
-            )
+      begin
+        EmailDelivery::AuditedDelivery.deliver_now(
+          mailer_name: 'BookingMailer',
+          mailer_action: 'confirmation_email',
+          args: [transformed.with_indifferent_access, session.title, event_id],
+          related: nil,
+          metadata: { event_id: event_id, booking_id: booking.id.to_s }
+        )
+      rescue => e
+        Rails.logger.error "Failed to send booking confirmation email: #{e.message}"
+      end
 
-            # Cache the provisional data for a short period
-            Rails.cache.write("pending_booking_#{temp_booking_data[:id]}", temp_booking_data, expires_in: 5.minutes)
-
-            # Invalidate availability caches so subsequent requests get fresh data
-            Rails.cache.delete("business_matching_availability_#{event_id}_#{bm_event_id}")
-            
-            # Optimistically update the slots cache to remove the booked time immediately
-            booked_date_param = booking_params[:date]
-            booked_time_param = booking_params[:time]
-            
-            Rails.logger.info "DEBUG: Optimistic Update - Date: #{booked_date_param}, Time: #{booked_time_param}"
-
-            if booked_date_param.present? && booked_time_param.present?
-                 begin
-                   parsed_date = Date.parse(booked_date_param)
-                   formatted_date_key = parsed_date.strftime("%-d %B %Y")
-                   slots_cache_key = "business_matching_detailed_slots_#{event_id}_#{bm_event_id}_#{formatted_date_key.parameterize}"
-                   
-                   Rails.logger.info "DEBUG: Optimistic Update - Key: #{slots_cache_key}"
-
-                   cached_slots = Rails.cache.read(slots_cache_key)
-                   Rails.logger.info "DEBUG: Optimistic Update - Cached Slots Found: #{cached_slots.present?}"
-
-                   if cached_slots.is_a?(Hash) && cached_slots[:slots].is_a?(Array)
-                     # Filter out the booked slot
-                     updated_slots = cached_slots[:slots].reject { |s| s["slot"] == booked_time_param || s[:slot] == booked_time_param }
-                     # Update the cache
-                     Rails.cache.write(slots_cache_key, { slots: updated_slots }, expires_in: 1.hour)
-                     Rails.logger.info "DEBUG: Optimistic Update - Written new slots. Count: #{updated_slots.size}"
-                   end
-                 rescue => e
-                   Rails.logger.warn "Failed to optimistically update slots cache: #{e.message}"
-                 end
-            end
-
-            # Return provisional booking data to frontend
-            return BaseService::ServiceResult.new(success: true, data: temp_booking_data)
-        elsif response.data.is_a?(Hash) && (response.data["output"] || response.data["data"])
-            # The booking details should be in 'output' or 'data' field
-            raw_data = response.data["output"] || response.data["data"]
-            
-            # Handle nested booking object if present
-            booking_data = if raw_data["booking"].is_a?(Hash)
-                             raw_data["booking"]
-                           else
-                             raw_data
-                           end
-
-            # Fetch the main event for its title
-            main_event = Event.find_by(id: event_id)
-            event_title = main_event&.title || "Event" # Fallback title
-            year = main_event&.start_date&.year || Time.current.year
-
-            # Transform raw booking data to standardized format
-            transformed_booking = _transform_bookings([booking_data], year).first
-
-            # Ensure booking_data has necessary fields for mailer, add if missing from external API
-            final_booking_data = transformed_booking.merge(booking_params.slice(:name, :email, :phone).with_indifferent_access)
-            final_booking_data['id'] ||= booking_data['_id'] || "N/A"
-
-            # Send confirmation email
-            EmailDelivery::AuditedDelivery.deliver_later(
-              mailer_name: 'BookingMailer',
-              mailer_action: 'confirmation_email',
-              args: [final_booking_data, event_title, event_id],
-              related: nil,
-              metadata: { event_id: event_id, booking_id: final_booking_data['id'] }
-            )
-
-            # Invalidate availability caches
-            Rails.cache.delete("business_matching_availability_#{event_id}_#{bm_event_id}")
-            
-            # Optimistically update the slots cache
-            booked_date_param = booking_params[:date]
-            booked_time_param = booking_params[:time]
-            
-            Rails.logger.info "DEBUG: Optimistic Update (Sync) - Date: #{booked_date_param}, Time: #{booked_time_param}"
-
-            if booked_date_param.present? && booked_time_param.present?
-                 begin
-                   parsed_date = Date.parse(booked_date_param)
-                   formatted_date_key = parsed_date.strftime("%-d %B %Y")
-                   slots_cache_key = "business_matching_detailed_slots_#{event_id}_#{bm_event_id}_#{formatted_date_key.parameterize}"
-                   
-                   Rails.logger.info "DEBUG: Optimistic Update (Sync) - Key: #{slots_cache_key}"
-
-                   cached_slots = Rails.cache.read(slots_cache_key)
-                   Rails.logger.info "DEBUG: Optimistic Update (Sync) - Cached Slots Found: #{cached_slots.present?}"
-
-                   if cached_slots.is_a?(Hash) && cached_slots[:slots].is_a?(Array)
-                     updated_slots = cached_slots[:slots].reject { |s| s["slot"] == booked_time_param || s[:slot] == booked_time_param }
-                     Rails.cache.write(slots_cache_key, { slots: updated_slots }, expires_in: 1.hour)
-                     Rails.logger.info "DEBUG: Optimistic Update (Sync) - Written new slots. Count: #{updated_slots.size}"
-                   end
-                 rescue => e
-                   Rails.logger.warn "Failed to optimistically update slots cache: #{e.message}"
-                 end
-            end
-
-            return BaseService::ServiceResult.new(success: true, data: transformed_booking)
-        else
-            Rails.logger.info "Public Create Booking synchronous response received."
-            return BaseService::ServiceResult.new(success: true, data: response.data)
-        end
+      BaseService::ServiceResult.new(success: true, data: transformed)
     else
-      response
+      BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def update_booking(bm_event_id, event_id, booking_id, booking_params, host_user_id: nil)
-    event = Event.find_by(id: event_id)
-    year = event&.start_date&.year || Time.current.year
-    
-    date_param = booking_params[:booking_date]
-    date_with_year = _format_date_with_year(date_param, year)
+    booking = BusinessMatchingBooking.find_by(id: booking_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Booking not found", status: :not_found) unless booking
 
-    payload = {
-      action: "Update Booking",
-      bm_event_id: bm_event_id,
-      event_id: event_id,
-      booking_id: booking_id,
-      name: booking_params[:name],
-      email: booking_params[:email],
-      phone: booking_params[:phone],
-      date: date_with_year,
-      time: booking_params[:booking_time],
-      status: booking_params[:status],
-      payment_status: booking_params[:payment_status],
-      detail1: booking_params[:attendance],
-      detail2: booking_params[:host_comment],
-      detail3: booking_params[:potential_deal_value],
-      user_email: user.email,
-      user_name: user.full_name,
-      user_id: user.id
-    }
-    payload[:host_user_id] = host_user_id if host_user_id.present?
-    Rails.logger.info "BusinessMatching Request Payload (Update Booking): #{payload.inspect}"
-    response = _send_request(payload)
+    session = booking.business_matching_session
 
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        Rails.logger.info "Update Booking request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: { message: "Booking update queued" })
-      else
-        Rails.logger.info "Update Booking synchronous response received."
-        return BaseService::ServiceResult.new(success: true, data: response.data)
-      end
+    updates = {}
+    updates[:name] = booking_params[:name] if booking_params.key?(:name)
+    updates[:email] = booking_params[:email] if booking_params.key?(:email)
+    updates[:phone] = booking_params[:phone] if booking_params.key?(:phone)
+    updates[:booking_date] = Date.parse(booking_params[:booking_date]) if booking_params[:booking_date].present?
+    updates[:booking_time] = booking_params[:booking_time] if booking_params.key?(:booking_time)
+    updates[:status] = booking_params[:status] if booking_params.key?(:status)
+    updates[:payment_status] = booking_params[:payment_status] if booking_params.key?(:payment_status)
+    updates[:attendance] = booking_params[:attendance] if booking_params.key?(:attendance)
+    updates[:host_comment] = booking_params[:host_comment] if booking_params.key?(:host_comment)
+    updates[:potential_deal_value] = booking_params[:potential_deal_value] if booking_params.key?(:potential_deal_value)
+    updates[:host_user_id] = host_user_id if host_user_id.present?
+
+    if booking.update(updates)
+      ActionCable.server.broadcast("business_matching_event_#{event_id}", { action: "booking_updated" })
+      
+      transformed = _transform_local_bookings([booking], session).first
+      BaseService::ServiceResult.new(success: true, data: transformed)
     else
-      response
+      BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_single_booking(bm_event_id, event_id, booking_id)
-    event = Event.find_by(id: event_id)
-    year = event&.start_date&.year || Time.current.year
+    booking = BusinessMatchingBooking.find_by(id: booking_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Booking not found", status: :not_found) unless booking
 
-    payload = {
-      action: "Fetch a Booking",
-      bm_event_id: bm_event_id,
-      event_id: event_id,
-      booking_id: booking_id,
-      user_email: user&.email,
-      user_name: user&.full_name,
-      user_id: user&.id
-    }
-    Rails.logger.info "BusinessMatching Request Payload (Fetch a Booking): #{payload.inspect}"
-    response = _send_request(payload)
-
-    if response.success?
-      if response.data.is_a?(Hash) && response.data["accepted"] == true
-        Rails.logger.info "Fetch a Booking request accepted, waiting for async callback."
-        return BaseService::ServiceResult.new(success: true, data: { message: "Fetch a Booking queued" })
-      elsif response.data.is_a?(Hash)
-        # Extract the booking data, handling nested structures like data.booking or just data
-        raw_data = response.data
-        booking_data = if raw_data["data"] && raw_data["data"]["booking"]
-                         raw_data["data"]["booking"]
-                       elsif raw_data["booking"]
-                         raw_data["booking"]
-                       else
-                         raw_data["data"] || raw_data
-                       end
-
-        transformed_booking = _transform_bookings([booking_data], year).first
-        return BaseService::ServiceResult.new(success: true, data: transformed_booking)
-      else
-        Rails.logger.warn "Fetch a Booking: Unexpected data format from 3rd party for synchronous response."
-        return BaseService::ServiceResult.new(success: false, errors: "Unexpected data format", status: :internal_server_error)
-      end
-    else
-      response
-    end
+    transformed = _transform_local_bookings([booking]).first
+    BaseService::ServiceResult.new(success: true, data: transformed)
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def fetch_all_bookings(event_id, force_refresh: false)
-    # 1. Fetch all BM events for this system event
-    Rails.logger.info "FetchAllBookings: Fetching events for event_id: #{event_id}"
-    events_result = fetch_events(event_id, force_refresh: force_refresh)
-    
-    unless events_result.success?
-      Rails.logger.error "FetchAllBookings: Failed to fetch events. #{events_result.errors}"
-      return events_result 
+    sessions = BusinessMatchingSession.where(event_id: event_id)
+    bookings = BusinessMatchingBooking.where(business_matching_session_id: sessions.pluck(:id)).includes(:host_user, :business_matching_session)
+
+    event = Event.find_by(id: event_id)
+    if event.present? && user&.is_business_host?(event) && !user&.is_org_owner_or_organizer?
+      bookings = bookings.where(host_user_id: user.id)
     end
 
-    all_bookings = []
-    bm_events = events_result.data
-    Rails.logger.info "FetchAllBookings: Found #{bm_events.size} BM events."
-
-    # 2. Iterate and fetch bookings for each
-    bm_events.each do |bm_event|
-      Rails.logger.info "FetchAllBookings: Fetching bookings for BM Event #{bm_event[:id]} (#{bm_event[:title]})"
-      bookings_result = fetch_bookings(bm_event[:id], event_id, force_refresh: force_refresh)
-      
-      if bookings_result.success?
-        bookings = bookings_result.data[:bookings]
-        Rails.logger.info "FetchAllBookings: Found #{bookings.size} bookings for #{bm_event[:title]}"
-        
-        # Enforce event title from the BM event if missing in bookings
-        bookings.each { |b| b[:event_title] ||= bm_event[:title] }
-        all_bookings.concat(bookings)
-      else
-        Rails.logger.error "FetchAllBookings: Failed to fetch bookings for BM Event #{bm_event[:id]}: #{bookings_result.errors}"
-      end
-    end
-
-    Rails.logger.info "FetchAllBookings: Total bookings collected: #{all_bookings.size}"
-    BaseService::ServiceResult.new(success: true, data: { bookings: all_bookings })
+    formatted_bookings = _transform_local_bookings(bookings)
+    BaseService::ServiceResult.new(success: true, data: { bookings: formatted_bookings })
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
   def transform_events(raw_events, event_id)
-    # Pre-fetch host assignments from the new table
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
-    # Create a lookup map of { bm_event_id => user }
     host_lookup = host_assignments.each_with_object({}) do |assignment, memo|
       if assignment.business_matching_event_id.present? && assignment.user.present?
-        # Map the session ID to the user object
-        memo[assignment.business_matching_event_id] = assignment.user
+        memo[assignment.business_matching_event_id.to_s] = assignment.user
       end
     end
 
+    host_users = host_assignments.map(&:user).compact
+    participants = BusinessMatchingParticipant.where(
+      event_id: event_id,
+      registerable_type: 'User',
+      registerable_id: host_users.map(&:id)
+    )
+    participant_lookup = participants.each_with_object({}) do |p, memo|
+      memo[p.registerable_id] = p
+    end
+
+    booking_counts = BusinessMatchingBooking.where(business_matching_session_id: raw_events.map { |e| e["id"] || e["_id"] }.compact)
+                                             .where.not(status: 'Cancelled')
+                                             .group(:business_matching_session_id)
+                                             .count
+
     raw_events.map do |event_data|
       bm_event_id = event_data["id"] || event_data["_id"]
-      host_user = host_lookup[bm_event_id]
+      host_user = host_lookup[bm_event_id.to_s]
+      h_profile = host_user ? participant_lookup[host_user.id] : nil
+      offering_tags = h_profile&.offering_tags.presence || default_offering_tags_for(event_data["title"] || "")
+      interest_tags = h_profile&.interest_tags.presence || default_interest_tags_for(event_data["title"] || "")
       
       {
-        id: bm_event_id,
-        event_id: event_id, # Use event_id instead of internal_event_id
+        id: bm_event_id.to_s,
+        event_id: event_id.to_s,
         title: event_data["title"],
         duration: event_data["slotDuration"],
         location: event_data["locationLink"],
         admin_email: event_data["adminEmail"],
         admin_wa_number: event_data["adminWaNumber"],
+        offering_tags: offering_tags,
+        interest_tags: interest_tags,
+        created_at: event_data["createdAt"] || event_data["created_at"] || Time.current.iso8601,
+        updated_at: event_data["updatedAt"] || event_data["updated_at"] || Time.current.iso8601,
+        bookings_count: booking_counts[bm_event_id.to_s] || booking_counts[bm_event_id.to_i] || 0,
         host: host_user ? {
           id: host_user.id,
           full_name: host_user.full_name,
           email: host_user.email,
-          phone: host_user.phone
+          phone: host_user.phone,
+          offering_tags: offering_tags,
+          interest_tags: interest_tags,
+          description: h_profile&.profile_data&.[]('description').presence || "Professional host available for business matchmaking, partnerships, and collaborations.",
+          sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
+          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution."
         } : nil
       }
     end
   end
 
-  private
+  def fetch_host_profile(event_id)
+    participant = BusinessMatchingParticipant.find_or_initialize_by(
+      event_id: event_id,
+      registerable_type: 'User',
+      registerable_id: user.id
+    )
 
-  def _transform_events(raw_events, event_id)
-    transform_events(raw_events, event_id)
+    BaseService::ServiceResult.new(success: true, data: {
+      offering_tags: participant.offering_tags || [],
+      interest_tags: participant.interest_tags || [],
+      description: participant.profile_data&.[]('description') || "",
+      sourcing_intent: participant.profile_data&.[]('sourcing_intent') || "",
+      capabilities: participant.profile_data&.[]('capabilities') || ""
+    })
   end
 
-  def _transform_bookings(raw_bookings, year = Time.current.year)
-    raw_bookings.map do |booking|
-      formatted_date = _format_date_with_year(booking["bookingDate"], year)
+  def update_host_profile(event_id, profile_params)
+    participant = BusinessMatchingParticipant.find_or_initialize_by(
+      event_id: event_id,
+      registerable_type: 'User',
+      registerable_id: user.id
+    )
+
+    participant.profile_data ||= {}
+    participant.profile_data['description'] = profile_params[:description] if profile_params.key?(:description)
+    participant.profile_data['sourcing_intent'] = profile_params[:sourcing_intent] if profile_params.key?(:sourcing_intent)
+    participant.profile_data['capabilities'] = profile_params[:capabilities] if profile_params.key?(:capabilities)
+
+    if profile_params.key?(:interest_tags)
+      participant.interest_tags = Array(profile_params[:interest_tags]).reject(&:blank?)
+    end
+    if profile_params.key?(:offering_tags)
+      participant.offering_tags = Array(profile_params[:offering_tags]).reject(&:blank?)
+    end
+
+    if participant.save
+      BaseService::ServiceResult.new(success: true, data: {
+        offering_tags: participant.offering_tags,
+        interest_tags: participant.interest_tags,
+        description: participant.profile_data['description'],
+        sourcing_intent: participant.profile_data['sourcing_intent'],
+        capabilities: participant.profile_data['capabilities']
+      })
+    else
+      BaseService::ServiceResult.new(success: false, errors: participant.errors.full_messages, status: :unprocessable_entity)
+    end
+  end
+
+  private
+
+  def _generate_slots_for_availability(availability, session)
+    start_parts = availability.start_time.split(':').map(&:to_i)
+    end_parts = availability.end_time.split(':').map(&:to_i)
+    
+    start_minutes = start_parts[0] * 60 + start_parts[1]
+    end_minutes = end_parts[0] * 60 + end_parts[1]
+    duration = session.slot_duration
+    
+    slots = []
+    current_minutes = start_minutes
+    while current_minutes + duration <= end_minutes
+      hour = current_minutes / 60
+      min = current_minutes % 60
+      
+      time_obj = Time.zone.parse("#{availability.day} #{format('%02d:%02d', hour, min)}")
+      slots << time_obj.strftime("%I:%M %p")
+      
+      current_minutes += duration
+    end
+    slots
+  end
+
+  def _transform_local_bookings(bookings, session = nil)
+    bookings.map do |b|
+      sess = session || b.business_matching_session
+      formatted_date = b.booking_date.strftime("%-d %B %Y")
+      
       {
-        id: booking["_id"] || booking["id"],
-        name: booking["name"],
-        email: booking["email"],
-        phone: booking["phone"],
-        date: formatted_date, # Original key
-        booking_date: formatted_date, # Duplicate for consistency
-        time: booking["bookingTime"], # Original key
-        booking_time: booking["bookingTime"], # Duplicate for consistency
-        duration: booking["bookingDuration"],
-        status: booking["status"],
-        event_title: booking["eventTitle"],
-        location: booking["eventLocationLink"],
-        cancel_link: booking["cancelBookingLink"],
-        reschedule_link: booking["resheduleBookingLink"],
-        meeting_approval_link: booking["meetingApprovalLink"],
-        payment_status: booking["paymentStatus"],
-        created_at: booking["createdAt"],
-        attendance: booking["detail1"],
-        host_comment: booking["detail2"],
-        potential_deal_value: (booking["detail3"].to_f rescue 0.0)
+        id: b.id.to_s,
+        name: b.name,
+        email: b.email,
+        phone: b.phone,
+        date: formatted_date,
+        booking_date: formatted_date,
+        time: b.booking_time,
+        booking_time: b.booking_time,
+        duration: b.duration,
+        status: b.status,
+        event_title: sess&.title || "Matchmaking Session",
+        location: sess&.location || "",
+        cancel_link: "/event/#{sess&.event_id}/booking/#{b.id}/cancel",
+        reschedule_link: "/event/#{sess&.event_id}/booking/#{b.id}/reschedule",
+        meeting_approval_link: "/event/#{sess&.event_id}/booking/#{b.id}/approve",
+        payment_status: b.payment_status,
+        created_at: b.created_at.iso8601,
+        attendance: b.attendance || "",
+        host_comment: b.host_comment || "",
+        potential_deal_value: b.potential_deal_value.to_f,
+        host_user_id: b.host_user_id.to_s
       }
     end
   end
 
-  def _format_date_with_year(date_str, year)
-    return date_str if date_str.blank?
-    return date_str if date_str.match?(/\d{4}/) # Already has year
-    "#{date_str} #{year}"
+  def default_offering_tags_for(title)
+    t = title.to_s.downcase
+    if t.include?('tech') || t.include?('ai') || t.include?('software') || t.include?('cyber')
+      ['Fintech Core', 'Generative AI API', 'IoT Fleet Tech', 'Cybersecurity SaaS']
+    elsif t.include?('invest') || t.include?('fund') || t.include?('venture') || t.include?('equity')
+      ['Seed Venture Capital', 'Series A Equity', 'Pre-Seed Fund']
+    else
+      ['Business Development', 'SaaS Solutions', 'Strategic Partnerships', 'Technology']
+    end
   end
 
-  def _send_request(payload)
-    event_id = payload[:event_id]
-    event = Event.find_by(id: event_id) if event_id
-
-    webhook_url = event&.business_matching_webhook_url.presence || WEBHOOK_URL
-
-    # Determine dynamic receive URL
-    base_url = ENV['API_HOST_URL'].presence
-    base_url ||= if Rails.env.production?
-                   "https://api.eventzflow.com"
-                 elsif Rails.env.staging?
-                   "https://staging-api.eventzflow.com"
-                 else
-                   "https://local-backend.eventzflow.com"
-                 end
-
-    receive_url = "#{base_url}/v1/business_matching/receive"
-    payload[:receive_url] = receive_url
-
-    uri = URI.parse(webhook_url)
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true if uri.scheme == 'https'
-    # Bypass SSL verification to avoid "unable to get certificate CRL" error
-    http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-    http.read_timeout = 30
-
-    # Use request_uri to handle cases where path is empty (it defaults to "/")
-    request = Net::HTTP::Post.new(uri.request_uri, { 'Content-Type' => 'application/json' })
-    request.body = payload.to_json
-
-    response = http.request(request)
-
-    case response
-    when Net::HTTPSuccess
-      parsed_body = JSON.parse(response.body)
-      BaseService::ServiceResult.new(success: true, data: parsed_body)
+  def default_interest_tags_for(title)
+    t = title.to_s.downcase
+    if t.include?('tech') || t.include?('ai') || t.include?('software') || t.include?('cyber')
+      ['IoT Fleet Tech', 'No-Code Builder', 'Generative AI API']
+    elsif t.include?('invest') || t.include?('fund') || t.include?('venture') || t.include?('equity')
+      ['Fintech Core', 'Series A Equity', 'Cybersecurity SaaS']
     else
-      BaseService::ServiceResult.new(success: false, errors: response.body, status: response.code.to_i)
+      ['Investment', 'Marketing Strategy', 'Product Strategy', 'Consulting']
     end
-  rescue JSON::ParserError => e
-    BaseService::ServiceResult.new(success: false, errors: "Failed to parse JSON response: #{e.message}", status: :bad_gateway)
-  rescue StandardError => e
-    BaseService::ServiceResult.new(success: false, errors: "HTTP request failed: #{e.message}", status: :internal_server_error)
   end
 end
