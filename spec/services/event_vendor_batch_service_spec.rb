@@ -245,7 +245,7 @@ RSpec.describe EventVendorBatchService, type: :service do
       expect(replay).to be_failure
       expect(replay).not_to be_idempotent_replay
       expect(replay.data).to be_nil
-      expect(replay.errors).to include('not allowed to create this exhibitor')
+      expect(replay.errors).to include('not allowed to assign booths to this exhibitor')
     end
 
     it 'returns a conflict for a different normalized payload using an existing key' do
@@ -280,6 +280,20 @@ RSpec.describe EventVendorBatchService, type: :service do
       expect(result).to be_idempotent_replay
       expect(result.data.id).to eq(first.data.id)
       expect(ExhibitorKit.where(event_vendor_id: first.data.id).count).to eq(2)
+    end
+
+    it 'appends new booths to an already-assigned vendor' do
+      existing_exhibitor = create(:exhibitor, :with_exhibitor_kit, event:, vendor:)
+
+      result = described_class.create(
+        event:, current_user: organizer, idempotency_key: 'admin-append', params: batch_params
+      )
+
+      expect(result).to be_success
+      expect(result.data.id).to eq(existing_exhibitor.id)
+      kits = result.data.exhibitor_kits.reload
+      expect(kits.size).to eq(3)
+      expect(kits.pluck(:booth_number)).to include('A101', 'A102')
     end
   end
 end

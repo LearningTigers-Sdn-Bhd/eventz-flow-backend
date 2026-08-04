@@ -31,7 +31,7 @@ class EventVendorBatchService
     vendor = User.find_by(id: value_for(@params, :vendor_id), role: :vendor)
     return failure('Vendor not found') unless vendor
 
-    exhibitor = @event.exhibitors.build(
+    exhibitor = @event.exhibitors.find_by(vendor: vendor) || @event.exhibitors.build(
       vendor: vendor,
       redirect_url: value_for(@params, :redirect_url),
       poster_url: value_for(@params, :poster_url),
@@ -48,7 +48,6 @@ class EventVendorBatchService
       existing = existing_batch(vendor)
       return replay(existing) if existing && batch_fingerprint(existing) == @fingerprint
       raise IdempotencyConflict, 'Idempotency key conflicts with a different batch' if existing
-      raise ActiveRecord::RecordNotUnique if @event.event_vendors.exists?(vendor: vendor)
 
       rows = build_rows
       lock_capacity!(rows)
@@ -82,9 +81,11 @@ class EventVendorBatchService
   private
 
   def authorize!(exhibitor)
-    return if EventVendorPolicy.new(@current_user, exhibitor).create?
+    policy = EventVendorPolicy.new(@current_user, exhibitor)
+    allowed = exhibitor.persisted? ? policy.update? : policy.create?
+    return if allowed
 
-    raise Pundit::NotAuthorizedError, 'not allowed to create this exhibitor'
+    raise Pundit::NotAuthorizedError, 'not allowed to assign booths to this exhibitor'
   end
 
   def build_rows
