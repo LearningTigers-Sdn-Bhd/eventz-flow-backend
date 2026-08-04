@@ -139,7 +139,7 @@ module V1
         case report_format
         when 'xlsx'
           send_data report_service.generate_xlsx,
-                    filename: "business_matching_report_#{params[:event_id]}.xlsx",
+                    filename: report_filename,
                     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     disposition: 'attachment'
         else
@@ -230,6 +230,25 @@ module V1
       end
 
       private # Add this line
+
+      def report_filename
+        event = Event.find_by(id: params[:event_id])
+        event_name = (event&.title || params[:event_id]).to_s.parameterize(separator: '_')
+        timestamp = Time.current.strftime('%Y%m%d%H%M%S')
+
+        is_pure_business_host = event.present? &&
+          current_user&.is_business_host?(event) &&
+          !current_user&.is_org_owner_or_organizer? &&
+          !current_user&.is_event_admin?(event)
+
+        base = if is_pure_business_host
+                 "#{event_name}_business_matching_export_#{current_user.full_name.to_s.parameterize(separator: '_')}"
+               else
+                 "#{event_name}_business_matching_export"
+               end
+
+        "#{base}_#{timestamp}.xlsx"
+      end
 
       def booking_params
         params.require(:booking).permit(

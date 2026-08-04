@@ -27,7 +27,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options, :head],
       credentials: true,
-      expose: ['Authorization', 'X-Refresh-Token'],
+      expose: ['Authorization', 'X-Refresh-Token', 'Content-Disposition'],
       max_age: 600
 
   end
@@ -47,7 +47,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options, :head],
       credentials: true,
-      expose: ['Authorization', 'X-Refresh-Token'],
+      expose: ['Authorization', 'X-Refresh-Token', 'Content-Disposition'],
       max_age: 600
   end
 
@@ -65,7 +65,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options, :head],
       credentials: true,
-      expose: ['Authorization', 'X-Refresh-Token'],
+      expose: ['Authorization', 'X-Refresh-Token', 'Content-Disposition'],
       max_age: 600
   end
 end
