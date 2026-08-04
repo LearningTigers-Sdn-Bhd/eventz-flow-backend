@@ -105,5 +105,57 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
         Date.new(2026, 9, 1), Date.new(2026, 9, 2), Date.new(2026, 9, 3)
       )
     end
+
+    it "lets the assigned host edit their own session's details" do
+      host_user = create(:user, :exhibitor)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Old Title", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { title: "New Title", location: "Booth 5" } },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      session.reload
+      expect(session.title).to eq("New Title")
+      expect(session.location).to eq("Booth 5")
+    end
+
+    it "silently ignores a host's attempt to move the session's date range" do
+      host_user = create(:user, :exhibitor)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { start_date: "2026-08-01", end_date: "2026-08-05" } },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      session.reload
+      expect(session.start_date).to eq(Date.new(2026, 9, 1))
+      expect(session.end_date).to eq(Date.new(2026, 9, 1))
+    end
+
+    it "rejects a host editing a session that isn't their own" do
+      host_user = create(:user, :exhibitor)
+      other_host = create(:user, :exhibitor)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+      BusinessHostAssignment.create!(user: other_host, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { title: "Hijacked Title" } },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
   end
 end

@@ -29,7 +29,7 @@ module V1
         session = BusinessMatchingSession.find_by(id: params[:session_id])
         return render json: { error: 'Session not found' }, status: :not_found unless session
 
-        authorize session.event, :update?
+        authorize session, :update?
 
         # Default to the session's effective bucket so a save from "Manage
         # Hours" (which never passes host_user_id) writes to the same bucket

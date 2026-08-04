@@ -40,9 +40,14 @@ module V1
         session = BusinessMatchingSession.find_by(id: params[:id])
         return render json: { error: 'Session not found' }, status: :not_found unless session
 
-        authorize session.event, :update?
+        authorize session, :update?
 
-        if session.update(session_params)
+        permitted_params = session_params
+        # Session dates are admin-controlled — a host editing their own
+        # session may never move them, regardless of what the request sends.
+        permitted_params = permitted_params.except(:start_date, :end_date) unless EventPolicy.new(current_user, session.event).update?
+
+        if session.update(permitted_params)
           ensure_default_availabilities(session)
 
           ActionCable.server.broadcast("business_matching_event_#{session.event_id}", { action: "sessions_updated" })
