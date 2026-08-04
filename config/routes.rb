@@ -49,7 +49,8 @@ Rails.application.routes.draw do
         post 'exhibitor_bookings/batch', to: 'exhibitor_bookings#create_batch'
         get 'exhibitor_booths', to: 'exhibitor_booths#index'
         post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
-        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
+        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update destroy]
+        delete 'exhibitor_bookings/:public_id/purge', to: 'exhibitor_bookings#purge'
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
         post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'

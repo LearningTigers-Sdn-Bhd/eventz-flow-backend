@@ -155,6 +155,33 @@ module V1
         render_booking_error('booking_invalid', 'Booking details are invalid', :unprocessable_content)
       end
 
+      def destroy
+        kit = owned_scope.find_by!(public_id: params[:public_id])
+        authorize kit, policy_class: PublicExhibitorBookingPolicy
+        kit.with_lock do
+          payment = kit.exhibitor_registration_payment
+          payment&.lock!
+          unless kit.unpaid? && kit.booking_active?
+            return render_booking_error('booking_not_cancellable', 'Only unpaid active bookings can be cancelled',
+              :unprocessable_content)
+          end
+          if payment&.gateway_order_id.present? && payment.order_expires_at&.future?
+            return render_booking_error('payment_order_active', 'Booking has an active payment order',
+              :unprocessable_content)
+          end
+
+          kit.update!(booking_status: :cancelled)
+        end
+        head :no_content
+      end
+
+      def purge
+        kit = owned_scope.find_by!(public_id: params[:public_id])
+        authorize kit, policy_class: PublicExhibitorBookingPolicy
+        kit.destroy!
+        head :no_content
+      end
+
       private
 
       def pundit_user
