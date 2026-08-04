@@ -53,6 +53,30 @@ module V1
       end
     end
 
+    # POST /v1/events/:event_id/vendors/batch
+    def batch
+      event_vendor = @event.exhibitors.build
+      authorize event_vendor, :create?, policy_class: EventVendorPolicy
+
+      idempotency_key = request.headers['Idempotency-Key']
+      if idempotency_key.blank?
+        return render_batch_error(['Idempotency key is required'])
+      end
+
+      result = EventVendorBatchService.create(
+        event: @event,
+        params: batch_vendor_params,
+        current_user: current_user,
+        idempotency_key: idempotency_key
+      )
+
+      if result.success?
+        render json: format_event_vendor(load_batch_event_vendor(result.data.id)), status: :created
+      else
+        render_batch_error(result.errors)
+      end
+    end
+
     # PATCH /v1/events/:event_id/vendors/:id
     def update
       authorize @event_vendor, policy_class: EventVendorPolicy
@@ -143,6 +167,53 @@ module V1
           { exhibitor_team_members_attributes: %i[id full_name email phone _destroy] }
         ]
       )
+    end
+
+    def batch_vendor_params
+      params.require(:vendor).permit(
+        :vendor_id, :redirect_url, :poster_url, :qr_url,
+        exhibitor: %i[
+          company_name name_on_fascia pic_full_name pic_contact_number pic_email_address
+          special_requirements
+        ],
+        booths: %i[
+          exhibitor_booth_price_id exhibitor_package_id voucher_code booth_type booth_number
+        ]
+      )
+    end
+
+    def load_batch_event_vendor(id)
+      EventVendor.includes(
+        :vendor,
+        event: %i[event_payment_gateway exhibitor_team_member_limit],
+        exhibitor_kits: [
+          :exhibitor_booth_price,
+          :exhibitor_package,
+          :exhibitor_team_members,
+          :exhibitor_kit_items,
+          :exhibitor_kit_printings,
+          :custom_requests,
+          :exhibitor_team_member_payments,
+          { ic_copy_attachment: :blob },
+          { customs_declaration_form_attachment: :blob },
+          { exhibitor_registration_payment: { payment_proof_attachment: :blob } },
+          { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } } },
+          { exhibitor_kit_printings: { printing_service: { image_attachment: :blob } } },
+          { exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
+        ]
+      ).find(id)
+    end
+
+    def render_batch_error(errors)
+      errors = Array(errors)
+      render json: { error: 'Validation Error', errors: errors }, status: batch_error_status(errors)
+    end
+
+    def batch_error_status(errors)
+      return :conflict if errors.include?('Idempotency key conflicts with a different batch')
+      return :not_found if errors.any? { |error| error.match?(/\A(Vendor not found|Couldn't find Exhibitor(?:BoothPrice|Package) with)/) }
+
+      :unprocessable_content
     end
 
     def format_event_vendor(event_vendor)
