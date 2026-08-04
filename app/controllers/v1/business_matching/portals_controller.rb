@@ -12,10 +12,26 @@ module V1
         render json: portal_payload(@participant), status: :ok
       end
 
+      # GET /v1/business_matching/portal/tags
+      def tags
+        event = @participant.event
+        render json: {
+          offering_tags: event.business_matching_offering_tags || [],
+          interest_tags: event.business_matching_interest_tags || []
+        }, status: :ok
+      end
+
       # PUT /v1/business_matching/portal
       def update
-        @participant.offering_tags = params[:offering_tags] || []
-        @participant.interest_tags = params[:interest_tags] || []
+        tag_params = params.permit(offering_tags: [], interest_tags: [])
+
+        invalid_tags = disallowed_tags(@participant.event, tag_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
+        @participant.offering_tags = tag_params[:offering_tags] || []
+        @participant.interest_tags = tag_params[:interest_tags] || []
 
         if @participant.save
           render json: {
@@ -99,6 +115,19 @@ module V1
       end
 
       private
+
+      # Participants may only select tags from the event's admin-curated
+      # list, never create new ones.
+      def disallowed_tags(event, tag_params)
+        invalid = []
+        if tag_params[:offering_tags].present?
+          invalid += Array(tag_params[:offering_tags]) - (event.business_matching_offering_tags || [])
+        end
+        if tag_params[:interest_tags].present?
+          invalid += Array(tag_params[:interest_tags]) - (event.business_matching_interest_tags || [])
+        end
+        invalid.uniq
+      end
 
       def authenticate_portal_participant!
         token = params[:token] || request.headers['Authorization']&.split(' ')&.last

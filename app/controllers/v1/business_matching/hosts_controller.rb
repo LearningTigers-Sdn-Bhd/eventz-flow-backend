@@ -55,8 +55,14 @@ module V1
         end
 
         profile_params = params.permit(:description, :sourcing_intent, :capabilities, interest_tags: [], offering_tags: [])
+
+        invalid_tags = disallowed_tags(event, profile_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
         service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
-        
+
         if service_result.success?
           Rails.cache.delete("business_matching_events_#{event.id}")
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
@@ -250,6 +256,19 @@ module V1
 
       def host_params
         params.require(:host).permit(:full_name, :email, :phone, :password)
+      end
+
+      # Hosts may only select tags from the event's admin-curated list,
+      # never create new ones.
+      def disallowed_tags(event, profile_params)
+        invalid = []
+        if profile_params[:offering_tags].present?
+          invalid += Array(profile_params[:offering_tags]) - (event.business_matching_offering_tags || [])
+        end
+        if profile_params[:interest_tags].present?
+          invalid += Array(profile_params[:interest_tags]) - (event.business_matching_interest_tags || [])
+        end
+        invalid.uniq
       end
     end
   end

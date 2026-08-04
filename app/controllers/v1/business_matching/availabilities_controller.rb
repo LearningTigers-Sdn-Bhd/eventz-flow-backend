@@ -8,7 +8,11 @@ module V1
         session = BusinessMatchingSession.find_by(id: params[:session_id])
         return render json: { error: 'Session not found' }, status: :not_found unless session
 
-        availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id)
+        # Only the session's single effective bucket — showing every bucket
+        # combined would double up blocks on days both happen to cover.
+        availabilities = BusinessMatchingAvailability.where(
+          business_matching_session_id: session.id, host_user_id: session.effective_host_user_id
+        )
         render json: availabilities.map { |av|
           {
             id: av.id.to_s,
@@ -27,7 +31,10 @@ module V1
 
         authorize session.event, :update?
 
-        host_user_id = params[:host_user_id].presence
+        # Default to the session's effective bucket so a save from "Manage
+        # Hours" (which never passes host_user_id) writes to the same bucket
+        # that's actually read back — never creating a second parallel set.
+        host_user_id = params[:host_user_id].presence || session.effective_host_user_id
 
         ActiveRecord::Base.transaction do
           BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id).destroy_all

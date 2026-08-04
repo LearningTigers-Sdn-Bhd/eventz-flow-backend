@@ -2,6 +2,7 @@
 
 class BusinessMatchingService < BaseService
   def fetch_events(event_id, force_refresh: false)
+    event = Event.find_by(id: event_id)
     sessions = BusinessMatchingSession.where(event_id: event_id, is_active: true)
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
@@ -29,9 +30,9 @@ class BusinessMatchingService < BaseService
     data = sessions.map do |session|
       host_user = host_lookup[session.id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      offering_tags = h_profile&.offering_tags.presence || default_offering_tags_for(session.title)
-      interest_tags = h_profile&.interest_tags.presence || default_interest_tags_for(session.title)
-      
+      offering_tags = h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []
+      interest_tags = h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []
+
       {
         id: session.id.to_s,
         event_id: event_id.to_s,
@@ -40,6 +41,8 @@ class BusinessMatchingService < BaseService
         location: session.location,
         admin_email: session.admin_email,
         admin_wa_number: session.admin_wa_number,
+        start_date: session.start_date,
+        end_date: session.end_date,
         offering_tags: offering_tags,
         interest_tags: interest_tags,
         created_at: session.created_at.iso8601,
@@ -88,9 +91,8 @@ class BusinessMatchingService < BaseService
         availabilities_by_day[av.day] << av
       end
     else
-      event = session.event
-      start_date = event.start_date&.to_date || Time.zone.today
-      end_date = event.end_date&.to_date || start_date
+      start_date = session.start_date || session.event.start_date&.to_date || Time.zone.today
+      end_date = session.end_date || session.event.end_date&.to_date || start_date
       (start_date..end_date).each do |day|
         availabilities_by_day[day] = [
           BusinessMatchingAvailability.new(
@@ -163,9 +165,8 @@ class BusinessMatchingService < BaseService
         availabilities_by_day[av.day] << av
       end
     else
-      event = session.event
-      start_date = event.start_date&.to_date || Time.zone.today
-      end_date = event.end_date&.to_date || start_date
+      start_date = session.start_date || session.event.start_date&.to_date || Time.zone.today
+      end_date = session.end_date || session.event.end_date&.to_date || start_date
       (start_date..end_date).each do |day|
         availabilities_by_day[day] = [
           BusinessMatchingAvailability.new(
@@ -427,6 +428,7 @@ class BusinessMatchingService < BaseService
   end
 
   def transform_events(raw_events, event_id)
+    event = Event.find_by(id: event_id)
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
     host_lookup = host_assignments.each_with_object({}) do |assignment, memo|
@@ -454,9 +456,9 @@ class BusinessMatchingService < BaseService
       bm_event_id = event_data["id"] || event_data["_id"]
       host_user = host_lookup[bm_event_id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      offering_tags = h_profile&.offering_tags.presence || default_offering_tags_for(event_data["title"] || "")
-      interest_tags = h_profile&.interest_tags.presence || default_interest_tags_for(event_data["title"] || "")
-      
+      offering_tags = h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []
+      interest_tags = h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []
+
       {
         id: bm_event_id.to_s,
         event_id: event_id.to_s,
@@ -585,28 +587,6 @@ class BusinessMatchingService < BaseService
         potential_deal_value: b.potential_deal_value.to_f,
         host_user_id: b.host_user_id.to_s
       }
-    end
-  end
-
-  def default_offering_tags_for(title)
-    t = title.to_s.downcase
-    if t.include?('tech') || t.include?('ai') || t.include?('software') || t.include?('cyber')
-      ['Fintech Core', 'Generative AI API', 'IoT Fleet Tech', 'Cybersecurity SaaS']
-    elsif t.include?('invest') || t.include?('fund') || t.include?('venture') || t.include?('equity')
-      ['Seed Venture Capital', 'Series A Equity', 'Pre-Seed Fund']
-    else
-      ['Business Development', 'SaaS Solutions', 'Strategic Partnerships', 'Technology']
-    end
-  end
-
-  def default_interest_tags_for(title)
-    t = title.to_s.downcase
-    if t.include?('tech') || t.include?('ai') || t.include?('software') || t.include?('cyber')
-      ['IoT Fleet Tech', 'No-Code Builder', 'Generative AI API']
-    elsif t.include?('invest') || t.include?('fund') || t.include?('venture') || t.include?('equity')
-      ['Fintech Core', 'Series A Equity', 'Cybersecurity SaaS']
-    else
-      ['Investment', 'Marketing Strategy', 'Product Strategy', 'Consulting']
     end
   end
 end

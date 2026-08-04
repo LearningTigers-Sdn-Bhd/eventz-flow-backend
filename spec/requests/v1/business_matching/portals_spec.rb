@@ -1,7 +1,11 @@
 require 'rails_helper'
 
 RSpec.describe "V1::BusinessMatching::Portals", type: :request do
-  let(:event) { create(:event, use_business_matching: true, start_date: 1.day.from_now, end_date: 2.days.from_now) }
+  let(:event) do
+    create(:event, use_business_matching: true, start_date: 1.day.from_now, end_date: 2.days.from_now,
+                    business_matching_offering_tags: ["Ruby", "Rails"],
+                    business_matching_interest_tags: ["React", "NextJS"])
+  end
   let(:visitor1) { create(:visitor, event: event, email: 'v1@test.com') }
   let(:visitor2) { create(:visitor, event: event, email: 'v2@test.com') }
 
@@ -43,6 +47,29 @@ RSpec.describe "V1::BusinessMatching::Portals", type: :request do
       p1.reload
       expect(p1.offering_tags).to eq(["Ruby", "Rails"])
       expect(p1.interest_tags).to eq(["React", "NextJS"])
+    end
+
+    it "rejects tags outside the event's admin-approved list" do
+      put "/v1/business_matching/portal", params: {
+        token: p1.magic_token,
+        offering_tags: ["Ruby", "Made Up Tag"],
+        interest_tags: ["React"]
+      }
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      p1.reload
+      expect(p1.offering_tags).to eq([])
+    end
+  end
+
+  describe "GET /v1/business_matching/portal/tags" do
+    it "returns the event's admin-approved tag list" do
+      get "/v1/business_matching/portal/tags", params: { token: p1.magic_token }
+      expect(response).to have_http_status(:ok)
+
+      json = JSON.parse(response.body)
+      expect(json['offering_tags']).to eq(["Ruby", "Rails"])
+      expect(json['interest_tags']).to eq(["React", "NextJS"])
     end
   end
 

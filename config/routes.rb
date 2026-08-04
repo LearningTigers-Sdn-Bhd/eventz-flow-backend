@@ -409,6 +409,7 @@ Rails.application.routes.draw do
       # Attendee Matchmaking Portal
       resource :portal, only: [:show, :update] do
         get :matches, on: :member
+        get :tags, on: :member
         post :bookings, to: 'portals#create_booking', on: :member
         put 'bookings/:id/respond', to: 'portals#respond_booking', on: :member
       end
@@ -425,6 +426,7 @@ Rails.application.routes.draw do
 
       scope 'events/:event_id' do
         resource :host_profile, only: [:show, :update], controller: 'hosts'
+        resource :tags, only: [:show, :update], controller: 'tags'
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           post 'join', to: 'hosts#join', on: :collection
