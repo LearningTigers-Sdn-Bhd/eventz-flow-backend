@@ -70,7 +70,7 @@ exhibitors = []
   # Create a dedicated session for this specific host
   session = BusinessMatchingSession.create!(
     event: event,
-    title: "#{company} Matchmaking (Host: #{full_name})",
+    title: "#{company} Matchmaking",
     slot_duration: 30,
     location: "#{booth} (Hall 3)",
     admin_email: email,
