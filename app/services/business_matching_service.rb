@@ -49,7 +49,7 @@ class BusinessMatchingService < BaseService
         updated_at: session.updated_at.iso8601,
         bookings_count: booking_counts[session.id] || 0,
         host: host_user ? {
-          id: host_user.id,
+          id: host_user.id.to_s,
           full_name: host_user.full_name,
           email: host_user.email,
           phone: host_user.phone,
@@ -473,7 +473,7 @@ class BusinessMatchingService < BaseService
         updated_at: event_data["updatedAt"] || event_data["updated_at"] || Time.current.iso8601,
         bookings_count: booking_counts[bm_event_id.to_s] || booking_counts[bm_event_id.to_i] || 0,
         host: host_user ? {
-          id: host_user.id,
+          id: host_user.id.to_s,
           full_name: host_user.full_name,
           email: host_user.email,
           phone: host_user.phone,
