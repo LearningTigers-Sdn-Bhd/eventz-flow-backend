@@ -1091,13 +1091,16 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       )
     end
 
-    it 'returns a validation error when the vendor is already assigned' do
-      create(:exhibitor, event:, vendor:)
+    it 'appends new booths to an already-assigned vendor instead of rejecting' do
+      existing_exhibitor = create(:exhibitor, :with_exhibitor_kit, event:, vendor:)
 
       post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(JSON.parse(response.body)['errors']).to include('Vendor is already assigned to this event')
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body['id']).to eq(existing_exhibitor.id)
+      expect(body['exhibitor_kits'].map { |kit| kit['booth_number'] }).to include('A101', 'A102')
+      expect(body['exhibitor_kits'].size).to eq(3)
     end
 
     it 'returns not found for a missing vendor, booth price, or package' do
