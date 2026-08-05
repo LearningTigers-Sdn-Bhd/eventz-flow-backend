@@ -1523,7 +1523,7 @@ paths:
       - api_key: []
       responses:
         '200':
-          description: successful
+          description: successful for org owner when exhibitor management is disabled
         '401':
           description: unauthorized
   "/v1/events/{event_id}/event_printing_services/{id}":
@@ -1548,7 +1548,7 @@ paths:
       - api_key: []
       responses:
         '200':
-          description: successful
+          description: successful for org owner when exhibitor management is disabled
     delete:
       summary: delete event printing service
       tags:
@@ -1557,7 +1557,8 @@ paths:
       - api_key: []
       responses:
         '204':
-          description: no content
+          description: successful delete for org owner when exhibitor management is
+            disabled
   "/v1/event_rentable_items/{event_rentable_item_id}/event_rentable_item_prices":
     parameters:
     - name: event_rentable_item_id
@@ -1686,7 +1687,7 @@ paths:
       - api_key: []
       responses:
         '200':
-          description: successful
+          description: successful for org owner when exhibitor management is disabled
         '401':
           description: unauthorized
   "/v1/events/{event_id}/event_rentable_items/{id}":
@@ -1711,7 +1712,7 @@ paths:
       - api_key: []
       responses:
         '200':
-          description: successful
+          description: successful for org owner when exhibitor management is disabled
     delete:
       summary: delete event rentable item
       tags:
@@ -1720,7 +1721,8 @@ paths:
       - api_key: []
       responses:
         '204':
-          description: no content
+          description: successful delete for org owner when exhibitor management is
+            disabled
   "/v1/events/{event_id}/staff":
     parameters:
     - name: event_id
@@ -1935,7 +1937,7 @@ paths:
       - BearerAuth: []
       responses:
         '200':
-          description: Profile retrieved successfully
+          description: Profile retrieved by event admin for vendor they did not create
           content:
             application/json:
               schema:
@@ -1978,7 +1980,7 @@ paths:
       parameters: []
       responses:
         '200':
-          description: Profile updated successfully
+          description: Profile updated by event admin for vendor they did not create
         '403':
           description: Forbidden - not the vendor
           content:
@@ -2026,7 +2028,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Returns list of vendors assigned to the event
+          description: Returns exhibitor booth price summary inside exhibitor_kit
           content:
             application/json:
               schema:
@@ -2093,9 +2095,6 @@ paths:
                           example: A101
                         booth_type:
                           type: string
-                          enum:
-                          - shell_scheme
-                          - raw_space
                           example: shell_scheme
                         booth_dimensions:
                           type: string
@@ -2119,6 +2118,10 @@ paths:
                         company_address:
                           type: string
                           example: 123 Exhibitor St.
+                        country:
+                          type: string
+                          nullable: true
+                          example: Malaysia
                         pic_full_name:
                           type: string
                           example: PIC Name
@@ -2142,6 +2145,9 @@ paths:
                         indemnity_document_url:
                           type: string
                           nullable: true
+                        custom_fields_data:
+                          type: object
+                          nullable: true
                         exhibitor_team_members:
                           type: array
                           items:
@@ -2156,6 +2162,112 @@ paths:
                             required:
                             - full_name
                           nullable: true
+                        exhibitor_booth_price_id:
+                          type: integer
+                          nullable: true
+                        exhibitor_booth_price_label:
+                          type: string
+                          nullable: true
+                          example: Shell Scheme Booth (3m x 3m)
+                        exhibitor_booth_price_conferences_included:
+                          type: boolean
+                          nullable: true
+                          example: true
+                    exhibitor_kits:
+                      type: array
+                      description: All ExhibitorKit objects owned by the event vendor,
+                        oldest first
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            nullable: true
+                          event_vendor_id:
+                            type: integer
+                          booth_number:
+                            type: string
+                            example: A101
+                          booth_type:
+                            type: string
+                            example: shell_scheme
+                          booth_dimensions:
+                            type: string
+                            nullable: true
+                            example: 10x10
+                          side_wall_left_required:
+                            type: boolean
+                            example: false
+                          side_wall_right_required:
+                            type: boolean
+                            example: false
+                          name_on_fascia:
+                            type: string
+                            example: Company Name
+                          fascia_upgrade_required:
+                            type: boolean
+                            example: false
+                          company_name:
+                            type: string
+                            example: Exhibitor Co.
+                          company_address:
+                            type: string
+                            example: 123 Exhibitor St.
+                          country:
+                            type: string
+                            nullable: true
+                            example: Malaysia
+                          pic_full_name:
+                            type: string
+                            example: PIC Name
+                          pic_contact_number:
+                            type: string
+                            example: "+1234567890"
+                          pic_email_address:
+                            type: string
+                            example: pic@example.com
+                          special_requirements:
+                            type: string
+                            nullable: true
+                            example: Extra power outlets
+                          digital_brochure_link:
+                            type: string
+                            nullable: true
+                            example: http://brochure.com
+                          indemnity_signed:
+                            type: boolean
+                            example: false
+                          indemnity_document_url:
+                            type: string
+                            nullable: true
+                          custom_fields_data:
+                            type: object
+                            nullable: true
+                          exhibitor_team_members:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                  nullable: true
+                                full_name:
+                                  type: string
+                                  example: Team Member Name
+                              required:
+                              - full_name
+                            nullable: true
+                          exhibitor_booth_price_id:
+                            type: integer
+                            nullable: true
+                          exhibitor_booth_price_label:
+                            type: string
+                            nullable: true
+                            example: Shell Scheme Booth (3m x 3m)
+                          exhibitor_booth_price_conferences_included:
+                            type: boolean
+                            nullable: true
+                            example: true
                   required:
                   - id
                   - event_id
@@ -2258,9 +2370,6 @@ paths:
                         example: A101
                       booth_type:
                         type: string
-                        enum:
-                        - shell_scheme
-                        - raw_space
                         example: shell_scheme
                       booth_dimensions:
                         type: string
@@ -2284,6 +2393,10 @@ paths:
                       company_address:
                         type: string
                         example: 123 Exhibitor St.
+                      country:
+                        type: string
+                        nullable: true
+                        example: Malaysia
                       pic_full_name:
                         type: string
                         example: PIC Name
@@ -2307,6 +2420,9 @@ paths:
                       indemnity_document_url:
                         type: string
                         nullable: true
+                      custom_fields_data:
+                        type: object
+                        nullable: true
                       exhibitor_team_members:
                         type: array
                         items:
@@ -2321,6 +2437,112 @@ paths:
                           required:
                           - full_name
                         nullable: true
+                      exhibitor_booth_price_id:
+                        type: integer
+                        nullable: true
+                      exhibitor_booth_price_label:
+                        type: string
+                        nullable: true
+                        example: Shell Scheme Booth (3m x 3m)
+                      exhibitor_booth_price_conferences_included:
+                        type: boolean
+                        nullable: true
+                        example: true
+                  exhibitor_kits:
+                    type: array
+                    description: All ExhibitorKit objects owned by the event vendor,
+                      oldest first
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          nullable: true
+                        event_vendor_id:
+                          type: integer
+                        booth_number:
+                          type: string
+                          example: A101
+                        booth_type:
+                          type: string
+                          example: shell_scheme
+                        booth_dimensions:
+                          type: string
+                          nullable: true
+                          example: 10x10
+                        side_wall_left_required:
+                          type: boolean
+                          example: false
+                        side_wall_right_required:
+                          type: boolean
+                          example: false
+                        name_on_fascia:
+                          type: string
+                          example: Company Name
+                        fascia_upgrade_required:
+                          type: boolean
+                          example: false
+                        company_name:
+                          type: string
+                          example: Exhibitor Co.
+                        company_address:
+                          type: string
+                          example: 123 Exhibitor St.
+                        country:
+                          type: string
+                          nullable: true
+                          example: Malaysia
+                        pic_full_name:
+                          type: string
+                          example: PIC Name
+                        pic_contact_number:
+                          type: string
+                          example: "+1234567890"
+                        pic_email_address:
+                          type: string
+                          example: pic@example.com
+                        special_requirements:
+                          type: string
+                          nullable: true
+                          example: Extra power outlets
+                        digital_brochure_link:
+                          type: string
+                          nullable: true
+                          example: http://brochure.com
+                        indemnity_signed:
+                          type: boolean
+                          example: false
+                        indemnity_document_url:
+                          type: string
+                          nullable: true
+                        custom_fields_data:
+                          type: object
+                          nullable: true
+                        exhibitor_team_members:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                nullable: true
+                              full_name:
+                                type: string
+                                example: Team Member Name
+                            required:
+                            - full_name
+                          nullable: true
+                        exhibitor_booth_price_id:
+                          type: integer
+                          nullable: true
+                        exhibitor_booth_price_label:
+                          type: string
+                          nullable: true
+                          example: Shell Scheme Booth (3m x 3m)
+                        exhibitor_booth_price_conferences_included:
+                          type: boolean
+                          nullable: true
+                          example: true
                 required:
                 - id
                 - event_id
@@ -2391,9 +2613,6 @@ paths:
                           example: A101
                         booth_type:
                           type: string
-                          enum:
-                          - shell_scheme
-                          - raw_space
                           example: shell_scheme
                         name_on_fascia:
                           type: string
@@ -2478,6 +2697,8 @@ paths:
                     type: boolean
                   message:
                     type: string
+        '404':
+          description: Foreign exhibitor kit cannot be updated through vendor
       requestBody:
         content:
           application/json:
@@ -2508,9 +2729,6 @@ paths:
                           example: D404
                         booth_type:
                           type: string
-                          enum:
-                          - shell_scheme
-                          - raw_space
                           example: raw_space
                         name_on_fascia:
                           type: string
@@ -2595,6 +2813,46 @@ paths:
                   visibility:
                     type: boolean
                     example: true
+                  enable_exhibitor_management:
+                    type: boolean
+                    example: false
+                  use_seat_ticketing:
+                    type: boolean
+                    example: false
+                  use_wedding:
+                    type: boolean
+                    example: false
+                  wish_wall_setting:
+                    type: object
+                    nullable: true
+                    properties:
+                      display_mode:
+                        type: string
+                        example: cards
+                      animation_shape:
+                        type: string
+                        nullable: true
+                        example: heart
+                      animation_text:
+                        type: string
+                        nullable: true
+                        example: Aisyah & Faiz
+                      accent_color:
+                        type: string
+                        nullable: true
+                        example: "#F59E0B"
+                      header_text_color:
+                        type: string
+                        nullable: true
+                        example: "#111827"
+                      card_background_color:
+                        type: string
+                        nullable: true
+                        example: "#FFFBEB"
+                      background_image_url:
+                        type: string
+                        nullable: true
+                        example: "/rails/active_storage/blobs/example/test_image.png"
                 required:
                 - id
                 - title
@@ -2629,6 +2887,45 @@ paths:
                   type: string
                   format: date_time
                 visibility:
+                  type: boolean
+                enable_exhibitor_management:
+                  type: boolean
+                use_seat_ticketing:
+                  type: boolean
+                use_wedding:
+                  type: boolean
+                event_admin_id:
+                  type: integer
+                  description: 'Optional: User ID to assign as event admin. Defaults
+                    to current user if not provided.'
+              required:
+              - title
+              - start_date
+              - end_date
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                start_date:
+                  type: string
+                  format: date_time
+                end_date:
+                  type: string
+                  format: date_time
+                visibility:
+                  type: boolean
+                enable_exhibitor_management:
+                  type: boolean
+                use_seat_ticketing:
+                  type: boolean
+                use_wedding:
                   type: boolean
                 event_admin_id:
                   type: integer
@@ -2749,6 +3046,46 @@ paths:
                   visibility:
                     type: boolean
                     example: true
+                  enable_exhibitor_management:
+                    type: boolean
+                    example: false
+                  use_seat_ticketing:
+                    type: boolean
+                    example: false
+                  use_wedding:
+                    type: boolean
+                    example: false
+                  wish_wall_setting:
+                    type: object
+                    nullable: true
+                    properties:
+                      display_mode:
+                        type: string
+                        example: cards
+                      animation_shape:
+                        type: string
+                        nullable: true
+                        example: heart
+                      animation_text:
+                        type: string
+                        nullable: true
+                        example: Aisyah & Faiz
+                      accent_color:
+                        type: string
+                        nullable: true
+                        example: "#F59E0B"
+                      header_text_color:
+                        type: string
+                        nullable: true
+                        example: "#111827"
+                      card_background_color:
+                        type: string
+                        nullable: true
+                        example: "#FFFBEB"
+                      background_image_url:
+                        type: string
+                        nullable: true
+                        example: "/rails/active_storage/blobs/example/test_image.png"
                 required:
                 - id
                 - title
@@ -2825,6 +3162,46 @@ paths:
                   visibility:
                     type: boolean
                     example: true
+                  enable_exhibitor_management:
+                    type: boolean
+                    example: false
+                  use_seat_ticketing:
+                    type: boolean
+                    example: false
+                  use_wedding:
+                    type: boolean
+                    example: false
+                  wish_wall_setting:
+                    type: object
+                    nullable: true
+                    properties:
+                      display_mode:
+                        type: string
+                        example: cards
+                      animation_shape:
+                        type: string
+                        nullable: true
+                        example: heart
+                      animation_text:
+                        type: string
+                        nullable: true
+                        example: Aisyah & Faiz
+                      accent_color:
+                        type: string
+                        nullable: true
+                        example: "#F59E0B"
+                      header_text_color:
+                        type: string
+                        nullable: true
+                        example: "#111827"
+                      card_background_color:
+                        type: string
+                        nullable: true
+                        example: "#FFFBEB"
+                      background_image_url:
+                        type: string
+                        nullable: true
+                        example: "/rails/active_storage/blobs/example/test_image.png"
                 required:
                 - id
                 - title
@@ -2858,7 +3235,16 @@ paths:
                   - canceled
                 visibility:
                   type: boolean
+                use_seat_ticketing:
+                  type: boolean
                 use_sponsorship:
+                  type: boolean
+                use_wedding:
+                  type: boolean
+                wish_wall_background_image:
+                  type: string
+                  format: binary
+                remove_wish_wall_background_image:
                   type: boolean
     delete:
       summary: Deletes/Archives the event
@@ -3225,6 +3611,8 @@ paths:
           description: created
         '403':
           description: forbidden
+        '404':
+          description: event vendor belongs to another event
       requestBody:
         content:
           application/json:
@@ -3237,9 +3625,6 @@ paths:
                   type: string
                 booth_type:
                   type: string
-                  enum:
-                  - shell_scheme
-                  - raw_space
                 name_on_fascia:
                   type: string
                 company_name:
@@ -3276,6 +3661,15 @@ paths:
       required: true
       schema:
         type: string
+    get:
+      summary: show exhibitor_kit
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      responses:
+        '404':
+          description: not found for a foreign event
     patch:
       summary: update exhibitor_kit
       tags:
@@ -3288,6 +3682,8 @@ paths:
           description: successful
         '403':
           description: forbidden
+        '404':
+          description: not found for a foreign event
       requestBody:
         content:
           application/json:
@@ -3414,6 +3810,111 @@ paths:
                     paid_at:
                       type: string
                       format: date-time
+  "/v1/events/{event_id}/exhibitor_vouchers":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: List exhibitor vouchers
+      tags:
+      - Exhibitor Vouchers
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+    post:
+      summary: Create exhibitor voucher
+      tags:
+      - Exhibitor Vouchers
+      security:
+      - bearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: created
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exhibitor_voucher:
+                  type: object
+                  properties:
+                    exhibitor_booth_price_id:
+                      type: integer
+                      nullable: true
+                    exhibitor_package_id:
+                      type: integer
+                      nullable: true
+                    discount_type:
+                      type: string
+                      enum:
+                      - percentage_off
+                      - fixed_amount_off
+                      - flat_price
+                    discount_value:
+                      type: number
+                  required:
+                  - discount_type
+                  - discount_value
+              required:
+              - exhibitor_voucher
+  "/v1/exhibitor_vouchers/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Delete exhibitor voucher
+      tags:
+      - Exhibitor Vouchers
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: deleted
+        '422':
+          description: redeemed voucher cannot be deleted
+  "/v1/public/events/{event_slug}/exhibitor_vouchers/preview":
+    parameters:
+    - name: event_slug
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Preview exhibitor voucher
+      tags:
+      - Exhibitor Vouchers
+      parameters: []
+      responses:
+        '200':
+          description: successful
+        '422':
+          description: invalid voucher
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                voucher_code:
+                  type: string
+                exhibitor_booth_price_id:
+                  type: integer
+                exhibitor_package_id:
+                  type: integer
+                  nullable: true
+              required:
+              - voucher_code
+              - exhibitor_booth_price_id
   "/v1/groups/{group_id}/affiliates":
     parameters:
     - name: group_id
@@ -4224,6 +4725,37 @@ paths:
           description: forbidden
         '404':
           description: not found
+  "/v1/events/{event_id}/vendors/{id}/lead_count":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: string
+    - name: id
+      in: path
+      description: Event Vendor ID
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Gets lead count for a vendor
+      tags:
+      - Lead Analytics
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Lead count retrieved
+        '404':
+          description: Event vendor not found
   "/v1/events/{event_id}/lucky_draw/sessions":
     parameters:
     - name: event_id
@@ -5181,6 +5713,147 @@ paths:
           description: unauthorized
         '404':
           description: not found
+  "/v1/events/{event_id}/registration_forms":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Lists all registration forms for an event
+      tags:
+      - Registration Forms
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Registration forms returned
+        '403':
+          description: Forbidden (Not authorized to view event)
+        '401':
+          description: Unauthorized (Missing Token)
+    post:
+      summary: Creates a new registration form
+      tags:
+      - Registration Forms
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Registration form created with ticket mapping
+        '422':
+          description: Rejects ticket types from another event
+        '403':
+          description: Forbidden (Member cannot create)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: integer
+                position:
+                  type: integer
+                ticket_type_ids:
+                  type: array
+                  items:
+                    type: integer
+              required:
+              - name
+              - slug
+  "/v1/events/{event_id}/registration_forms/{id}":
+    parameters:
+    - name: event_id
+      in: path
+      description: Event ID
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Registration Form ID
+      required: true
+      schema:
+        type: integer
+    patch:
+      summary: Updates a registration form
+      tags:
+      - Registration Forms
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Update successful with ticket mapping sync
+        '403':
+          description: Forbidden (Member cannot update)
+        '404':
+          description: Registration form not found
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: integer
+                position:
+                  type: integer
+                ticket_type_ids:
+                  type: array
+                  items:
+                    type: integer
+    delete:
+      summary: Deletes a registration form
+      tags:
+      - Registration Forms
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deletion successful
+        '403':
+          description: Forbidden (Member cannot delete)
+        '404':
+          description: Registration form not found
   "/v1/rentable_items":
     get:
       summary: list rentable items
@@ -8685,6 +9358,13 @@ paths:
         '401':
           description: Unauthorized without token
   "/v1/seat_ticketing/sessions":
+    parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     get:
       summary: List seat sessions
       tags:
@@ -8743,6 +9423,9 @@ paths:
                       type: integer
                     name:
                       type: string
+                    status:
+                      type: integer
+                      example: 0
                     location:
                       type: string
                     start_datetime:
@@ -8758,6 +9441,12 @@ paths:
                   - end_datetime
   "/v1/seat_ticketing/sessions/{id}":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: id
       in: path
       required: true
@@ -8801,6 +9490,9 @@ paths:
                   properties:
                     name:
                       type: string
+                    status:
+                      type: integer
+                      example: 0
                     location:
                       type: string
                     start_datetime:
@@ -8820,6 +9512,12 @@ paths:
           description: Archived
   "/v1/seat_ticketing/sessions/{id}/force_delete":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: id
       in: path
       required: true
@@ -8836,6 +9534,12 @@ paths:
           description: Deleted
   "/v1/seat_ticketing/sessions/{id}/restore":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: id
       in: path
       required: true
@@ -8850,17 +9554,23 @@ paths:
       responses:
         '200':
           description: Restored
-  "/v1/seat_ticketing/sessions/{session_id}/maps":
+  "/v1/seat_ticketing/sessions/{session_id}/venues":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: session_id
       in: path
       required: true
       schema:
         type: integer
     get:
-      summary: List maps
+      summary: List venues
       tags:
-      - Seat Ticketing - Maps
+      - Seat Ticketing - Venues
       security:
       - BearerAuth: []
       responses:
@@ -8871,11 +9581,11 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/EventSeatMap"
+                  "$ref": "#/components/schemas/EventSeatVenue"
     post:
-      summary: Create map
+      summary: Create venue
       tags:
-      - Seat Ticketing - Maps
+      - Seat Ticketing - Venues
       security:
       - BearerAuth: []
       parameters: []
@@ -8885,27 +9595,32 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeatMap"
+                "$ref": "#/components/schemas/EventSeatVenue"
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                map:
+                venue:
                   type: object
                   properties:
-                    coord_x:
-                      type: integer
-                    coord_y:
-                      type: integer
-                    price:
+                    name:
                       type: string
+                    total_row:
+                      type: integer
+                    total_column:
+                      type: integer
                   required:
-                  - coord_x
-                  - coord_y
-  "/v1/seat_ticketing/sessions/{session_id}/maps/{id}":
+                  - name
+  "/v1/seat_ticketing/sessions/{session_id}/venues/{id}":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: session_id
       in: path
       required: true
@@ -8917,9 +9632,9 @@ paths:
       schema:
         type: integer
     get:
-      summary: Show map
+      summary: Show venue
       tags:
-      - Seat Ticketing - Maps
+      - Seat Ticketing - Venues
       security:
       - BearerAuth: []
       responses:
@@ -8928,11 +9643,11 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeatMap"
+                "$ref": "#/components/schemas/EventSeatVenue"
     put:
-      summary: Update map
+      summary: Update venue
       tags:
-      - Seat Ticketing - Maps
+      - Seat Ticketing - Venues
       security:
       - BearerAuth: []
       parameters: []
@@ -8942,47 +9657,53 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeatMap"
+                "$ref": "#/components/schemas/EventSeatVenue"
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                map:
+                venue:
                   type: object
                   properties:
-                    coord_x:
-                      type: integer
-                    coord_y:
-                      type: integer
-                    price:
+                    name:
                       type: string
+                    total_row:
+                      type: integer
+                    total_column:
+                      type: integer
     delete:
-      summary: Delete map
+      summary: Delete venue
       tags:
-      - Seat Ticketing - Maps
+      - Seat Ticketing - Venues
       security:
       - BearerAuth: []
       responses:
         '204':
           description: Deleted
-  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/seats":
+  "/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: session_id
       in: path
       required: true
       schema:
         type: integer
-    - name: map_id
+    - name: venue_id
       in: path
       required: true
       schema:
         type: integer
     get:
-      summary: List seats
+      summary: List sections
       tags:
-      - Seat Ticketing - Seats
+      - Seat Ticketing - Sections
       security:
       - BearerAuth: []
       responses:
@@ -8993,11 +9714,11 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/EventSeat"
+                  "$ref": "#/components/schemas/EventSeatSection"
     post:
-      summary: Create seat
+      summary: Create section
       tags:
-      - Seat Ticketing - Seats
+      - Seat Ticketing - Sections
       security:
       - BearerAuth: []
       parameters: []
@@ -9007,31 +9728,211 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeat"
+                "$ref": "#/components/schemas/EventSeatSection"
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                seat:
+                section:
                   type: object
                   properties:
                     name:
                       type: string
+                    price:
+                      type: string
+                    start_row:
+                      type: integer
+                    start_column:
+                      type: integer
+                    seat_row:
+                      type: integer
+                    seat_column:
+                      type: integer
+                    row_span:
+                      type: integer
+                    col_span:
+                      type: integer
+                  required:
+                  - name
+  "/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{id}":
+    parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: venue_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show section
+      tags:
+      - Seat Ticketing - Sections
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatSection"
+    put:
+      summary: Update section
+      tags:
+      - Seat Ticketing - Sections
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventSeatSection"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                section:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    price:
+                      type: string
+                    start_row:
+                      type: integer
+                    start_column:
+                      type: integer
+                    seat_row:
+                      type: integer
+                    seat_column:
+                      type: integer
+                    row_span:
+                      type: integer
+                    col_span:
+                      type: integer
+    delete:
+      summary: Delete section
+      tags:
+      - Seat Ticketing - Sections
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+  "/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{section_id}/ticket-seats":
+    parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: venue_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: section_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: List ticket seats
+      tags:
+      - Seat Ticketing - Ticket Seats
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/EventTicketSeat"
+    post:
+      summary: Create ticket seat
+      tags:
+      - Seat Ticketing - Ticket Seats
+      security:
+      - BearerAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EventTicketSeat"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket_seat:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    extra_price:
+                      type: string
+                    row_set:
+                      type: integer
+                    col_set:
+                      type: integer
                     ticket_id:
                       type: integer
                       nullable: true
                   required:
                   - name
-  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/seats/{id}":
+  "/v1/seat_ticketing/sessions/{session_id}/venues/{venue_id}/sections/{section_id}/ticket-seats/{id}":
     parameters:
+    - name: Authorization
+      in: header
+      required: true
+      description: Bearer JWT
+      schema:
+        type: string
     - name: session_id
       in: path
       required: true
       schema:
         type: integer
-    - name: map_id
+    - name: venue_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: section_id
       in: path
       required: true
       schema:
@@ -9042,9 +9943,9 @@ paths:
       schema:
         type: integer
     get:
-      summary: Show seat
+      summary: Show ticket seat
       tags:
-      - Seat Ticketing - Seats
+      - Seat Ticketing - Ticket Seats
       security:
       - BearerAuth: []
       responses:
@@ -9053,11 +9954,11 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeat"
+                "$ref": "#/components/schemas/EventTicketSeat"
     put:
-      summary: Update seat
+      summary: Update ticket seat
       tags:
-      - Seat Ticketing - Seats
+      - Seat Ticketing - Ticket Seats
       security:
       - BearerAuth: []
       parameters: []
@@ -9067,169 +9968,36 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/EventSeat"
+                "$ref": "#/components/schemas/EventTicketSeat"
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                seat:
+                ticket_seat:
                   type: object
                   properties:
                     name:
                       type: string
+                    extra_price:
+                      type: string
+                    row_set:
+                      type: integer
+                    col_set:
+                      type: integer
                     ticket_id:
                       type: integer
                       nullable: true
     delete:
-      summary: Delete seat
+      summary: Delete ticket seat
       tags:
-      - Seat Ticketing - Seats
+      - Seat Ticketing - Ticket Seats
       security:
       - BearerAuth: []
       responses:
         '204':
           description: Deleted
-  "/v1/seat_ticketing/sessions/{session_id}/maps/{map_id}/batch-seats":
-    parameters:
-    - name: session_id
-      in: path
-      required: true
-      schema:
-        type: integer
-    - name: map_id
-      in: path
-      required: true
-      schema:
-        type: integer
-    post:
-      summary: Batch create seats
-      tags:
-      - Seat Ticketing - Batch Seats
-      security:
-      - BearerAuth: []
-      parameters: []
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  "$ref": "#/components/schemas/EventSeat"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                seats:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                      ticket_id:
-                        type: integer
-                        nullable: true
-                    required:
-                    - name
-              required:
-              - seats
-    put:
-      summary: Batch update seats
-      tags:
-      - Seat Ticketing - Batch Seats
-      security:
-      - BearerAuth: []
-      parameters: []
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  "$ref": "#/components/schemas/EventSeat"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                seats:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      name:
-                        type: string
-                      ticket_id:
-                        type: integer
-                        nullable: true
-                    required:
-                    - id
-              required:
-              - seats
-    delete:
-      summary: Batch delete seats
-      tags:
-      - Seat Ticketing - Batch Seats
-      security:
-      - BearerAuth: []
-      parameters: []
-      responses:
-        '204':
-          description: Deleted
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                ids:
-                  type: array
-                  items:
-                    type: integer
-              required:
-              - ids
-  "/v1/events/{event_id}/vendors/{id}/stamp_count":
-    parameters:
-    - name: event_id
-      in: path
-      description: Event ID
-      required: true
-      schema:
-        type: string
-    - name: id
-      in: path
-      description: Event Vendor ID
-      required: true
-      schema:
-        type: string
-    get:
-      summary: Gets stamp count for a vendor
-      tags:
-      - Stamp Analytics
-      security:
-      - BearerAuth: []
-      parameters:
-      - name: Authorization
-        in: header
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Stamp count retrieved
-        '404':
-          description: Event vendor not found
   "/v1/events/{event_id}/tickets":
     parameters:
     - name: event_id
@@ -9262,32 +10030,6 @@ paths:
         description: Set to "true" to show all tickets including archived ones
         schema:
           type: string
-      - name: updated_since
-        in: query
-        required: false
-        description: ISO8601 timestamp. When present, returns only tickets with
-          `updated_at >= updated_since`. Use this for incremental sync — track
-          the time of your last successful pull and pass it on the next call.
-        schema:
-          type: string
-          format: date-time
-      - name: page
-        in: query
-        required: false
-        description: Page number (1-indexed). When sent (with or without `per_page`),
-          the response is paginated and totals are returned via response headers
-          (`X-Total-Count`, `X-Page`, `X-Per-Page`, `X-Total-Pages`).
-        schema:
-          type: integer
-          minimum: 1
-      - name: per_page
-        in: query
-        required: false
-        description: Results per page when paginating. Default 25, max 100.
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 100
       responses:
         '200':
           description: Lists all tickets including archived
@@ -9312,6 +10054,7 @@ paths:
                       - scanned
                       - refunded
                       - canceled
+                      - pending_payment
                     ticket_type:
                       type: object
                       properties:
@@ -9369,6 +10112,7 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                    - pending_payment
                   payment_status:
                     type: string
                     enum:
@@ -9376,21 +10120,6 @@ paths:
                     - paid
                     - failed
                     - refunded_payment
-                  payment_screenshot_url:
-                    type:
-                    - string
-                    - 'null'
-                    description: URL of payment screenshot if provided
-                  transaction_id:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment transaction ID
-                  payment_method:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -9445,15 +10174,6 @@ paths:
                     ticket_type_id:
                       type: integer
                       description: ID of the ticket type being purchased/issued
-                    payment_screenshot_url:
-                      type: string
-                      example: https://example.com/payment.jpg
-                    transaction_id:
-                      type: string
-                      example: TXN123456789
-                    payment_method:
-                      type: string
-                      example: credit_card
                     custom_fields_data:
                       type: object
                   required:
@@ -9519,6 +10239,7 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                    - pending_payment
                   payment_status:
                     type: string
                     enum:
@@ -9526,21 +10247,6 @@ paths:
                     - paid
                     - failed
                     - refunded_payment
-                  payment_screenshot_url:
-                    type:
-                    - string
-                    - 'null'
-                    description: URL of payment screenshot if provided
-                  transaction_id:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment transaction ID
-                  payment_method:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -9617,6 +10323,7 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                    - pending_payment
                   payment_status:
                     type: string
                     enum:
@@ -9624,21 +10331,6 @@ paths:
                     - paid
                     - failed
                     - refunded_payment
-                  payment_screenshot_url:
-                    type:
-                    - string
-                    - 'null'
-                    description: URL of payment screenshot if provided
-                  transaction_id:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment transaction ID
-                  payment_method:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -9699,15 +10391,6 @@ paths:
                       - paid
                       - failed
                       - refunded_payment
-                    payment_screenshot_url:
-                      type: string
-                      example: https://example.com/payment.jpg
-                    transaction_id:
-                      type: string
-                      example: TXN123456789
-                    payment_method:
-                      type: string
-                      example: credit_card
     delete:
       summary: Cancels/Deletes a ticket (Soft Delete)
       tags:
@@ -9875,6 +10558,7 @@ paths:
                     - scanned
                     - refunded
                     - canceled
+                    - pending_payment
                   payment_status:
                     type: string
                     enum:
@@ -9882,21 +10566,6 @@ paths:
                     - paid
                     - failed
                     - refunded_payment
-                  payment_screenshot_url:
-                    type:
-                    - string
-                    - 'null'
-                    description: URL of payment screenshot if provided
-                  transaction_id:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment transaction ID
-                  payment_method:
-                    type:
-                    - string
-                    - 'null'
-                    description: Payment method used (e.g., credit_card, bank_transfer)
                   checked_in:
                     type: boolean
                     readOnly: true
@@ -10507,7 +11176,7 @@ paths:
                         type: integer
                       active_events:
                         type: integer
-                      total_stamps:
+                      total_leads:
                         type: integer
                       total_vouchers:
                         type: integer
@@ -10532,7 +11201,7 @@ paths:
                           type: string
                         event_vendor_id:
                           type: integer
-                        stamp_count:
+                        lead_count:
                           type: integer
                         total_vouchers:
                           type: integer
@@ -10740,7 +11409,7 @@ paths:
       - BearerAuth: []
       responses:
         '200':
-          description: Vendor profile retrieved by creator organizer
+          description: Vendor profile retrieved by event admin for assigned vendor
           content:
             application/json:
               schema:
@@ -11748,6 +12417,9 @@ components:
           type: integer
         name:
           type: string
+        status:
+          type: string
+          example: draft
         location:
           type: string
         start_datetime:
@@ -11760,28 +12432,59 @@ components:
           type: string
           format: date_time
           nullable: true
-        image_url:
-          type: string
+        archived:
+          type: boolean
           nullable: true
-    EventSeatMap:
-      type: object
-      properties:
-        id:
-          type: integer
-        coord_x:
-          type: integer
-        coord_y:
-          type: integer
-        price:
-          type: string
-          example: '50.0'
-    EventSeat:
+    EventSeatVenue:
       type: object
       properties:
         id:
           type: integer
         name:
           type: string
+        total_row:
+          type: integer
+        total_column:
+          type: integer
+        image_url:
+          type: string
+          nullable: true
+    EventSeatSection:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: string
+          example: '50.0'
+        start_row:
+          type: integer
+        start_column:
+          type: integer
+        seat_row:
+          type: integer
+        seat_column:
+          type: integer
+        row_span:
+          type: integer
+        col_span:
+          type: integer
+    EventTicketSeat:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        extra_price:
+          type: string
+          example: '0.0'
+        row_set:
+          type: integer
+        col_set:
+          type: integer
         ticket_id:
           type: integer
           nullable: true

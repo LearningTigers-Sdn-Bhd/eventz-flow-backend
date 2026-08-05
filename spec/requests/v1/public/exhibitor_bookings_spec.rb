@@ -10,6 +10,130 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
   end
   let(:headers) { { 'Authorization' => "Bearer #{token}" } }
 
+  it 'creates a packaged booking priced from the package' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 5000.00)
+    package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, price: 7000.00)
+    valid_booking_params = {
+      exhibitor_booth_price_id: booth_price.id, company_name: 'Acme', pic_full_name: 'Owner',
+      pic_contact_number: '0123456789', indemnity_signed: true
+    }
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: valid_booking_params.merge(exhibitor_package_id: package.id),
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:created)
+    expect(json_response['data']['amount'].to_f).to eq(7000.00)
+  end
+
+  it 'returns 422 package_mismatch for a package on another booth price' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 5000.00)
+    other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: booth_price.exhibitor_zone)
+    foreign = create(:exhibitor_package, event: event, exhibitor_booth_price: other_price)
+    valid_booking_params = {
+      exhibitor_booth_price_id: booth_price.id, company_name: 'Acme', pic_full_name: 'Owner',
+      pic_contact_number: '0123456789', indemnity_signed: true
+    }
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: valid_booking_params.merge(exhibitor_package_id: foreign.id),
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(json_response['code']).to eq('package_mismatch')
+  end
+
+  it 'prices a new booking from a voucher and redeems it' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+    voucher = create(:exhibitor_voucher, :fixed_amount, event: event, discount_value: 400)
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Owner',
+        pic_contact_number: '0123456789',
+        indemnity_signed: true
+      },
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:created)
+    expect(response.parsed_body.dig('data', 'amount').to_f).to eq(600)
+    created_kit = event.exhibitors.find_by!(vendor: vendor).exhibitor_kits.last
+    expect(voucher.reload).to have_attributes(
+      status: 'redeemed',
+      redeemed_by_exhibitor_kit_id: created_kit.id
+    )
+  end
+
+  it 'rejects an already-redeemed voucher code' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+    voucher = create(:exhibitor_voucher, :redeemed, event: event)
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Owner',
+        pic_contact_number: '0123456789',
+        indemnity_signed: true
+      },
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body).to include(
+      'code' => 'voucher_invalid',
+      'message' => 'Voucher code is invalid or already used'
+    )
+  end
+
+  it 'rolls back voucher redemption when booking creation fails afterward' do
+    booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+    voucher = create(:exhibitor_voucher, event: event)
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Owner',
+        pic_contact_number: '0123456789',
+        indemnity_signed: true,
+        ic_copy_signed_id: 'invalid-signed-id'
+      },
+      headers: headers.merge('Idempotency-Key' => SecureRandom.uuid)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(voucher.reload).to be_active
+    expect(exhibitor.exhibitor_kits).to be_empty
+  end
+
+  it 'returns null exhibitor_package for a Local booking' do
+    booth_price = create(:exhibitor_booth_price, event: event)
+    kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price)
+
+    get "/v1/public/events/#{event.slug}/exhibitor_bookings/#{kit.public_id}", headers: headers
+
+    expect(json_response['data']['exhibitor_package']).to be_nil
+  end
+
+  it 'returns the package on a packaged booking' do
+    booth_price = create(:exhibitor_booth_price, event: event)
+    package = create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price,
+      name: 'Package A | Standard Booth', price: 7000.0, inclusions: '6D5N hotel')
+    kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+      exhibitor_package: package)
+
+    get "/v1/public/events/#{event.slug}/exhibitor_bookings/#{kit.public_id}", headers: headers
+
+    expect(json_response['data']['exhibitor_package']).to include(
+      'id' => package.id, 'name' => 'Package A | Standard Booth', 'inclusions' => '6D5N hotel'
+    )
+    expect(json_response['data']['exhibitor_package_id']).to eq(package.id)
+  end
+
   it 'creates first booking from a new-registration token and returns a payment session' do
     new_email = 'brand-new@example.com'
     post "/v1/public/events/#{event.slug}/exhibitor_email_status", params: { email: new_email }
@@ -93,6 +217,25 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
 
     expect(response).to have_http_status(:created)
     expect(exhibitor.exhibitor_kits.find_by!(idempotency_key: 'booking-with-ic').ic_copy.blob).to eq(blob)
+  end
+
+  it 'optionally attaches an event-bound customs declaration to a new booking' do
+    price = create(:exhibitor_booth_price, event: event, price: 100)
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new('declaration'), filename: 'customs.pdf',
+      content_type: 'application/pdf', metadata: { document_key: 'customs_declaration_form', event_id: event.id })
+    exhibitor
+
+    post "/v1/public/events/#{event.slug}/exhibitor_bookings",
+      params: { exhibitor_booth_price_id: price.id, company_name: 'Acme', pic_full_name: 'Owner',
+                pic_contact_number: '0123456789', indemnity_signed: true,
+                customs_declaration_signed_id: blob.signed_id },
+      headers: headers.merge('Idempotency-Key' => 'booking-with-customs-declaration')
+
+    expect(response).to have_http_status(:created)
+    kit = exhibitor.exhibitor_kits.find_by!(idempotency_key: 'booking-with-customs-declaration')
+    expect(kit.customs_declaration_form.blob).to eq(blob)
+    expect(response.parsed_body.fetch('data')).to include('customs_declaration_uploaded' => true)
+    expect(response.body).not_to include('signed_id', 'blob_url', 'token')
   end
 
   it 'reports whether booking detail has an IC copy without exposing blob credentials' do
@@ -213,14 +356,16 @@ RSpec.describe 'Public exhibitor bookings', type: :request do
   it 'ignores unsupported fields on PATCH' do
     kit = create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid,
       booth_quantity: 1, custom_fields_data: { 'payment_option' => 'later' })
+    voucher = create(:exhibitor_voucher, event: event)
 
     patch "/v1/public/events/#{event.slug}/exhibitor_bookings/#{kit.public_id}",
       params: { booth_quantity: 8, payment_option: 'now', custom_fields_data: { unsafe: true },
-                ic_copy_signed_id: 'bad', company_name: 'Updated' },
+                ic_copy_signed_id: 'bad', voucher_code: voucher.code, company_name: 'Updated' },
       headers: headers.merge('If-Match' => kit.lock_version.to_s)
 
     expect(response).to have_http_status(:ok)
     expect(kit.reload).to have_attributes(company_name: 'Updated', booth_quantity: 1,
       custom_fields_data: { 'payment_option' => 'later' })
+    expect(voucher.reload).to be_active
   end
 end

@@ -39,7 +39,7 @@ class SendEventCertificatesJob < ApplicationJob
   #   checked_in -> only checked-in tickets with an email
   #   unsent     -> tickets with an email that have no in-flight/delivered cert
   def self.recipient_scope(event, audience, excluded_public_ids = [])
-    scope = event.tickets.where.not(attendee_email: [nil, ''])
+    scope = event.tickets.where.not(attendee_email: [nil, '']).where(waiting_list: false)
     scope = scope.where(checked_in: true) if audience.to_s == 'checked_in'
     scope = scope.where.not(public_id: excluded_public_ids) if excluded_public_ids.present?
     scope = scope.where.not(id: already_sent_ticket_ids(event)) if audience.to_s == 'unsent'

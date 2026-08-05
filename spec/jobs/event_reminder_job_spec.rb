@@ -74,5 +74,11 @@ RSpec.describe EventReminderJob, type: :job do
 
       expect { described_class.new.perform }.to have_enqueued_job(EmailDeliveryJob)
     end
+
+    it 'does not send to a waiting-list ticket' do
+      ticket.update!(waiting_list: true)
+
+      expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+    end
   end
 end

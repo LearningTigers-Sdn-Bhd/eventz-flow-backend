@@ -1,6 +1,46 @@
 require 'swagger_helper'
 
 RSpec.describe 'V1::ExhibitorKits', type: :request do
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id/customs_declaration' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event)) }
+
+    it 'downloads the customs declaration for an authorized organizer' do
+      kit.customs_declaration_form.attach(io: StringIO.new('declaration'), filename: 'customs.pdf',
+        content_type: 'application/pdf')
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/customs_declaration", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq('declaration')
+      expect(response.headers['Content-Disposition']).to include('customs.pdf')
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id booth link' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor) }
+
+    it 'returns the linked exhibitor booth id' do
+      booth = create(:exhibitor_booth, event: event, exhibitor_kit: kit)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_booth_id']).to eq(booth.id)
+    end
+
+    it 'returns nil when no exhibitor booth is linked' do
+      get "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('exhibitor_booth_id' => nil)
+    end
+  end
+
   path '/v1/events/{event_id}/exhibitor_kits' do
     parameter name: 'event_id', in: :path, type: :string, description: 'ID of the event'
 
@@ -340,6 +380,88 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'POST /v1/events/:event_id/exhibitor_kits with a voucher' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 1000) }
+    let!(:voucher) do
+      create(:exhibitor_voucher, :fixed_amount, event: event, discount_value: 400)
+    end
+    let(:headers) { { 'Authorization' => "Bearer #{jwt_token(organizer)}" } }
+    let(:attributes) do
+      attributes_for(:exhibitor_kit).slice(
+        :booth_number, :name_on_fascia, :company_name, :company_address,
+        :pic_full_name, :pic_contact_number, :pic_email_address
+      ).merge(
+        event_vendor_id: exhibitor.id,
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code
+      )
+    end
+
+    it 'prices the kit from the voucher and redeems it' do
+      post "/v1/events/#{event.id}/exhibitor_kits",
+        params: { exhibitor_kit: attributes },
+        headers: headers
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body['price_snapshot'].to_f).to eq(600)
+      expect(voucher.reload).to have_attributes(
+        status: 'redeemed',
+        redeemed_by_exhibitor_kit_id: response.parsed_body['id']
+      )
+    end
+
+    it 'rejects an already-redeemed voucher code' do
+      voucher.update!(
+        status: :redeemed,
+        redeemed_by_exhibitor_kit: create(:exhibitor_kit),
+        redeemed_at: Time.current
+      )
+
+      post "/v1/events/#{event.id}/exhibitor_kits",
+        params: { exhibitor_kit: attributes },
+        headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors']).to eq('Voucher code is invalid or already used')
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id batch voucher display' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:voucher) { create(:exhibitor_voucher, event: event, discount_value: 10) }
+    let(:first_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+    let(:sibling_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+
+    it 'shows the shared voucher on every kit in the batch, not just the redeeming kit' do
+      voucher.update!(status: :redeemed, redeemed_by_exhibitor_kit: first_kit, redeemed_at: Time.current)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{sibling_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to eq(voucher.code)
+    end
+
+    it 'returns nil when the kit has no batch or voucher' do
+      solo_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{solo_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to be_nil
+    end
+  end
+
   describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:organizer) { create(:user, :organizer) }
@@ -404,6 +526,56 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(exhibitor_kit.reload).to be_booking_active
+    end
+  end
+
+  describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id/force_delete' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:org_owner) { create(:user, :org_owner) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let!(:exhibitor_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :paid, booking_status: :active)
+    end
+
+    it 'lets an org owner hard-delete a paid, active kit without cancelling it first' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(false)
+    end
+
+    it 'nullifies the audit link when hard-deleting a kit that redeemed a voucher' do
+      voucher = create(:exhibitor_voucher, event: event, status: :redeemed,
+        redeemed_by_exhibitor_kit: exhibitor_kit, redeemed_at: Time.current)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(voucher.reload).to have_attributes(
+        status: 'redeemed',
+        redeemed_by_exhibitor_kit_id: nil
+      )
+    end
+
+    it 'forbids an organizer from using the force delete escape hatch' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(organizer)}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
+    end
+
+    it 'forbids an exhibitor from using the force delete escape hatch' do
+      exhibitor_user = exhibitor.vendor
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(exhibitor_user)}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
     end
   end
 end

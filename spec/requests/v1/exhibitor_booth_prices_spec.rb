@@ -141,5 +141,14 @@ RSpec.describe 'V1::ExhibitorBoothPrices', type: :request do
 
       expect(response).to have_http_status(:no_content)
     end
+
+    it 'refuses to delete a booth price used to scope a voucher' do
+      create(:exhibitor_voucher, event: event, exhibitor_booth_price: booth_price)
+
+      delete "/v1/exhibitor_booth_prices/#{booth_price.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ExhibitorBoothPrice.exists?(booth_price.id)).to be(true)
+    end
   end
 end

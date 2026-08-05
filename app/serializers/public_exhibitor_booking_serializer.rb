@@ -8,6 +8,12 @@ class PublicExhibitorBookingSerializer
       booth_number: kit.booth_number,
       booth_label: kit.exhibitor_booth_price&.label,
       zone: kit.exhibitor_booth_price&.zone,
+      exhibitor_package: kit.exhibitor_package && {
+        id: kit.exhibitor_package.id,
+        name: kit.exhibitor_package.name,
+        price: kit.exhibitor_package.price,
+        inclusions: kit.exhibitor_package.inclusions
+      },
       amount: kit.price_snapshot,
       currency: kit.currency,
       payment_status: kit.payment_status,
@@ -16,6 +22,7 @@ class PublicExhibitorBookingSerializer
       payment_note: payment&.note,
       booking_status: kit.booking_status,
       reservation_expires_at: kit.reservation_expires_at,
+      booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       lock_version: kit.lock_version
     }
   end
@@ -30,8 +37,11 @@ class PublicExhibitorBookingSerializer
       pic_email_address: kit.pic_email_address,
       country: kit.country,
       exhibitor_booth_price_id: kit.exhibitor_booth_price_id,
+      exhibitor_package_id: kit.exhibitor_package_id,
       booth_quantity: kit.booth_quantity,
       ic_copy_uploaded: kit.ic_copy.attached?,
+      customs_declaration_uploaded: kit.customs_declaration_form.attached?,
+      customs_duty_estimate_uploaded: kit.customs_duty_estimate.attached?,
       custom_fields_data: kit.custom_fields_data.except(PublicExhibitorBookingService::FINGERPRINT_KEY)
     )
   end

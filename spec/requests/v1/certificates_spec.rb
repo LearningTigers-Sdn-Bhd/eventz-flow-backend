@@ -141,6 +141,16 @@ RSpec.describe 'V1::Certificates', type: :request do
              params: { public_id: ticket.public_id }, headers: member_headers
         expect(response).to have_http_status(:forbidden)
       end
+
+      it 'rejects a waiting-list ticket without sending anything' do
+        waiting_ticket = create(:ticket, event: event, attendee_email: 'waiting@example.com', waiting_list: true)
+
+        expect {
+          post "/v1/events/#{event.id}/certificates/send_one",
+               params: { public_id: waiting_ticket.public_id }, headers: org_owner_headers
+        }.not_to have_enqueued_job(EmailDeliveryJob)
+        expect(response).to have_http_status(:unprocessable_content)
+      end
     end
 
     context 'without a ready template' do

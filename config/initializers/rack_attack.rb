@@ -77,41 +77,35 @@ class Rack::Attack
     end
   end
 
-  throttle('exhibitor_ic_upload/ip', limit: 10, period: 1.hour) do |req|
+  throttle('exhibitor_ic_upload/ip', limit: 50, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
   end
 
-  throttle('exhibitor_access_request/ip', limit: 10, period: 1.hour) do |req|
+  throttle('customs_declaration_upload/ip', limit: 50, period: 1.hour) do |req|
+    req.ip if req.path.match?(%r{/v1/public/events/.*/customs_declaration_upload}) && req.post?
+  end
+
+  throttle('exhibitor_access_request/ip', limit: 50, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
   end
 
-  throttle('exhibitor_access_request/email', limit: 3, period: 1.hour) do |req|
+  throttle('exhibitor_access_request/email', limit: 30, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
       Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
     end
   end
 
-  throttle('exhibitor_email_status/ip', limit: 20, period: 1.hour) do |req|
-    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
-  end
-
-  throttle('exhibitor_email_status/email', limit: 5, period: 1.hour) do |req|
-    if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
-      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
-    end
-  end
-
-  throttle('exhibitor_access_session/ip', limit: 20, period: 1.hour) do |req|
+  throttle('exhibitor_access_session/ip', limit: 100, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_sessions$}) && req.post?
   end
 
-  throttle('public_exhibitor_booking/ip', limit: 30, period: 1.hour) do |req|
+  throttle('public_exhibitor_booking/ip', limit: 100, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
       req.ip
     end
   end
 
-  throttle('public_exhibitor_booking/session', limit: 20, period: 1.hour) do |req|
+  throttle('public_exhibitor_booking/session', limit: 100, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
       Digest::SHA256.hexdigest(req.get_header('HTTP_AUTHORIZATION').to_s)
     end
@@ -132,17 +126,20 @@ class Rack::Attack
   end
 
   # Response for throttled requests
-  self.throttled_responder = lambda do |env|
-    match_data = env['rack.attack.match_data']
-    now = match_data[:epoch_time]
+  self.throttled_responder = lambda do |req|
+    match_data = (req.respond_to?(:env) ? req.env['rack.attack.match_data'] : nil) ||
+      (req.respond_to?(:get_header) ? req.get_header('rack.attack.match_data') : nil) || {}
+    now = match_data[:epoch_time] || Time.now.to_i
+    period = match_data[:period] || 60
+    limit = match_data[:limit] || 0
 
     headers = {
-      'RateLimit-Limit' => match_data[:limit].to_s,
+      'RateLimit-Limit' => limit.to_s,
       'RateLimit-Remaining' => '0',
-      'RateLimit-Reset' => (now + (match_data[:period] - now % match_data[:period])).to_s,
+      'RateLimit-Reset' => (now + (period - (now % period))).to_s,
       'Content-Type' => 'application/json'
     }
 
-    [429, headers, [{ message: 'Too many requests. Please try again later.', status: :too_many_requests }.to_json]]
+    [429, headers, [{ message: 'Too many requests. Please try again later.', status: 'too_many_requests' }.to_json]]
   end
 end

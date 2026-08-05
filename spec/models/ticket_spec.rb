@@ -179,6 +179,36 @@ RSpec.describe Ticket, type: :model do
         member_ticket.update!(status: :purchased, payment_status: :paid)
       end.to have_enqueued_job(EmailDeliveryJob)
     end
+
+    it 'does not send confirmation email when a ticket is created on the waiting list' do
+      expect do
+        create(
+          :ticket,
+          event: event,
+          ticket_type:,
+          attendee_email: 'waiting@example.com',
+          waiting_list: true,
+          status: :pending_payment,
+          payment_status: :pending
+        )
+      end.not_to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    it 'sends confirmation email once a waiting-list ticket is accepted' do
+      waiting_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type:,
+        attendee_email: 'waiting-accepted@example.com',
+        waiting_list: true,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      expect do
+        waiting_ticket.update!(waiting_list: false, status: :purchased, payment_status: :paid)
+      end.to have_enqueued_job(EmailDeliveryJob)
+    end
   end
 
   describe '#send_webhook_notification' do

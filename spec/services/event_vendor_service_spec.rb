@@ -3,6 +3,50 @@
 require 'rails_helper'
 
 RSpec.describe EventVendorService, type: :service do
+  describe '.enrich_exhibitor_kit_attributes with a package' do
+    let(:event) { create(:event) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 5000.0) }
+    let!(:package) { create(:exhibitor_package, event: event, exhibitor_booth_price: booth_price, price: 7000.0) }
+
+    it 'prices from the package when one is supplied' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id
+      })
+
+      expect(attrs[:amount_paid]).to eq(7000.0)
+      expect(attrs[:exhibitor_package_id]).to eq(package.id)
+    end
+
+    it 'multiplies the package price by booth quantity' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: package.id, booth_quantity: 2
+      })
+
+      expect(attrs[:amount_paid]).to eq(14_000.0)
+    end
+
+    it 'drops a package attached to a different booth price' do
+      other = create(:exhibitor_package, event: event,
+        exhibitor_booth_price: create(:exhibitor_booth_price, event: event,
+          exhibitor_zone: booth_price.exhibitor_zone))
+
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id, exhibitor_package_id: other.id
+      })
+
+      expect(attrs[:exhibitor_package_id]).to be_nil
+      expect(attrs[:amount_paid]).to eq(5000.0)
+    end
+
+    it 'still prices from the booth price when no package is supplied' do
+      attrs = described_class.enrich_exhibitor_kit_attributes(event, {
+        exhibitor_booth_price_id: booth_price.id
+      })
+
+      expect(attrs[:amount_paid]).to eq(5000.0)
+    end
+  end
+
   describe '.determine_vendor_type' do
     context 'when event.use_ticket is true' do
       let(:event) { create(:event, use_ticket: true) }
@@ -26,6 +70,19 @@ RSpec.describe EventVendorService, type: :service do
   describe '.create' do
     let(:current_user) { create(:user, :organizer) }
     let(:event) { create(:event, use_ticket: true) }
+
+    it 'locks the event for non-voucher assignments too' do
+      vendor = create(:user, :vendor)
+      expect(event).to receive(:lock!).and_call_original
+
+      result = described_class.create(
+        event: event,
+        params: { vendor_id: vendor.id },
+        current_user: current_user
+      )
+
+      expect(result).to be_success
+    end
 
     context 'when event.use_ticket is true (Exhibitor)' do
       context 'with vendor_id provided' do
@@ -147,6 +204,94 @@ RSpec.describe EventVendorService, type: :service do
         expect(result).to be_success
         expect(result.data.vendor.email).to match(/vendor_tech_conference_2024_john/)
       end
+    end
+  end
+
+  describe '.create with a voucher' do
+    let(:current_user) { create(:user, :organizer) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:booth_price) { create(:exhibitor_booth_price, event: event, price: 1000) }
+    let!(:voucher) do
+      create(:exhibitor_voucher, event: event, discount_type: :fixed_amount_off, discount_value: 400)
+    end
+    let(:kit_attributes) do
+      {
+        exhibitor_booth_price_id: booth_price.id,
+        voucher_code: voucher.code,
+        company_name: 'Acme',
+        pic_full_name: 'Ada',
+        pic_contact_number: '123'
+      }
+    end
+
+    it 'prices and redeems the voucher when assigning an existing vendor' do
+      vendor = create(:user, :vendor)
+
+      result = described_class.create(
+        event: event,
+        params: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes },
+        current_user: current_user
+      )
+
+      kit = result.data.exhibitor_kits.last
+      expect(result).to be_success
+      expect(kit.amount_paid).to eq(600)
+      expect(kit.price_snapshot).to eq(600)
+      expect(voucher.reload).to be_redeemed
+      expect(voucher.redeemed_by_exhibitor_kit).to eq(kit)
+    end
+
+    it 'locks the event before checking for an existing assignment' do
+      vendor = create(:user, :vendor)
+      expect(event).to receive(:lock!).ordered.and_call_original
+      expect(described_class).to receive(:existing_vendor_assignment?).ordered.and_call_original
+
+      result = described_class.create(
+        event: event,
+        params: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes },
+        current_user: current_user
+      )
+
+      expect(result).to be_success
+    end
+
+    it 'translates a unique assignment race into a voucher mismatch' do
+      vendor = create(:user, :vendor)
+      allow(described_class).to receive(:assign_existing_vendor).and_raise(
+        ActiveRecord::RecordNotUnique,
+        'duplicate assignment'
+      )
+
+      result = described_class.create(
+        event: event,
+        params: { vendor_id: vendor.id, exhibitor_kit_attributes: kit_attributes },
+        current_user: current_user
+      )
+
+      expect(result).to be_failure
+      expect(result.errors).to contain_exactly(ExhibitorVoucherRedemption::MISMATCH_MESSAGE)
+      expect(voucher.reload).to be_active
+    end
+
+    it 'prices and redeems the voucher when creating a vendor user' do
+      result = described_class.create(
+        event: event,
+        params: {
+          full_name: 'New Vendor',
+          email: 'new-voucher-vendor@example.com',
+          password: 'password123',
+          password_confirmation: 'password123',
+          exhibitor_kit_attributes: kit_attributes
+        },
+        current_user: current_user
+      )
+
+      kit = result.data.exhibitor_kits.last
+      expect(result).to be_success
+      expect(kit.amount_paid).to eq(600)
+      expect(kit.price_snapshot).to eq(600)
+      expect(voucher.reload).to be_redeemed
+      expect(voucher.redeemed_by_exhibitor_kit).to eq(kit)
     end
   end
 

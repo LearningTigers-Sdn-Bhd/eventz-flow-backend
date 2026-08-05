@@ -19,11 +19,13 @@ class EventReminderJob < ApplicationJob
       event.tickets
         .left_outer_joins(:ticket_application)
         .where(payment_status: :paid, status: %i[purchased scanned])
+        .where(waiting_list: false)
         .where(ticket_applications: { id: nil })
         .or(
           event.tickets
             .left_outer_joins(:ticket_application)
             .where(payment_status: :paid, status: %i[purchased scanned])
+            .where(waiting_list: false)
             .where(ticket_applications: { review_status: TicketApplication.review_statuses[:approved] })
         )
         .where.not(attendee_email: [nil, ''])

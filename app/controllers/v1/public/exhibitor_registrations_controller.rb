@@ -23,11 +23,12 @@ module V1
       def booth_prices
         event = Event.friendly.find(params[:event_slug])
 
-        prices = event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_booth_price_tiers).order(
-          :booth_type, :label
-        )
+        prices = event.exhibitor_booth_prices
+          .includes(:exhibitor_zone, :exhibitor_booth_price_tiers, :exhibitor_packages)
+          .order(:booth_type, :label)
         zone_sold_map = zone_sold_counts(event)
         booth_price_sold_map = booth_price_sold_counts(event)
+        package_sold_map = package_sold_counts(event)
 
         render json: {
           success: true,
@@ -58,7 +59,22 @@ module V1
               booth_price_quota: booth_price_quota,
               booth_price_sold_count: booth_price_sold_count,
               booth_price_remaining: booth_price_remaining,
-              booth_price_available: zone_available && booth_quota_available
+              booth_price_available: zone_available && booth_quota_available,
+              packages: price.exhibitor_packages.sort_by(&:name).map do |package|
+                package_sold_count = package_sold_map[package.id].to_i
+                package_remaining = package.quota.nil? ? nil : [package.quota - package_sold_count, 0].max
+                {
+                  id: package.id,
+                  name: package.name,
+                  price: package.price,
+                  inclusions: package.inclusions,
+                  quota: package.quota,
+                  sold_count: package_sold_count,
+                  remaining: package_remaining,
+                  available: zone_available && booth_quota_available &&
+                    (package_remaining.nil? || package_remaining.positive?)
+                }
+              end
             }
           end
         }
@@ -574,6 +590,14 @@ module V1
         exhibitor_sales_scope
           .where(event_vendors: { event_id: event.id })
           .group('exhibitor_kits.exhibitor_booth_price_id')
+          .sum(:booth_quantity)
+      end
+
+      def package_sold_counts(event)
+        exhibitor_sales_scope
+          .where(event_vendors: { event_id: event.id })
+          .where.not(exhibitor_kits: { exhibitor_package_id: nil })
+          .group('exhibitor_kits.exhibitor_package_id')
           .sum(:booth_quantity)
       end
 

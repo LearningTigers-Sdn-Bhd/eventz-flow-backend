@@ -389,6 +389,49 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       end
     end
 
+    context 'when the registration form is on waiting_list status' do
+      let!(:waiting_list_form) do
+        form = create(:registration_form, event: event, name: 'Waiting List Form', slug: 'waiting-list-form', status: :waiting_list)
+        form.ticket_types << ticket_type
+        form
+      end
+
+      it 'creates a waiting-list ticket instead of rejecting the registration' do
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: waiting_list_form.slug)
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['data']['waiting_list']).to eq(true)
+
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.waiting_list).to eq(true)
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+      end
+    end
+
+    context 'when the registration form is closed' do
+      let!(:closed_form) do
+        form = create(:registration_form, event: event, name: 'Closed Form', slug: 'closed-form', status: :closed)
+        form.ticket_types << ticket_type
+        form
+      end
+
+      it 'rejects the registration without creating a ticket' do
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: closed_form.slug)
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Registration is closed for this form')
+      end
+    end
+
     it 'creates a new ticket' do
       expect do
         post "/v1/public/events/#{event.slug}/register", params: valid_params

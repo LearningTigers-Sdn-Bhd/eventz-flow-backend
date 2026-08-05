@@ -46,7 +46,11 @@ Rails.application.routes.draw do
         get 'exhibitor_access_session', to: 'exhibitor_access_sessions#show'
         delete 'exhibitor_access_session', to: 'exhibitor_access_sessions#destroy'
         get 'exhibitor_booth_number_availability', to: 'exhibitor_bookings#booth_number_availability'
-        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
+        post 'exhibitor_bookings/batch', to: 'exhibitor_bookings#create_batch'
+        get 'exhibitor_booths', to: 'exhibitor_booths#index'
+        post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
+        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update destroy]
+        delete 'exhibitor_bookings/:public_id/purge', to: 'exhibitor_bookings#purge'
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
         post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'
@@ -61,6 +65,8 @@ Rails.application.routes.draw do
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
         post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
+        post 'customs_declaration_upload', to: 'customs_declaration_uploads#create'
+        post 'customs_duty_estimate_upload', to: 'customs_duty_estimate_uploads#create'
         match 'register_exhibitor', to: 'exhibitor_registrations#gone', via: %i[post patch]
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#gone'
         match 'exhibitor_payment_proof', to: 'exhibitor_registrations#gone', via: %i[post delete]
@@ -165,6 +171,7 @@ Rails.application.routes.draw do
           patch :cancel_ticket
           patch :restore
           post :resend_confirmation_email
+          patch :accept_waiting_list
         end
       end
 
@@ -186,6 +193,11 @@ Rails.application.routes.draw do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
       resources :exhibitor_booth_prices, only: %i[index create]
+      resources :exhibitor_packages, only: %i[index create]
+      resources :exhibitor_vouchers, only: %i[index create]
+      resources :exhibitor_booths, only: %i[index create] do
+        post :bulk, on: :collection
+      end
       resources :exhibitor_zones, only: %i[index create]
 
       # Payment gateway settings (singular - one per event)
@@ -206,6 +218,7 @@ Rails.application.routes.draw do
       end
 
       resources :vendors, controller: 'event_vendors', only: %i[index create update destroy] do
+        collection { post :batch }
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
@@ -257,9 +270,13 @@ Rails.application.routes.draw do
 
       resources :exhibitor_kits, only: %i[index show create update destroy] do
         get :ic_copy, on: :member
+        get :customs_declaration, on: :member
+        get :customs_duty_estimate, on: :member
         member do
           post :submit_order
           post :reject_payment_proof
+          delete :permanently_delete
+          delete :force_delete
         end
         resources :exhibitor_kit_payments, only: %i[index show update]
         resources :exhibitor_team_member_payments, only: %i[index show create update]
@@ -625,6 +642,12 @@ Rails.application.routes.draw do
     end
 
     resources :exhibitor_booth_prices, only: %i[update destroy]
+    resources :exhibitor_packages, only: %i[update destroy]
+    resources :exhibitor_vouchers, only: %i[destroy]
+    resources :exhibitor_booths, only: %i[update destroy] do
+      post :release, on: :member
+      post :assign, on: :member
+    end
     resources :exhibitor_zones, only: %i[update destroy]
   end
 end

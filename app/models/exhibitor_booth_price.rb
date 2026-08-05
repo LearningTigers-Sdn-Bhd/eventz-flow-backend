@@ -3,6 +3,9 @@ class ExhibitorBoothPrice < ApplicationRecord
   belongs_to :exhibitor_zone, optional: true
   has_many :exhibitor_kits, dependent: :nullify
   has_many :exhibitor_booth_price_tiers, dependent: :destroy
+  has_many :exhibitor_booths, dependent: :restrict_with_error
+  has_many :exhibitor_packages, dependent: :destroy
+  has_many :exhibitor_vouchers, dependent: :restrict_with_error
 
   delegate :zone, to: :exhibitor_zone, allow_nil: true
 
@@ -19,6 +22,14 @@ class ExhibitorBoothPrice < ApplicationRecord
 
   def current_price(reference_time = Time.current)
     current_price_tier(reference_time)&.price || price
+  end
+
+  def inventory?
+    exhibitor_booths.exists?
+  end
+
+  def bookable_booths
+    exhibitor_booths.bookable
   end
 
   private

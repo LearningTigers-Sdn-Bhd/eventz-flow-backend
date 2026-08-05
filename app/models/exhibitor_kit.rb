@@ -1,15 +1,21 @@
 class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
+  belongs_to :exhibitor_package, optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
   has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy
   has_many :exhibitor_team_members, dependent: :destroy
   has_many :exhibitor_kit_items, dependent: :destroy
   has_many :exhibitor_kit_printings, dependent: :destroy
+  has_many :exhibitor_booths, dependent: :nullify
   has_many :custom_requests, dependent: :destroy
+  has_one :applied_voucher, class_name: 'ExhibitorVoucher', foreign_key: :redeemed_by_exhibitor_kit_id,
+    inverse_of: :redeemed_by_exhibitor_kit
   has_one_attached :payment_proof, dependent: :purge_later
   has_one_attached :ic_copy, dependent: :purge_later
+  has_one_attached :customs_declaration_form, dependent: :purge_later
+  has_one_attached :customs_duty_estimate, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true
@@ -38,10 +44,12 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   before_save :remove_payment_option_when_payment_is_settled
+  after_save :sync_booth_status, if: :saved_change_to_booking_status?
   before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
   after_commit :send_payment_confirmed_email, if: :should_send_payment_confirmed_email?
   after_commit :sync_registration_payment_status, if: :just_marked_paid?
+  after_commit :revert_booking_status_when_unpaid, if: :just_marked_unpaid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
 
   # --- Team Member Limit Methods ---
@@ -127,12 +135,35 @@ class ExhibitorKit < ApplicationRecord
     exhibitor_registration_payment.update!(status: 'paid', paid_at: Time.current, payment_method: 'manual_bank_transfer')
   end
 
+  # Manually reverting payment_status (e.g. via admin "Manage Payment") only flips that column,
+  # but booking_status was left stuck on 'paid' from the earlier sync above, which blocks
+  # cancellation (Cancel Kit requires booking_status active). Revert it symmetrically.
+  def just_marked_unpaid?
+    saved_change_to_payment_status? && unpaid? && booking_paid?
+  end
+
+  def revert_booking_status_when_unpaid
+    update!(booking_status: :active)
+  end
+
   def remove_payment_option_when_payment_is_settled
     return if unpaid?
     return unless custom_fields_data.is_a?(Hash)
     return unless custom_fields_data.key?('payment_option') || custom_fields_data.key?(:payment_option)
 
     self.custom_fields_data = custom_fields_data.except('payment_option', :payment_option)
+  end
+
+  # Booking status is changed from several payment and admin paths. Syncing here rather than in
+  # each caller means future paths are covered too. after_save, not after_commit, so a rollback
+  # takes the booth change with it.
+  def sync_booth_status
+    case booking_status
+    when 'paid'
+      exhibitor_booths.update_all(status: ExhibitorBooth.statuses[:booked])
+    when 'cancelled', 'expired'
+      exhibitor_booths.update_all(status: ExhibitorBooth.statuses[:available], exhibitor_kit_id: nil)
+    end
   end
 
   def send_registration_received_email
