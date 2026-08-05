@@ -279,6 +279,13 @@ module V1
           }, status: :unprocessable_content
         end
 
+        if (terms_error = terms_agreement_error)
+          return render json: {
+            success: false,
+            errors: [terms_error]
+          }, status: :unprocessable_content
+        end
+
         ticket = conference_upgrade_ticket(
           event: event,
           email: registration_params[:attendee_email],
@@ -311,6 +318,7 @@ module V1
         end
 
         apply_indemnity!(ticket)
+        apply_terms_agreement!(ticket)
 
         begin
           RegistrationDocumentAttacher.new(event: event, ticket: ticket, documents: params[:documents] || {}).call
@@ -437,6 +445,26 @@ module V1
         params.fetch(:indemnity, {}).permit(:accepted, :method, :signed_name)
       end
 
+      def terms_agreement_params
+        params.fetch(:terms_agreement, {}).permit(
+          :accepted,
+          :method,
+          :acknowledged_name,
+          :terms_version
+        )
+      end
+
+      def terms_agreement_error
+        return if params[:terms_agreement].blank?
+
+        agreement = terms_agreement_params
+        return 'Registration terms must be accepted' unless ActiveModel::Type::Boolean.new.cast(agreement[:accepted])
+        return 'A full legal name is required for the terms acknowledgement' if agreement[:acknowledged_name].to_s.strip.blank?
+        return 'Registration terms version is required' if agreement[:terms_version].to_s.strip.blank?
+
+        nil
+      end
+
       def apply_indemnity!(ticket)
         return unless ActiveModel::Type::Boolean.new.cast(indemnity_params[:accepted])
 
@@ -446,6 +474,20 @@ module V1
             'method' => indemnity_params[:method].to_s.presence,
             'signed_name' => indemnity_params[:signed_name].to_s.presence,
             'signed_at' => Time.current.utc.iso8601 # server clock, never client-supplied
+          }.compact
+        )
+      end
+
+      def apply_terms_agreement!(ticket)
+        return unless ActiveModel::Type::Boolean.new.cast(terms_agreement_params[:accepted])
+
+        ticket.custom_fields_data = (ticket.custom_fields_data || {}).merge(
+          '_terms_agreement' => {
+            'accepted' => true,
+            'method' => terms_agreement_params[:method].to_s.presence,
+            'acknowledged_name' => terms_agreement_params[:acknowledged_name].to_s.strip.presence,
+            'terms_version' => terms_agreement_params[:terms_version].to_s.strip.presence,
+            'accepted_at' => Time.current.utc.iso8601 # server clock, never client-supplied
           }.compact
         )
       end

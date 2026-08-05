@@ -20,6 +20,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   let!(:additional_member) { ticket_type('Additional Person - Member', 400, expedition_form) }
   let!(:additional_non_member) { ticket_type('Additional Person - Non-Member', 800, expedition_form) }
   let!(:competition_member) { ticket_type('Competition - Member', 800, competition_form) }
+  let!(:competition_non_member) { ticket_type('Competition - Non-Member', 1600, competition_form) }
   let!(:competition_included) { ticket_type('Included 2nd Person (Team of 2)', 0, competition_form) }
   let!(:reserve_member) { ticket_type('Reserve Co-Driver - Member', 400, competition_form) }
   let!(:reserve_other) do
@@ -143,6 +144,30 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
   end
 
+  it 'follows the vehicle category when its base ticket is changed' do
+    register(
+      form: expedition_form,
+      ticket_type: expedition_member,
+      plate: 'SAD 11',
+      email: 'moved-driver@example.com'
+    )
+    driver_ticket = event.tickets.find_by!(attendee_email: 'moved-driver@example.com')
+
+    driver_ticket.update!(ticket_type_id: competition_member.id)
+
+    lookup(form: competition_form, plate: 'sad11')
+
+    expect(response).to have_http_status(:ok)
+    expect(JSON.parse(response.body).fetch('data')).to include(
+      'status' => 'existing',
+      'registered_form_slug' => 'competition',
+      'registered_form_name' => 'Competition',
+      'allowed_ticket_type_ids' => [competition_included.id]
+    )
+    expect(driver_ticket.reload.vehicle_registration.registration_form).to eq(competition_form)
+    expect(driver_ticket.vehicle_registration.base_ticket_type).to eq(competition_member)
+  end
+
   it 'adopts an existing custom-field plate into a vehicle registration' do
     legacy_ticket = create(
       :ticket,
@@ -182,9 +207,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'competition-codriver@example.com'
     )
     lookup(form: competition_form, plate: 'SAX 12')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
-      reserve_member.id,
-      reserve_other.id
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [reserve_member.id]
     )
 
     register(
@@ -199,6 +223,30 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       'occupancy' => 3,
       'capacity' => 3,
       'allowed_ticket_type_ids' => []
+    )
+  end
+
+  it 'uses the non-member reserve ticket for a non-member competition vehicle' do
+    register(
+      form: competition_form,
+      ticket_type: competition_non_member,
+      plate: 'SAY 13',
+      email: 'competition-non-member-driver@example.com'
+    )
+    lookup(form: competition_form, plate: 'say13')
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [competition_included.id]
+    )
+
+    register(
+      form: competition_form,
+      ticket_type: competition_included,
+      plate: 'SAY-13',
+      email: 'competition-non-member-codriver@example.com'
+    )
+    lookup(form: competition_form, plate: 'SAY 13')
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [reserve_other.id]
     )
   end
 
@@ -221,9 +269,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'support-member-passenger@example.com'
     )
     lookup(form: support_form, plate: 'ss100')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
-      support_additional_member.id,
-      support_additional_non_member.id
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [support_additional_member.id]
     )
 
     register(
@@ -279,7 +326,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   end
 
   it 'still rejects a form-less vehicle ticket when its form was deactivated' do
-    expedition_form.update!(status: :inactive)
+    expedition_form.update!(status: :closed)
 
     post "/v1/public/events/#{event.slug}/register", params: {
       ticket_type_id: expedition_member.id,

@@ -10,12 +10,13 @@ class Ticket < ApplicationRecord
   DOCUMENT_KEYS = %w[passport_copy photo_1 photo_2 indemnity_form signature].freeze
 
   # Server-written custom_fields_data keys — stripped from all client input.
-  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity].freeze
+  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity _terms_agreement].freeze
 
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
   before_validation :normalize_attendee_fields
+  after_update :sync_vehicle_registration_category, if: :saved_change_to_ticket_type_id?
 
   # --- Associations ---
   # In modern Rails, belongs_to implies presence validation by default.
@@ -137,6 +138,10 @@ class Ticket < ApplicationRecord
 
   # --- Private Methods ---
   private
+
+  def sync_vehicle_registration_category
+    VehicleRegistrationTicketTypeSync.call(self)
+  end
 
   def set_public_id
     # Generates a UUID only if it hasn't been set by the database or another source.

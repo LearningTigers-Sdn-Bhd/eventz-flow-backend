@@ -12,8 +12,9 @@ class VehicleRegistrationRules
       ],
       included_second: ['Expedition - Member', 'Expedition - Corporate'],
       included_ticket: 'Included 2nd Person - Member/Corporate',
-      additional: ['Additional Person - Member', 'Additional Person - Non-Member'],
-      non_member_ticket: 'Additional Person - Non-Member'
+      member_base: ['Expedition - Member', 'Expedition - Corporate'],
+      additional_member_ticket: 'Additional Person - Member',
+      additional_non_member_ticket: 'Additional Person - Non-Member'
     },
     'competition' => {
       capacity: 3,
@@ -25,18 +26,18 @@ class VehicleRegistrationRules
       ],
       included_second: :all,
       included_ticket: 'Included 2nd Person (Team of 2)',
-      additional: [
-        'Reserve Co-Driver - Member',
-        'Reserve Co-Driver - Non-Member/International/Corporate'
-      ]
+      member_base: ['Competition - Member'],
+      additional_member_ticket: 'Reserve Co-Driver - Member',
+      additional_non_member_ticket: 'Reserve Co-Driver - Non-Member/International/Corporate'
     },
     'competitor-support' => {
       capacity: 4,
       base: ['Support - Member', 'Support - Non-Member'],
       included_second: ['Support - Member'],
       included_ticket: 'Included 2nd Person - Member/Corporate',
-      additional: ['Additional Person - Member', 'Additional Person - Non-Member'],
-      non_member_ticket: 'Additional Person - Non-Member'
+      member_base: ['Support - Member'],
+      additional_member_ticket: 'Additional Person - Member',
+      additional_non_member_ticket: 'Additional Person - Non-Member'
     }
   }.freeze
 
@@ -71,10 +72,10 @@ class VehicleRegistrationRules
     if occupancy == 1
       included = rule.fetch(:included_second)
       return [rule.fetch(:included_ticket)] if included == :all || included.include?(base_name)
-      return [rule.fetch(:non_member_ticket)] if rule[:non_member_ticket]
+      return [rule.fetch(:additional_non_member_ticket)]
     end
 
-    rule.fetch(:additional)
+    [additional_ticket_name(base_name)]
   end
 
   def status(vehicle_registration)
@@ -96,6 +97,13 @@ class VehicleRegistrationRules
   end
 
   private
+
+  def additional_ticket_name(base_name)
+    member_base = rule.fetch(:member_base)
+    return rule.fetch(:additional_member_ticket) if member_base.include?(base_name)
+
+    rule.fetch(:additional_non_member_ticket)
+  end
 
   def rule
     FORM_RULES[form.slug]
