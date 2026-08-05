@@ -119,8 +119,10 @@ module V1
         new_host = nil
 
         ActiveRecord::Base.transaction do
-          # 1. Create the user; password is set via host_params
-          new_host = User.new(host_params)
+          # 1. Create the user; password is set via host_params. Global role
+          # is exhibitor so the panel scopes their nav/dashboard to Business
+          # Matching only — mirrors how VendorsController#create sets :vendor.
+          new_host = User.new(host_params.merge(role: :exhibitor))
           new_host.email_verified_at = Time.current # Pre-verify email
           new_host.save!
 
