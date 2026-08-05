@@ -14,7 +14,6 @@ class User < ApplicationRecord
   after_initialize :set_default_role, if: :new_record?
   after_initialize :set_default_status, if: :new_record?
   before_create :generate_jti
-  before_create :auto_verify_email
   after_create :create_associated_profile
 
   # --- Validations ---
@@ -239,10 +238,6 @@ class User < ApplicationRecord
 
   def generate_jti
     self.jti = SecureRandom.uuid
-  end
-
-  def auto_verify_email
-    self.email_verified_at ||= Time.current
   end
 
   def create_associated_profile
