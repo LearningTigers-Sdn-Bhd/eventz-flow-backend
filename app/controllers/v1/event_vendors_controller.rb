@@ -196,6 +196,7 @@ module V1
           :exhibitor_team_member_payments,
           { ic_copy_attachment: :blob },
           { customs_declaration_form_attachment: :blob },
+          { customs_duty_estimate_attachment: :blob },
           { exhibitor_registration_payment: { payment_proof_attachment: :blob } },
           { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } } },
           { exhibitor_kit_printings: { printing_service: { image_attachment: :blob } } },
@@ -299,6 +300,7 @@ module V1
         custom_fields_data: exhibitor_kit.custom_fields_data,
         ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         customs_declaration_uploaded: exhibitor_kit.customs_declaration_form.attached?,
+        customs_duty_estimate_uploaded: exhibitor_kit.customs_duty_estimate.attached?,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,
