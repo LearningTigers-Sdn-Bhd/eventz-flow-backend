@@ -3,268 +3,146 @@ require 'rails_helper'
 RSpec.describe BusinessMatchingService do
   let(:user) { create(:user) }
   let(:service) { described_class.new(user) }
-  let(:event_id) { 1 }
-  let(:bm_event_id) { "bm_123" }
-
-  # Mock Rails.cache for tests involving caching
-  before do
-    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+  let(:event) { create(:event, start_date: 1.day.from_now, end_date: 2.days.from_now) }
+  let!(:session) do
+    BusinessMatchingSession.create!(
+      event: event,
+      title: "VIP Speed Matchmaking",
+      slot_duration: 30,
+      location: "VIP Lounge",
+      admin_email: "admin@event.com",
+      admin_wa_number: "+60123456789",
+      start_time: "09:00",
+      end_time: "11:00"
+    )
   end
 
-  after do
-    Rails.cache.clear
+  describe '#fetch_events' do
+    it 'returns all active sessions' do
+      result = service.fetch_events(event.id)
+      expect(result.success?).to be true
+      expect(result.data.size).to eq(1)
+      expect(result.data.first[:title]).to eq("VIP Speed Matchmaking")
+      expect(result.data.first[:duration]).to eq(30)
+      expect(result.data.first[:location]).to eq("VIP Lounge")
+    end
   end
 
-  describe '#fetch_bookings' do
-    context 'when data is cached' do
-      before do
-        allow(Rails.cache).to receive(:read).with("business_matching_bookings_#{event_id}_#{bm_event_id}").and_return({ bookings: [{ id: '1' }] })
-      end
-
-      it 'returns cached data' do
-        result = service.fetch_bookings(bm_event_id, event_id)
+  describe '#fetch_availability' do
+    context 'with default session hours (no custom availabilities in DB)' do
+      it 'generates default slots count based on event days' do
+        result = service.fetch_availability(session.id, event.id)
         expect(result.success?).to be true
-        expect(result.data[:bookings]).to eq([{ id: '1' }])
+        expect(result.data[:dates].size).to eq(2) # 2 days event
+
+        first_day = result.data[:dates].first
+        expect(first_day[:slots]).to eq(4) # 09:00, 09:30, 10:00, 10:30 (11:00 is end time)
       end
     end
 
-    context 'when data is not cached' do
+    context 'with custom availabilities in DB' do
       before do
-        Rails.cache.delete("business_matching_bookings_#{event_id}_#{bm_event_id}")
+        # Create availability only for the first event day: 09:00 to 10:00 (2 slots)
+        BusinessMatchingAvailability.create!(
+          business_matching_session: session,
+          day: event.start_date.to_date,
+          start_time: "09:00",
+          end_time: "10:00"
+        )
       end
 
-      it 'handles synchronous response with bookings array' do
-        response_body = {
-          output: [
-            {
-              "_id" => "booking_1",
-              "name" => "Danny",
-              "bookingDate" => "03 November"
-            }
-          ]
-        }.to_json
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(action: "Search in Bookings", bm_event_id: bm_event_id),
-            headers: { 'Content-Type' => 'application/json' }
-          )
-          .to_return(status: 200, body: response_body, headers: {})
-
-        result = service.fetch_bookings(bm_event_id, event_id)
+      it 'respects custom availability and ignores fallback event days' do
+        result = service.fetch_availability(session.id, event.id)
         expect(result.success?).to be true
-        expect(result.data[:bookings].first[:id]).to eq("booking_1")
-        expect(result.data[:bookings].first[:name]).to eq("Danny")
+        expect(result.data[:dates].size).to eq(1)
+
+        first_day = result.data[:dates].first
+        expect(first_day[:slots]).to eq(2) # 09:00, 09:30
+      end
+    end
+  end
+
+  describe '#fetch_detailed_slots' do
+    let(:date_str) { event.start_date.to_date.strftime("%d %B %Y") }
+
+    it 'returns all slot times' do
+      result = service.fetch_detailed_slots(session.id, date_str, event.id)
+      expect(result.success?).to be true
+      expect(result.data[:slots].map { |s| s[:slot] }).to eq(["09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM"])
+    end
+
+    context 'when slots are booked' do
+      before do
+        # Assign user as host
+        BusinessHostAssignment.create!(
+          user: user,
+          event: event,
+          business_matching_event_id: session.id.to_s
+        )
+
+        BusinessMatchingBooking.create!(
+          business_matching_session: session,
+          host_user: user,
+          name: "John Visitor",
+          email: "john@visitor.com",
+          phone: "0123",
+          booking_date: event.start_date.to_date,
+          booking_time: "09:30 AM",
+          duration: 30,
+          status: "Confirmed",
+          payment_status: "Pending"
+        )
       end
 
-      it 'handles asynchronous response (accepted: true)' do
-        response_body = { accepted: true }.to_json
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(action: "Search in Bookings"),
-            headers: { 'Content-Type' => 'application/json' }
-          )
-          .to_return(status: 200, body: response_body, headers: {})
-
-        result = service.fetch_bookings(bm_event_id, event_id)
+      it 'excludes booked slots' do
+        result = service.fetch_detailed_slots(session.id, date_str, event.id)
         expect(result.success?).to be true
-        expect(result.data[:bookings]).to eq([])
+        expect(result.data[:slots].map { |s| s[:slot] }).to eq(["09:00 AM", "10:00 AM", "10:30 AM"])
       end
     end
   end
 
   describe '#create_booking' do
-    let(:booking_params) do
-      {
-        name: "New User",
-        email: "new@example.com",
-        phone: "1234567890",
-        note: "Test note",
-        date: "12 December 2025",
+    let(:host) { create(:user) }
+    before do
+      BusinessHostAssignment.create!(
+        user: host,
+        event: event,
+        business_matching_event_id: session.id.to_s
+      )
+    end
+
+    it 'creates a booking successfully' do
+      params = {
+        name: "Alice Visitor",
+        email: "alice@example.com",
+        phone: "+6012",
+        date: event.start_date.to_date.to_s,
         time: "10:00 AM"
       }
-    end
 
-    it 'sends create booking request' do
-      stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-        .with(
-          body: hash_including(
-            action: "Create Booking",
-            bm_event_id: bm_event_id,
-            name: "New User"
-          )
-        )
-        .to_return(status: 200, body: { success: true }.to_json)
-
-      result = service.create_booking(bm_event_id, event_id, booking_params)
+      result = service.create_booking(session.id, event.id, params)
       expect(result.success?).to be true
+      expect(result.data[:name]).to eq("Alice Visitor")
+      expect(result.data[:host_user_id]).to eq(host.id.to_s)
     end
-  end
 
-  describe '#update_booking' do
-    let(:booking_id) { "booking_123" }
-    let(:update_params) do
-      {
-        host_comment: "Updated comment",
-        potential_deal_value: "5000",
-        attendance: "Present"
+    it 'prevents double booking for the same host' do
+      params = {
+        name: "Alice Visitor",
+        email: "alice@example.com",
+        phone: "+6012",
+        date: event.start_date.to_date.to_s,
+        time: "10:00 AM"
       }
-    end
 
-    it 'sends update booking request' do
-      stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-        .with(
-          body: hash_including(
-            action: "Update Booking",
-            bm_event_id: bm_event_id,
-            booking_id: booking_id,
-            detail2: "Updated comment"
-          )
-        )
-        .to_return(status: 200, body: { success: true }.to_json)
+      # First booking
+      service.create_booking(session.id, event.id, params)
 
-      result = service.update_booking(bm_event_id, event_id, booking_id, update_params)
-      expect(result.success?).to be true
-    end
-  end
-
-  describe '#public_create_booking' do
-    let(:host_user_id) { "host_123" }
-    let(:booking_params) do
-      {
-        name: "Public User",
-        email: "public@example.com",
-        phone: "0987654321",
-        date: "15 December 2025",
-        time: "2:00 PM"
-      }
-    end
-
-    context 'when response is accepted (async)' do
-      it 'caches the temporary booking and sends confirmation email' do
-        # Stub the Fetch Events request which is called internally
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(
-              action: "Fetch Events",
-              event_id: event_id
-            )
-          )
-          .to_return(status: 200, body: { data: [] }.to_json)
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(
-              action: "Public Create Booking",
-              bm_event_id: bm_event_id,
-              host_user_id: host_user_id
-            )
-          )
-          .to_return(status: 200, body: { accepted: true }.to_json)
-
-        # Mock Mailer
-        mailer = double(BookingMailer)
-        allow(BookingMailer).to receive(:confirmation_email).and_return(mailer)
-        allow(mailer).to receive(:deliver_now)
-
-        result = service.public_create_booking(bm_event_id, event_id, host_user_id, booking_params)
-
-        expect(result.success?).to be true
-        expect(result.data['id']).to start_with('Pending-')
-        expect(Rails.cache.read("pending_booking_#{result.data['id']}")).to be_present
-      end
-    end
-
-    context 'when response is synchronous' do
-      it 'handles nested booking data and transforms it' do
-        # Stub the Fetch Events request which is called internally
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(
-              action: "Fetch Events",
-              event_id: event_id
-            )
-          )
-          .to_return(status: 200, body: { data: [] }.to_json)
-
-        response_body = {
-          output: {
-            booking: {
-              "_id" => "booking_sync_1",
-              "name" => "Public User",
-              "bookingDate" => "15 December 2025",
-              "cancelBookingLink" => "http://cancel.link"
-            }
-          }
-        }.to_json
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .to_return(status: 200, body: response_body)
-
-        # Mock Mailer
-        mailer = double(BookingMailer)
-        allow(BookingMailer).to receive(:confirmation_email).and_return(mailer)
-        allow(mailer).to receive(:deliver_later)
-
-        result = service.public_create_booking(bm_event_id, event_id, host_user_id, booking_params)
-
-        expect(result.success?).to be true
-        expect(result.data[:id]).to eq("booking_sync_1")
-        expect(result.data[:cancel_link]).to eq("http://cancel.link")
-      end
-    end
-  end
-
-  describe '#fetch_single_booking' do
-    let(:booking_id) { "booking_456" }
-
-    context 'when initialized with nil user (public context)' do
-      let(:public_service) { described_class.new(nil) }
-
-      it 'fetches booking without error' do
-        response_body = {
-          data: {
-            booking: {
-              "_id" => booking_id,
-              "name" => "Public Guest",
-              "bookingDate" => "20 December 2025"
-            }
-          }
-        }.to_json
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL)
-          .with(
-            body: hash_including(
-              action: "Fetch a Booking",
-              user_email: nil,
-              user_id: nil
-            )
-          )
-          .to_return(status: 200, body: response_body)
-
-        result = public_service.fetch_single_booking(bm_event_id, event_id, booking_id)
-
-        expect(result.success?).to be true
-        expect(result.data[:id]).to eq(booking_id)
-        expect(result.data[:name]).to eq("Public Guest")
-      end
-    end
-
-    context 'nested data extraction' do
-      it 'extracts from data.booking' do
-        response_body = {
-          booking: {
-            "_id" => booking_id,
-            "name" => "Nested 1"
-          }
-        }.to_json
-
-        stub_request(:post, BusinessMatchingService::WEBHOOK_URL).to_return(status: 200, body: response_body)
-        
-        result = service.fetch_single_booking(bm_event_id, event_id, booking_id)
-        expect(result.data[:name]).to eq("Nested 1")
-      end
+      # Second booking on the same slot
+      result2 = service.create_booking(session.id, event.id, params)
+      expect(result2.success?).to be false
+      expect(result2.errors).to include("already booked")
     end
   end
 end
