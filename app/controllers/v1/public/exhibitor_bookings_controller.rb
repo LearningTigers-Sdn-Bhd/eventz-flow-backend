@@ -76,6 +76,9 @@ module V1
       rescue CustomsDeclarationAttacher::Error
         render_booking_error('customs_declaration_invalid', 'Customs declaration upload is invalid or unavailable',
           :unprocessable_content)
+      rescue CustomsDutyEstimateAttacher::Error
+        render_booking_error('customs_duty_estimate_invalid', 'Customs duty estimate upload is invalid or unavailable',
+          :unprocessable_content)
       rescue ActiveRecord::RecordNotFound
         render_booking_error('booth_package_not_found', 'Booth package not found', :not_found)
       end
@@ -126,6 +129,9 @@ module V1
       rescue CustomsDeclarationAttacher::Error => e
         render_batch_booking_error('customs_declaration_invalid', 'Customs declaration upload is invalid or unavailable',
           :unprocessable_content, e)
+      rescue CustomsDutyEstimateAttacher::Error => e
+        render_batch_booking_error('customs_duty_estimate_invalid', 'Customs duty estimate upload is invalid or unavailable',
+          :unprocessable_content, e)
       rescue ActiveRecord::RecordNotFound => e
         render_batch_booking_error('booth_package_not_found', 'Booth package not found', :not_found, e)
       end
@@ -153,6 +159,33 @@ module V1
           :unprocessable_content)
       rescue ActiveRecord::RecordInvalid
         render_booking_error('booking_invalid', 'Booking details are invalid', :unprocessable_content)
+      end
+
+      def destroy
+        kit = owned_scope.find_by!(public_id: params[:public_id])
+        authorize kit, policy_class: PublicExhibitorBookingPolicy
+        kit.with_lock do
+          payment = kit.exhibitor_registration_payment
+          payment&.lock!
+          unless kit.unpaid? && kit.booking_active?
+            return render_booking_error('booking_not_cancellable', 'Only unpaid active bookings can be cancelled',
+              :unprocessable_content)
+          end
+          if payment&.gateway_order_id.present? && payment.order_expires_at&.future?
+            return render_booking_error('payment_order_active', 'Booking has an active payment order',
+              :unprocessable_content)
+          end
+
+          kit.update!(booking_status: :cancelled)
+        end
+        head :no_content
+      end
+
+      def purge
+        kit = owned_scope.find_by!(public_id: params[:public_id])
+        authorize kit, policy_class: PublicExhibitorBookingPolicy
+        kit.destroy!
+        head :no_content
       end
 
       private
@@ -183,13 +216,14 @@ module V1
           :company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
           :pic_contact_number, :country, :booth_number,
           :booth_quantity, :payment_option, :ic_copy_signed_id, :customs_declaration_signed_id,
-          :source_booking_public_id,
+          :customs_duty_estimate_signed_id, :source_booking_public_id,
           :reuse_ic_copy, :indemnity_signed, custom_fields_data: {})
       end
 
       def create_batch_params
         params.permit(:company_name, :company_address, :name_on_fascia, :pic_full_name, :pic_position,
           :pic_contact_number, :country, :payment_option, :ic_copy_signed_id, :customs_declaration_signed_id,
+          :customs_duty_estimate_signed_id,
           :source_booking_public_id, :reuse_ic_copy, :indemnity_signed, :voucher_code, custom_fields_data: {},
           booths: %i[exhibitor_booth_price_id exhibitor_package_id booth_number voucher_code])
       end
