@@ -120,6 +120,14 @@ class EventPolicy < ApplicationPolicy
     user.is_org_owner? || user.is_event_admin?(record)
   end
 
+  # Only Org Owner, Organizer, or Event Admin may curate the offering/interest
+  # tag list that business hosts pick from. Business hosts may only select
+  # from this list, never create their own tags.
+  def manage_business_matching_tags?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record)
+  end
+
   # ============================================================
   # Scope for Index (GET /v1/events)
   # ============================================================
@@ -142,6 +150,12 @@ class EventPolicy < ApplicationPolicy
       if actual_user.vendor?
         vendor_event_ids = actual_user.event_vendor_assignments.pluck(:event_id)
         return scope.where(id: vendor_event_ids, visibility: true).distinct
+      end
+
+      # For exhibitors: See events they are business hosts for
+      if actual_user.exhibitor?
+        host_event_ids = actual_user.business_host_assignments.pluck(:event_id)
+        return scope.where(id: host_event_ids, visibility: true).distinct
       end
 
       # For exhibition contractors: See only events they are assigned to

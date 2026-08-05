@@ -154,7 +154,9 @@ class User < ApplicationRecord
 
   def is_business_host?(event)
     return false unless event.present?
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_host])
+    exhibitor? ||
+      event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_host]) ||
+      business_host_assignments.exists?(event_id: event.id)
   end
 
   # --- Group Role Helper Methods ---
