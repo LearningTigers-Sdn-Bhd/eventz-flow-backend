@@ -71,6 +71,9 @@ class EventPolicy < ApplicationPolicy
     # Allow if user is staff/organizer
     return true if user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) || user.is_event_team_member?(record)
 
+    # Allow if user is scoped to Business Matching for this event
+    return true if user.is_business_matching_admin?(record)
+
     # Allow if user is a business host
     return true if user.is_business_host?(record)
 
@@ -115,17 +118,26 @@ class EventPolicy < ApplicationPolicy
     user.is_event_vendor?(record)
   end
 
-  def manage_business_hosts?
+  # Staff who may create/update/delete Business Matching sessions and set
+  # their date range — broader than manage_business_hosts? (which is host
+  # roster only) because it also covers the session record itself.
+  def manage_business_matching_sessions?
     return false if user.blank? || record.blank?
-    user.is_org_owner? || user.is_event_admin?(record)
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) ||
+      user.is_event_team_member?(record) || user.is_business_matching_admin?(record)
   end
 
-  # Only Org Owner, Organizer, or Event Admin may curate the offering/interest
-  # tag list that business hosts pick from. Business hosts may only select
-  # from this list, never create their own tags.
+  def manage_business_hosts?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_event_admin?(record) || user.is_business_matching_admin?(record)
+  end
+
+  # Only Org Owner, Organizer, Event Admin, or Business Matching Admin may
+  # curate the offering/interest tag list that business hosts pick from.
+  # Business hosts may only select from this list, never create their own tags.
   def manage_business_matching_tags?
     return false if user.blank? || record.blank?
-    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record)
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) || user.is_business_matching_admin?(record)
   end
 
   # ============================================================

@@ -55,6 +55,16 @@ RSpec.describe "V1::BusinessMatching::Tags", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it "allows a business_matching_admin to set the tag lists" do
+      create(:event_assignment, event: event, user: member_user, role: :business_matching_admin)
+
+      put "/v1/business_matching/events/#{event.id}/tags",
+          params: { offering_tags: ["Ruby"] },
+          headers: auth_headers(member_user)
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "forbids a business host from setting the tag lists" do
       host_user = create(:user)
       create(:event_assignment, event: event, user: host_user, role: :business_host)

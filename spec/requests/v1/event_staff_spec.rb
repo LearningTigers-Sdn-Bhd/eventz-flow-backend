@@ -163,6 +163,14 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
     run_test!
   end
 
+  response '201', 'Business matching admin appointed successfully' do
+    let(:body) { { staff_assignment: { user_id: member_user.id, role: 'business_matching_admin' } } }
+    run_test! do |response|
+      data = JSON.parse(response.body)
+      expect(data['role']).to eq('business_matching_admin')
+    end
+  end
+
   response '403', 'Forbidden for member' do
     let(:Authorization) { auth_header_member }
     schema EVENT_STAFF_ERROR_SCHEMA

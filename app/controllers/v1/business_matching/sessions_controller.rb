@@ -8,7 +8,7 @@ module V1
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
-        authorize event, :update?
+        authorize event, :manage_business_matching_sessions?
 
         session = BusinessMatchingSession.new(session_params)
         session.event = event
@@ -45,7 +45,7 @@ module V1
         permitted_params = session_params
         # Session dates are admin-controlled — a host editing their own
         # session may never move them, regardless of what the request sends.
-        permitted_params = permitted_params.except(:start_date, :end_date) unless EventPolicy.new(current_user, session.event).update?
+        permitted_params = permitted_params.except(:start_date, :end_date) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
 
         if session.update(permitted_params)
           ensure_default_availabilities(session)
@@ -75,7 +75,7 @@ module V1
         return render json: { error: 'Session not found' }, status: :not_found unless session
 
         event = session.event
-        authorize event, :update?
+        authorize event, :manage_business_matching_sessions?
 
         if session.destroy
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })

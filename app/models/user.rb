@@ -139,6 +139,11 @@ class User < ApplicationRecord
     event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_team_member])
   end
 
+  def is_business_matching_admin?(event)
+    return false unless event.present?
+    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_matching_admin])
+  end
+
   def is_event_staff?(event)
     return false unless event.present?
     event_assignments.where(event_id: event.id)

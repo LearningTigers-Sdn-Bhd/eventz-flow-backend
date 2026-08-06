@@ -79,5 +79,21 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
 
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "lets a business matching admin set a host's avatar" do
+      bm_admin = create(:user)
+      create(:event_assignment, event: event, user: bm_admin, role: :business_matching_admin)
+
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: StringIO.new('fake image data'), filename: 'host.jpg', content_type: 'image/jpeg'
+      )
+
+      patch "/v1/business_matching/events/#{event.id}/hosts/#{host_user.id}/profile",
+            params: { avatar_signed_id: blob.signed_id },
+            headers: auth_headers(bm_admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['avatar_url']).to be_present
+    end
   end
 end
