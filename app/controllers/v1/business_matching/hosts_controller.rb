@@ -39,7 +39,7 @@ module V1
 
         service_result = BusinessMatchingService.new(current_user).fetch_host_profile(event.id)
         if service_result.success?
-          render json: service_result.data, status: :ok
+          render json: service_result.data.merge(tags_editable: tags_editable_for_current_host?(event)), status: :ok
         else
           render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
         end
@@ -61,12 +61,16 @@ module V1
           return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
         end
 
+        if changes_tags?(profile_params) && !tags_editable_for_current_host?(event)
+          return render json: { errors: ['Your event organizer has locked tag editing for your session.'] }, status: :forbidden
+        end
+
         service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
 
         if service_result.success?
           Rails.cache.delete("business_matching_events_#{event.id}")
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
-          render json: service_result.data, status: :ok
+          render json: service_result.data.merge(tags_editable: tags_editable_for_current_host?(event)), status: :ok
         else
           render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
         end
@@ -74,8 +78,8 @@ module V1
 
       # PATCH /v1/business_matching/events/:event_id/hosts/:host_user_id/profile
       # Lets staff (event_admin/business_matching_admin/organizer/org_owner) update
-      # a specific host's profile — currently just the avatar, so admins can set a
-      # curated photo without needing the host to do it themselves.
+      # a specific host's profile (avatar) and, given a business_matching_event_id,
+      # override whether that host may self-edit tags for that specific session.
       def admin_update
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
@@ -90,13 +94,26 @@ module V1
           event.id, profile_params, target_user_id: host.id
         )
 
-        if service_result.success?
-          Rails.cache.delete("business_matching_events_#{event.id}")
-          ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
-          render json: service_result.data, status: :ok
-        else
-          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        unless service_result.success?
+          return render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
         end
+
+        if params.key?(:tags_editable_override) && params[:business_matching_event_id].present?
+          assignment = BusinessHostAssignment.find_by(
+            user_id: host.id, event_id: event.id, business_matching_event_id: params[:business_matching_event_id]
+          )
+          unless assignment
+            return render json: { error: 'Host is not assigned to that session' }, status: :not_found
+          end
+
+          raw_override = params[:tags_editable_override]
+          override = raw_override.nil? ? nil : ActiveModel::Type::Boolean.new.cast(raw_override)
+          assignment.update!(tags_editable_override: override)
+        end
+
+        Rails.cache.delete("business_matching_events_#{event.id}")
+        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+        render json: service_result.data, status: :ok
       end
 
       # POST /v1/business_matching/events/:event_id/hosts/join
@@ -296,6 +313,22 @@ module V1
           invalid += Array(profile_params[:interest_tags]) - (event.business_matching_interest_tags || [])
         end
         invalid.uniq
+      end
+
+      def changes_tags?(profile_params)
+        profile_params.key?(:offering_tags) || profile_params.key?(:interest_tags)
+      end
+
+      # A host may have several session assignments within one event but a
+      # single shared tag profile — permissive by design: if any of their
+      # assigned sessions still allows self-editing, they may save.
+      def tags_editable_for_current_host?(event)
+        session_ids = BusinessHostAssignment.where(user_id: current_user.id, event_id: event.id)
+                                             .pluck(:business_matching_event_id)
+                                             .compact.map(&:to_i)
+        return true if session_ids.empty?
+
+        BusinessMatchingSession.where(id: session_ids).any? { |session| session.tags_editable_for(current_user) }
       end
     end
   end

@@ -44,6 +44,61 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_response['avatar_url']).to be_present
     end
+
+    it "reports tags_editable true by default (no session assignment)" do
+      put "/v1/business_matching/events/#{event.id}/host_profile",
+          params: { description: "hi" },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['tags_editable']).to eq(true)
+    end
+
+    it "rejects a tag change once the host's session locks tags_editable" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current, tags_editable: false
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/events/#{event.id}/host_profile",
+          params: { offering_tags: ["Ruby"] },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets a locked-out host still edit non-tag fields" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current, tags_editable: false
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/events/#{event.id}/host_profile",
+          params: { description: "Updated bio" },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['tags_editable']).to eq(false)
+    end
+
+    it "lets a per-host override unlock tags even when the session locks them" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current, tags_editable: false
+      )
+      BusinessHostAssignment.create!(
+        user: host_user, event: event, business_matching_event_id: session.id.to_s, tags_editable_override: true
+      )
+
+      put "/v1/business_matching/events/#{event.id}/host_profile",
+          params: { offering_tags: ["Ruby"] },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['offering_tags']).to eq(["Ruby"])
+    end
   end
 
   describe "PATCH /v1/business_matching/events/:event_id/hosts/:host_user_id/profile" do
@@ -94,6 +149,24 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json_response['avatar_url']).to be_present
+    end
+
+    it "lets an admin set a per-host tags_editable override for a specific session" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current, tags_editable: true
+      )
+      assignment = BusinessHostAssignment.create!(
+        user: host_user, event: event, business_matching_event_id: session.id.to_s
+      )
+
+      patch "/v1/business_matching/events/#{event.id}/hosts/#{host_user.id}/profile",
+            params: { tags_editable_override: false, business_matching_event_id: session.id.to_s },
+            headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(assignment.reload.tags_editable_override).to eq(false)
+      expect(session.reload.tags_editable_for(host_user)).to eq(false)
     end
   end
 end

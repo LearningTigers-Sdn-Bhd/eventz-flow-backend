@@ -31,6 +31,14 @@ class BusinessMatchingSession < ApplicationRecord
     business_matching_availabilities.where(host_user_id: host_id).exists? ? host_id : nil
   end
 
+  # Whether the given host may self-edit their tags for this session: the
+  # host's own override wins if set, otherwise the session's default.
+  def tags_editable_for(host_user)
+    assignment = business_host_assignments.find_by(user_id: host_user&.id)
+    override = assignment&.tags_editable_override
+    override.nil? ? tags_editable : override
+  end
+
   private
 
   # The session may run entirely before or after its event — these are just

@@ -43,9 +43,10 @@ module V1
         authorize session, :update?
 
         permitted_params = session_params
-        # Session dates are admin-controlled — a host editing their own
-        # session may never move them, regardless of what the request sends.
-        permitted_params = permitted_params.except(:start_date, :end_date) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
+        # Session dates and the tags_editable toggle are admin-controlled — a
+        # host editing their own session may never touch them, regardless of
+        # what the request sends.
+        permitted_params = permitted_params.except(:start_date, :end_date, :tags_editable) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
 
         if session.update(permitted_params)
           ensure_default_availabilities(session)
@@ -118,7 +119,7 @@ module V1
       def session_params
         params.require(:session).permit(
           :title, :slot_duration, :location, :admin_email, :admin_wa_number,
-          :start_time, :end_time, :is_active, :start_date, :end_date
+          :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable
         )
       end
     end

@@ -174,6 +174,36 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       session.reload
       expect(session.end_date).to eq(Date.new(2026, 9, 2))
     end
+
+    it "lets an organizer set tags_editable on a session" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { tags_editable: false } },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(session.reload.tags_editable).to eq(false)
+    end
+
+    it "silently ignores a host's attempt to change tags_editable" do
+      host_user = create(:user, :exhibitor)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1), tags_editable: true
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { tags_editable: false } },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(session.reload.tags_editable).to eq(true)
+    end
   end
 
   describe "POST /v1/business_matching/sessions (business matching admin)" do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_03_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_06_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,6 +65,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_160000) do
     t.string "business_matching_event_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "tags_editable_override"
     t.index ["event_id"], name: "index_business_host_assignments_on_event_id"
     t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
   end
@@ -138,6 +139,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_03_160000) do
     t.datetime "updated_at", null: false
     t.date "start_date", null: false
     t.date "end_date", null: false
+    t.boolean "tags_editable", default: true, null: false
     t.index ["event_id"], name: "index_business_matching_sessions_on_event_id"
   end
 
