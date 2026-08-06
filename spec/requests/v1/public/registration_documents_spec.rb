@@ -98,6 +98,48 @@ RSpec.describe 'V1::Public::Registrations documents and dedupe', type: :request 
     end
   end
 
+  describe 'terms agreement' do
+    it 'writes a separate server-timestamped terms agreement with the acknowledgement name' do
+      register(terms_agreement: {
+        accepted: true,
+        method: 'checkbox_typed_name',
+        acknowledged_name: 'Ali Bin Ahmad',
+        terms_version: 'borneo-safari-sabah-registration-terms-v1'
+      })
+
+      expect(response).to have_http_status(:created)
+      agreement = Ticket.last.custom_fields_data['_terms_agreement']
+      expect(agreement['accepted']).to be true
+      expect(agreement['method']).to eq('checkbox_typed_name')
+      expect(agreement['acknowledged_name']).to eq('Ali Bin Ahmad')
+      expect(agreement['terms_version']).to eq('borneo-safari-sabah-registration-terms-v1')
+      expect(Time.iso8601(agreement['accepted_at'])).to be_within(1.minute).of(Time.current)
+      expect(Ticket.last.custom_fields_data).not_to have_key('_indemnity')
+    end
+
+    it 'rejects an incomplete terms agreement before creating a ticket' do
+      register(terms_agreement: {
+        accepted: true,
+        method: 'checkbox_typed_name',
+        terms_version: 'borneo-safari-sabah-registration-terms-v1'
+      })
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['errors']).to include(a_string_matching(/full legal name/i))
+      expect(Ticket.count).to eq(0)
+    end
+
+    it 'strips a forged _terms_agreement from custom_fields_data' do
+      register(custom_fields_data: {
+        membership_no: 'A-1',
+        _terms_agreement: { accepted: true, accepted_at: '1999-01-01T00:00:00Z' }
+      })
+
+      expect(response).to have_http_status(:created)
+      expect(Ticket.last.custom_fields_data).not_to have_key('_terms_agreement')
+    end
+  end
+
   describe 'field dedupe on register' do
     it 'returns 422 and creates no ticket for a duplicate membership_no' do
       create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })

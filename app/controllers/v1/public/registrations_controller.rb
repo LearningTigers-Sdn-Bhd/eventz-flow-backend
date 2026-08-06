@@ -171,6 +171,53 @@ module V1
         }
       end
 
+      def vehicle_registration
+        event = Event.friendly.find(params[:event_slug])
+        form = event.registration_forms.active.find_by(slug: params[:form_slug])
+        return render json: { success: false, message: 'Registration form not found' }, status: :not_found unless form
+
+        plate = VehicleRegistration.normalize_plate(params[:plate])
+        if plate.blank?
+          return render json: { success: false, message: 'Car plate number is required' },
+                        status: :unprocessable_content
+        end
+
+        rules = VehicleRegistrationRules.new(form)
+        vehicle = VehicleRegistration.includes(:registration_form, :base_ticket_type)
+                                     .find_by(event: event, normalized_plate: plate)
+        vehicle ||= VehicleRegistrationLegacyAdopter.call(event: event, normalized_plate: plate)
+
+        if vehicle && vehicle.registration_form_id != form.id
+          return render json: {
+            success: true,
+            data: {
+              status: 'wrong_form',
+              plate: plate,
+              occupancy: vehicle.active_tickets.count,
+              capacity: VehicleRegistrationRules.new(vehicle.registration_form).capacity,
+              registered_form_slug: vehicle.registration_form.slug,
+              registered_form_name: vehicle.registration_form.name,
+              allowed_ticket_type_ids: []
+            }
+          }
+        end
+
+        render json: {
+          success: true,
+          data: {
+            status: rules.status(vehicle),
+            plate: plate,
+            occupancy: vehicle&.active_tickets&.count || 0,
+            capacity: rules.capacity,
+            registered_form_slug: vehicle&.registration_form&.slug,
+            registered_form_name: vehicle&.registration_form&.name,
+            allowed_ticket_type_ids: rules.allowed_ticket_types(vehicle).pluck(:id)
+          }
+        }
+      rescue VehicleRegistrationRules::UnsupportedForm => e
+        render json: { success: false, message: e.message }, status: :unprocessable_content
+      end
+
       def create
         event = Event.friendly.find(params[:event_slug])
         form = nil
@@ -213,6 +260,13 @@ module V1
         end
 
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
+        if form.nil? && vehicle_registration_ticket_type?(event: event, ticket_type: ticket_type)
+          return render json: {
+            success: false,
+            message: 'Registration form is required for this vehicle ticket'
+          }, status: :unprocessable_content
+        end
+
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
         approval_enabled = delegate_approval_enabled_for_form?(form)
@@ -222,6 +276,20 @@ module V1
           return render json: {
             success: false,
             message: 'Your application was not selected in this intake. Thank you for your interest.'
+          }, status: :unprocessable_content
+        end
+
+        if (terms_error = terms_agreement_error(form: form))
+          return render json: {
+            success: false,
+            errors: [terms_error]
+          }, status: :unprocessable_content
+        end
+
+        if (documents_error = required_documents_error(form: form))
+          return render json: {
+            success: false,
+            errors: [documents_error]
           }, status: :unprocessable_content
         end
 
@@ -257,6 +325,7 @@ module V1
         end
 
         apply_indemnity!(ticket)
+        apply_terms_agreement!(ticket, form: form)
 
         begin
           RegistrationDocumentAttacher.new(event: event, ticket: ticket, documents: params[:documents] || {}).call
@@ -265,7 +334,22 @@ module V1
         end
 
         begin
-          saved = ticket.save
+          saved = if VehicleRegistrationRules::FORM_RULES.key?(form&.slug)
+                    VehicleRegistrationAssignment.new(
+                      event: event,
+                      form: form,
+                      ticket: ticket,
+                      plate: params[:vehicle_plate]
+                    ).save
+                  else
+                    ticket.save
+                  end
+        rescue VehicleRegistrationAssignment::Error => e
+          return render json: {
+            success: false,
+            code: 'vehicle_registration_conflict',
+            message: e.message
+          }, status: :unprocessable_content
         rescue ActiveRecord::RecordNotUnique
           # The model validation races under concurrent submits; the partial
           # unique index does not. Same message either way.
@@ -338,6 +422,14 @@ module V1
 
       private
 
+      def vehicle_registration_ticket_type?(event:, ticket_type:)
+        event.registration_forms
+             .where(slug: VehicleRegistrationRules::FORM_RULES.keys)
+             .joins(:registration_form_ticket_types)
+             .where(registration_form_ticket_types: { ticket_type_id: ticket_type.id })
+             .exists?
+      end
+
       def registration_params
         permitted = params.permit(
           :attendee_name,
@@ -360,6 +452,52 @@ module V1
         params.fetch(:indemnity, {}).permit(:accepted, :method, :signed_name)
       end
 
+      def terms_agreement_params
+        terms = params[:terms_agreement]
+        return ActionController::Parameters.new unless terms.respond_to?(:permit)
+
+        terms.permit(
+          :accepted,
+          :method,
+          :acknowledged_name,
+          :terms_version
+        )
+      end
+
+      def terms_agreement_error(form:)
+        vehicle_form = vehicle_registration_form?(form)
+        if params[:terms_agreement].blank?
+          return vehicle_form ? 'Registration terms must be accepted' : nil
+        end
+
+        agreement = terms_agreement_params
+        return 'Registration terms must be accepted' unless ActiveModel::Type::Boolean.new.cast(agreement[:accepted])
+        return 'A full legal name is required for the terms acknowledgement' if agreement[:acknowledged_name].to_s.strip.blank?
+        return 'Registration terms version is required' if agreement[:terms_version].to_s.strip.blank?
+        if vehicle_form && agreement[:method].to_s != VehicleRegistrationRules::TERMS_METHOD
+          return 'A typed-name terms acknowledgement is required'
+        end
+        if vehicle_form && agreement[:terms_version].to_s.strip != VehicleRegistrationRules::TERMS_VERSION
+          return 'This registration uses an outdated terms version'
+        end
+
+        nil
+      end
+
+      def required_documents_error(form:)
+        return unless vehicle_registration_form?(form)
+
+        provided_keys = params[:documents].respond_to?(:keys) ? params[:documents].keys.map(&:to_s) : []
+        missing_keys = VehicleRegistrationRules::REQUIRED_DOCUMENT_KEYS - provided_keys
+        return if missing_keys.empty?
+
+        "Registration requires these documents: #{missing_keys.join(', ')}"
+      end
+
+      def vehicle_registration_form?(form)
+        form.present? && VehicleRegistrationRules::FORM_RULES.key?(form.slug)
+      end
+
       def apply_indemnity!(ticket)
         return unless ActiveModel::Type::Boolean.new.cast(indemnity_params[:accepted])
 
@@ -369,6 +507,22 @@ module V1
             'method' => indemnity_params[:method].to_s.presence,
             'signed_name' => indemnity_params[:signed_name].to_s.presence,
             'signed_at' => Time.current.utc.iso8601 # server clock, never client-supplied
+          }.compact
+        )
+      end
+
+      def apply_terms_agreement!(ticket, form:)
+        return unless ActiveModel::Type::Boolean.new.cast(terms_agreement_params[:accepted])
+
+        vehicle_form = vehicle_registration_form?(form)
+
+        ticket.custom_fields_data = (ticket.custom_fields_data || {}).merge(
+          '_terms_agreement' => {
+            'accepted' => true,
+            'method' => vehicle_form ? VehicleRegistrationRules::TERMS_METHOD : terms_agreement_params[:method].to_s.presence,
+            'acknowledged_name' => terms_agreement_params[:acknowledged_name].to_s.strip.presence,
+            'terms_version' => vehicle_form ? VehicleRegistrationRules::TERMS_VERSION : terms_agreement_params[:terms_version].to_s.strip.presence,
+            'accepted_at' => Time.current.utc.iso8601 # server clock, never client-supplied
           }.compact
         )
       end
