@@ -43,6 +43,7 @@ class BusinessMatchingService < BaseService
         admin_wa_number: session.admin_wa_number,
         start_date: session.start_date,
         end_date: session.end_date,
+        tags_editable: session.tags_editable,
         offering_tags: offering_tags,
         interest_tags: interest_tags,
         created_at: session.created_at.iso8601,
@@ -58,7 +59,8 @@ class BusinessMatchingService < BaseService
           description: h_profile&.profile_data&.[]('description').presence || "Professional host available for business matchmaking, partnerships, and collaborations.",
           sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
           capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution.",
-          avatar_url: h_profile&.avatar_url
+          avatar_url: h_profile&.avatar_url,
+          tags_editable_override: session.business_host_assignments.find_by(user_id: host_user.id)&.tags_editable_override
         } : nil
       }
     end

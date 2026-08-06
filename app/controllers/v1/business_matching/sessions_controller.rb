@@ -28,7 +28,8 @@ module V1
             start_time: session.start_time,
             end_time: session.end_time,
             start_date: session.start_date,
-            end_date: session.end_date
+            end_date: session.end_date,
+            tags_editable: session.tags_editable
           }, status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -63,7 +64,8 @@ module V1
             start_time: session.start_time,
             end_time: session.end_time,
             start_date: session.start_date,
-            end_date: session.end_date
+            end_date: session.end_date,
+            tags_editable: session.tags_editable
           }, status: :ok
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
