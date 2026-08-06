@@ -279,10 +279,17 @@ module V1
           }, status: :unprocessable_content
         end
 
-        if (terms_error = terms_agreement_error)
+        if (terms_error = terms_agreement_error(form: form))
           return render json: {
             success: false,
             errors: [terms_error]
+          }, status: :unprocessable_content
+        end
+
+        if (documents_error = required_documents_error(form: form))
+          return render json: {
+            success: false,
+            errors: [documents_error]
           }, status: :unprocessable_content
         end
 
@@ -318,7 +325,7 @@ module V1
         end
 
         apply_indemnity!(ticket)
-        apply_terms_agreement!(ticket)
+        apply_terms_agreement!(ticket, form: form)
 
         begin
           RegistrationDocumentAttacher.new(event: event, ticket: ticket, documents: params[:documents] || {}).call
@@ -446,7 +453,10 @@ module V1
       end
 
       def terms_agreement_params
-        params.fetch(:terms_agreement, {}).permit(
+        terms = params[:terms_agreement]
+        return ActionController::Parameters.new unless terms.respond_to?(:permit)
+
+        terms.permit(
           :accepted,
           :method,
           :acknowledged_name,
@@ -454,15 +464,38 @@ module V1
         )
       end
 
-      def terms_agreement_error
-        return if params[:terms_agreement].blank?
+      def terms_agreement_error(form:)
+        vehicle_form = vehicle_registration_form?(form)
+        if params[:terms_agreement].blank?
+          return vehicle_form ? 'Registration terms must be accepted' : nil
+        end
 
         agreement = terms_agreement_params
         return 'Registration terms must be accepted' unless ActiveModel::Type::Boolean.new.cast(agreement[:accepted])
         return 'A full legal name is required for the terms acknowledgement' if agreement[:acknowledged_name].to_s.strip.blank?
         return 'Registration terms version is required' if agreement[:terms_version].to_s.strip.blank?
+        if vehicle_form && agreement[:method].to_s != VehicleRegistrationRules::TERMS_METHOD
+          return 'A typed-name terms acknowledgement is required'
+        end
+        if vehicle_form && agreement[:terms_version].to_s.strip != VehicleRegistrationRules::TERMS_VERSION
+          return 'This registration uses an outdated terms version'
+        end
 
         nil
+      end
+
+      def required_documents_error(form:)
+        return unless vehicle_registration_form?(form)
+
+        provided_keys = params[:documents].respond_to?(:keys) ? params[:documents].keys.map(&:to_s) : []
+        missing_keys = VehicleRegistrationRules::REQUIRED_DOCUMENT_KEYS - provided_keys
+        return if missing_keys.empty?
+
+        "Registration requires these documents: #{missing_keys.join(', ')}"
+      end
+
+      def vehicle_registration_form?(form)
+        form.present? && VehicleRegistrationRules::FORM_RULES.key?(form.slug)
       end
 
       def apply_indemnity!(ticket)
@@ -478,15 +511,17 @@ module V1
         )
       end
 
-      def apply_terms_agreement!(ticket)
+      def apply_terms_agreement!(ticket, form:)
         return unless ActiveModel::Type::Boolean.new.cast(terms_agreement_params[:accepted])
+
+        vehicle_form = vehicle_registration_form?(form)
 
         ticket.custom_fields_data = (ticket.custom_fields_data || {}).merge(
           '_terms_agreement' => {
             'accepted' => true,
-            'method' => terms_agreement_params[:method].to_s.presence,
+            'method' => vehicle_form ? VehicleRegistrationRules::TERMS_METHOD : terms_agreement_params[:method].to_s.presence,
             'acknowledged_name' => terms_agreement_params[:acknowledged_name].to_s.strip.presence,
-            'terms_version' => terms_agreement_params[:terms_version].to_s.strip.presence,
+            'terms_version' => vehicle_form ? VehicleRegistrationRules::TERMS_VERSION : terms_agreement_params[:terms_version].to_s.strip.presence,
             'accepted_at' => Time.current.utc.iso8601 # server clock, never client-supplied
           }.compact
         )

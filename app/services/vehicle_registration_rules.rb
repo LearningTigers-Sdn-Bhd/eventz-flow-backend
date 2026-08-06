@@ -1,6 +1,10 @@
 class VehicleRegistrationRules
   class UnsupportedForm < StandardError; end
 
+  TERMS_METHOD = 'checkbox_typed_name'.freeze
+  TERMS_VERSION = 'borneo-safari-sabah-registration-terms-v1'.freeze
+  REQUIRED_DOCUMENT_KEYS = %w[passport_copy photo_1].freeze
+
   FORM_RULES = {
     'expedition-tags-on' => {
       capacity: 4,

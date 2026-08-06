@@ -43,15 +43,70 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
         params: { form_slug: form.slug, plate: plate }
   end
 
-  def register(form:, ticket_type:, plate:, email:, attendee_name: 'Ali Bin Ahmad')
+  def valid_terms
+    {
+      accepted: true,
+      method: 'checkbox_typed_name',
+      acknowledged_name: 'Ali Bin Ahmad',
+      terms_version: 'borneo-safari-sabah-registration-terms-v1'
+    }
+  end
+
+  def upload_blob(key)
+    ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new("#{key} image bytes"),
+      filename: "#{key}.jpg",
+      content_type: 'image/jpeg',
+      metadata: { document_key: key, event_id: event.id, uploaded_at: Time.current.iso8601 }
+    )
+  end
+
+  def vehicle_documents
+    {
+      passport_copy: upload_blob('passport_copy').signed_id,
+      photo_1: upload_blob('photo_1').signed_id
+    }
+  end
+
+  def register(form:, ticket_type:, plate:, email:, attendee_name: 'Ali Bin Ahmad', **extra)
     post "/v1/public/events/#{event.slug}/register", params: {
       form_slug: form.slug,
       ticket_type_id: ticket_type.id,
       vehicle_plate: plate,
       attendee_name: attendee_name,
       attendee_email: email,
-      attendee_phone: '+60123456789'
-    }, as: :json
+      attendee_phone: '+60123456789',
+      terms_agreement: valid_terms,
+      documents: vehicle_documents
+    }.merge(extra), as: :json
+  end
+
+  it 'requires terms acceptance for vehicle registration' do
+    register(
+      form: expedition_form,
+      ticket_type: expedition_member,
+      plate: 'SAA 1',
+      email: 'terms-required@example.com',
+      terms_agreement: nil
+    )
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(JSON.parse(response.body).fetch('errors')).to include(/terms must be accepted/i)
+    expect(event.tickets.where(attendee_email: 'terms-required@example.com')).to be_empty
+  end
+
+  it 'requires the identity copy and camera photo for vehicle registration' do
+    register(
+      form: expedition_form,
+      ticket_type: expedition_member,
+      plate: 'SAA 2',
+      email: 'documents-required@example.com',
+      documents: {}
+    )
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(JSON.parse(response.body).fetch('errors')).to include(/passport_copy.*photo_1/i)
+    expect(event.tickets.where(attendee_email: 'documents-required@example.com')).to be_empty
   end
 
   it 'offers only main vehicle tickets for a new normalized plate' do
@@ -166,6 +221,33 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
     expect(driver_ticket.reload.vehicle_registration.registration_form).to eq(competition_form)
     expect(driver_ticket.vehicle_registration.base_ticket_type).to eq(competition_member)
+  end
+
+  it 'rejects changing a vehicle category while additional participants are active' do
+    register(
+      form: expedition_form,
+      ticket_type: expedition_member,
+      plate: 'SAD 12',
+      email: 'occupied-driver@example.com'
+    )
+    register(
+      form: expedition_form,
+      ticket_type: included_member,
+      plate: 'SAD 12',
+      email: 'occupied-passenger@example.com'
+    )
+    driver_ticket = event.tickets.find_by!(attendee_email: 'occupied-driver@example.com')
+
+    expect {
+      driver_ticket.update!(ticket_type_id: competition_member.id)
+    }.to raise_error(
+      VehicleRegistrationTicketTypeSync::Error,
+      /additional active participants/i
+    )
+
+    expect(driver_ticket.reload.ticket_type).to eq(expedition_member)
+    expect(driver_ticket.vehicle_registration.registration_form).to eq(expedition_form)
+    expect(driver_ticket.vehicle_registration.base_ticket_type).to eq(expedition_member)
   end
 
   it 'adopts an existing custom-field plate into a vehicle registration' do

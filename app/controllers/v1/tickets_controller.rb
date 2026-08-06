@@ -107,6 +107,8 @@ module V1
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
+    rescue VehicleRegistrationTicketTypeSync::Error => e
+      render json: { errors: [e.message] }, status: :unprocessable_content
     end
 
     def accept_waiting_list

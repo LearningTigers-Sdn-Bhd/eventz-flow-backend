@@ -1,4 +1,6 @@
 class VehicleRegistrationTicketTypeSync
+  Error = Class.new(StandardError)
+
   def self.call(ticket)
     new(ticket).call
   end
@@ -19,6 +21,10 @@ class VehicleRegistrationTicketTypeSync
     return unless form
 
     return if vehicle.registration_form_id == form.id && vehicle.base_ticket_type_id == @ticket.ticket_type_id
+
+    if vehicle.active_tickets.where.not(id: @ticket.id).exists?
+      raise Error, 'Cannot change a vehicle category while it has additional active participants'
+    end
 
     vehicle.update!(registration_form: form, base_ticket_type: @ticket.ticket_type)
   end
