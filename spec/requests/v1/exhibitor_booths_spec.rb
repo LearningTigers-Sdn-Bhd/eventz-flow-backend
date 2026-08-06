@@ -48,7 +48,7 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
       expect(event.exhibitor_booths.pluck(:number)).to contain_exactly('S045', 'S046', 'S047')
     end
 
-    it 'creates nothing when one number is a duplicate' do
+    it 'skips duplicate numbers and creates the rest' do
       create(:exhibitor_booth, event: event, exhibitor_booth_price: price, number: 'S045')
 
       post "/v1/events/#{event.id}/exhibitor_booths/bulk",
@@ -56,8 +56,9 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
                                       numbers: %w[S048 S045] } },
         headers: request_headers, as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(event.exhibitor_booths.count).to eq(1)
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body['skipped_count']).to eq(1)
+      expect(event.exhibitor_booths.pluck(:number)).to contain_exactly('S045', 'S048')
     end
   end
 
