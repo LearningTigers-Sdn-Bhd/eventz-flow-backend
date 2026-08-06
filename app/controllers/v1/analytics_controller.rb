@@ -70,7 +70,9 @@ module V1
       exhibitor_revenue_cents = exhibitor_revenue_cents_by_event(event_ids).values.sum
 
       total_visitors = Visitor.where(event_id: non_ticket_event_ids).count
-      total_vendors = EventVendor.where(event_id: event_ids).count
+      total_merchants = EventVendor.where(event_id: event_ids, type: 'Merchant').count
+      total_active_exhibitors = Exhibitor.where(event_id: event_ids).with_active_kit.count
+      total_vendors = total_merchants + total_active_exhibitors
       total_vouchers = Voucher.where(event_id: event_ids, is_unlimited: false).sum(:total_redemption_available)
       total_vouchers_redeemed = VoucherRedemptionLog.joins(:voucher).where(vouchers: { event_id: event_ids }).count
 

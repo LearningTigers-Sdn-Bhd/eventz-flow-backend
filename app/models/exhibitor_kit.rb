@@ -27,6 +27,7 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_type, presence: true
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
+  scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
   validates :public_id, uniqueness: true
   validates :idempotency_key, uniqueness: { scope: :event_vendor_id }, allow_nil: true
 
@@ -51,6 +52,16 @@ class ExhibitorKit < ApplicationRecord
   after_commit :sync_registration_payment_status, if: :just_marked_paid?
   after_commit :revert_booking_status_when_unpaid, if: :just_marked_unpaid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
+
+  def destroy_with_event_vendor_cleanup!
+    vendor_assignment = event_vendor
+
+    vendor_assignment.with_lock do
+      destroy!
+      vendor_assignment.reload
+      vendor_assignment.destroy! if vendor_assignment.exhibitor_kits.none? && vendor_assignment.event_leads.none?
+    end
+  end
 
   # --- Team Member Limit Methods ---
 

@@ -184,7 +184,7 @@ module V1
       def purge
         kit = owned_scope.find_by!(public_id: params[:public_id])
         authorize kit, policy_class: PublicExhibitorBookingPolicy
-        kit.destroy!
+        kit.destroy_with_event_vendor_cleanup!
         head :no_content
       end
 

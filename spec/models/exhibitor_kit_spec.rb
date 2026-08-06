@@ -29,6 +29,17 @@ RSpec.describe ExhibitorKit, type: :model do
       .with_prefix(:booking)
   end
 
+  describe '.active_or_paid' do
+    let!(:active_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
+    let!(:paid_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :paid) }
+    let!(:cancelled_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :cancelled) }
+    let!(:expired_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :expired) }
+
+    it 'returns kits that still represent a current booking' do
+      expect(described_class.active_or_paid).to contain_exactly(active_kit, paid_kit)
+    end
+  end
+
   it { should validate_uniqueness_of(:public_id).ignoring_case_sensitivity }
   it { should validate_uniqueness_of(:idempotency_key).scoped_to(:event_vendor_id).allow_nil }
 
