@@ -54,7 +54,7 @@ module V1
           return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
         end
 
-        profile_params = params.permit(:description, :sourcing_intent, :capabilities, interest_tags: [], offering_tags: [])
+        profile_params = params.permit(:description, :sourcing_intent, :capabilities, :avatar_signed_id, interest_tags: [], offering_tags: [])
 
         invalid_tags = disallowed_tags(event, profile_params)
         if invalid_tags.any?
@@ -62,6 +62,33 @@ module V1
         end
 
         service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
+
+        if service_result.success?
+          Rails.cache.delete("business_matching_events_#{event.id}")
+          ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        end
+      end
+
+      # PATCH /v1/business_matching/events/:event_id/hosts/:host_user_id/profile
+      # Lets staff (event_admin/business_matching_admin/organizer/org_owner) update
+      # a specific host's profile — currently just the avatar, so admins can set a
+      # curated photo without needing the host to do it themselves.
+      def admin_update
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_hosts?
+
+        host = User.find_by(id: params[:host_user_id])
+        return render json: { error: 'Host not found' }, status: :not_found unless host && host.is_business_host?(event)
+
+        profile_params = params.permit(:avatar_signed_id)
+        service_result = BusinessMatchingService.new(current_user).update_host_profile(
+          event.id, profile_params, target_user_id: host.id
+        )
 
         if service_result.success?
           Rails.cache.delete("business_matching_events_#{event.id}")

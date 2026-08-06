@@ -433,6 +433,7 @@ Rails.application.routes.draw do
         resource :tags, only: [:show, :update], controller: 'tags'
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
+          patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection

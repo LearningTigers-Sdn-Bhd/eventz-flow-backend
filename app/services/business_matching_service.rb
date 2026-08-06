@@ -57,7 +57,8 @@ class BusinessMatchingService < BaseService
           interest_tags: interest_tags,
           description: h_profile&.profile_data&.[]('description').presence || "Professional host available for business matchmaking, partnerships, and collaborations.",
           sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
-          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution."
+          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution.",
+          avatar_url: h_profile&.avatar_url
         } : nil
       }
     end
@@ -481,17 +482,18 @@ class BusinessMatchingService < BaseService
           interest_tags: interest_tags,
           description: h_profile&.profile_data&.[]('description').presence || "Professional host available for business matchmaking, partnerships, and collaborations.",
           sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
-          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution."
+          capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution.",
+          avatar_url: h_profile&.avatar_url
         } : nil
       }
     end
   end
 
-  def fetch_host_profile(event_id)
+  def fetch_host_profile(event_id, target_user_id: nil)
     participant = BusinessMatchingParticipant.find_or_initialize_by(
       event_id: event_id,
       registerable_type: 'User',
-      registerable_id: user.id
+      registerable_id: target_user_id || user.id
     )
 
     BaseService::ServiceResult.new(success: true, data: {
@@ -499,15 +501,16 @@ class BusinessMatchingService < BaseService
       interest_tags: participant.interest_tags || [],
       description: participant.profile_data&.[]('description') || "",
       sourcing_intent: participant.profile_data&.[]('sourcing_intent') || "",
-      capabilities: participant.profile_data&.[]('capabilities') || ""
+      capabilities: participant.profile_data&.[]('capabilities') || "",
+      avatar_url: participant.avatar_url
     })
   end
 
-  def update_host_profile(event_id, profile_params)
+  def update_host_profile(event_id, profile_params, target_user_id: nil)
     participant = BusinessMatchingParticipant.find_or_initialize_by(
       event_id: event_id,
       registerable_type: 'User',
-      registerable_id: user.id
+      registerable_id: target_user_id || user.id
     )
 
     participant.profile_data ||= {}
@@ -522,13 +525,18 @@ class BusinessMatchingService < BaseService
       participant.offering_tags = Array(profile_params[:offering_tags]).reject(&:blank?)
     end
 
+    if profile_params[:avatar_signed_id].present?
+      participant.avatar.attach(profile_params[:avatar_signed_id])
+    end
+
     if participant.save
       BaseService::ServiceResult.new(success: true, data: {
         offering_tags: participant.offering_tags,
         interest_tags: participant.interest_tags,
         description: participant.profile_data['description'],
         sourcing_intent: participant.profile_data['sourcing_intent'],
-        capabilities: participant.profile_data['capabilities']
+        capabilities: participant.profile_data['capabilities'],
+        avatar_url: participant.avatar_url
       })
     else
       BaseService::ServiceResult.new(success: false, errors: participant.errors.full_messages, status: :unprocessable_entity)
