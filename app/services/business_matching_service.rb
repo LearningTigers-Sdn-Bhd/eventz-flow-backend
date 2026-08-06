@@ -44,6 +44,7 @@ class BusinessMatchingService < BaseService
         start_date: session.start_date,
         end_date: session.end_date,
         tags_editable: session.tags_editable,
+        hours_editable: session.hours_editable.nil? ? SystemSetting.instance.business_matching_hours_editable_default : session.hours_editable,
         offering_tags: offering_tags,
         interest_tags: interest_tags,
         created_at: session.created_at.iso8601,
@@ -60,7 +61,9 @@ class BusinessMatchingService < BaseService
           sourcing_intent: h_profile&.profile_data&.[]('sourcing_intent').presence || "Looking for strategic partnerships and business development opportunities.",
           capabilities: h_profile&.profile_data&.[]('capabilities').presence || "Expertise in technology solutions, sales growth, and project execution.",
           avatar_url: h_profile&.avatar_url,
-          tags_editable_override: session.business_host_assignments.find_by(user_id: host_user.id)&.tags_editable_override
+          tags_editable_override: session.business_host_assignments.find_by(user_id: host_user.id)&.tags_editable_override,
+          hours_editable_override: session.business_host_assignments.find_by(user_id: host_user.id)&.hours_editable_override,
+          hours_editable_effective: session.hours_editable_for(host_user)
         } : nil
       }
     end

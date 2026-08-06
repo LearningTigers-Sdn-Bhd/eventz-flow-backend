@@ -20,6 +20,24 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(session.business_matching_availabilities.count).to eq(3)
     end
 
+    it "seeds new sessions' availability from the platform default hours template, breaks included" do
+      SystemSetting.instance.update!(
+        business_matching_default_hours: [
+          { 'start_time' => '08:00', 'end_time' => '12:00' },
+          { 'start_time' => '13:00', 'end_time' => '17:00' }
+        ]
+      )
+
+      post "/v1/business_matching/sessions",
+           params: { event_id: event.id, session: { title: "Templated Session", slot_duration: 30, start_time: "09:00", end_time: "17:00", start_date: "2026-09-01", end_date: "2026-09-01" } },
+           headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:created)
+      session = BusinessMatchingSession.find(json_response['id'])
+      blocks = session.business_matching_availabilities.order(:start_time).pluck(:start_time, :end_time)
+      expect(blocks).to eq([["08:00", "12:00"], ["13:00", "17:00"]])
+    end
+
     it "allows a session date range entirely outside the event's period" do
       post "/v1/business_matching/sessions",
            params: {

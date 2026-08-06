@@ -29,7 +29,8 @@ module V1
             end_time: session.end_time,
             start_date: session.start_date,
             end_date: session.end_date,
-            tags_editable: session.tags_editable
+            tags_editable: session.tags_editable,
+            hours_editable: session.hours_editable
           }, status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -47,7 +48,7 @@ module V1
         # Session dates and the tags_editable toggle are admin-controlled — a
         # host editing their own session may never touch them, regardless of
         # what the request sends.
-        permitted_params = permitted_params.except(:start_date, :end_date, :tags_editable) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
+        permitted_params = permitted_params.except(:start_date, :end_date, :tags_editable, :hours_editable) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
 
         if session.update(permitted_params)
           ensure_default_availabilities(session)
@@ -65,7 +66,8 @@ module V1
             end_time: session.end_time,
             start_date: session.start_date,
             end_date: session.end_date,
-            tags_editable: session.tags_editable
+            tags_editable: session.tags_editable,
+            hours_editable: session.hours_editable
           }, status: :ok
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -105,23 +107,28 @@ module V1
           business_matching_session_id: session.id, host_user_id: host_user_id
         ).pluck(:day)
 
+        default_blocks = SystemSetting.instance.business_matching_default_hours.presence ||
+                          [{ 'start_time' => session.start_time, 'end_time' => session.end_time }]
+
         (session.start_date..session.end_date).each do |day|
           next if existing_days.include?(day)
 
-          BusinessMatchingAvailability.create!(
-            business_matching_session: session,
-            host_user_id: host_user_id,
-            day: day,
-            start_time: session.start_time,
-            end_time: session.end_time
-          )
+          default_blocks.each do |block|
+            BusinessMatchingAvailability.create!(
+              business_matching_session: session,
+              host_user_id: host_user_id,
+              day: day,
+              start_time: block['start_time'] || block[:start_time],
+              end_time: block['end_time'] || block[:end_time]
+            )
+          end
         end
       end
 
       def session_params
         params.require(:session).permit(
           :title, :slot_duration, :location, :admin_email, :admin_wa_number,
-          :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable
+          :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable, :hours_editable
         )
       end
     end

@@ -79,7 +79,7 @@ module V1
       # PATCH /v1/business_matching/events/:event_id/hosts/:host_user_id/profile
       # Lets staff (event_admin/business_matching_admin/organizer/org_owner) update
       # a specific host's profile (avatar) and, given a business_matching_event_id,
-      # override whether that host may self-edit tags for that specific session.
+      # override whether that host may self-edit tags/hours for that specific session.
       def admin_update
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
@@ -98,7 +98,8 @@ module V1
           return render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
         end
 
-        if params.key?(:tags_editable_override) && params[:business_matching_event_id].present?
+        if params[:business_matching_event_id].present? &&
+           (params.key?(:tags_editable_override) || params.key?(:hours_editable_override))
           assignment = BusinessHostAssignment.find_by(
             user_id: host.id, event_id: event.id, business_matching_event_id: params[:business_matching_event_id]
           )
@@ -106,9 +107,10 @@ module V1
             return render json: { error: 'Host is not assigned to that session' }, status: :not_found
           end
 
-          raw_override = params[:tags_editable_override]
-          override = raw_override.nil? ? nil : ActiveModel::Type::Boolean.new.cast(raw_override)
-          assignment.update!(tags_editable_override: override)
+          overrides = {}
+          overrides[:tags_editable_override] = cast_nullable_boolean(params[:tags_editable_override]) if params.key?(:tags_editable_override)
+          overrides[:hours_editable_override] = cast_nullable_boolean(params[:hours_editable_override]) if params.key?(:hours_editable_override)
+          assignment.update!(overrides)
         end
 
         Rails.cache.delete("business_matching_events_#{event.id}")
@@ -329,6 +331,10 @@ module V1
         return true if session_ids.empty?
 
         BusinessMatchingSession.where(id: session_ids).any? { |session| session.tags_editable_for(current_user) }
+      end
+
+      def cast_nullable_boolean(value)
+        value.nil? ? nil : ActiveModel::Type::Boolean.new.cast(value)
       end
     end
   end

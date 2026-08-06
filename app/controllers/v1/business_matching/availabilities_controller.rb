@@ -31,6 +31,11 @@ module V1
 
         authorize session, :update?
 
+        is_staff = EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
+        if !is_staff && !session.hours_editable_for(current_user)
+          return render json: { error: 'Your event organizer has locked hours editing for your session.' }, status: :forbidden
+        end
+
         # Default to the session's effective bucket so a save from "Manage
         # Hours" (which never passes host_user_id) writes to the same bucket
         # that's actually read back — never creating a second parallel set.

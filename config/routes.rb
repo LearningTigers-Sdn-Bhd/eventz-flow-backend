@@ -397,6 +397,11 @@ Rails.application.routes.draw do
       post 'receive', to: 'callbacks#receive'
       post 'events/:event_id/report', to: 'bookings#generate_report'
 
+      # Platform-wide defaults (org owner only)
+      get 'system_settings', to: 'system_settings#show'
+      patch 'system_settings', to: 'system_settings#update'
+      put 'system_settings', to: 'system_settings#update'
+
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
 

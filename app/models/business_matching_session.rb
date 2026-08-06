@@ -39,6 +39,15 @@ class BusinessMatchingSession < ApplicationRecord
     override.nil? ? tags_editable : override
   end
 
+  # Same nil-inherits chain as tags_editable_for, but with an extra level:
+  # host override > session default > live platform default.
+  def hours_editable_for(host_user)
+    assignment = business_host_assignments.find_by(user_id: host_user&.id)
+    return assignment.hours_editable_override unless assignment&.hours_editable_override.nil?
+
+    hours_editable.nil? ? SystemSetting.instance.business_matching_hours_editable_default : hours_editable
+  end
+
   private
 
   # The session may run entirely before or after its event — these are just
