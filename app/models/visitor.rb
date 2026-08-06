@@ -48,10 +48,21 @@ class Visitor < ApplicationRecord
   validates :phone, format: { with: /\A[+]?[\d\s\-\(\)]+\z/, message: 'must be a valid phone number' }, allow_blank: true
 
   after_commit :send_webhook_notification, on: [:create, :update]
+  after_commit :create_matching_participant, on: :create
 
   attr_accessor :skip_webhooks
 
   # --- Private Methods ---
+  private
+
+  def create_matching_participant
+    return unless event.use_business_matching
+    BusinessMatchingParticipant.find_or_create_by!(
+      event_id: event_id,
+      registerable_type: self.class.name,
+      registerable_id: id
+    )
+  end
   private
 
   def set_public_id

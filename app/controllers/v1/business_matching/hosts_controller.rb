@@ -28,6 +28,50 @@ module V1
         render json: { errors: e.message }, status: :internal_server_error
       end
 
+      # GET /v1/business_matching/events/:event_id/host_profile
+      def show
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        unless current_user.is_business_host?(event)
+          return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
+        end
+
+        service_result = BusinessMatchingService.new(current_user).fetch_host_profile(event.id)
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
+        end
+      end
+
+      # PUT/PATCH /v1/business_matching/events/:event_id/host_profile
+      def update
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        unless current_user.is_business_host?(event)
+          return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
+        end
+
+        profile_params = params.permit(:description, :sourcing_intent, :capabilities, interest_tags: [], offering_tags: [])
+
+        invalid_tags = disallowed_tags(event, profile_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
+        service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
+
+        if service_result.success?
+          Rails.cache.delete("business_matching_events_#{event.id}")
+          ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        end
+      end
+
       # POST /v1/business_matching/events/:event_id/hosts/join
       def join
         event = Event.find_by(id: params[:event_id])
@@ -212,6 +256,19 @@ module V1
 
       def host_params
         params.require(:host).permit(:full_name, :email, :phone, :password)
+      end
+
+      # Hosts may only select tags from the event's admin-curated list,
+      # never create new ones.
+      def disallowed_tags(event, profile_params)
+        invalid = []
+        if profile_params[:offering_tags].present?
+          invalid += Array(profile_params[:offering_tags]) - (event.business_matching_offering_tags || [])
+        end
+        if profile_params[:interest_tags].present?
+          invalid += Array(profile_params[:interest_tags]) - (event.business_matching_interest_tags || [])
+        end
+        invalid.uniq
       end
     end
   end

@@ -400,6 +400,24 @@ Rails.application.routes.draw do
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
 
+      # Public booking view and reschedule (no auth — booking ID is UUID)
+      get 'bookings/:id/public', to: 'bookings#public_show'
+      patch 'bookings/:id/reschedule', to: 'bookings#reschedule'
+      patch 'bookings/:id/cancel', to: 'bookings#cancel'
+
+      # Session and Availability CRUD
+      resources :sessions, only: [:create, :update, :destroy] do
+        resources :availabilities, only: [:index, :create]
+      end
+
+      # Attendee Matchmaking Portal
+      resource :portal, only: [:show, :update] do
+        get :matches, on: :member
+        get :tags, on: :member
+        post :bookings, to: 'portals#create_booking', on: :member
+        put 'bookings/:id/respond', to: 'portals#respond_booking', on: :member
+      end
+
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'
@@ -411,6 +429,8 @@ Rails.application.routes.draw do
       end
 
       scope 'events/:event_id' do
+        resource :host_profile, only: [:show, :update], controller: 'hosts'
+        resource :tags, only: [:show, :update], controller: 'tags'
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           post 'join', to: 'hosts#join', on: :collection
