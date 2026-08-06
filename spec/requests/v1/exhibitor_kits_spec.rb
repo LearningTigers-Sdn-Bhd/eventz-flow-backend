@@ -546,6 +546,25 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(false)
     end
 
+    it 'removes an empty exhibitor assignment after hard-deleting its final kit' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(EventVendor.exists?(exhibitor.id)).to be(false)
+    end
+
+    it 'keeps the exhibitor assignment when another kit remains' do
+      sibling_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(ExhibitorKit.exists?(sibling_kit.id)).to be(true)
+      expect(EventVendor.exists?(exhibitor.id)).to be(true)
+    end
+
     it 'nullifies the audit link when hard-deleting a kit that redeemed a voucher' do
       voucher = create(:exhibitor_voucher, event: event, status: :redeemed,
         redeemed_by_exhibitor_kit: exhibitor_kit, redeemed_at: Time.current)

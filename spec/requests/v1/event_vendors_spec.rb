@@ -847,11 +847,11 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       expect(kit_payload['exhibitor_package_name']).to eq('Package B | Prime Booth')
     end
 
-    it 'returns empty plural array and nil legacy kit for zero kits' do
+    it 'does not list an exhibitor with zero kits' do
       get "/v1/events/#{event.id}/vendors", headers: headers
 
       payload = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }
-      expect(payload).to include('exhibitor_kits' => [], 'exhibitor_kit' => nil)
+      expect(payload).to be_nil
     end
 
     it 'returns every kit oldest first and keeps oldest legacy kit' do
@@ -1148,5 +1148,24 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       expect(JSON.parse(response.body)['errors']).to include('Selected package does not match the booth price')
       expect(EventVendor.where(event:, vendor:)).to be_empty
     end
+  end
+end
+
+RSpec.describe 'Event vendor visibility after kit cancellation', type: :request do
+  let(:event) { create(:event, use_exhibitor_kit: true) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:headers) { { 'Authorization' => "Bearer #{jwt_token(org_owner)}" } }
+  let!(:active_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+  let!(:stale_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+
+  before do
+    stale_exhibitor.exhibitor_kits.update_all(booking_status: ExhibitorKit.booking_statuses[:cancelled])
+  end
+
+  it 'hides an exhibitor when all of its kits are cancelled' do
+    get "/v1/events/#{event.id}/vendors", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.map { |vendor| vendor['id'] }).to contain_exactly(active_exhibitor.id)
   end
 end

@@ -615,3 +615,20 @@ RSpec.describe 'V1::Analytics', type: :request do
     end
   end
 end
+
+RSpec.describe 'Vendor analytics after kit cancellation', type: :request do
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:event) { create(:event, status: :published, use_exhibitor_kit: true) }
+
+  it 'counts only exhibitors with an active or paid kit' do
+    create(:merchant, event: event)
+    create(:exhibitor, :with_exhibitor_kit, event: event)
+    stale_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: event)
+    stale_exhibitor.exhibitor_kits.update_all(booking_status: ExhibitorKit.booking_statuses[:cancelled])
+
+    get '/v1/metrics/summary', headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['total_vendors']).to eq(2)
+  end
+end

@@ -66,7 +66,7 @@ class V1::ExhibitorKitsController < ApplicationController
                     status: :unprocessable_content
     end
 
-    @exhibitor_kit.destroy!
+    @exhibitor_kit.destroy_with_event_vendor_cleanup!
     head :no_content
   end
 
@@ -75,7 +75,7 @@ class V1::ExhibitorKitsController < ApplicationController
   def force_delete
     authorize @exhibitor_kit, :force_destroy?
 
-    @exhibitor_kit.destroy!
+    @exhibitor_kit.destroy_with_event_vendor_cleanup!
     head :no_content
   end
 
