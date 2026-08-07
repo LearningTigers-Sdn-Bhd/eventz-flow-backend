@@ -248,4 +248,19 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
   end
+
+  describe "GET /v1/events/:id/business_matching_events" do
+    it "includes each session's start_time and end_time so the edit dialog can prefill correctly" do
+      BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "11:00", end_time: "13:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+
+      get "/v1/events/#{event.id}/business_matching_events", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response.first['start_time']).to eq("11:00")
+      expect(json_response.first['end_time']).to eq("13:00")
+    end
+  end
 end

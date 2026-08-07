@@ -41,6 +41,8 @@ class BusinessMatchingService < BaseService
         location: session.location,
         admin_email: session.admin_email,
         admin_wa_number: session.admin_wa_number,
+        start_time: session.start_time,
+        end_time: session.end_time,
         start_date: session.start_date,
         end_date: session.end_date,
         tags_editable: session.tags_editable,
