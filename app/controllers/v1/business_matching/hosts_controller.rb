@@ -89,7 +89,10 @@ module V1
         host = User.find_by(id: params[:host_user_id])
         return render json: { error: 'Host not found' }, status: :not_found unless host && host.is_business_host?(event)
 
-        profile_params = params.permit(:avatar_signed_id, interest_tags: [], offering_tags: [])
+        profile_params = params.permit(
+          :avatar_signed_id, :description, :sourcing_intent, :capabilities,
+          interest_tags: [], offering_tags: []
+        )
 
         invalid_tags = disallowed_tags(event, profile_params)
         if invalid_tags.any?

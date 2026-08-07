@@ -169,6 +169,21 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
+    it "lets an admin set a host's description/sourcing_intent/capabilities directly" do
+      patch "/v1/business_matching/events/#{event.id}/hosts/#{host_user.id}/profile",
+            params: {
+              description: "We build fintech infra",
+              sourcing_intent: "Looking for API partners",
+              capabilities: "Payments, KYC"
+            },
+            headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['description']).to eq("We build fintech infra")
+      expect(json_response['sourcing_intent']).to eq("Looking for API partners")
+      expect(json_response['capabilities']).to eq("Payments, KYC")
+    end
+
     it "lets an admin set a per-host tags_editable override for a specific session" do
       session = BusinessMatchingSession.create!(
         event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
