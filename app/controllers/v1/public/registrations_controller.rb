@@ -334,7 +334,7 @@ module V1
         end
 
         begin
-          saved = if VehicleRegistrationRules::FORM_RULES.key?(form&.slug)
+          saved = if VehicleRegistrationRules.supported?(form)
                     VehicleRegistrationAssignment.new(
                       event: event,
                       form: form,
@@ -424,11 +424,10 @@ module V1
       private
 
       def vehicle_registration_ticket_type?(event:, ticket_type:)
-        event.registration_forms
-             .where(slug: VehicleRegistrationRules::FORM_RULES.keys)
-             .joins(:registration_form_ticket_types)
-             .where(registration_form_ticket_types: { ticket_type_id: ticket_type.id })
-             .exists?
+        forms = event.registration_forms
+                     .joins(:registration_form_ticket_types)
+                     .where(registration_form_ticket_types: { ticket_type_id: ticket_type.id })
+        forms.any? { |form| VehicleRegistrationRules.supported?(form) }
       end
 
       def registration_params
@@ -496,7 +495,7 @@ module V1
       end
 
       def vehicle_registration_form?(form)
-        form.present? && VehicleRegistrationRules::FORM_RULES.key?(form.slug)
+        VehicleRegistrationRules.supported?(form)
       end
 
       def apply_indemnity!(ticket)

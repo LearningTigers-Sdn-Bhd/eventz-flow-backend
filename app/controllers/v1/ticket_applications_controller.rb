@@ -66,7 +66,7 @@ module V1
 
     def ticket_payload
       @ticket.reload.as_json(
-        methods: %i[payment_method transaction_id payment_screenshot_url],
+        methods: %i[payment_method transaction_id payment_screenshot_url registration_documents_data vehicle_registration_data],
         include: {
           ticket_type: { only: %i[id name price] },
           ticket_application: {

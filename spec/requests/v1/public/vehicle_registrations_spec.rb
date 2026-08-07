@@ -5,6 +5,9 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   let(:expedition_form) do
     create(:registration_form, event: event, slug: 'expedition-tags-on', name: 'Expedition (Tags-on)')
   end
+  let(:expedition_a_form) do
+    create(:registration_form, event: event, slug: 'expedition-a-tags-on', name: 'Expedition A (Tags-on)')
+  end
   let(:competition_form) do
     create(:registration_form, event: event, slug: 'competition', name: 'Competition')
   end
@@ -13,6 +16,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   end
 
   let!(:expedition_member) { ticket_type('Expedition - Member', 800, expedition_form) }
+  let!(:expedition_a_member) { ticket_type('Expedition - Member', 800, expedition_a_form) }
   let!(:expedition_corporate) { ticket_type('Expedition - Corporate', 3000, expedition_form) }
   let!(:expedition_non_member) { ticket_type('Expedition - Non-Member', 1600, expedition_form) }
   let!(:expedition_international) { ticket_type('Expedition - International', 1600, expedition_form) }
@@ -107,6 +111,33 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(JSON.parse(response.body).fetch('errors')).to include(/passport_copy.*photo_1/i)
     expect(event.tickets.where(attendee_email: 'documents-required@example.com')).to be_empty
+  end
+
+  it 'creates a vehicle registration for a split expedition sub-form (expedition-a-tags-on)' do
+    register(
+      form: expedition_a_form,
+      ticket_type: expedition_a_member,
+      plate: 'SAA A1',
+      email: 'expedition-a@example.com'
+    )
+
+    expect(response).to have_http_status(:created)
+    ticket = event.tickets.find_by(attendee_email: 'expedition-a@example.com')
+    expect(ticket.vehicle_registration).to be_present
+    expect(ticket.vehicle_registration.registration_form).to eq(expedition_a_form)
+  end
+
+  it 'requires terms acceptance and documents for a split expedition sub-form (expedition-a-tags-on)' do
+    register(
+      form: expedition_a_form,
+      ticket_type: expedition_a_member,
+      plate: 'SAA A2',
+      email: 'expedition-a-terms@example.com',
+      terms_agreement: nil
+    )
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(event.tickets.where(attendee_email: 'expedition-a-terms@example.com')).to be_empty
   end
 
   it 'offers only main vehicle tickets for a new normalized plate' do

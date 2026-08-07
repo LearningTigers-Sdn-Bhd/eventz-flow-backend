@@ -140,6 +140,30 @@ class Ticket < ApplicationRecord
     ticket_type&.name.to_s.match?(/exhibitor/i)
   end
 
+  # Uploaded documents (IC/passport copy, selfie, etc.) for admin display.
+  def registration_documents_data
+    registration_documents.map do |attachment|
+      {
+        key: attachment.blob.metadata['document_key'],
+        filename: attachment.blob.filename.to_s,
+        url: Rails.application.routes.url_helpers.rails_blob_url(attachment, only_path: true)
+      }
+    end
+  end
+
+  # Which sub-form (e.g. Expedition A) the participant registered under, when
+  # the ticket is tied to a vehicle registration.
+  def vehicle_registration_data
+    return nil unless vehicle_registration
+
+    {
+      plate: vehicle_registration.plate,
+      registration_form_id: vehicle_registration.registration_form_id,
+      registration_form_name: vehicle_registration.registration_form&.name,
+      registration_form_slug: vehicle_registration.registration_form&.slug
+    }
+  end
+
   # --- Private Methods ---
   private
 
