@@ -46,7 +46,7 @@ class TicketApplicationMailer < ApplicationMailer
     setting = @event.event_email_setting
     address = setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
     name = setting&.sender_name.presence || @event.title
-    "#{name} <#{address}>"
+    format_sender(name, address)
   end
 
   def rsvp_url(raw_token)

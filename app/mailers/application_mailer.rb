@@ -17,4 +17,13 @@ class ApplicationMailer < ActionMailer::Base
       .reject(&:blank?)
       .uniq
   end
+
+  # Builds a "Name <addr>" From header via Mail::Address so display names
+  # with commas/special chars (e.g. event titles like "Foo, Bar & Baz") get
+  # properly quoted instead of being misparsed as multiple addresses, which
+  # made Resend blow up with `undefined method 'formatted' for an instance
+  # of Mail::UnstructuredField`.
+  def format_sender(name, address)
+    Mail::Address.new(address).tap { |a| a.display_name = name }.format
+  end
 end

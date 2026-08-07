@@ -29,6 +29,6 @@ class CertificateMailer < ApplicationMailer
   def sender_from
     address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
     name = email_setting&.sender_name.presence || @event.title
-    "#{name} <#{address}>"
+    format_sender(name, address)
   end
 end
