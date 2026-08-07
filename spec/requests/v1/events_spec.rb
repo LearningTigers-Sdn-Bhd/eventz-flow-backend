@@ -407,6 +407,21 @@ RSpec.describe 'V1::Events', type: :request do
         let(:id) { 99_999 }
         run_test!
       end
+
+      # 7. Success (Private event viewable by a business matching admin assigned to it)
+      response '200', 'Private event viewable by a business matching admin' do
+        let(:bm_admin_user) { create(:user, :member) }
+        let(:bm_admin_token) { JwtService.generate_tokens(bm_admin_user)[:access_token] }
+        let(:Authorization) { "Bearer #{bm_admin_token}" }
+        let(:id) { event_private.id }
+
+        before do
+          create(:event_assignment, role: :business_matching_admin, event: event_private, user: bm_admin_user)
+        end
+
+        schema EVENT_SCHEMA
+        run_test!
+      end
     end
 
     # --- PUT - Update ---

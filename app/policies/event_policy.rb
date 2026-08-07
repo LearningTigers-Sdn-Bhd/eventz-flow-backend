@@ -30,7 +30,8 @@ class EventPolicy < ApplicationPolicy
       user.is_event_team_member?(record) ||
       user.is_event_vendor?(record) ||
       user.exhibition_contractor_for?(record) ||
-      user.is_business_host?(record)
+      user.is_business_host?(record) ||
+      user.is_business_matching_admin?(record)
     )
   end
 
