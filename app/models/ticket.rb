@@ -136,6 +136,10 @@ class Ticket < ApplicationRecord
     end
   end
 
+  def exhibitor_ticket_type?
+    ticket_type&.name.to_s.match?(/exhibitor/i)
+  end
+
   # --- Private Methods ---
   private
 
@@ -297,10 +301,6 @@ class Ticket < ApplicationRecord
   def significant_changes?
     significant_fields = %w[status payment_status attendee_name attendee_email attendee_phone checked_in]
     (previous_changes.keys & significant_fields).any?
-  end
-
-  def exhibitor_ticket_type?
-    ticket_type&.name.to_s.match?(/exhibitor/i)
   end
 
   def should_send_confirmation?
