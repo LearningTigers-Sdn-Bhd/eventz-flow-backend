@@ -436,10 +436,15 @@ Rails.application.routes.draw do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
+          post 'invite_link', to: 'hosts#invite_link', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection
         end
       end
+
+      # No IDs in the path or params on purpose — the token is the only way
+      # in, so a hand-typed URL can't be used to self-attach as a host.
+      post 'host_invites/accept', to: 'hosts#accept_invite'
     end
 
     # Event Leads (exhibitor lead capture — replaces visitor stamps)

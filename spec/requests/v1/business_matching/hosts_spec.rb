@@ -242,4 +242,95 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(User.exists?(email: "newhost2@example.com")).to eq(false)
     end
   end
+
+  describe "POST /v1/business_matching/events/:event_id/hosts/invite_link" do
+    let(:admin) { create(:user, role: :organizer) }
+    let(:session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current
+      )
+    end
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it "mints a token for an event admin" do
+      post "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+           params: { business_matching_event_id: session.id.to_s },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['token']).to be_present
+
+      access = BusinessHostInviteToken.verify(json_response['token'])
+      expect(access.event_id).to eq(event.id.to_s)
+      expect(access.business_matching_event_id).to eq(session.id.to_s)
+    end
+
+    it "rejects a non-admin" do
+      post "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+           params: { business_matching_event_id: session.id.to_s },
+           headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "POST /v1/business_matching/host_invites/accept" do
+    let(:invitee) { create(:user) }
+    let(:session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current
+      )
+    end
+
+    it "joins the invitee as a business host using only the token, no IDs" do
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      post "/v1/business_matching/host_invites/accept",
+           params: { token: token },
+           headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:ok)
+      expect(
+        BusinessHostAssignment.exists?(
+          user_id: invitee.id, event_id: event.id, business_matching_event_id: session.id.to_s
+        )
+      ).to eq(true)
+      expect(
+        EventAssignment.exists?(user_id: invitee.id, event_id: event.id, role: :business_host)
+      ).to eq(true)
+    end
+
+    it "rejects a hand-typed/garbage token" do
+      post "/v1/business_matching/host_invites/accept",
+           params: { token: "totally-made-up-token" },
+           headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(BusinessHostAssignment.where(user_id: invitee.id, event_id: event.id)).to be_empty
+    end
+
+    it "rejects a token that's been tampered with" do
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+      tampered = "#{token}x"
+
+      post "/v1/business_matching/host_invites/accept",
+           params: { token: tampered },
+           headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "requires authentication" do
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      post "/v1/business_matching/host_invites/accept", params: { token: token }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

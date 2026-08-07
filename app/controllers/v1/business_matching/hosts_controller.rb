@@ -135,26 +135,42 @@ module V1
         bm_event_id = params[:business_matching_event_id]
         return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
 
-        ActiveRecord::Base.transaction do
-          # 1. Ensure general event access via EventAssignment
-          EventAssignment.find_or_create_by!(
-            user: current_user,
-            event: event,
-            role: :business_host
-          )
+        perform_join(event, bm_event_id)
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
 
-          # 2. Create the specific session assignment
-          BusinessHostAssignment.find_or_create_by!(
-            user: current_user,
-            event: event,
-            business_matching_event_id: bm_event_id
-          )
-        end
+      # POST /v1/business_matching/events/:event_id/hosts/invite_link
+      # Staff-only. Mints an opaque, signed token that encodes which session
+      # the invite is for — the shareable link carries only this token, not
+      # the raw event/session IDs, so it can't be hand-edited to attach a
+      # host to a different session than the one they were actually invited to.
+      def invite_link
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
 
-        update_event_cache(event, bm_event_id, current_user)
-        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+        authorize event, :manage_business_hosts?
 
-        render json: { message: "Successfully joined as a business host for #{event.title}" }, status: :ok
+        bm_event_id = params[:business_matching_event_id]
+        return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_event_id)
+        render json: { token: token }, status: :ok
+      end
+
+      # POST /v1/business_matching/host_invites/accept
+      # No event/session IDs in the request at all — everything comes from
+      # the signed token, so this can't be driven by a hand-typed URL.
+      def accept_invite
+        access = BusinessHostInviteToken.verify(params[:token])
+        return render json: { error: 'This invite link is invalid or has expired.' }, status: :unprocessable_entity unless access
+
+        event = Event.find_by(id: access.event_id)
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        perform_join(event, access.business_matching_event_id)
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
       rescue StandardError => e
@@ -290,6 +306,29 @@ module V1
       end
 
       private
+
+      def perform_join(event, bm_event_id)
+        ActiveRecord::Base.transaction do
+          # 1. Ensure general event access via EventAssignment
+          EventAssignment.find_or_create_by!(
+            user: current_user,
+            event: event,
+            role: :business_host
+          )
+
+          # 2. Create the specific session assignment
+          BusinessHostAssignment.find_or_create_by!(
+            user: current_user,
+            event: event,
+            business_matching_event_id: bm_event_id
+          )
+        end
+
+        update_event_cache(event, bm_event_id, current_user)
+        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+
+        render json: { message: "Successfully joined as a business host for #{event.title}" }, status: :ok
+      end
 
       def update_event_cache(event, bm_event_id, host_user)
         cache_key = "business_matching_events_#{event.id}"
