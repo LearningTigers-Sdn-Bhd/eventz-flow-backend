@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_07_090000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_07_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -684,6 +684,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_07_090000) do
     t.date "business_matching_default_end_date"
     t.jsonb "business_matching_default_hours", default: [{"start_time"=>"09:00", "end_time"=>"17:00"}], null: false
     t.boolean "business_matching_hours_editable_default", default: true, null: false
+    t.integer "business_matching_default_slot_duration", default: 30, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end

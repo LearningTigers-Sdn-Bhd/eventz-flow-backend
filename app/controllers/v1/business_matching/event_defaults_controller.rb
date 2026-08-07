@@ -37,19 +37,21 @@ module V1
           default_start_date: event.business_matching_default_start_date,
           default_end_date: event.business_matching_default_end_date,
           default_hours: event.business_matching_default_hours,
-          hours_editable_default: event.business_matching_hours_editable_default
+          hours_editable_default: event.business_matching_hours_editable_default,
+          default_slot_duration: event.business_matching_default_slot_duration
         }
       end
 
       def event_defaults_params
         permitted = params.permit(
-          :default_start_date, :default_end_date, :hours_editable_default,
+          :default_start_date, :default_end_date, :hours_editable_default, :default_slot_duration,
           default_hours: [:start_time, :end_time]
         )
         attrs = {}
         attrs[:business_matching_default_start_date] = permitted[:default_start_date] if params.key?(:default_start_date)
         attrs[:business_matching_default_end_date] = permitted[:default_end_date] if params.key?(:default_end_date)
         attrs[:business_matching_hours_editable_default] = permitted[:hours_editable_default] if params.key?(:hours_editable_default)
+        attrs[:business_matching_default_slot_duration] = permitted[:default_slot_duration] if params.key?(:default_slot_duration)
         attrs[:business_matching_default_hours] = params[:default_hours].map { |b| b.permit(:start_time, :end_time).to_h } if params[:default_hours].present?
         attrs
       end

@@ -14,6 +14,7 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_response['default_hours']).to eq([{ 'start_time' => '09:00', 'end_time' => '17:00' }])
       expect(json_response['hours_editable_default']).to eq(true)
+      expect(json_response['default_slot_duration']).to eq(30)
     end
 
     it "returns the event's defaults to a business matching admin" do
@@ -40,13 +41,15 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
             default_start_date: "2026-09-03",
             default_end_date: "2026-09-03",
             default_hours: [{ start_time: "11:00", end_time: "17:00" }],
-            hours_editable_default: false
+            hours_editable_default: false,
+            default_slot_duration: 45
           },
           headers: auth_headers(organizer_user)
 
       expect(response).to have_http_status(:ok)
       expect(json_response['default_start_date']).to eq("2026-09-03")
       expect(json_response['hours_editable_default']).to eq(false)
+      expect(json_response['default_slot_duration']).to eq(45)
 
       # A new session created without explicit dates/hours now follows the event's default
       post "/v1/business_matching/sessions",
