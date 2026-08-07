@@ -110,6 +110,8 @@ class VehicleRegistrationRules
   end
 
   def rule
-    FORM_RULES[form.slug]
+    # Expedition split into sub-forms (expedition-a-tags-on..h) that share one rule set.
+    slug = form.slug.start_with?('expedition-') ? 'expedition-tags-on' : form.slug
+    FORM_RULES[slug]
   end
 end
