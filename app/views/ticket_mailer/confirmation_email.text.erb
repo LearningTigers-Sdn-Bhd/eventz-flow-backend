@@ -17,10 +17,11 @@ Your Ticket ID: <%= @ticket.public_id %>
 Payment Receipt
 - Receipt No: <%= @ticket.public_id %>
 - Payment Status: Paid
-- Payment Date: <%= @ticket_payment&.paid_at.present? ? @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") : 'Not available' %>
-- Amount Paid: <%= (@ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
-- Transaction ID: <%= @ticket_payment&.gateway_payment_id.presence || 'Not available' %>
-- Order ID: <%= @ticket_payment&.gateway_response&.dig('order_id').presence || 'Not available' %>
+<% if @ticket_payment&.paid_at.present? %>- Payment Date: <%= @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
+<% end %>- Amount Paid: <%= (@ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
+<% if @ticket_payment&.gateway_payment_id.presence %>- Transaction ID: <%= @ticket_payment.gateway_payment_id %>
+<% end %><% if @ticket_payment&.gateway_response&.dig('order_id').presence %>- Order ID: <%= @ticket_payment.gateway_response['order_id'] %>
+<% end %>
 <% end %>
 
 Please show this ticket ID or the attached QR code at check-in.

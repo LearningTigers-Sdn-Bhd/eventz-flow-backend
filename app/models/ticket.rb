@@ -299,6 +299,10 @@ class Ticket < ApplicationRecord
     (previous_changes.keys & significant_fields).any?
   end
 
+  def exhibitor_ticket_type?
+    ticket_type&.name.to_s.match?(/exhibitor/i)
+  end
+
   def should_send_confirmation?
     return false if attendee_email.blank?
 

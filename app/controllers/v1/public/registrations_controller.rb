@@ -361,6 +361,7 @@ module V1
 
         if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
+          send_payment_pending_notification(ticket)
 
           render json: {
             success: true,
@@ -597,6 +598,23 @@ module V1
             related: application
           )
         end
+      end
+
+      # One email per ticket covering "payment pending" regardless of whether
+      # proof is uploaded now or later — avoids a second send at upload time
+      # (spam risk). Skipped for waitlist/approval flows (they already get
+      # TicketApplicationMailer#acknowledgement) and exhibitor ticket types.
+      def send_payment_pending_notification(ticket)
+        return if ticket.paid? || ticket.waiting_list || ticket.ticket_application.present?
+        return if ticket.exhibitor_ticket_type? || ticket.attendee_email.blank?
+
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'TicketMailer',
+          mailer_action: 'payment_pending_email',
+          args: [ticket],
+          related: ticket,
+          dedupe: true
+        )
       end
 
       def delegate_approval_enabled_for_form?(form)

@@ -22,6 +22,19 @@ class TicketMailer < ApplicationMailer
     )
   end
 
+  def payment_pending_email(ticket)
+    @ticket = ticket
+    @event = ticket.event
+    @ticket_type = ticket.ticket_type
+    set_email_config
+
+    mail(
+      to: ticket.attendee_email,
+      from: sender_from,
+      subject: "We've received your registration for #{@event.title}"
+    )
+  end
+
   private
 
   def email_setting
