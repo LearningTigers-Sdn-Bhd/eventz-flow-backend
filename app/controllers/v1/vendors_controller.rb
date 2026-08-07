@@ -7,7 +7,7 @@ module V1
     def index
       authorize User.new(role: :vendor), :index?, policy_class: VendorPolicy
       
-      vendors = policy_scope(User).where(role: :vendor)
+      vendors = policy_scope(User, policy_scope_class: VendorPolicy::Scope).where(role: :vendor)
 
       render json: vendors.map { |vendor| format_vendor(vendor) }, status: :ok
     end
