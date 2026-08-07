@@ -20,8 +20,8 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(session.business_matching_availabilities.count).to eq(3)
     end
 
-    it "seeds new sessions' availability from the platform default hours template, breaks included" do
-      SystemSetting.instance.update!(
+    it "seeds new sessions' availability from the event's default hours template, breaks included" do
+      event.update!(
         business_matching_default_hours: [
           { 'start_time' => '08:00', 'end_time' => '12:00' },
           { 'start_time' => '13:00', 'end_time' => '17:00' }

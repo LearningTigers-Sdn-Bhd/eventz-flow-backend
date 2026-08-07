@@ -107,7 +107,7 @@ module V1
           business_matching_session_id: session.id, host_user_id: host_user_id
         ).pluck(:day)
 
-        default_blocks = SystemSetting.instance.business_matching_default_hours.presence ||
+        default_blocks = session.event.business_matching_default_hours.presence ||
                           [{ 'start_time' => session.start_time, 'end_time' => session.end_time }]
 
         (session.start_date..session.end_date).each do |day|

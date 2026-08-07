@@ -44,7 +44,7 @@ class BusinessMatchingService < BaseService
         start_date: session.start_date,
         end_date: session.end_date,
         tags_editable: session.tags_editable,
-        hours_editable: session.hours_editable.nil? ? SystemSetting.instance.business_matching_hours_editable_default : session.hours_editable,
+        hours_editable: session.hours_editable.nil? ? event&.business_matching_hours_editable_default : session.hours_editable,
         offering_tags: offering_tags,
         interest_tags: interest_tags,
         created_at: session.created_at.iso8601,

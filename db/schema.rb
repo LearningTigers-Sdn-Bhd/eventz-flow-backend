@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_06_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_07_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -680,6 +680,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_06_100000) do
     t.integer "exhibitor_reservation_ttl_hours"
     t.jsonb "business_matching_offering_tags", default: [], null: false
     t.jsonb "business_matching_interest_tags", default: [], null: false
+    t.date "business_matching_default_start_date"
+    t.date "business_matching_default_end_date"
+    t.jsonb "business_matching_default_hours", default: [{"start_time"=>"09:00", "end_time"=>"17:00"}], null: false
+    t.boolean "business_matching_hours_editable_default", default: true, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1415,13 +1419,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_06_100000) do
     t.index ["deleted_at"], name: "index_sponsors_on_deleted_at"
     t.index ["group_id", "name"], name: "index_sponsors_on_group_id_and_name", unique: true
     t.index ["group_id"], name: "index_sponsors_on_group_id"
-  end
-
-  create_table "system_settings", force: :cascade do |t|
-    t.jsonb "business_matching_default_hours", default: [{"start_time"=>"09:00", "end_time"=>"17:00"}], null: false
-    t.boolean "business_matching_hours_editable_default", default: true, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
   end
 
   create_table "table_assignments", force: :cascade do |t|

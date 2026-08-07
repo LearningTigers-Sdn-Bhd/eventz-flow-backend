@@ -397,11 +397,6 @@ Rails.application.routes.draw do
       post 'receive', to: 'callbacks#receive'
       post 'events/:event_id/report', to: 'bookings#generate_report'
 
-      # Platform-wide defaults (org owner only)
-      get 'system_settings', to: 'system_settings#show'
-      patch 'system_settings', to: 'system_settings#update'
-      put 'system_settings', to: 'system_settings#update'
-
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
 
@@ -436,6 +431,7 @@ Rails.application.routes.draw do
       scope 'events/:event_id' do
         resource :host_profile, only: [:show, :update], controller: 'hosts'
         resource :tags, only: [:show, :update], controller: 'tags'
+        resource :defaults, only: [:show, :update], controller: 'event_defaults'
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
