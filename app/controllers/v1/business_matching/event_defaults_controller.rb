@@ -33,18 +33,26 @@ module V1
       private
 
       def serialize(event)
+        cutoff = event.business_matching_public_booking_cutoff_date
         {
           default_start_date: event.business_matching_default_start_date,
           default_end_date: event.business_matching_default_end_date,
           default_hours: event.business_matching_default_hours,
           hours_editable_default: event.business_matching_hours_editable_default,
-          default_slot_duration: event.business_matching_default_slot_duration
+          default_slot_duration: event.business_matching_default_slot_duration,
+          public_booking_enabled: event.business_matching_public_booking_enabled,
+          public_booking_cutoff_date: cutoff,
+          # Enabled, but the cutoff date has already passed — the admin
+          # probably wants to know public booking is still open past it.
+          public_booking_past_cutoff_warning: event.business_matching_public_booking_enabled &&
+            cutoff.present? && cutoff < Date.current
         }
       end
 
       def event_defaults_params
         permitted = params.permit(
           :default_start_date, :default_end_date, :hours_editable_default, :default_slot_duration,
+          :public_booking_enabled, :public_booking_cutoff_date,
           default_hours: [:start_time, :end_time]
         )
         attrs = {}
@@ -53,6 +61,10 @@ module V1
         attrs[:business_matching_hours_editable_default] = permitted[:hours_editable_default] if params.key?(:hours_editable_default)
         attrs[:business_matching_default_slot_duration] = permitted[:default_slot_duration] if params.key?(:default_slot_duration)
         attrs[:business_matching_default_hours] = params[:default_hours].map { |b| b.permit(:start_time, :end_time).to_h } if params[:default_hours].present?
+        if params.key?(:public_booking_enabled)
+          attrs[:business_matching_public_booking_enabled] = ActiveModel::Type::Boolean.new.cast(permitted[:public_booking_enabled])
+        end
+        attrs[:business_matching_public_booking_cutoff_date] = permitted[:public_booking_cutoff_date] if params.key?(:public_booking_cutoff_date)
         attrs
       end
     end

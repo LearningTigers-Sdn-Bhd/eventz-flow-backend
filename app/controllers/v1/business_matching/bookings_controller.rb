@@ -62,6 +62,10 @@ module V1
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
+        unless event.business_matching_public_booking_open?
+          return render json: { errors: 'Public booking is closed for this event.' }, status: :forbidden
+        end
+
         # The service should handle a nil current_user for public bookings.
         service_result = BusinessMatchingService.new(current_user).public_create_booking(
           params[:business_matching_event_id],

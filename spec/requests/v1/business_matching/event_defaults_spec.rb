@@ -15,6 +15,9 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
       expect(json_response['default_hours']).to eq([{ 'start_time' => '09:00', 'end_time' => '17:00' }])
       expect(json_response['hours_editable_default']).to eq(true)
       expect(json_response['default_slot_duration']).to eq(30)
+      expect(json_response['public_booking_enabled']).to eq(true)
+      expect(json_response['public_booking_cutoff_date']).to be_nil
+      expect(json_response['public_booking_past_cutoff_warning']).to eq(false)
     end
 
     it "returns the event's defaults to a business matching admin" do
@@ -72,6 +75,26 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
           headers: auth_headers(host)
 
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets an organizer disable public booking and set a cutoff date" do
+      put "/v1/business_matching/events/#{event.id}/defaults",
+          params: { public_booking_enabled: false, public_booking_cutoff_date: "2026-09-01" },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['public_booking_enabled']).to eq(false)
+      expect(json_response['public_booking_cutoff_date']).to eq("2026-09-01")
+      expect(event.reload.business_matching_public_booking_enabled).to eq(false)
+    end
+
+    it "flags the past-cutoff warning once enabled and the date has passed" do
+      put "/v1/business_matching/events/#{event.id}/defaults",
+          params: { public_booking_enabled: true, public_booking_cutoff_date: "2020-01-01" },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['public_booking_past_cutoff_warning']).to eq(true)
     end
   end
 end

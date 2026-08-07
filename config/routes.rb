@@ -25,6 +25,7 @@ Rails.application.routes.draw do
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
+        get :business_matching_booking_status, on: :member
         # Public check-in endpoint - scoped to event
         resource :check_in, only: %i[show create], controller: 'check_ins'
         # Public check-in display settings
