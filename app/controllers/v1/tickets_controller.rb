@@ -20,7 +20,7 @@ module V1
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
     #     remains a bare array for backwards compatibility.
     def index
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
 
       if params[:archived] == 'true'
         @tickets = @tickets.only_deleted
@@ -43,7 +43,7 @@ module V1
       end
 
       json_options = {
-        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
         include: {
           ticket_type: { only: [:id, :name, :price] },
           scanned_by: { only: [:id, :full_name] },
@@ -565,7 +565,7 @@ module V1
 
     def ticket_response(ticket)
       ticket.as_json(
-        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
         include: {
           ticket_type: { only: [:id, :name, :price] },
           pass_bundle: { only: [:id, :name] },

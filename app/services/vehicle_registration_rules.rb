@@ -51,6 +51,19 @@ class VehicleRegistrationRules
     FORM_RULES.find { |_slug, config| config.fetch(:base).include?(ticket_name) }&.first
   end
 
+  # Expedition split into sub-forms (expedition-a-tags-on..h) that share one rule set.
+  def self.rule_slug(slug)
+    slug.to_s.start_with?('expedition-') ? 'expedition-tags-on' : slug.to_s
+  end
+
+  def self.supported?(form)
+    form.present? && FORM_RULES.key?(rule_slug(form.slug))
+  end
+
+  def self.supported_slugs(form_slugs)
+    form_slugs.select { |slug| FORM_RULES.key?(rule_slug(slug)) }
+  end
+
   def initialize(form)
     @form = form
     raise UnsupportedForm, 'Vehicle registration is not used for this form' unless rule
@@ -110,8 +123,6 @@ class VehicleRegistrationRules
   end
 
   def rule
-    # Expedition split into sub-forms (expedition-a-tags-on..h) that share one rule set.
-    slug = form.slug.start_with?('expedition-') ? 'expedition-tags-on' : form.slug
-    FORM_RULES[slug]
+    FORM_RULES[self.class.rule_slug(form.slug)]
   end
 end
