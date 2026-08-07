@@ -1,0 +1,25 @@
+We've Got Your Registration!
+
+Hi <%= @ticket.attendee_name %>,
+
+Thank you for registering for <%= @event.title %>! We've received your registration details. If you've already made
+payment, our team is now verifying it. If you haven't paid yet, please complete your payment as instructed to
+secure your spot.
+
+Event: <%= @event.title %>
+Ticket Type: <%= @ticket_type.name %>
+Ticket ID: <%= @ticket.public_id %>
+
+Your registration is currently pending payment verification. Once your payment is confirmed by our team, your
+e-ticket and QR code will be sent to this email address automatically.
+
+<% if @contact_email.present? %>
+Have a question in the meantime? Reach out to us at <%= @contact_email %>.
+<% end %>
+We can't wait to see you there!
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

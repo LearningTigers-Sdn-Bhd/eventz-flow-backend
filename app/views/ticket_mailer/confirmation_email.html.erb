@@ -97,16 +97,12 @@
                 <td>Payment Status:</td>
                 <td>Paid</td>
               </tr>
-              <tr>
-                <td>Payment Date:</td>
-                <td>
-                  <% if @ticket_payment&.paid_at.present? %>
-                    <%= @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
-                  <% else %>
-                    Not available
-                  <% end %>
-                </td>
-              </tr>
+              <% if @ticket_payment&.paid_at.present? %>
+                <tr>
+                  <td>Payment Date:</td>
+                  <td><%= @ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %></td>
+                </tr>
+              <% end %>
               <tr>
                 <td>Amount Paid:</td>
                 <td>
@@ -114,14 +110,18 @@
                   <%= format('%.2f', (@ticket_payment&.amount || @ticket_type.current_price).to_f) %>
                 </td>
               </tr>
-              <tr>
-                <td>Transaction ID:</td>
-                <td><%= @ticket_payment&.gateway_payment_id.presence || 'Not available' %></td>
-              </tr>
-              <tr>
-                <td>Order ID:</td>
-                <td><%= @ticket_payment&.gateway_response&.dig('order_id').presence || 'Not available' %></td>
-              </tr>
+              <% if @ticket_payment&.gateway_payment_id.presence %>
+                <tr>
+                  <td>Transaction ID:</td>
+                  <td><%= @ticket_payment.gateway_payment_id %></td>
+                </tr>
+              <% end %>
+              <% if @ticket_payment&.gateway_response&.dig('order_id').presence %>
+                <tr>
+                  <td>Order ID:</td>
+                  <td><%= @ticket_payment.gateway_response['order_id'] %></td>
+                </tr>
+              <% end %>
             </table>
           </div>
         <% end %>
