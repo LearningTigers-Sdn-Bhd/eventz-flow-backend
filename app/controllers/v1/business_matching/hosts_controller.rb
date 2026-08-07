@@ -89,7 +89,13 @@ module V1
         host = User.find_by(id: params[:host_user_id])
         return render json: { error: 'Host not found' }, status: :not_found unless host && host.is_business_host?(event)
 
-        profile_params = params.permit(:avatar_signed_id)
+        profile_params = params.permit(:avatar_signed_id, interest_tags: [], offering_tags: [])
+
+        invalid_tags = disallowed_tags(event, profile_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
         service_result = BusinessMatchingService.new(current_user).update_host_profile(
           event.id, profile_params, target_user_id: host.id
         )
@@ -162,6 +168,12 @@ module V1
         bm_event_id = params[:business_matching_event_id]
         return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
 
+        tag_params = params.permit(interest_tags: [], offering_tags: [])
+        invalid_tags = disallowed_tags(event, tag_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
         new_host = nil
 
         ActiveRecord::Base.transaction do
@@ -183,6 +195,13 @@ module V1
             event_id: event.id,
             business_matching_event_id: bm_event_id
           )
+
+          # 4. Set the host's initial tags, if the admin provided any
+          if tag_params[:interest_tags].present? || tag_params[:offering_tags].present?
+            BusinessMatchingService.new(current_user).update_host_profile(
+              event.id, tag_params, target_user_id: new_host.id
+            )
+          end
         end
 
         update_event_cache(event, bm_event_id, new_host)
@@ -192,7 +211,9 @@ module V1
           id: new_host.id,
           full_name: new_host.full_name,
           email: new_host.email,
-          phone: new_host.phone
+          phone: new_host.phone,
+          interest_tags: tag_params[:interest_tags] || [],
+          offering_tags: tag_params[:offering_tags] || []
         }, status: :created
 
       rescue ActiveRecord::RecordInvalid => e

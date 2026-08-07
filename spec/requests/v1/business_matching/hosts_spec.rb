@@ -151,6 +151,24 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(json_response['avatar_url']).to be_present
     end
 
+    it "lets an admin set a host's tags directly, from the curated list" do
+      patch "/v1/business_matching/events/#{event.id}/hosts/#{host_user.id}/profile",
+            params: { offering_tags: ["Ruby"], interest_tags: ["React"] },
+            headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['offering_tags']).to eq(["Ruby"])
+      expect(json_response['interest_tags']).to eq(["React"])
+    end
+
+    it "rejects an admin setting tags outside the curated list" do
+      patch "/v1/business_matching/events/#{event.id}/hosts/#{host_user.id}/profile",
+            params: { offering_tags: ["Made Up Tag"] },
+            headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
     it "lets an admin set a per-host tags_editable override for a specific session" do
       session = BusinessMatchingSession.create!(
         event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
@@ -167,6 +185,46 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(response).to have_http_status(:ok)
       expect(assignment.reload.tags_editable_override).to eq(false)
       expect(session.reload.tags_editable_for(host_user)).to eq(false)
+    end
+  end
+
+  describe "POST /v1/business_matching/events/:event_id/hosts/create_and_assign" do
+    let(:admin) { create(:user, role: :organizer) }
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it "lets an admin set the new host's initial tags" do
+      post "/v1/business_matching/events/#{event.id}/hosts/create_and_assign",
+           params: {
+             business_matching_event_id: "bm-1",
+             host: { full_name: "New Host", email: "newhost@example.com", password: "password123" },
+             offering_tags: ["Ruby"],
+             interest_tags: ["React"]
+           },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:created)
+      expect(json_response['offering_tags']).to eq(["Ruby"])
+      expect(json_response['interest_tags']).to eq(["React"])
+
+      new_host = User.find_by(email: "newhost@example.com")
+      participant = BusinessMatchingParticipant.find_by(event: event, registerable: new_host)
+      expect(participant.offering_tags).to eq(["Ruby"])
+    end
+
+    it "rejects tags outside the curated list" do
+      post "/v1/business_matching/events/#{event.id}/hosts/create_and_assign",
+           params: {
+             business_matching_event_id: "bm-1",
+             host: { full_name: "New Host", email: "newhost2@example.com", password: "password123" },
+             offering_tags: ["Made Up Tag"]
+           },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(User.exists?(email: "newhost2@example.com")).to eq(false)
     end
   end
 end
