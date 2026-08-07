@@ -21,11 +21,13 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
   let(:org_owner)    { create(:user, :org_owner) }
   let(:organizer)      { create(:user, :organizer) }
   let(:member_user)  { create(:user, :member) }
+  let(:bm_admin_user) { create(:user, :member) }
 
   # use the real encoder to generate valid tokens
   let(:auth_header_org_owner) { "Bearer #{JwtService.generate_tokens(org_owner)[:access_token]}" }
   let(:auth_header_organizer) { "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" }
   let(:auth_header_member)  { "Bearer #{JwtService.generate_tokens(member_user)[:access_token]}" }
+  let(:auth_header_bm_admin) { "Bearer #{JwtService.generate_tokens(bm_admin_user)[:access_token]}" }
 
   let(:common_headers) { |auth| { 'Authorization' => auth, 'Content-Type' => 'application/json' } }
 
@@ -50,6 +52,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         # Create some staff assignments for the event
         create(:event_assignment, event: event, user: member_user, role: 'event_team_member')
         create(:event_assignment, event: event, user: organizer, role: 'event_admin')
+        create(:event_assignment, event: event, user: bm_admin_user, role: 'business_matching_admin')
       end
 
       response '200', 'Returns list of staff assigned to the event (Org Owner)' do
@@ -79,7 +82,7 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data).to be_an(Array)
-          expect(data.length).to eq(2)
+          expect(data.length).to eq(3)
           expect(data.first).to have_key('user')
         end
       end
@@ -102,7 +105,28 @@ RSpec.describe 'Event Staff Management', type: :request, openapi_spec: 'v1/swagg
           data = JSON.parse(response.body)
           expect(data).to be_an(Array)
           # Organizer is admin, so they can view
-          expect(data.length).to eq(2)
+          expect(data.length).to eq(3)
+        end
+      end
+
+      response '200', 'Business Matching admin can view staff for their assigned event' do
+        let(:Authorization) { auth_header_bm_admin }
+
+        schema type: :array,
+          items: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              event_id: { type: :integer },
+              user_id: { type: :integer },
+              role: { type: :string }
+            }
+          }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data).to be_an(Array)
+          expect(data.length).to eq(3)
         end
       end
 
