@@ -181,7 +181,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(data.fetch('allowed_ticket_type_ids')).to eq([included_member.id])
   end
 
-  it 'requires the paid non-member ticket for person two of a non-member vehicle' do
+  it 'offers both paid additional tickets for person two of a non-member vehicle' do
     register(
       form: expedition_form,
       ticket_type: expedition_non_member,
@@ -191,8 +191,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
 
     lookup(form: expedition_form, plate: 'sab88')
 
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [additional_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      additional_member.id, additional_non_member.id
     )
   end
 
@@ -306,7 +306,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(legacy_ticket.reload.vehicle_registration).to be_present
   end
 
-  it 'includes the competition teammate, then offers one paid reserve co-driver before becoming full' do
+  it 'includes the competition teammate, then offers both paid reserve co-driver tickets before becoming full' do
     register(
       form: competition_form,
       ticket_type: competition_member,
@@ -325,8 +325,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'competition-codriver@example.com'
     )
     lookup(form: competition_form, plate: 'SAX 12')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [reserve_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      reserve_member.id, reserve_other.id
     )
 
     register(
@@ -336,8 +336,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'competition-reserve@example.com'
     )
     lookup(form: competition_form, plate: 'SAX12')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [reserve_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      reserve_member.id, reserve_other.id
     )
 
     register(
@@ -355,7 +355,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
   end
 
-  it 'uses the non-member reserve ticket for a non-member competition vehicle' do
+  it 'offers both reserve co-driver tickets for a non-member competition vehicle' do
     register(
       form: competition_form,
       ticket_type: competition_non_member,
@@ -374,8 +374,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'competition-non-member-codriver@example.com'
     )
     lookup(form: competition_form, plate: 'SAY 13')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [reserve_other.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      reserve_member.id, reserve_other.id
     )
   end
 
@@ -398,8 +398,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'support-member-passenger@example.com'
     )
     lookup(form: support_form, plate: 'ss100')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [support_additional_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      support_additional_member.id, support_additional_non_member.id
     )
 
     register(
@@ -409,8 +409,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'support-nonmember-driver@example.com'
     )
     lookup(form: support_form, plate: 'ss200')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [support_additional_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      support_additional_member.id, support_additional_non_member.id
     )
   end
 
@@ -435,8 +435,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(response).to have_http_status(:created)
 
     lookup(form: expedition_form, plate: 'SAZ 404')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [additional_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      additional_member.id, additional_non_member.id
     )
   end
 
@@ -488,8 +488,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(response).to have_http_status(:created)
 
     lookup(form: expedition_form, plate: 'SAW-77')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [additional_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      additional_member.id, additional_non_member.id
     )
   end
 
