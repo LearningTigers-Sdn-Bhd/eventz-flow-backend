@@ -26,7 +26,7 @@ module V1
     def show
       authorize current_user, policy_class: UserPolicy
       success_response(
-        data: current_user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: current_user.email_verified?),
+        data: current_user.public_json,
         message: "Profile retrieved successfully"
       )
     end
@@ -37,7 +37,7 @@ module V1
 
       if current_user.update(update_user_params)
         success_response(
-          data: current_user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: current_user.email_verified?),
+          data: current_user.public_json,
           message: "Profile updated successfully"
         )
       else

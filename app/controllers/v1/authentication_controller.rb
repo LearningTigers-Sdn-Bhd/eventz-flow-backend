@@ -26,7 +26,7 @@ module V1
 
         success_response(
           data: {
-            user: @user.slice(:id, :full_name, :email, :role).merge(email_verified: @user.email_verified?),
+            user: @user.public_json,
             access_token: tokens[:access_token],
             expires_at: tokens[:expires_at],
             session_id: tokens[:session_id]
@@ -59,7 +59,7 @@ module V1
 
         success_response(
           data: {
-            user: user.slice(:id, :full_name, :email, :role).merge(email_verified: user.email_verified?),
+            user: user.public_json,
             access_token: tokens[:access_token],
             expires_at: tokens[:expires_at],
             session_id: tokens[:session_id]
@@ -165,8 +165,7 @@ module V1
 
         success_response(
           data: {
-            user: current_user.slice(:id, :full_name, :email, :role,
-                                     :phone).merge(email_verified: current_user.email_verified?)
+            user: current_user.public_json
           },
           message: 'Email verified successfully',
           status: :ok
@@ -192,7 +191,7 @@ module V1
       user = tokens[:user]
       success_response(
         data: {
-          user: user.slice(:id, :full_name, :email, :role).merge(email_verified: user.email_verified?),
+          user: user.public_json,
           access_token: tokens[:access_token],
           expires_at: tokens[:expires_at],
           session_id: tokens[:session_id]
@@ -305,7 +304,7 @@ module V1
 
         success_response(
           data: {
-            user: @user.slice(:id, :full_name, :email, :role, :phone).merge(email_verified: @user.email_verified?),
+            user: @user.public_json,
             event_vendor: {
               id: event_vendor.id,
               event_id: event.id,

@@ -66,5 +66,39 @@ RSpec.describe "V1::BusinessMatching::Availabilities", type: :request do
       expect(rows.first.host_user_id).to eq(host_user.id)
       expect(rows.first.start_time).to eq("10:00")
     end
+
+    it "rejects the assigned host once the session locks hours_editable" do
+      session.update!(hours_editable: false)
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      post "/v1/business_matching/sessions/#{session.id}/availabilities",
+           params: { availabilities: [{ day: "2026-09-01", start_time: "10:00", end_time: "16:00" }] },
+           headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets a per-host override unlock hours even when the session locks them" do
+      session.update!(hours_editable: false)
+      BusinessHostAssignment.create!(
+        user: host_user, event: event, business_matching_event_id: session.id.to_s, hours_editable_override: true
+      )
+
+      post "/v1/business_matching/sessions/#{session.id}/availabilities",
+           params: { availabilities: [{ day: "2026-09-01", start_time: "10:00", end_time: "16:00" }] },
+           headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "still lets staff edit hours even when the session locks them for hosts" do
+      session.update!(hours_editable: false)
+
+      post "/v1/business_matching/sessions/#{session.id}/availabilities",
+           params: { availabilities: [{ day: "2026-09-01", start_time: "10:00", end_time: "16:00" }] },
+           headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+    end
   end
 end

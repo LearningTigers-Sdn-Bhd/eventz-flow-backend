@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <style>
+    <%= render 'booking_mailer/shared_styles' %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Booking Rescheduled for <%= @event_title %></h2>
+    </div>
+    <div class="content">
+      <p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
+      <p>Your business matching session for <strong><%= @event_title %></strong> has been rescheduled.</p>
+
+      <h3>New Booking Details:</h3>
+      <div class="details">
+        <p><strong>Date:</strong> <%= @booking_date %></p>
+        <p><strong>Time:</strong> <%= @booking_time %></p>
+        <% if @booking['location'].present? %>
+          <p><strong>Location:</strong> <%= @booking['location'] %></p>
+        <% end %>
+      </div>
+
+      <% if @old_date.present? && @old_time.present? %>
+        <p style="color: #777; font-size: 0.9em;">Previously scheduled for <%= @old_date.strftime('%A, %B %d, %Y') %> at <%= @old_time %>.</p>
+      <% end %>
+
+      <p>Best regards,<br>The Organizing Team</p>
+    </div>
+    <div class="footer">
+      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

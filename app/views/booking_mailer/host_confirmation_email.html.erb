@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <style>
+    <%= render 'booking_mailer/shared_styles' %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>New Booking for <%= @event_title %></h2>
+    </div>
+    <div class="content">
+      <p>Hi <%= @host.full_name %>,</p>
+      <p><strong><%= @booking['name'] %></strong> has booked a business matching session with you.</p>
+
+      <h3>Booking Details:</h3>
+      <div class="details">
+        <p><strong>Date:</strong> <%= @booking_date %></p>
+        <p><strong>Time:</strong> <%= @booking_time %></p>
+        <p><strong>Name:</strong> <%= @booking['name'] %></p>
+        <p><strong>Email:</strong> <%= @booking['email'] %></p>
+        <p><strong>Phone:</strong> <%= @booking['phone'] %></p>
+        <% if @booking['location'].present? %>
+          <p><strong>Location:</strong> <%= @booking['location'] %></p>
+        <% end %>
+      </div>
+
+      <a href="<%= @dashboard_url %>" class="button">View on EventzFlow</a>
+    </div>
+    <div class="footer">
+      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

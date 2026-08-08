@@ -42,6 +42,17 @@ class VehicleRegistrationRules
       member_base: ['Support - Member'],
       additional_member_ticket: 'Additional Person - Member',
       additional_non_member_ticket: 'Additional Person - Non-Member'
+    },
+    'official-crew' => {
+      capacity: 4,
+      base: ['Official Crew - Member', 'Official Crew - Non-Member'],
+      # Everything is free, so there's no special "included" ticket for seat 2 —
+      # every seat just reuses whichever ticket the first person picked.
+      included_second: [],
+      included_ticket: 'Official Crew - Member',
+      member_base: ['Official Crew - Member'],
+      additional_member_ticket: 'Official Crew - Member',
+      additional_non_member_ticket: 'Official Crew - Non-Member'
     }
   }.freeze
 
@@ -89,7 +100,6 @@ class VehicleRegistrationRules
     if occupancy == 1
       included = rule.fetch(:included_second)
       return [rule.fetch(:included_ticket)] if included == :all || included.include?(base_name)
-      return [rule.fetch(:additional_non_member_ticket)]
     end
 
     [additional_ticket_name(base_name)]

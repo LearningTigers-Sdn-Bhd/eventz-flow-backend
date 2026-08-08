@@ -139,6 +139,38 @@ class User < ApplicationRecord
     event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_team_member])
   end
 
+  def is_business_matching_admin?(event)
+    return false unless event.present?
+    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_matching_admin])
+  end
+
+  # Event ids where this user holds the business_matching_admin role.
+  def business_matching_admin_event_ids
+    event_assignments.where(role: EventAssignment.roles[:business_matching_admin]).pluck(:event_id)
+  end
+
+  # True if this user's ONLY standing on the platform is business_matching_admin
+  # for one or more events — no org-level staff role, no full event-admin/team
+  # standing anywhere. Used to hide the generic app nav/dashboard and send them
+  # straight into Business Matching instead.
+  def only_business_matching_admin?
+    return false if is_org_owner_or_organizer?
+    return false if business_matching_admin_event_ids.empty?
+
+    !event_assignments.where(
+      role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
+    ).exists?
+  end
+
+  # Standard user payload returned by auth/profile endpoints.
+  def public_json
+    slice(:id, :full_name, :email, :role, :phone).merge(
+      email_verified: email_verified?,
+      is_pure_business_matching_admin: only_business_matching_admin?,
+      business_matching_admin_event_ids: business_matching_admin_event_ids.map(&:to_s)
+    )
+  end
+
   def is_event_staff?(event)
     return false unless event.present?
     event_assignments.where(event_id: event.id)

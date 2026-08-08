@@ -100,6 +100,16 @@ class Event < ApplicationRecord
            through: :event_assignments,
            source: :user
 
+  # Public self-service Business Matching booking is closed once the admin
+  # toggles it off, OR once the cutoff date has passed (if one is set) —
+  # admin/staff can still create bookings directly either way.
+  def business_matching_public_booking_open?
+    return false unless business_matching_public_booking_enabled
+
+    business_matching_public_booking_cutoff_date.blank? ||
+      Date.current <= business_matching_public_booking_cutoff_date
+  end
+
   def waived_fees?
     # This assumes 'waived' is a payment_status enum value,
     # meaning Rails automatically defined the `waived?` helper.

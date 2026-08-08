@@ -8,7 +8,7 @@ module V1
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
-        authorize event, :update?
+        authorize event, :manage_business_matching_sessions?
 
         session = BusinessMatchingSession.new(session_params)
         session.event = event
@@ -28,7 +28,9 @@ module V1
             start_time: session.start_time,
             end_time: session.end_time,
             start_date: session.start_date,
-            end_date: session.end_date
+            end_date: session.end_date,
+            tags_editable: session.tags_editable,
+            hours_editable: session.hours_editable
           }, status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -43,9 +45,10 @@ module V1
         authorize session, :update?
 
         permitted_params = session_params
-        # Session dates are admin-controlled — a host editing their own
-        # session may never move them, regardless of what the request sends.
-        permitted_params = permitted_params.except(:start_date, :end_date) unless EventPolicy.new(current_user, session.event).update?
+        # Session dates and the tags_editable toggle are admin-controlled — a
+        # host editing their own session may never touch them, regardless of
+        # what the request sends.
+        permitted_params = permitted_params.except(:start_date, :end_date, :tags_editable, :hours_editable) unless EventPolicy.new(current_user, session.event).manage_business_matching_sessions?
 
         if session.update(permitted_params)
           ensure_default_availabilities(session)
@@ -62,7 +65,9 @@ module V1
             start_time: session.start_time,
             end_time: session.end_time,
             start_date: session.start_date,
-            end_date: session.end_date
+            end_date: session.end_date,
+            tags_editable: session.tags_editable,
+            hours_editable: session.hours_editable
           }, status: :ok
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -75,7 +80,7 @@ module V1
         return render json: { error: 'Session not found' }, status: :not_found unless session
 
         event = session.event
-        authorize event, :update?
+        authorize event, :manage_business_matching_sessions?
 
         if session.destroy
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })
@@ -102,23 +107,28 @@ module V1
           business_matching_session_id: session.id, host_user_id: host_user_id
         ).pluck(:day)
 
+        default_blocks = session.event.business_matching_default_hours.presence ||
+                          [{ 'start_time' => session.start_time, 'end_time' => session.end_time }]
+
         (session.start_date..session.end_date).each do |day|
           next if existing_days.include?(day)
 
-          BusinessMatchingAvailability.create!(
-            business_matching_session: session,
-            host_user_id: host_user_id,
-            day: day,
-            start_time: session.start_time,
-            end_time: session.end_time
-          )
+          default_blocks.each do |block|
+            BusinessMatchingAvailability.create!(
+              business_matching_session: session,
+              host_user_id: host_user_id,
+              day: day,
+              start_time: block['start_time'] || block[:start_time],
+              end_time: block['end_time'] || block[:end_time]
+            )
+          end
         end
       end
 
       def session_params
         params.require(:session).permit(
           :title, :slot_duration, :location, :admin_email, :admin_wa_number,
-          :start_time, :end_time, :is_active, :start_date, :end_date
+          :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable, :hours_editable
         )
       end
     end

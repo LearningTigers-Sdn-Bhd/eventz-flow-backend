@@ -5,7 +5,7 @@ class BusinessMatchingSessionPolicy < ApplicationPolicy
   # session; the host assigned to this specific session can update their own.
   def update?
     return false if user.blank? || record.blank?
-    return true if EventPolicy.new(user, record.event).update?
+    return true if EventPolicy.new(user, record.event).manage_business_matching_sessions?
 
     assigned_host?
   end
@@ -14,7 +14,7 @@ class BusinessMatchingSessionPolicy < ApplicationPolicy
   # session roster itself.
   def create?
     return false if user.blank? || record.blank?
-    EventPolicy.new(user, record.event).update?
+    EventPolicy.new(user, record.event).manage_business_matching_sessions?
   end
 
   def destroy?
