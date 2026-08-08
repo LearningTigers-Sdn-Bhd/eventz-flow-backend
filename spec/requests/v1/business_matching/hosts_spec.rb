@@ -28,7 +28,7 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
           params: { offering_tags: ["Ruby", "Made Up Tag"] },
           headers: auth_headers(host_user)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_response['errors'].join).to include("Made Up Tag")
     end
   end

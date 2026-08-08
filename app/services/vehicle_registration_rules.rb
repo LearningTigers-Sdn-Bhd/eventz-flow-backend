@@ -21,7 +21,7 @@ class VehicleRegistrationRules
       additional_non_member_ticket: 'Additional Person - Non-Member'
     },
     'competition' => {
-      capacity: 3,
+      capacity: 4,
       base: [
         'Competition - Member',
         'Competition - Non-Member',

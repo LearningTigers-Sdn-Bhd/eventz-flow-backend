@@ -2,6 +2,8 @@ class VehicleRegistrationAssignment
   class Error < StandardError; end
 
   VEHICLE_PLATE_INDEX = 'idx_vehicle_registrations_event_plate'.freeze
+  # Driver and Co-Driver are one-per-vehicle; Passenger is unlimited up to capacity.
+  SINGLE_OCCUPANT_ROLES = %w[Driver Co-Driver].freeze
 
   def initialize(event:, form:, ticket:, plate:)
     @event = event
@@ -26,6 +28,10 @@ class VehicleRegistrationAssignment
       allowed_ids = @rules.allowed_ticket_types(vehicle).pluck(:id)
       unless allowed_ids.include?(@ticket.ticket_type_id)
         raise Error, @rules.invalid_ticket_message(vehicle)
+      end
+
+      if SINGLE_OCCUPANT_ROLES.include?(@ticket.role) && vehicle.active_tickets.exists?(role: @ticket.role)
+        raise Error, "This vehicle already has a #{@ticket.role}"
       end
 
       vehicle.update!(base_ticket_type: @ticket.ticket_type) unless vehicle.active_tickets.exists?

@@ -52,7 +52,7 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
            },
            headers: auth_headers(organizer_user)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_response['errors'].join).to include("on or after the start date")
     end
   end
