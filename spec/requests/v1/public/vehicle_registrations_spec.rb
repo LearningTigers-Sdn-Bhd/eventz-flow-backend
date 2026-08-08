@@ -14,6 +14,9 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   let(:support_form) do
     create(:registration_form, event: event, slug: 'competitor-support', name: 'Competitor Support')
   end
+  let(:official_crew_form) do
+    create(:registration_form, event: event, slug: 'official-crew', name: 'Official Crew')
+  end
 
   let!(:expedition_member) { ticket_type('Expedition - Member', 800, expedition_form) }
   let!(:expedition_a_member) { ticket_type('Expedition - Member', 800, expedition_a_form) }
@@ -35,6 +38,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
   let!(:support_included) { ticket_type('Included 2nd Person - Member/Corporate', 0, support_form) }
   let!(:support_additional_member) { ticket_type('Additional Person - Member', 400, support_form) }
   let!(:support_additional_non_member) { ticket_type('Additional Person - Non-Member', 800, support_form) }
+  let!(:official_crew_member) { ticket_type('Official Crew - Member', 0, official_crew_form) }
+  let!(:official_crew_non_member) { ticket_type('Official Crew - Non-Member', 0, official_crew_form) }
 
   def ticket_type(name, price, form)
     value = create(:ticket_type, event: event, name: name, price: price, status: :published, hidden: false)
@@ -485,6 +490,57 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     lookup(form: expedition_form, plate: 'SAW-77')
     expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
       [additional_non_member.id]
+    )
+  end
+
+  it 'locks every official crew seat to the first person\'s membership status, up to a car of 4' do
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'SAZ 20',
+      email: 'crew-driver@example.com',
+      role: 'Driver'
+    )
+
+    lookup(form: official_crew_form, plate: 'saz20')
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [official_crew_non_member.id]
+    )
+
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'SAZ-20',
+      email: 'crew-2@example.com',
+      role: 'Co-Driver'
+    )
+
+    lookup(form: official_crew_form, plate: 'SAZ 20')
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [official_crew_non_member.id]
+    )
+
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'saz-20',
+      email: 'crew-3@example.com',
+      role: 'Passenger'
+    )
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'SAZ20',
+      email: 'crew-4@example.com',
+      role: 'Passenger'
+    )
+
+    lookup(form: official_crew_form, plate: 'SAZ 20')
+    expect(JSON.parse(response.body).fetch('data')).to include(
+      'status' => 'full',
+      'occupancy' => 4,
+      'capacity' => 4,
+      'allowed_ticket_type_ids' => []
     )
   end
 end
