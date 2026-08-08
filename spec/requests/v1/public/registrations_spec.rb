@@ -321,6 +321,30 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       }
     end
 
+    context 'when the ticket type is sold out' do
+      before { ticket_type.update!(quantity: 1) }
+
+      it 'rejects registration even via direct API call, bypassing any frontend check' do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'first@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['code']).to eq('ticket_sold_out')
+      end
+    end
+
     context 'when registration form delegate approval is enabled' do
       let!(:interested_form) do
         form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')

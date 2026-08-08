@@ -67,6 +67,22 @@ class TicketType < ApplicationRecord
     end
   end
 
+  # Counts tickets that actually hold a seat (paid, not canceled/refunded) —
+  # matches what the public ticket_types listing already shows as "sold".
+  def held_ticket_count
+    tickets.where(payment_status: :paid).where.not(status: %i[canceled refunded]).count
+  end
+
+  def remaining_quantity
+    return nil if quantity.blank?
+
+    [quantity - held_ticket_count, 0].max
+  end
+
+  def available_for_purchase?
+    quantity.blank? || held_ticket_count < quantity
+  end
+
   private
 
   def sync_map_elements
