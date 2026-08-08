@@ -319,7 +319,8 @@ class BusinessMatchingService < BaseService
 
     if booking.save
       ActionCable.server.broadcast("business_matching_event_#{event_id}", { action: "booking_created" })
-      
+      _send_booking_confirmation_emails(booking, session, event_id)
+
       transformed = _transform_local_bookings([booking], session).first
       BaseService::ServiceResult.new(success: true, data: transformed)
     else
@@ -356,27 +357,45 @@ class BusinessMatchingService < BaseService
 
     if booking.save
       ActionCable.server.broadcast("business_matching_event_#{event_id}", { action: "booking_created" })
+      _send_booking_confirmation_emails(booking, session, event_id)
 
       transformed = _transform_local_bookings([booking], session).first
-
-      begin
-        EmailDelivery::AuditedDelivery.deliver_now(
-          mailer_name: 'BookingMailer',
-          mailer_action: 'confirmation_email',
-          args: [transformed.with_indifferent_access, session.title, event_id],
-          related: nil,
-          metadata: { event_id: event_id, booking_id: booking.id.to_s }
-        )
-      rescue => e
-        Rails.logger.error "Failed to send booking confirmation email: #{e.message}"
-      end
-
       BaseService::ServiceResult.new(success: true, data: transformed)
     else
       BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  # Sends the "your booking was rescheduled" pair after a controller-level
+  # update to booking_date/booking_time (reschedule doesn't go through
+  # create_booking, so it needs its own entry point).
+  def notify_booking_rescheduled(booking, old_date, old_time)
+    session = booking.business_matching_session
+    transformed = _transform_local_bookings([booking], session).first.with_indifferent_access
+
+    _deliver_booking_email('reschedule_email', [transformed, session.title, session.event_id, old_date, old_time], booking)
+
+    host = booking.host_user
+    return unless host
+
+    _deliver_booking_email('host_reschedule_email', [transformed, session.title, session.event_id, host, old_date, old_time], booking)
+  end
+
+  # Sends the "your booking was cancelled" pair after a controller-level
+  # cancellation (see notify_booking_rescheduled for why this isn't folded
+  # into create_booking).
+  def notify_booking_cancelled(booking)
+    session = booking.business_matching_session
+    transformed = _transform_local_bookings([booking], session).first.with_indifferent_access
+
+    _deliver_booking_email('cancellation_email', [transformed, session.title, session.event_id], booking)
+
+    host = booking.host_user
+    return unless host
+
+    _deliver_booking_email('host_cancellation_email', [transformed, session.title, session.event_id, host], booking)
   end
 
   def update_booking(bm_event_id, event_id, booking_id, booking_params, host_user_id: nil)
@@ -550,6 +569,13 @@ class BusinessMatchingService < BaseService
     end
   end
 
+  # Public so background jobs (e.g. BusinessMatchingSessionReminderJob) can
+  # build the same booking hash the confirmation/reschedule/cancellation
+  # mailers expect, without duplicating this shape elsewhere.
+  def transform_bookings(bookings, session = nil)
+    _transform_local_bookings(bookings, session)
+  end
+
   private
 
   def _generate_slots_for_availability(availability, session)
@@ -603,5 +629,31 @@ class BusinessMatchingService < BaseService
         host_user_id: b.host_user_id.to_s
       }
     end
+  end
+
+  def _send_booking_confirmation_emails(booking, session, event_id)
+    transformed = _transform_local_bookings([booking], session).first.with_indifferent_access
+
+    _deliver_booking_email('confirmation_email', [transformed, session.title, event_id], booking)
+
+    host = booking.host_user
+    return unless host
+
+    _deliver_booking_email('host_confirmation_email', [transformed, session.title, event_id, host], booking)
+  end
+
+  # No `related:` here: business_matching_bookings has a uuid primary key,
+  # but EmailDelivery#related_id is bigint (built for Ticket/TicketApplication/
+  # ExhibitorKit) — a uuid would silently mis-cast. booking_id is kept in
+  # metadata instead for traceability.
+  def _deliver_booking_email(mailer_action, args, booking)
+    EmailDelivery::AuditedDelivery.deliver_now(
+      mailer_name: 'BookingMailer',
+      mailer_action: mailer_action,
+      args: args,
+      metadata: { event_id: booking.business_matching_session&.event_id, booking_id: booking.id.to_s }
+    )
+  rescue StandardError => e
+    Rails.logger.error "Failed to send #{mailer_action} for booking #{booking.id}: #{e.message}"
   end
 end

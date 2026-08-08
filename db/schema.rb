@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_07_100001) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_08_001936) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -124,6 +124,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_07_100001) do
     t.index ["event_id"], name: "index_business_matching_participants_on_event_id"
     t.index ["magic_token"], name: "index_business_matching_participants_on_magic_token", unique: true
     t.index ["registerable_type", "registerable_id"], name: "index_business_matching_participants_on_registerable"
+  end
+
+  create_table "business_matching_reminder_logs", force: :cascade do |t|
+    t.uuid "business_matching_booking_id", null: false
+    t.string "reminder_type", default: "1_hour", null: false
+    t.string "status", default: "sent"
+    t.datetime "sent_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["business_matching_booking_id", "reminder_type"], name: "index_bm_reminder_logs_on_booking_and_type", unique: true
   end
 
   create_table "business_matching_sessions", force: :cascade do |t|
@@ -1729,6 +1739,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_07_100001) do
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "business_matching_availabilities", "business_matching_participants"
   add_foreign_key "business_matching_availabilities", "business_matching_sessions"
+  add_foreign_key "business_matching_reminder_logs", "business_matching_bookings"
   add_foreign_key "business_matching_availabilities", "users", column: "host_user_id"
   add_foreign_key "business_matching_bookings", "business_matching_participants", column: "receiver_participant_id"
   add_foreign_key "business_matching_bookings", "business_matching_participants", column: "requester_participant_id"

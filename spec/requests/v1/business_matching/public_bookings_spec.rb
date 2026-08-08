@@ -31,6 +31,16 @@ RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
     expect(response).to have_http_status(:created)
   end
 
+  it "emails both the visitor and the host a confirmation" do
+    expect {
+      post "/v1/business_matching/events/#{event.id}/bookings/public",
+           params: booking_params, headers: auth_headers(visitor)
+    }.to change { ActionMailer::Base.deliveries.size }.by(2)
+
+    recipients = ActionMailer::Base.deliveries.last(2).flat_map(&:to)
+    expect(recipients).to contain_exactly("visitor@example.com", host_user.email)
+  end
+
   it "allows a public booking when enabled with a future cutoff date" do
     event.update!(business_matching_public_booking_cutoff_date: Date.current + 5)
 

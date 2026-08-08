@@ -196,9 +196,13 @@ module V1
 
         return render json: { error: 'That slot is already booked. Please choose another time.' }, status: :conflict if conflict
 
+        old_date = booking.booking_date
+        old_time = booking.booking_time
+
         if booking.update(booking_date: parsed_date, booking_time: new_time)
           session = booking.business_matching_session
           ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_rescheduled' })
+          BusinessMatchingService.new(current_user).notify_booking_rescheduled(booking, old_date, old_time)
           render json: {
             message: 'Booking rescheduled successfully',
             booking_date: booking.booking_date.strftime('%-d %B %Y'),
@@ -222,6 +226,7 @@ module V1
         if booking.update(status: 'Cancelled')
           session = booking.business_matching_session
           ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_cancelled' })
+          BusinessMatchingService.new(current_user).notify_booking_cancelled(booking)
           render json: {
             message: 'Booking cancelled successfully',
             status: booking.status
