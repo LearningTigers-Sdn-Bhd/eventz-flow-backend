@@ -127,6 +127,22 @@ RSpec.describe BusinessMatchingService do
       expect(result.data[:host_user_id]).to eq(host.id.to_s)
     end
 
+    it 'emails both the participant and the host a confirmation' do
+      params = {
+        name: "Alice Visitor",
+        email: "alice@example.com",
+        phone: "+6012",
+        date: event.start_date.to_date.to_s,
+        time: "10:00 AM"
+      }
+
+      expect { service.create_booking(session.id, event.id, params) }
+        .to change { ActionMailer::Base.deliveries.size }.by(2)
+
+      recipients = ActionMailer::Base.deliveries.last(2).flat_map(&:to)
+      expect(recipients).to contain_exactly("alice@example.com", host.email)
+    end
+
     it 'prevents double booking for the same host' do
       params = {
         name: "Alice Visitor",

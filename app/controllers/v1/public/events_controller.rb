@@ -56,6 +56,21 @@ module V1
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Event not found' }, status: :not_found
       end
+
+      # GET /v1/public/events/:slug/business_matching_booking_status
+      # Lets the public booking wizard show a "closed" state up front,
+      # instead of only failing once the visitor reaches the final step.
+      def business_matching_booking_status
+        @event = Event.friendly.find(params[:slug])
+
+        render json: {
+          enabled: @event.business_matching_public_booking_enabled,
+          cutoff_date: @event.business_matching_public_booking_cutoff_date,
+          is_open: @event.business_matching_public_booking_open?
+        }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Event not found' }, status: :not_found
+      end
     end
   end
 end

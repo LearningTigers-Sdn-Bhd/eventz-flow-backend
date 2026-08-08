@@ -62,6 +62,10 @@ module V1
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
+        unless event.business_matching_public_booking_open?
+          return render json: { errors: 'Public booking is closed for this event.' }, status: :forbidden
+        end
+
         # The service should handle a nil current_user for public bookings.
         service_result = BusinessMatchingService.new(current_user).public_create_booking(
           params[:business_matching_event_id],
@@ -192,9 +196,13 @@ module V1
 
         return render json: { error: 'That slot is already booked. Please choose another time.' }, status: :conflict if conflict
 
+        old_date = booking.booking_date
+        old_time = booking.booking_time
+
         if booking.update(booking_date: parsed_date, booking_time: new_time)
           session = booking.business_matching_session
           ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_rescheduled' })
+          BusinessMatchingService.new(current_user).notify_booking_rescheduled(booking, old_date, old_time)
           render json: {
             message: 'Booking rescheduled successfully',
             booking_date: booking.booking_date.strftime('%-d %B %Y'),
@@ -218,6 +226,7 @@ module V1
         if booking.update(status: 'Cancelled')
           session = booking.business_matching_session
           ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_cancelled' })
+          BusinessMatchingService.new(current_user).notify_booking_cancelled(booking)
           render json: {
             message: 'Booking cancelled successfully',
             status: booking.status

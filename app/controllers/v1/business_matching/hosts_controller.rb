@@ -39,7 +39,7 @@ module V1
 
         service_result = BusinessMatchingService.new(current_user).fetch_host_profile(event.id)
         if service_result.success?
-          render json: service_result.data, status: :ok
+          render json: service_result.data.merge(tags_editable: tags_editable_for_current_host?(event)), status: :ok
         else
           render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
         end
@@ -54,11 +54,15 @@ module V1
           return render json: { error: 'Access Denied: You are not a business host for this event' }, status: :forbidden
         end
 
-        profile_params = params.permit(:description, :sourcing_intent, :capabilities, interest_tags: [], offering_tags: [])
+        profile_params = params.permit(:description, :sourcing_intent, :capabilities, :avatar_signed_id, interest_tags: [], offering_tags: [])
 
         invalid_tags = disallowed_tags(event, profile_params)
         if invalid_tags.any?
           return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
+        if changes_tags?(profile_params) && !tags_editable_for_current_host?(event)
+          return render json: { errors: ['Your event organizer has locked tag editing for your session.'] }, status: :forbidden
         end
 
         service_result = BusinessMatchingService.new(current_user).update_host_profile(event.id, profile_params)
@@ -66,10 +70,61 @@ module V1
         if service_result.success?
           Rails.cache.delete("business_matching_events_#{event.id}")
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
-          render json: service_result.data, status: :ok
+          render json: service_result.data.merge(tags_editable: tags_editable_for_current_host?(event)), status: :ok
         else
           render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
         end
+      end
+
+      # PATCH /v1/business_matching/events/:event_id/hosts/:host_user_id/profile
+      # Lets staff (event_admin/business_matching_admin/organizer/org_owner) update
+      # a specific host's profile (avatar) and, given a business_matching_event_id,
+      # override whether that host may self-edit tags/hours for that specific session.
+      def admin_update
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_hosts?
+
+        host = User.find_by(id: params[:host_user_id])
+        return render json: { error: 'Host not found' }, status: :not_found unless host && host.is_business_host?(event)
+
+        profile_params = params.permit(
+          :avatar_signed_id, :description, :sourcing_intent, :capabilities,
+          interest_tags: [], offering_tags: []
+        )
+
+        invalid_tags = disallowed_tags(event, profile_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
+        service_result = BusinessMatchingService.new(current_user).update_host_profile(
+          event.id, profile_params, target_user_id: host.id
+        )
+
+        unless service_result.success?
+          return render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        end
+
+        if params[:business_matching_event_id].present? &&
+           (params.key?(:tags_editable_override) || params.key?(:hours_editable_override))
+          assignment = BusinessHostAssignment.find_by(
+            user_id: host.id, event_id: event.id, business_matching_event_id: params[:business_matching_event_id]
+          )
+          unless assignment
+            return render json: { error: 'Host is not assigned to that session' }, status: :not_found
+          end
+
+          overrides = {}
+          overrides[:tags_editable_override] = cast_nullable_boolean(params[:tags_editable_override]) if params.key?(:tags_editable_override)
+          overrides[:hours_editable_override] = cast_nullable_boolean(params[:hours_editable_override]) if params.key?(:hours_editable_override)
+          assignment.update!(overrides)
+        end
+
+        Rails.cache.delete("business_matching_events_#{event.id}")
+        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+        render json: service_result.data, status: :ok
       end
 
       # POST /v1/business_matching/events/:event_id/hosts/join
@@ -80,26 +135,42 @@ module V1
         bm_event_id = params[:business_matching_event_id]
         return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
 
-        ActiveRecord::Base.transaction do
-          # 1. Ensure general event access via EventAssignment
-          EventAssignment.find_or_create_by!(
-            user: current_user,
-            event: event,
-            role: :business_host
-          )
+        perform_join(event, bm_event_id)
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
 
-          # 2. Create the specific session assignment
-          BusinessHostAssignment.find_or_create_by!(
-            user: current_user,
-            event: event,
-            business_matching_event_id: bm_event_id
-          )
-        end
+      # POST /v1/business_matching/events/:event_id/hosts/invite_link
+      # Staff-only. Mints an opaque, signed token that encodes which session
+      # the invite is for — the shareable link carries only this token, not
+      # the raw event/session IDs, so it can't be hand-edited to attach a
+      # host to a different session than the one they were actually invited to.
+      def invite_link
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
 
-        update_event_cache(event, bm_event_id, current_user)
-        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+        authorize event, :manage_business_hosts?
 
-        render json: { message: "Successfully joined as a business host for #{event.title}" }, status: :ok
+        bm_event_id = params[:business_matching_event_id]
+        return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_event_id)
+        render json: { token: token }, status: :ok
+      end
+
+      # POST /v1/business_matching/host_invites/accept
+      # No event/session IDs in the request at all — everything comes from
+      # the signed token, so this can't be driven by a hand-typed URL.
+      def accept_invite
+        access = BusinessHostInviteToken.verify(params[:token])
+        return render json: { error: 'This invite link is invalid or has expired.' }, status: :unprocessable_entity unless access
+
+        event = Event.find_by(id: access.event_id)
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        perform_join(event, access.business_matching_event_id)
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
       rescue StandardError => e
@@ -115,6 +186,12 @@ module V1
 
         bm_event_id = params[:business_matching_event_id]
         return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        tag_params = params.permit(interest_tags: [], offering_tags: [])
+        invalid_tags = disallowed_tags(event, tag_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
 
         new_host = nil
 
@@ -137,6 +214,13 @@ module V1
             event_id: event.id,
             business_matching_event_id: bm_event_id
           )
+
+          # 4. Set the host's initial tags, if the admin provided any
+          if tag_params[:interest_tags].present? || tag_params[:offering_tags].present?
+            BusinessMatchingService.new(current_user).update_host_profile(
+              event.id, tag_params, target_user_id: new_host.id
+            )
+          end
         end
 
         update_event_cache(event, bm_event_id, new_host)
@@ -146,7 +230,9 @@ module V1
           id: new_host.id,
           full_name: new_host.full_name,
           email: new_host.email,
-          phone: new_host.phone
+          phone: new_host.phone,
+          interest_tags: tag_params[:interest_tags] || [],
+          offering_tags: tag_params[:offering_tags] || []
         }, status: :created
 
       rescue ActiveRecord::RecordInvalid => e
@@ -221,6 +307,29 @@ module V1
 
       private
 
+      def perform_join(event, bm_event_id)
+        ActiveRecord::Base.transaction do
+          # 1. Ensure general event access via EventAssignment
+          EventAssignment.find_or_create_by!(
+            user: current_user,
+            event: event,
+            role: :business_host
+          )
+
+          # 2. Create the specific session assignment
+          BusinessHostAssignment.find_or_create_by!(
+            user: current_user,
+            event: event,
+            business_matching_event_id: bm_event_id
+          )
+        end
+
+        update_event_cache(event, bm_event_id, current_user)
+        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+
+        render json: { message: "Successfully joined as a business host for #{event.title}" }, status: :ok
+      end
+
       def update_event_cache(event, bm_event_id, host_user)
         cache_key = "business_matching_events_#{event.id}"
         events = Rails.cache.read(cache_key)
@@ -269,6 +378,26 @@ module V1
           invalid += Array(profile_params[:interest_tags]) - (event.business_matching_interest_tags || [])
         end
         invalid.uniq
+      end
+
+      def changes_tags?(profile_params)
+        profile_params.key?(:offering_tags) || profile_params.key?(:interest_tags)
+      end
+
+      # A host may have several session assignments within one event but a
+      # single shared tag profile — permissive by design: if any of their
+      # assigned sessions still allows self-editing, they may save.
+      def tags_editable_for_current_host?(event)
+        session_ids = BusinessHostAssignment.where(user_id: current_user.id, event_id: event.id)
+                                             .pluck(:business_matching_event_id)
+                                             .compact.map(&:to_i)
+        return true if session_ids.empty?
+
+        BusinessMatchingSession.where(id: session_ids).any? { |session| session.tags_editable_for(current_user) }
+      end
+
+      def cast_nullable_boolean(value)
+        value.nil? ? nil : ActiveModel::Type::Boolean.new.cast(value)
       end
     end
   end

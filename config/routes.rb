@@ -25,6 +25,7 @@ Rails.application.routes.draw do
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
+        get :business_matching_booking_status, on: :member
         # Public check-in endpoint - scoped to event
         resource :check_in, only: %i[show create], controller: 'check_ins'
         # Public check-in display settings
@@ -431,13 +432,20 @@ Rails.application.routes.draw do
       scope 'events/:event_id' do
         resource :host_profile, only: [:show, :update], controller: 'hosts'
         resource :tags, only: [:show, :update], controller: 'tags'
+        resource :defaults, only: [:show, :update], controller: 'event_defaults'
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
+          patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
+          post 'invite_link', to: 'hosts#invite_link', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection
         end
       end
+
+      # No IDs in the path or params on purpose — the token is the only way
+      # in, so a hand-typed URL can't be used to self-attach as a host.
+      post 'host_invites/accept', to: 'hosts#accept_invite'
     end
 
     # Event Leads (exhibitor lead capture — replaces visitor stamps)

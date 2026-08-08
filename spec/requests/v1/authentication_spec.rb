@@ -61,6 +61,17 @@ RSpec.describe 'V1::Authentication', type: :request do
         expect(json_response['data']).to have_key('session_id')
         expect(response_signed_cookies['refresh_token']).to be_present
       end
+
+      it "flags a pure business matching admin so the frontend can skip the generic dashboard" do
+        event = create(:event)
+        create(:event_assignment, event: event, user: user, role: :business_matching_admin)
+
+        post '/v1/auth/login', params: { email: 'test@example.com', password: 'password' }
+
+        expect(response).to have_http_status(:ok)
+        expect(json_response['data']['user']['is_pure_business_matching_admin']).to eq(true)
+        expect(json_response['data']['user']['business_matching_admin_event_ids']).to eq([event.id.to_s])
+      end
     end
 
     context 'with invalid credentials' do

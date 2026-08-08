@@ -20,6 +20,24 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(session.business_matching_availabilities.count).to eq(3)
     end
 
+    it "seeds new sessions' availability from the event's default hours template, breaks included" do
+      event.update!(
+        business_matching_default_hours: [
+          { 'start_time' => '08:00', 'end_time' => '12:00' },
+          { 'start_time' => '13:00', 'end_time' => '17:00' }
+        ]
+      )
+
+      post "/v1/business_matching/sessions",
+           params: { event_id: event.id, session: { title: "Templated Session", slot_duration: 30, start_time: "09:00", end_time: "17:00", start_date: "2026-09-01", end_date: "2026-09-01" } },
+           headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:created)
+      session = BusinessMatchingSession.find(json_response['id'])
+      blocks = session.business_matching_availabilities.order(:start_time).pluck(:start_time, :end_time)
+      expect(blocks).to eq([["08:00", "12:00"], ["13:00", "17:00"]])
+    end
+
     it "allows a session date range entirely outside the event's period" do
       post "/v1/business_matching/sessions",
            params: {
@@ -156,6 +174,93 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
           headers: auth_headers(host_user)
 
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets a business matching admin move the session's date range" do
+      bm_admin = create(:user)
+      create(:event_assignment, event: event, user: bm_admin, role: :business_matching_admin)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { start_date: "2026-09-01", end_date: "2026-09-02" } },
+          headers: auth_headers(bm_admin)
+
+      expect(response).to have_http_status(:ok)
+      session.reload
+      expect(session.end_date).to eq(Date.new(2026, 9, 2))
+    end
+
+    it "lets an organizer set tags_editable on a session" do
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { tags_editable: false } },
+          headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(session.reload.tags_editable).to eq(false)
+    end
+
+    it "silently ignores a host's attempt to change tags_editable" do
+      host_user = create(:user, :exhibitor)
+      session = BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1), tags_editable: true
+      )
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      put "/v1/business_matching/sessions/#{session.id}",
+          params: { session: { tags_editable: false } },
+          headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(session.reload.tags_editable).to eq(true)
+    end
+  end
+
+  describe "POST /v1/business_matching/sessions (business matching admin)" do
+    it "lets a business matching admin create a session for their assigned event" do
+      bm_admin = create(:user)
+      create(:event_assignment, event: event, user: bm_admin, role: :business_matching_admin)
+
+      post "/v1/business_matching/sessions",
+           params: { event_id: event.id, session: { title: "BM Admin Session", slot_duration: 30, start_time: "09:00", end_time: "17:00" } },
+           headers: auth_headers(bm_admin)
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it "rejects a business matching admin for an event they aren't assigned to" do
+      bm_admin = create(:user)
+      other_event = create(:event, use_business_matching: true)
+      create(:event_assignment, event: other_event, user: bm_admin, role: :business_matching_admin)
+
+      post "/v1/business_matching/sessions",
+           params: { event_id: event.id, session: { title: "Nope", slot_duration: 30, start_time: "09:00", end_time: "17:00" } },
+           headers: auth_headers(bm_admin)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "GET /v1/events/:id/business_matching_events" do
+    it "includes each session's start_time and end_time so the edit dialog can prefill correctly" do
+      BusinessMatchingSession.create!(
+        event: event, title: "Session", slot_duration: 30, start_time: "11:00", end_time: "13:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+
+      get "/v1/events/#{event.id}/business_matching_events", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response.first['start_time']).to eq("11:00")
+      expect(json_response.first['end_time']).to eq("13:00")
     end
   end
 end

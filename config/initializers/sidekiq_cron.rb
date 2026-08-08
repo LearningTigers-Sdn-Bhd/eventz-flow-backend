@@ -41,5 +41,17 @@ Rails.application.config.after_initialize do
       cron: '0 4 * * *',
       class: 'PurgeUnattachedBlobsJob'
     )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send business matching session reminders - every 10 minutes',
+      cron: '*/10 * * * *',
+      class: 'BusinessMatchingSessionReminderJob'
+    )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send business matching host daily overview - daily at 7am',
+      cron: '0 7 * * *',
+      class: 'BusinessMatchingHostDailyOverviewJob'
+    )
   end
 end

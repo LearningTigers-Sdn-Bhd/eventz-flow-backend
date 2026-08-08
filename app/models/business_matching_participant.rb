@@ -8,10 +8,18 @@ class BusinessMatchingParticipant < ApplicationRecord
   has_many :sent_bookings, class_name: 'BusinessMatchingBooking', foreign_key: :requester_participant_id, dependent: :destroy
   has_many :received_bookings, class_name: 'BusinessMatchingBooking', foreign_key: :receiver_participant_id, dependent: :destroy
 
+  has_one_attached :avatar, dependent: :purge_later
+
   has_secure_token :magic_token
 
   validates :event, presence: true
   validates :registerable, presence: true
+
+  def avatar_url
+    return nil unless avatar.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(avatar, only_path: true)
+  end
 
   # Tag helpers for profile matching
   def offering_tags
