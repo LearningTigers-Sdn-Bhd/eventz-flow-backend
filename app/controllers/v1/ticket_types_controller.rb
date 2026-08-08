@@ -21,13 +21,13 @@ module V1
                       else
                         TicketType.global
                       end
-      render json: @ticket_types, status: :ok
+      render json: @ticket_types, methods: :remaining_quantity, status: :ok
     end
 
     # GET /v1/ticket_types/:id (global)
     # GET /v1/events/:event_id/ticket_types/:id (event-specific)
     def show
-      render json: @ticket_type, status: :ok
+      render json: @ticket_type, methods: :remaining_quantity, status: :ok
     end
 
     # POST /v1/ticket_types (global)
@@ -48,7 +48,7 @@ module V1
       end
 
       if @ticket_type.save
-        render json: @ticket_type, status: :created
+        render json: @ticket_type, methods: :remaining_quantity, status: :created
       else
         render json: @ticket_type.errors, status: :unprocessable_content
       end
@@ -67,7 +67,7 @@ module V1
       end
 
       if @ticket_type.update(ticket_type_params)
-        render json: @ticket_type, status: :ok
+        render json: @ticket_type, methods: :remaining_quantity, status: :ok
       else
         render json: @ticket_type.errors, status: :unprocessable_content
       end

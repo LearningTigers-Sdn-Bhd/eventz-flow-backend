@@ -261,6 +261,14 @@ module V1
         end
 
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
+        unless ticket_type.available_for_purchase?
+          return render json: {
+            success: false,
+            code: 'ticket_sold_out',
+            message: 'This ticket type is sold out'
+          }, status: :unprocessable_content
+        end
+
         if form.nil? && vehicle_registration_ticket_type?(event: event, ticket_type: ticket_type)
           return render json: {
             success: false,
@@ -401,7 +409,6 @@ module V1
 
         ticket_types = available_ticket_types.map do |tt|
           rule = rule_by_ticket_type_id[tt.id]
-          sold_count = tt.tickets.where(payment_status: :paid).where.not(status: %i[canceled refunded]).count
 
           {
             id: tt.id,
@@ -409,8 +416,8 @@ module V1
             price: tt.current_price,
             original_price: tt.price,
             current_tier: tt.active_tier&.label,
-            available: tt.quantity.nil? || sold_count < tt.quantity,
-            remaining_slots: tt.quantity.nil? ? nil : [tt.quantity - sold_count, 0].max,
+            available: tt.available_for_purchase?,
+            remaining_slots: tt.remaining_quantity,
             custom_fields_data: tt.custom_fields_data,
             custom_labels_data: rule&.custom_labels_data || [],
             registration_mode: rule&.registration_mode || 'single',
