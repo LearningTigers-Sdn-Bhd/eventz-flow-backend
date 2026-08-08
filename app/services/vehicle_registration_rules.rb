@@ -52,7 +52,10 @@ class VehicleRegistrationRules
       included_ticket: 'Official Crew - Member',
       member_base: ['Official Crew - Member'],
       additional_member_ticket: 'Official Crew - Member',
-      additional_non_member_ticket: 'Official Crew - Non-Member'
+      additional_non_member_ticket: 'Official Crew - Non-Member',
+      # Free tickets, no pricing reason to split — every seat locks to whatever
+      # the first person picked instead of offering an open member/non-member choice.
+      lock_additional_to_base: true
     }
   }.freeze
 
@@ -102,7 +105,9 @@ class VehicleRegistrationRules
       return [rule.fetch(:included_ticket)] if included == :all || included.include?(base_name)
     end
 
-    [additional_ticket_name(base_name)]
+    return [additional_ticket_name(base_name)] if rule[:lock_additional_to_base]
+
+    additional_ticket_names
   end
 
   def status(vehicle_registration)
@@ -124,6 +129,10 @@ class VehicleRegistrationRules
   end
 
   private
+
+  def additional_ticket_names
+    [rule.fetch(:additional_member_ticket), rule.fetch(:additional_non_member_ticket)].uniq
+  end
 
   def additional_ticket_name(base_name)
     member_base = rule.fetch(:member_base)
