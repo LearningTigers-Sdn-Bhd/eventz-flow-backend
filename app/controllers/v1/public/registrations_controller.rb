@@ -211,7 +211,8 @@ module V1
             capacity: rules.capacity,
             registered_form_slug: vehicle&.registration_form&.slug,
             registered_form_name: vehicle&.registration_form&.name,
-            allowed_ticket_type_ids: rules.allowed_ticket_types(vehicle).pluck(:id)
+            allowed_ticket_type_ids: rules.allowed_ticket_types(vehicle).pluck(:id),
+            registered_roles: vehicle&.active_tickets&.pluck(:role) || []
           }
         }
       rescue VehicleRegistrationRules::UnsupportedForm => e

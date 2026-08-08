@@ -331,10 +331,21 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'competition-reserve@example.com'
     )
     lookup(form: competition_form, plate: 'SAX12')
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
+      [reserve_member.id]
+    )
+
+    register(
+      form: competition_form,
+      ticket_type: reserve_member,
+      plate: 'sax-12',
+      email: 'competition-reserve-2@example.com'
+    )
+    lookup(form: competition_form, plate: 'SAX 12')
     expect(JSON.parse(response.body).fetch('data')).to include(
       'status' => 'full',
-      'occupancy' => 3,
-      'capacity' => 3,
+      'occupancy' => 4,
+      'capacity' => 4,
       'allowed_ticket_type_ids' => []
     )
   end
