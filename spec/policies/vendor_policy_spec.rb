@@ -51,6 +51,18 @@ RSpec.describe VendorPolicy, type: :policy do
       let(:actor) { create(:user, :org_owner) }
       it { is_expected.to include(vendor) }
     end
+
+    context 'vendor created by an org_owner who shares the event' do
+      let(:org_owner_creator) { create(:user, :org_owner) }
+      let(:vendor) { create(:user, :vendor, created_by_id: org_owner_creator.id) }
+      let(:actor) { teammate }
+
+      before { create(:event_assignment, event: event, user: org_owner_creator, role: :event_admin) }
+
+      it 'does not leak via the org_owner staffing overlap' do
+        expect(subject).not_to include(vendor)
+      end
+    end
   end
 
   describe 'actions' do
