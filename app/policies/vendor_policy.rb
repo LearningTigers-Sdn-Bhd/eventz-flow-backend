@@ -11,12 +11,18 @@ class VendorPolicy < UserPolicy
       return scope.all if user.org_owner?
       return scope.where(id: user.id) unless user.organizer?
 
-      scope.where(created_by_id: user.id).or(scope.where(id: teammate_vendor_ids))
+      scope.where(created_by_id: coorganizer_ids).or(scope.where(id: teammate_vendor_ids))
     end
 
     private
 
-    # ponytail: event_assignments is the only user<->event link (events has no owner column)
+    # ponytail: event_assignments is the only user<->event link (events has no owner column).
+    # Anyone staffing the same event as the creator counts as "my org team" for
+    # that vendor, even before it's formally assigned via EventVendor.
+    def coorganizer_ids
+      EventAssignment.where(event_id: user.event_assignments.select(:event_id)).select(:user_id)
+    end
+
     def teammate_vendor_ids
       EventVendor.where(event_id: user.event_assignments.select(:event_id)).select(:vendor_id)
     end
@@ -40,9 +46,10 @@ class VendorPolicy < UserPolicy
 
   def update?
     # Org owners can update any vendor
-    # Organizers can update vendors they created, or vendors on a shared event
+    # Organizers can update vendors created by a co-organizer on a shared event,
+    # or vendors already assigned to a shared event
     user.org_owner? ||
-      (user.organizer? && (record.created_by_id == user.id || teammate_vendor?))
+      (user.organizer? && (coorganizer_vendor? || teammate_vendor?))
   end
 
   def toggle_status?
@@ -56,7 +63,8 @@ class VendorPolicy < UserPolicy
     return true if record.created_by_id == user.id
 
     # Destroy removes the vendor's account everywhere, not just from one event.
-    # Only allow it when every event the vendor belongs to is one this user staffs.
+    # Unlike update, a coorganizer link alone isn't enough here - only allow it
+    # when every event the vendor belongs to is one this user staffs.
     teammate_vendor? && !vendor_in_outside_event?
   end
 
@@ -64,6 +72,12 @@ class VendorPolicy < UserPolicy
 
   def my_event_ids
     user.event_assignments.select(:event_id)
+  end
+
+  # True when the vendor's creator staffs at least one event I also staff -
+  # mirrors Scope#coorganizer_ids so index/show/update/destroy agree.
+  def coorganizer_vendor?
+    EventAssignment.where(user_id: record.created_by_id, event_id: my_event_ids).exists?
   end
 
   def teammate_vendor?

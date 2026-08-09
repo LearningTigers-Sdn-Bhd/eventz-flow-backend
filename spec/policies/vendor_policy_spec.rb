@@ -35,9 +35,16 @@ RSpec.describe VendorPolicy, type: :policy do
       end
     end
 
-    context 'vendor not attached to any event' do
-      let(:actor) { teammate }
-      it { is_expected.not_to include(vendor) }
+    context 'vendor not attached to any event yet' do
+      context 'as a teammate of the creator on some event' do
+        let(:actor) { teammate }
+        it { is_expected.to include(vendor) }
+      end
+
+      context 'as an organizer sharing no event with the creator' do
+        let(:actor) { outsider }
+        it { is_expected.not_to include(vendor) }
+      end
     end
 
     context 'as an org owner' do
@@ -63,6 +70,13 @@ RSpec.describe VendorPolicy, type: :policy do
         it { is_expected.to permit_action(:update) }
         it { is_expected.not_to permit_action(:destroy) }
       end
+    end
+
+    context 'teammate of the creator, vendor not attached to any event yet' do
+      let(:actor) { teammate }
+
+      it { is_expected.to permit_action(:update) }
+      it { is_expected.not_to permit_action(:destroy) }
     end
 
     context 'organizer with no shared event' do
