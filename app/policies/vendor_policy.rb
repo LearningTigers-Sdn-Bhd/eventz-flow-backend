@@ -19,8 +19,16 @@ class VendorPolicy < UserPolicy
     # ponytail: event_assignments is the only user<->event link (events has no owner column).
     # Anyone staffing the same event as the creator counts as "my org team" for
     # that vendor, even before it's formally assigned via EventVendor.
+    #
+    # Restricted to role: :organizer (not org_owner) - org_owner already sees
+    # everything unconditionally above, and org_owner accounts tend to be
+    # staffed across most/all events for oversight, which would otherwise leak
+    # every vendor they create to every event's organizer team.
     def coorganizer_ids
-      EventAssignment.where(event_id: user.event_assignments.select(:event_id)).select(:user_id)
+      EventAssignment.joins(:user)
+                     .where(event_id: user.event_assignments.select(:event_id))
+                     .merge(User.organizers)
+                     .select(:user_id)
     end
 
     def teammate_vendor_ids
@@ -76,8 +84,12 @@ class VendorPolicy < UserPolicy
 
   # True when the vendor's creator staffs at least one event I also staff -
   # mirrors Scope#coorganizer_ids so index/show/update/destroy agree.
+  # Excludes org_owner creators for the same reason as Scope#coorganizer_ids.
   def coorganizer_vendor?
-    EventAssignment.where(user_id: record.created_by_id, event_id: my_event_ids).exists?
+    creator = record.created_by
+    return false unless creator&.role == 'organizer'
+
+    EventAssignment.where(user_id: creator.id, event_id: my_event_ids).exists?
   end
 
   def teammate_vendor?
