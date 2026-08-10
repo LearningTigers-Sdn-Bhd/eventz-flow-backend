@@ -16,6 +16,7 @@ module V1
 
       events_data = @events.map do |event|
         exhibitor_revenue_cents = exhibitor_revenue_by_event[event.id] || 0
+        partner_metrics = partner_metrics_for_event(event)
 
         if event.use_ticket
           tickets = event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
@@ -31,7 +32,7 @@ module V1
             total_visitors: 0,
             total_leads: 0,
             last_activity: event.updated_at
-          }
+          }.merge(partner_metrics)
         else
           {
             id: event.id,
@@ -47,7 +48,7 @@ module V1
             unscanned_visitors: event.visitors.unscanned.count,
             total_leads: EventLead.joins(:event_vendor).where(event_vendors: { event_id: event.id }).count,
             last_activity: event.updated_at
-          }
+          }.merge(partner_metrics)
         end
       end
 
@@ -134,6 +135,35 @@ module V1
         .group("event_vendors.event_id")
         .sum(:amount)
         .transform_values { |amount| (amount.to_d * 100).to_i }
+    end
+
+    def partner_metrics_for_event(event)
+      exhibitor_counts = event.use_exhibitor_kit? ? exhibitor_counts_for_event(event.id) : { total: 0, paid: 0, unpaid: 0 }
+
+      {
+        use_exhibitor_kit: event.use_exhibitor_kit?,
+        total_vendors: event.event_vendors.count,
+        total_exhibitors: exhibitor_counts[:total],
+        paid_exhibitors: exhibitor_counts[:paid],
+        unpaid_exhibitors: exhibitor_counts[:unpaid]
+      }
+    end
+
+    def exhibitor_counts_for_event(event_id)
+      kits = ExhibitorKit
+        .active_or_paid
+        .joins(:event_vendor)
+        .where(event_vendors: { event_id: event_id })
+        .pluck(:event_vendor_id, :payment_status)
+      exhibitors = kits.group_by(&:first)
+      paid_statuses = %w[paid waived sponsored].flat_map do |status|
+        [status, ExhibitorKit.payment_statuses.fetch(status).to_s]
+      end
+      paid_count = exhibitors.count do |_event_vendor_id, exhibitor_kits|
+        exhibitor_kits.any? { |_event_vendor_id, payment_status| paid_statuses.include?(payment_status.to_s) }
+      end
+
+      { total: exhibitors.size, paid: paid_count, unpaid: exhibitors.size - paid_count }
     end
 
     def scoped_tickets

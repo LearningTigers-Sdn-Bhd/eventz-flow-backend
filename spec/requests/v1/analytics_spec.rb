@@ -63,9 +63,15 @@ RSpec.describe 'V1::Analytics', type: :request do
                        id: { type: :integer },
                        title: { type: :string },
                        status: { type: :string },
+                       use_ticket: { type: :boolean },
+                       use_exhibitor_kit: { type: :boolean },
                        total_tickets: { type: :integer, description: 'Total active tickets (purchased + scanned)' },
                        scanned_tickets: { type: :integer, description: 'Total checked-in tickets' },
                        unscanned_tickets: { type: :integer, description: 'Total unscanned active tickets' },
+                       total_vendors: { type: :integer, description: 'Total vendors linked to the event' },
+                       total_exhibitors: { type: :integer, description: 'Active or paid exhibitors linked to the event' },
+                       paid_exhibitors: { type: :integer, description: 'Exhibitors with paid, waived, or sponsored kits' },
+                       unpaid_exhibitors: { type: :integer, description: 'Exhibitors with unpaid kits' },
                        total_revenue: { type: :integer, description: 'Total revenue in cents' },
                        last_activity: { type: :string, format: 'date-time' }
                      }
@@ -363,6 +369,47 @@ RSpec.describe 'V1::Analytics', type: :request do
         expect(event_data['scanned_tickets']).to eq(0)
         expect(event_data['unscanned_tickets']).to eq(0)
         expect(event_data['total_revenue']).to eq(0)
+      end
+
+      it 'returns vendor counts and exhibitor payment breakdowns' do
+        vendor_event = create(:event, status: :published, visibility: true, use_exhibitor_kit: false)
+        create_list(:merchant, 2, event: vendor_event)
+
+        exhibitor_event = create(:event, status: :published, visibility: true, use_exhibitor_kit: true)
+        paid_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: exhibitor_event)
+        paid_exhibitor.exhibitor_kit.update!(payment_status: :paid, booking_status: :paid)
+        waived_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: exhibitor_event)
+        waived_exhibitor.exhibitor_kit.update!(payment_status: :waived)
+        sponsored_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: exhibitor_event)
+        sponsored_exhibitor.exhibitor_kit.update!(payment_status: :sponsored)
+        create(:exhibitor, :with_exhibitor_kit, event: exhibitor_event)
+        cancelled_exhibitor = create(:exhibitor, :with_exhibitor_kit, event: exhibitor_event)
+        cancelled_exhibitor.exhibitor_kit.update!(booking_status: :cancelled)
+
+        get '/v1/metrics/events_overview', params: {}, headers: {
+          'Authorization' => "Bearer #{edge_case_token}"
+        }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+
+        vendor_data = data['events'].find { |event| event['id'] == vendor_event.id }
+        expect(vendor_data).to include(
+          'use_exhibitor_kit' => false,
+          'total_vendors' => 2,
+          'total_exhibitors' => 0,
+          'paid_exhibitors' => 0,
+          'unpaid_exhibitors' => 0,
+        )
+
+        exhibitor_data = data['events'].find { |event| event['id'] == exhibitor_event.id }
+        expect(exhibitor_data).to include(
+          'use_exhibitor_kit' => true,
+          'total_vendors' => 5,
+          'total_exhibitors' => 4,
+          'paid_exhibitors' => 3,
+          'unpaid_exhibitors' => 1,
+        )
       end
 
       it 'excludes refunded and canceled tickets from calculations' do
