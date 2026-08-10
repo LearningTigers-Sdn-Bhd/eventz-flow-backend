@@ -41,7 +41,7 @@
         </div>
 
         <p class="message">
-          We truly appreciate your interest in being part of the summit and thank you for your understanding.
+          We truly appreciate your interest in being part of <strong><%= @event.title %></strong> and thank you for your understanding.
           <% if @contact_email.present? %>
             For assistance, you may contact us at
             <a href="mailto:<%= @contact_email %>" style="color: #2563eb; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.
