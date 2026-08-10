@@ -493,7 +493,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
   end
 
-  it 'locks every official crew seat to the first person\'s membership status, up to a car of 4' do
+  it 'offers every official crew seat an open member/non-member choice, up to a car of 4' do
     register(
       form: official_crew_form,
       ticket_type: official_crew_non_member,
@@ -503,21 +503,21 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
 
     lookup(form: official_crew_form, plate: 'saz20')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [official_crew_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      official_crew_member.id, official_crew_non_member.id
     )
 
     register(
       form: official_crew_form,
-      ticket_type: official_crew_non_member,
+      ticket_type: official_crew_member,
       plate: 'SAZ-20',
       email: 'crew-2@example.com',
       role: 'Co-Driver'
     )
 
     lookup(form: official_crew_form, plate: 'SAZ 20')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [official_crew_non_member.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      official_crew_member.id, official_crew_non_member.id
     )
 
     register(
