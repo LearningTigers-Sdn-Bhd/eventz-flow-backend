@@ -10,7 +10,9 @@ module V1
       authorize @event, :show?
 
       merchants = @event.event_vendors.merchants.includes(:vendor)
-      exhibitors = @event.exhibitors.with_active_kit.includes(
+      exhibitors = @event.exhibitors
+      exhibitors = exhibitors.with_active_kit if @event.use_exhibitor_kit?
+      exhibitors = exhibitors.includes(
         :vendor,
         exhibitor_kits: [
           :exhibitor_team_members,

@@ -47,15 +47,12 @@ class VehicleRegistrationRules
       capacity: 4,
       base: ['Official Crew - Member', 'Official Crew - Non-Member'],
       # Everything is free, so there's no special "included" ticket for seat 2 —
-      # every seat just reuses whichever ticket the first person picked.
+      # every seat (including the 2nd) picks its own Member/Non-Member ticket.
       included_second: [],
       included_ticket: 'Official Crew - Member',
       member_base: ['Official Crew - Member'],
       additional_member_ticket: 'Official Crew - Member',
-      additional_non_member_ticket: 'Official Crew - Non-Member',
-      # Free tickets, no pricing reason to split — every seat locks to whatever
-      # the first person picked instead of offering an open member/non-member choice.
-      lock_additional_to_base: true
+      additional_non_member_ticket: 'Official Crew - Non-Member'
     }
   }.freeze
 

@@ -648,3 +648,39 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 end
+
+RSpec.describe 'Exhibitor analytics catalog transparency', type: :request do
+  let(:event) { create(:event, status: :published, use_exhibitor_kit: true) }
+  let(:organizer) { create(:user, :organizer) }
+  let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" } }
+
+  before do
+    create(:event_assignment, event: event, user: organizer, role: :event_admin)
+  end
+
+  it 'includes unbooked booth prices and all configured filter options' do
+    priced_zone = create(:exhibitor_zone, event: event, zone: 'Priced Zone')
+    create(:exhibitor_zone, event: event, zone: 'Unpriced Zone')
+    create(:exhibitor_booth_price, event: event, exhibitor_zone: priced_zone,
+                                   label: 'Unbooked Booth', booth_type: 'shell_scheme', price: 4000)
+
+    get "/v1/events/#{event.id}/metrics/exhibitor_analytics", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    data = response.parsed_body
+    empty_row = data.fetch('breakdown').find { |row| row['label'] == 'Unbooked Booth' }
+
+    expect(empty_row).to include(
+      'zone' => 'Priced Zone',
+      'bookedQuantity' => 0,
+      'paidQuantity' => 0,
+      'unpaidQuantity' => 0,
+      'collectedRevenue' => 0.0,
+      'pendingRevenue' => 0.0
+    )
+    expect(data.fetch('filterOptions')).to include(
+      'zones' => include('Priced Zone', 'Unpriced Zone'),
+      'boothPricing' => include('Unbooked Booth')
+    )
+  end
+end

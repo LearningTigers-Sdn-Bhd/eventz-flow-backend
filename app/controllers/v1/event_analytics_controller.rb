@@ -179,6 +179,7 @@ module V1
         collectedRevenue: exhibitor_collected_revenue(kits),
         pendingRevenue: exhibitor_pending_revenue(kits),
         breakdown: exhibitor_breakdown(kits),
+        filterOptions: exhibitor_filter_options,
         vendorMetrics: vendor_metrics
       }
     end
@@ -209,6 +210,13 @@ module V1
       }
     end
 
+    def exhibitor_filter_options
+      {
+        zones: @event.exhibitor_zones.order(:zone, :id).pluck(:zone),
+        boothPricing: @event.exhibitor_booth_prices.order(:label, :id).pluck(:label).uniq
+      }
+    end
+
     def settled_exhibitor_kit?(kit)
       kit.paid? || kit.waived? || kit.sponsored?
     end
@@ -236,10 +244,12 @@ module V1
     end
 
     def exhibitor_breakdown(kits)
-      kits.group_by do |kit|
+      kits_by_key = kits.group_by do |kit|
         [kit.exhibitor_booth_price_id, kit.exhibitor_package_id,
          kit.exhibitor_booth_price&.label || kit.booth_type]
-      end.map do |_key, grouped_kits|
+      end
+
+      rows = kits_by_key.map do |_key, grouped_kits|
         first_kit = grouped_kits.first
         booth_price = first_kit.exhibitor_booth_price
         package = first_kit.exhibitor_package
@@ -262,7 +272,28 @@ module V1
           collectedRevenue: exhibitor_collected_revenue(grouped_kits),
           pendingRevenue: exhibitor_pending_revenue(grouped_kits)
         }
-      end.sort_by { |entry| entry[:label] }
+      end
+
+      booked_price_ids = kits_by_key.keys.map(&:first).compact.uniq
+      unbooked_price_rows = @event.exhibitor_booth_prices.includes(:exhibitor_zone)
+        .to_a
+        .reject { |booth_price| booked_price_ids.include?(booth_price.id) }
+        .map do |booth_price|
+          {
+            breakdownKey: [booth_price.id, 'base-package', booth_price.booth_type || 'unknown'].join(':'),
+            label: booth_price.label,
+            zone: booth_price.zone,
+            boothType: booth_price.booth_type,
+            packageLabel: nil,
+            bookedQuantity: 0,
+            paidQuantity: 0,
+            unpaidQuantity: 0,
+            collectedRevenue: 0.0,
+            pendingRevenue: 0.0
+          }
+        end
+
+      (rows + unbooked_price_rows).sort_by { |entry| [entry[:label], entry[:zone].to_s, entry[:packageLabel].to_s] }
     end
 
     def count_shoppers_today
