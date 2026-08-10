@@ -63,6 +63,14 @@ module V1
       }, status: :ok
     end
 
+    # GET /v1/events/:event_id/metrics/exhibitor_analytics
+    # Returns exhibitor kit sales when exhibitor kits are enabled, otherwise
+    # returns the event's merchant/vendor overview.
+    def exhibitor_analytics
+      payload = @event.use_exhibitor_kit? ? exhibitor_analytics_payload : vendor_analytics_payload
+      render json: payload, status: :ok
+    end
+
     # GET /v1/events/:event_id/metrics/mall_live_feed
     def mall_live_feed
       render json: {
@@ -146,6 +154,115 @@ module V1
 
     def pending_tickets
       eligible_tickets.where(payment_status: :pending)
+    end
+
+    def exhibitor_kits_for_analytics
+      ExhibitorKit
+        .joins(:event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .merge(ExhibitorKit.active_or_paid)
+        .includes(:event_vendor, :exhibitor_booth_price, :exhibitor_package,
+                  :exhibitor_registration_payment)
+    end
+
+    def exhibitor_analytics_payload
+      kits = exhibitor_kits_for_analytics.to_a
+      partner_ids = kits.map(&:event_vendor_id).uniq
+      paid_partner_ids = kits.select { |kit| settled_exhibitor_kit?(kit) }
+                            .map(&:event_vendor_id).uniq
+
+      {
+        mode: 'exhibitor',
+        totalPartners: partner_ids.size,
+        paidPartners: paid_partner_ids.size,
+        unpaidPartners: partner_ids.size - paid_partner_ids.size,
+        collectedRevenue: exhibitor_collected_revenue(kits),
+        pendingRevenue: exhibitor_pending_revenue(kits),
+        breakdown: exhibitor_breakdown(kits),
+        vendorMetrics: vendor_metrics
+      }
+    end
+
+    def vendor_analytics_payload
+      {
+        mode: 'vendor',
+        totalPartners: @event.event_vendors.count,
+        paidPartners: 0,
+        unpaidPartners: 0,
+        collectedRevenue: 0.0,
+        pendingRevenue: 0.0,
+        breakdown: [],
+        vendorMetrics: vendor_metrics
+      }
+    end
+
+    def vendor_metrics
+      event_leads = EventLead.joins(:event_vendor)
+                            .where(event_vendors: { event_id: @event.id })
+
+      voucher_redemptions = VoucherRedemptionLog.for_event(@event)
+
+      {
+        totalLeads: event_leads.count,
+        voucherSales: voucher_redemptions.sum(:transaction_net_amount).to_d.round(2).to_f,
+        voucherRedemptions: voucher_redemptions.count
+      }
+    end
+
+    def settled_exhibitor_kit?(kit)
+      kit.paid? || kit.waived? || kit.sponsored?
+    end
+
+    def exhibitor_collected_revenue(kits)
+      kits.select(&:paid?).sum do |kit|
+        payment = kit.exhibitor_registration_payment
+        next payment.amount.to_d if payment&.status == 'paid'
+        next kit.amount_paid.to_d if payment.nil?
+
+        0.to_d
+      end.round(2).to_f
+    end
+
+    def exhibitor_pending_revenue(kits)
+      kits.select(&:unpaid?).sum { |kit| exhibitor_booking_value(kit) }.round(2).to_f
+    end
+
+    def exhibitor_booking_value(kit)
+      quantity = [kit.booth_quantity.to_i, 1].max
+      unit_price = kit.price_snapshot.to_d
+      return kit.amount_paid.to_d if unit_price.zero? && kit.amount_paid.present?
+
+      unit_price * quantity
+    end
+
+    def exhibitor_breakdown(kits)
+      kits.group_by do |kit|
+        [kit.exhibitor_booth_price_id, kit.exhibitor_package_id,
+         kit.exhibitor_booth_price&.label || kit.booth_type]
+      end.map do |_key, grouped_kits|
+        first_kit = grouped_kits.first
+        booth_price = first_kit.exhibitor_booth_price
+        package = first_kit.exhibitor_package
+        paid_kits = grouped_kits.select { |kit| settled_exhibitor_kit?(kit) }
+        unpaid_kits = grouped_kits.select(&:unpaid?)
+
+        {
+          breakdownKey: [
+            first_kit.exhibitor_booth_price_id || 'booth-type',
+            first_kit.exhibitor_package_id || 'base-package',
+            first_kit.booth_type || 'unknown'
+          ].join(':'),
+          label: booth_price&.label || first_kit.booth_type.to_s.humanize,
+          zone: booth_price&.zone,
+          boothType: booth_price&.booth_type || first_kit.booth_type,
+          packageLabel: package&.name,
+          bookedQuantity: grouped_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          paidQuantity: paid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          unpaidQuantity: unpaid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          collectedRevenue: exhibitor_collected_revenue(grouped_kits),
+          pendingRevenue: exhibitor_pending_revenue(grouped_kits)
+        }
+      end.sort_by { |entry| entry[:label] }
     end
 
     def count_shoppers_today

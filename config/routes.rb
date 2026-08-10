@@ -570,6 +570,7 @@ Rails.application.routes.draw do
           get 'total_scanned_visitors',   to: 'event_analytics#total_scanned_visitors'
           get 'total_unscanned_visitors', to: 'event_analytics#total_unscanned_visitors'
           get 'total_amount_price',       to: 'event_analytics#total_amount_price'
+          get 'exhibitor_analytics',      to: 'event_analytics#exhibitor_analytics'
           get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
           get 'time_series',              to: 'event_analytics#time_series'
           get 'hourly_breakdown_by_day',  to: 'event_analytics#hourly_breakdown_by_day'
