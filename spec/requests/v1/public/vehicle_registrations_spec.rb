@@ -286,6 +286,32 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(driver_ticket.vehicle_registration.base_ticket_type).to eq(expedition_member)
   end
 
+  it 'allows swapping the base ticket between member/non-member within the same category, even with other active participants' do
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'SAD 13',
+      email: 'crew-base@example.com',
+      role: 'Driver'
+    )
+    register(
+      form: official_crew_form,
+      ticket_type: official_crew_non_member,
+      plate: 'SAD 13',
+      email: 'crew-passenger@example.com',
+      role: 'Co-Driver'
+    )
+    driver_ticket = event.tickets.find_by!(attendee_email: 'crew-base@example.com')
+
+    expect {
+      driver_ticket.update!(ticket_type_id: official_crew_member.id)
+    }.not_to raise_error
+
+    expect(driver_ticket.reload.ticket_type).to eq(official_crew_member)
+    expect(driver_ticket.vehicle_registration.registration_form).to eq(official_crew_form)
+    expect(driver_ticket.vehicle_registration.base_ticket_type).to eq(official_crew_member)
+  end
+
   it 'adopts an existing custom-field plate into a vehicle registration' do
     legacy_ticket = create(
       :ticket,

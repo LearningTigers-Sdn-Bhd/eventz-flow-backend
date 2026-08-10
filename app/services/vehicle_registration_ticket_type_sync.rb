@@ -20,9 +20,10 @@ class VehicleRegistrationTicketTypeSync
     form = @ticket.event.registration_forms.find_by(slug: form_slug)
     return unless form
 
-    return if vehicle.registration_form_id == form.id && vehicle.base_ticket_type_id == @ticket.ticket_type_id
+    return if vehicle.base_ticket_type_id == @ticket.ticket_type_id
 
-    if vehicle.active_tickets.where.not(id: @ticket.id).exists?
+    changing_category = vehicle.registration_form_id != form.id
+    if changing_category && vehicle.active_tickets.where.not(id: @ticket.id).exists?
       raise Error, 'Cannot change a vehicle category while it has additional active participants'
     end
 
