@@ -5,19 +5,22 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_tickets
     def total_tickets
-      count = scoped_active_tickets.count
-      render json: { totalTickets: count }, status: :ok
+      render json: {
+        totalTickets: eligible_tickets.count,
+        paidTickets: paid_tickets.count,
+        pendingTickets: pending_tickets.count
+      }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_scanned_tickets
     def total_scanned_tickets
-      count = @event.tickets.checked_in.count
+      count = paid_tickets.checked_in.count
       render json: { totalScannedTickets: count }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_unscanned_tickets
     def total_unscanned_tickets
-      count = @event.tickets.unscanned.count
+      count = paid_tickets.unscanned.count
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
@@ -41,15 +44,23 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_amount_price
     def total_amount_price
-      ticket_revenue_cents = scoped_active_tickets.total_revenue_cents.to_i
-      exhibitor_revenue_cents = ExhibitorRegistrationPayment
+      paid_ticket_cents = paid_tickets.total_revenue_cents.to_i
+      pending_ticket_cents = pending_tickets.total_revenue_cents.to_i
+      paid_exhibitor_cents = ExhibitorRegistrationPayment
         .paid
         .joins(exhibitor_kit: :event_vendor)
         .where(event_vendors: { event_id: @event.id })
         .sum(:amount)
-      exhibitor_revenue_cents = (exhibitor_revenue_cents.to_d * 100).to_i
-      total = ticket_revenue_cents + exhibitor_revenue_cents
-      render json: { totalAmountPrice: total }, status: :ok
+      pending_exhibitor_cents = ExhibitorRegistrationPayment
+        .where(status: %w[pending submitted])
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .sum(:amount)
+
+      render json: {
+        totalAmountPrice: paid_ticket_cents + (paid_exhibitor_cents.to_d * 100).to_i,
+        pendingAmountPrice: pending_ticket_cents + (pending_exhibitor_cents.to_d * 100).to_i
+      }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/mall_live_feed
@@ -122,8 +133,19 @@ module V1
       authorize @event, :analytics?
     end
 
-    def scoped_active_tickets
-      @event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+    def eligible_tickets
+      @event.tickets.where(
+        status: Ticket.statuses.values_at(:purchased, :scanned, :pending_payment),
+        payment_status: Ticket.payment_statuses.values_at(:paid, :pending)
+      )
+    end
+
+    def paid_tickets
+      eligible_tickets.where(payment_status: :paid)
+    end
+
+    def pending_tickets
+      eligible_tickets.where(payment_status: :pending)
     end
 
     def count_shoppers_today
@@ -320,11 +342,11 @@ module V1
     def fetch_time_series_data(metric, range, group_by)
       case metric
       when 'tickets'
-        scoped_active_tickets.time_series_count(:created_at, range: range, group_by: group_by)
+        eligible_tickets.time_series_count(:created_at, range: range, group_by: group_by)
       when 'scans'
-        @event.tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        paid_tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
       when 'revenue'
-        scoped_active_tickets
+        paid_tickets
           .joins(:ticket_type)
           .time_series_sum(:created_at, '(ticket_types.price * 100.0)', range: range, group_by: group_by)
       when 'visitors'
@@ -373,9 +395,9 @@ module V1
     def build_scope_for_metric(metric)
       case metric
       when 'tickets'
-        scoped_active_tickets
+        eligible_tickets
       when 'scans'
-        @event.tickets.checked_in
+        paid_tickets.checked_in
       when 'visitors'
         @event.visitors
       when 'visitor_scans'

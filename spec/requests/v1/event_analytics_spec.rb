@@ -16,11 +16,37 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   # --- Setup Event and Tickets ---
   let(:event) { create(:event, status: :published) }
   let(:ticket_type) { create(:ticket_type, event: event, price: 50.00) }
+  let(:ticket_created_at) { event.start_date + 1.hour }
 
-  # Create tickets with different statuses and check-in states
-  let!(:purchased_tickets) { create_list(:ticket, 5, event: event, ticket_type: ticket_type, status: :purchased) }
-  let!(:scanned_tickets) { create_list(:ticket, 3, event: event, ticket_type: ticket_type, status: :scanned, checked_in: true) }
-  let!(:refunded_tickets) { create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded) }
+  # Create paid, pending, and ineligible tickets on the same RM50 ticket type.
+  let!(:purchased_tickets) do
+    create_list(:ticket, 5, :paid, event: event, ticket_type: ticket_type,
+                                 status: :purchased, created_at: ticket_created_at)
+  end
+  let!(:scanned_tickets) do
+    create_list(:ticket, 3, :paid, event: event, ticket_type: ticket_type,
+                                 status: :scanned, checked_in: true, created_at: ticket_created_at)
+  end
+  let!(:pending_ticket) do
+    create(:ticket, :pending_payment, event: event, ticket_type: ticket_type, checked_in: true,
+                                     created_at: ticket_created_at)
+  end
+  let!(:legacy_pending_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :purchased,
+                    payment_status: :pending, created_at: ticket_created_at)
+  end
+  let!(:failed_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :purchased,
+                    payment_status: :failed, created_at: ticket_created_at)
+  end
+  let!(:refunded_tickets) do
+    create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded,
+                             payment_status: :refunded_payment, created_at: ticket_created_at)
+  end
+  let!(:canceled_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :canceled,
+                    payment_status: :pending, created_at: ticket_created_at)
+  end
 
   # Assign users to event
   before do
@@ -38,7 +64,9 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       response '200', 'Total tickets retrieved successfully' do
         schema type: :object,
                properties: {
-                 totalTickets: { type: :integer }
+                 totalTickets: { type: :integer },
+                 paidTickets: { type: :integer },
+                 pendingTickets: { type: :integer }
                }
 
         let(:event_id) { event.id }
@@ -46,7 +74,9 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalTickets']).to eq(8) # 5 purchased + 3 scanned (excludes refunded)
+          expect(data['totalTickets']).to eq(10)
+          expect(data['paidTickets']).to eq(8)
+          expect(data['pendingTickets']).to eq(2)
         end
       end
 
@@ -108,7 +138,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalUnscannedTickets']).to eq(5) # 8 total - 3 scanned
+          expect(data['totalUnscannedTickets']).to eq(5)
         end
       end
     end
@@ -210,7 +240,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       response '200', 'Total sales amount retrieved successfully' do
         schema type: :object,
                properties: {
-                 totalAmountPrice: { type: :integer, description: 'Amount in cents' }
+                 totalAmountPrice: { type: :integer, description: 'Amount in cents' },
+                 pendingAmountPrice: { type: :integer, description: 'Amount in cents' }
                }
 
         let(:event_id) { event.id }
@@ -218,7 +249,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalAmountPrice']).to eq(40000) # 8 tickets * 50.00 * 100 cents
+          expect(data['totalAmountPrice']).to eq(40000)
+          expect(data['pendingAmountPrice']).to eq(10000)
         end
       end
     end
@@ -354,8 +386,22 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           expect(data['metric']).to eq('tickets')
           expect(data['group_by']).to eq('day')
           expect(data['data']).to be_an(Array)
+          expect(data['data'].sum { |point| point['value'] }).to eq(10)
           expect(data['start_date']).to be_present
           expect(data['end_date']).to be_present
+        end
+      end
+
+      response '200', 'Excludes pending ticket revenue from the time series' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'revenue' }
+        let(:group_by) { 'day' }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(40000)
         end
       end
 
