@@ -1169,3 +1169,24 @@ RSpec.describe 'Event vendor visibility after kit cancellation', type: :request 
     expect(response.parsed_body.map { |vendor| vendor['id'] }).to contain_exactly(active_exhibitor.id)
   end
 end
+
+RSpec.describe 'Event vendor visibility without exhibitor kits', type: :request do
+  let(:event) { create(:event, use_ticket: true, use_exhibitor_kit: false) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:vendor) { create(:user, :vendor) }
+  let(:headers) { { 'Authorization' => "Bearer #{jwt_token(org_owner)}" } }
+
+  it 'lists a manually assigned vendor when exhibitor kits are disabled' do
+    post "/v1/events/#{event.id}/vendors",
+      params: { vendor: { vendor_id: vendor.id } },
+      headers: headers
+
+    expect(response).to have_http_status(:created)
+    created_vendor_id = response.parsed_body.fetch('id')
+
+    get "/v1/events/#{event.id}/vendors", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.map { |event_vendor| event_vendor['id'] }).to include(created_vendor_id)
+  end
+end
