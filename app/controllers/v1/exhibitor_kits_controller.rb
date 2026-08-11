@@ -2,7 +2,7 @@ class V1::ExhibitorKitsController < ApplicationController
   before_action :authenticate_user!
   before_action :set_event
   before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration customs_duty_estimate permanently_delete force_delete]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order export]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -13,6 +13,32 @@ class V1::ExhibitorKitsController < ApplicationController
   def show
     authorize @exhibitor_kit
     render json: format_exhibitor_kit(@exhibitor_kit)
+  end
+
+  # GET /v1/events/:event_id/exhibitor_kits/export?format=xlsx|csv
+  # Downloads registered exhibitor kits for the event as an Excel workbook (default) or CSV.
+  def export
+    authorize @event, :analytics?
+
+    if params[:format] == 'csv'
+      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
+      send_data(
+        ExhibitorKitCsvService.export(@event.id),
+        filename: "exhibitor-kits-#{@event.id}-#{timestamp}.csv",
+        type: 'text/csv',
+        disposition: 'attachment'
+      )
+    else
+      result = ExhibitorKitExcelService.export(@event.id)
+      send_file(
+        result[:file_path],
+        filename: File.basename(result[:file_path]),
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        disposition: 'attachment'
+      )
+    end
+  rescue Pundit::NotAuthorizedError
+    render json: { error: 'Not authorized to export exhibitor kits for this event' }, status: :forbidden
   end
 
   def create
