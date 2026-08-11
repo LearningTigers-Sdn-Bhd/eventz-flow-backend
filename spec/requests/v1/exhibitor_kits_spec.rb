@@ -666,4 +666,99 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
     end
   end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import_template' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    get('download exhibitor kit import template') do
+      tags 'Exhibitor Kits'
+      produces 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      security [{ bearerAuth: [] }]
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+
+      response(200, 'template downloaded') do
+        let(:organizer) { create(:user, :organizer) }
+        let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    post('import exhibitor kits from Excel') do
+      tags 'Exhibitor Kits'
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      security [{ bearerAuth: [] }]
+      parameter name: :file, in: :formData, type: :file, required: true,
+                description: 'Excel workbook created from the exhibitor kit import template'
+      parameter name: :dry_run, in: :query, type: :boolean, required: false,
+                description: 'Validate rows without persisting bookings'
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+      let(:organizer) { create(:user, :organizer) }
+      let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+      let(:zone) { create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10) }
+      let!(:booth_price) do
+        create(:exhibitor_booth_price, event: event, exhibitor_zone: zone,
+          booth_type: 'Standard', label: 'Standard 3x3', price: 500, quota: 5)
+      end
+      let(:file) do
+        require 'caxlsx'
+
+        package = Axlsx::Package.new
+        package.workbook.add_worksheet(name: 'Exhibitors') do |sheet|
+          sheet.add_row(ExhibitorKitImportTemplateService::FIXED_HEADERS)
+          sheet.add_row([
+            'swagger-vendor@example.com', 'Swagger Vendor', '0123456789', 'Acme', 'Addr',
+            'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+          ])
+        end
+        tempfile = Tempfile.new(['import', '.xlsx'])
+        tempfile.binmode
+        package.serialize(tempfile.path)
+        tempfile.rewind
+        Rack::Test::UploadedFile.new(tempfile.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      end
+
+      response(200, 'import completed') do
+        schema type: :object,
+               properties: {
+                 total: { type: :integer },
+                 created: { type: :object },
+                 skipped: { type: :object },
+                 errors: { type: :object }
+               },
+               required: %w[total created skipped errors]
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+
+      response(422, 'file is missing') do
+        let(:file) { nil }
+
+        run_test!
+      end
+    end
+  end
 end
