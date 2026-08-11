@@ -8,7 +8,6 @@ class ExhibitorKitImportService
   REQUIRED_HEADERS = %w[
     Vendor\ Email PIC\ Name PIC\ Contact Booth\ Type Price\ Label Booth\ Quantity Payment\ Status
   ].freeze
-  CUSTOM_PREFIX = 'Custom: '
 
   def self.import(file, event:, current_user:, dry_run: false)
     new(event, current_user: current_user).import(file, dry_run: dry_run)
@@ -26,7 +25,12 @@ class ExhibitorKitImportService
     sheet = xlsx.sheet('Exhibitors')
 
     header_row = (1..sheet.last_column).map { |col| sheet.cell(1, col)&.to_s&.strip }
-    custom_columns = header_row.each_index.select { |i| header_row[i]&.start_with?(CUSTOM_PREFIX) }
+    # Any column that isn't one of the known fixed headers is treated as a custom
+    # field — no "Custom: " prefix needed, so it reads like a normal column and the
+    # template can add/remove custom columns freely without a naming convention.
+    custom_columns = header_row.each_index.select do |i|
+      header_row[i].present? && !ExhibitorKitImportTemplateService::FIXED_HEADERS.include?(header_row[i])
+    end
 
     (2..sheet.last_row).each do |row_num|
       row = header_row.each_index.each_with_object({}) { |i, h| h[header_row[i]] = sheet.cell(row_num, i + 1) }
@@ -36,9 +40,9 @@ class ExhibitorKitImportService
       begin
         import_row!(row, custom_columns, header_row, dry_run: dry_run, results: results, row_num: row_num)
       rescue ExhibitorBookingCapacity::SoldOut
-        record_error(results, row_num, 'Booth price or zone quota exceeded')
+        record_error(results, row_num, 'Booth price or zone quota exceeded', row: row)
       rescue StandardError => e
-        record_error(results, row_num, e.message)
+        record_error(results, row_num, e.message, row: row)
       end
     end
 
@@ -50,31 +54,31 @@ class ExhibitorKitImportService
   def import_row!(row, custom_columns, header_row, dry_run:, results:, row_num:)
     missing = REQUIRED_HEADERS.select { |h| row[h].blank? }
     if missing.any?
-      record_error(results, row_num, "Missing required field(s): #{missing.join(', ')}")
+      record_error(results, row_num, "Missing required field(s): #{missing.join(', ')}", row: row)
       return
     end
 
     booth_price = resolve_booth_price(booth_type: row['Booth Type'], zone: row['Zone'], label: row['Price Label'])
     unless booth_price
-      record_error(results, row_num, 'No matching booth price for given Booth Type/Zone/Price Label')
+      record_error(results, row_num, 'No matching booth price for given Booth Type/Zone/Price Label', row: row)
       return
     end
 
     package = resolve_package(name: row['Package Name'], booth_price: booth_price)
     if row['Package Name'].present? && package.nil?
-      record_error(results, row_num, "Package '#{row['Package Name']}' does not match the resolved booth price")
+      record_error(results, row_num, "Package '#{row['Package Name']}' does not match the resolved booth price", row: row)
       return
     end
 
     quantity = row['Booth Quantity'].to_i
     if quantity <= 0
-      record_error(results, row_num, 'Booth Quantity must be a positive integer')
+      record_error(results, row_num, 'Booth Quantity must be a positive integer', row: row)
       return
     end
 
     payment_status = row['Payment Status'].to_s.strip.downcase
     unless ExhibitorKit.payment_statuses.key?(payment_status)
-      record_error(results, row_num, "Payment Status must be one of: #{ExhibitorKit.payment_statuses.keys.join(', ')}")
+      record_error(results, row_num, "Payment Status must be one of: #{ExhibitorKit.payment_statuses.keys.join(', ')}", row: row)
       return
     end
 
@@ -82,8 +86,8 @@ class ExhibitorKitImportService
       value = row[header_row[i]]
       next if value.blank?
 
-      key = TicketExcelService.machine_key_for(header_row[i].delete_prefix(CUSTOM_PREFIX))
-      # Guard against a stray/hand-edited "Custom: ..." column colliding with an
+      key = TicketExcelService.machine_key_for(header_row[i])
+      # Guard against a stray/hand-edited custom column colliding with an
       # internal bookkeeping key (dedup fingerprints, batch ids, etc.) — see
       # ExhibitorKit::SYSTEM_CUSTOM_FIELD_KEYS. The template already excludes these,
       # this is defense in depth for files not generated from the current template.
@@ -96,7 +100,14 @@ class ExhibitorKitImportService
       ExhibitorKit.transaction do
         @event.lock!
         check_capacity!(booth_price: booth_price, package: package, quantity: quantity)
+        raise ActiveRecord::Rollback # dry run: validate only, never persist
       end
+
+      results[:created][:count] += 1
+      results[:created][:data] << row_preview(
+        row_num: row_num, row: row, booth_price: booth_price, package: package,
+        quantity: quantity, payment_status: payment_status
+      )
       return
     end
 
@@ -149,12 +160,54 @@ class ExhibitorKitImportService
     end
 
     results[:created][:count] += 1
-    results[:created][:data] << { row: row_num, id: kit.id, public_id: kit.public_id, vendor_email: kit.event_vendor.vendor.email }
+    results[:created][:data] << row_preview(
+      row_num: row_num, row: row, booth_price: booth_price, package: package,
+      quantity: quantity, payment_status: payment_status
+    ).merge(id: kit.id, public_id: kit.public_id)
   end
 
-  def record_error(results, row_num, message)
+  # Shared row summary for both the dry-run preview and a real created row, so the
+  # frontend preview table and the post-import results table render identically
+  # (real rows just additionally carry id/public_id, dry-run rows don't since
+  # nothing was persisted).
+  def row_preview(row_num:, row:, booth_price:, package:, quantity:, payment_status:)
+    {
+      row: row_num,
+      vendor_email: row['Vendor Email'].to_s.strip.downcase,
+      vendor_name: row['Vendor Name'],
+      company_name: row['Company Name'],
+      booth_type: booth_price.booth_type,
+      zone: booth_price.zone,
+      price_label: booth_price.label,
+      package_name: package&.name,
+      booth_quantity: quantity,
+      payment_status: payment_status,
+      amount: (package&.price || booth_price.current_price).to_f
+    }
+  end
+
+  # `row` is the raw sheet row, not a resolved booth_price/package — a row can fail
+  # precisely because it didn't resolve, so this reads straight from the cells the
+  # admin typed, letting the preview table show what was entered even on failure.
+  def record_error(results, row_num, message, row: nil)
     results[:errors][:count] += 1
-    results[:errors][:data] << { row: row_num, error: message }
+    entry = { row: row_num, error: message }
+    entry.merge!(raw_row_summary(row)) if row
+    results[:errors][:data] << entry
+  end
+
+  def raw_row_summary(row)
+    {
+      vendor_email: row['Vendor Email'].to_s.strip.downcase.presence,
+      vendor_name: row['Vendor Name'],
+      company_name: row['Company Name'],
+      booth_type: row['Booth Type'],
+      zone: row['Zone'],
+      price_label: row['Price Label'],
+      package_name: row['Package Name'],
+      booth_quantity: row['Booth Quantity'],
+      payment_status: row['Payment Status']
+    }
   end
 
   def resolve_booth_price(booth_type:, zone:, label:)

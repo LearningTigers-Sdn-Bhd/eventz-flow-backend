@@ -46,7 +46,7 @@ class ExhibitorKitImportTemplateService
       .reject { |key| ExhibitorKit::SYSTEM_CUSTOM_FIELD_KEYS.include?(key) }
       .sort
 
-    keys.map { |key| "Custom: #{key.to_s.tr('_', ' ').split.map(&:capitalize).join(' ')}" }
+    keys.map { |key| key.to_s.tr('_', ' ').split.map(&:capitalize).join(' ') }
   end
 
   def build_exhibitors_sheet(package)
@@ -55,22 +55,56 @@ class ExhibitorKitImportTemplateService
     end
   end
 
+  # Two separate remaining-quota columns because a booth price's own quota being
+  # "Unlimited" does not mean it's actually bookable — its zone can still be capped
+  # (and vice versa). Showing only one number was what made row 3's "quota
+  # exceeded" import error look like a bug: the price-level column said Unlimited
+  # while the zone was in fact full.
   def build_reference_sheet(package)
     prices = @event.exhibitor_booth_prices.includes(:exhibitor_zone, :exhibitor_packages).order(:booth_type, :label)
+    booth_price_sold = sold_quantity_by_booth_price
+    zone_sold = sold_quantity_by_zone
 
     package.workbook.add_worksheet(name: 'Reference') do |sheet|
-      sheet.add_row(['Booth Type', 'Zone', 'Price Label', 'Current Price', 'Remaining Quota', 'Package Name'])
+      sheet.add_row([
+        'Booth Type', 'Zone', 'Price Label', 'Current Price',
+        'Remaining Quota (This Price)', 'Remaining Quota (Zone)', 'Package Name'
+      ])
 
       prices.each do |price|
-        remaining = price.quota.nil? ? 'Unlimited' : price.quota
+        price_remaining = remaining_quota(price.quota, booth_price_sold[price.id])
+        zone_remaining = price.exhibitor_zone ? remaining_quota(price.exhibitor_zone.quota, zone_sold[price.exhibitor_zone_id]) : 'N/A'
+
         if price.exhibitor_packages.any?
           price.exhibitor_packages.each do |pkg|
-            sheet.add_row([price.booth_type, price.zone, price.label, price.current_price, remaining, pkg.name])
+            sheet.add_row([price.booth_type, price.zone, price.label, price.current_price, price_remaining, zone_remaining, pkg.name])
           end
         else
-          sheet.add_row([price.booth_type, price.zone, price.label, price.current_price, remaining, nil])
+          sheet.add_row([price.booth_type, price.zone, price.label, price.current_price, price_remaining, zone_remaining, nil])
         end
       end
     end
+  end
+
+  def remaining_quota(quota, sold)
+    return 'Unlimited' if quota.nil?
+
+    [quota - sold.to_i, 0].max
+  end
+
+  def sold_quantity_by_booth_price
+    ExhibitorKit.joins(:event_vendor)
+      .where(event_vendors: { event_id: @event.id })
+      .merge(ExhibitorKit.active_or_paid)
+      .group(:exhibitor_booth_price_id)
+      .sum(:booth_quantity)
+  end
+
+  def sold_quantity_by_zone
+    ExhibitorKit.joins(:event_vendor, :exhibitor_booth_price)
+      .where(event_vendors: { event_id: @event.id })
+      .merge(ExhibitorKit.active_or_paid)
+      .group('exhibitor_booth_prices.exhibitor_zone_id')
+      .sum(:booth_quantity)
   end
 end
