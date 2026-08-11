@@ -41,6 +41,75 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/exhibitor_kits/export' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:member_user) { create(:user, :member) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let!(:kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event)) }
+
+    it 'downloads a multi-sheet Excel workbook for an authorized organizer' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to eq(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+      expect(response.headers['Content-Disposition']).to include('.xlsx')
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      expect(workbook.sheets).to eq(['Summary', 'Registered Exhibitor', 'Exhibitor Crew'])
+      expect(workbook.sheet('Registered Exhibitor').cell(2, 1)).to eq(kit.company_name)
+      expect(workbook.sheet('Exhibitor Crew').cell(2, 1)).to eq(kit.company_name)
+      tempfile.close!
+    end
+
+    it 'downloads a CSV of registered exhibitor kits when format=csv' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", params: { format: 'csv' },
+                                                            headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to include('text/csv')
+      expect(response.headers['Content-Disposition']).to include('.csv')
+
+      rows = CSV.parse(response.body)
+      expect(rows.first).to eq(ExhibitorKitReportRows::HEADERS)
+      expect(rows.second.first).to eq(kit.company_name)
+    end
+
+    it 'includes booth pricing tiers with zero bookings in the Summary breakdown' do
+      unbooked = create(:exhibitor_booth_price, event: event, label: 'Untouched Tier')
+
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      summary = workbook.sheet('Summary')
+      row = (1..summary.last_row).find { |r| summary.cell(r, 1) == unbooked.label }
+      expect(row).to be_present
+      expect(summary.cell(row, 3)).to eq(0) # Booked column
+      tempfile.close!
+    end
+
+    it 'rejects users without event management access' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(member_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'rejects export when exhibitor kits are not enabled for the event' do
+      disabled_event = create(:event, use_exhibitor_kit: false)
+
+      get "/v1/events/#{disabled_event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
   path '/v1/events/{event_id}/exhibitor_kits' do
     parameter name: 'event_id', in: :path, type: :string, description: 'ID of the event'
 

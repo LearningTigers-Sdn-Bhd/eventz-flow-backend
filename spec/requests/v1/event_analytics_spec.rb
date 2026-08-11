@@ -559,6 +559,55 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
         end
       end
 
+      response '200', 'Returns exhibitor booth revenue time series, separate from ticket revenue' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_revenue' }
+        let(:group_by) { 'day' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                       booth_quantity: 1, amount_paid: 1000, price_snapshot: 1000,
+                       payment_status: :paid, booking_status: :paid, created_at: ticket_created_at)
+          create(:exhibitor_registration_payment, exhibitor_kit: kit,
+                 amount: 1000, status: 'paid', paid_at: ticket_created_at)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(1000)
+        end
+      end
+
+      response '200', 'Includes exhibitor bookings made outside the ticket registration window under all_time' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_bookings' }
+        let(:date_mode) { 'all_time' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          # Booked well before any ticket registration, outside the ticket-derived window.
+          travel_to(event.start_date - 30.days) do
+            create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 1000, price_snapshot: 1000,
+                   payment_status: :unpaid, booking_status: :active)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_bookings')
+          expect(data['data'].sum { |point| point['value'] }).to eq(1)
+        end
+      end
+
       response '200', 'Auto-detects group_by based on event duration' do
         let(:event_id) { event.id }
         let(:Authorization) { "Bearer #{organizer_token}" }

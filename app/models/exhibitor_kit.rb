@@ -28,6 +28,22 @@ class ExhibitorKit < ApplicationRecord
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
   scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
+
+  # Counts toward "paid" for reporting purposes: actually paid, or excused from payment
+  # (waived/sponsored). Shared by analytics and export so both agree on what "settled" means.
+  def settled?
+    paid? || waived? || sponsored?
+  end
+
+  # Revenue this booking represents (booth price * quantity), falling back to whatever
+  # was actually recorded as paid when no price snapshot exists (e.g. legacy bookings).
+  def booking_value
+    quantity = [booth_quantity.to_i, 1].max
+    unit_price = price_snapshot.to_d
+    return amount_paid.to_d if unit_price.zero? && amount_paid.present?
+
+    unit_price * quantity
+  end
   validates :public_id, uniqueness: true
   validates :idempotency_key, uniqueness: { scope: :event_vendor_id }, allow_nil: true
 
