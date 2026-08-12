@@ -36,7 +36,7 @@ class VehicleRegistrationRules
     },
     'competitor-support' => {
       capacity: 4,
-      base: ['Support - Member', 'Support - Non-Member'],
+      base: ['Support - Member', 'Support - Non-Member', 'Support - Corporate'],
       included_second: ['Support - Member'],
       included_ticket: 'Included 2nd Person - Member/Corporate',
       member_base: ['Support - Member'],
