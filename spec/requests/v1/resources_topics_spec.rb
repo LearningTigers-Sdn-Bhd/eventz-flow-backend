@@ -20,9 +20,9 @@ RSpec.describe 'V1::ResourcesTopics', type: :request, openapi_spec: 'v1/swagger.
   # ============================================================
   # Test Users and Setup
   # ============================================================
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:visitor) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:visitor) { create(:user, role: :member) }
   let!(:resource_topic) { create(:resource_topic, name: "Event Management", description: "Planning and execution") }
   let!(:deleted_resource_topic) { create(:resource_topic, name: "Deleted Topic", deleted_at: 1.day.ago) }
 
