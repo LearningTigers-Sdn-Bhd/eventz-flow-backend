@@ -41,6 +41,75 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/exhibitor_kits/export' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:member_user) { create(:user, :member) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let!(:kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event)) }
+
+    it 'downloads a multi-sheet Excel workbook for an authorized organizer' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to eq(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+      expect(response.headers['Content-Disposition']).to include('.xlsx')
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      expect(workbook.sheets).to eq(['Summary', 'Registered Exhibitor', 'Exhibitor Crew'])
+      expect(workbook.sheet('Registered Exhibitor').cell(2, 1)).to eq(kit.company_name)
+      expect(workbook.sheet('Exhibitor Crew').cell(2, 1)).to eq(kit.company_name)
+      tempfile.close!
+    end
+
+    it 'downloads a CSV of registered exhibitor kits when format=csv' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", params: { format: 'csv' },
+                                                            headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to include('text/csv')
+      expect(response.headers['Content-Disposition']).to include('.csv')
+
+      rows = CSV.parse(response.body)
+      expect(rows.first).to eq(ExhibitorKitReportRows::HEADERS)
+      expect(rows.second.first).to eq(kit.company_name)
+    end
+
+    it 'includes booth pricing tiers with zero bookings in the Summary breakdown' do
+      unbooked = create(:exhibitor_booth_price, event: event, label: 'Untouched Tier')
+
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      summary = workbook.sheet('Summary')
+      row = (1..summary.last_row).find { |r| summary.cell(r, 1) == unbooked.label }
+      expect(row).to be_present
+      expect(summary.cell(row, 3)).to eq(0) # Booked column
+      tempfile.close!
+    end
+
+    it 'rejects users without event management access' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(member_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'rejects export when exhibitor kits are not enabled for the event' do
+      disabled_event = create(:event, use_exhibitor_kit: false)
+
+      get "/v1/events/#{disabled_event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
   path '/v1/events/{event_id}/exhibitor_kits' do
     parameter name: 'event_id', in: :path, type: :string, description: 'ID of the event'
 
@@ -595,6 +664,101 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
+    end
+  end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import_template' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    get('download exhibitor kit import template') do
+      tags 'Exhibitor Kits'
+      produces 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      security [{ bearerAuth: [] }]
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+
+      response(200, 'template downloaded') do
+        let(:organizer) { create(:user, :organizer) }
+        let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    post('import exhibitor kits from Excel') do
+      tags 'Exhibitor Kits'
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      security [{ bearerAuth: [] }]
+      parameter name: :file, in: :formData, type: :file, required: true,
+                description: 'Excel workbook created from the exhibitor kit import template'
+      parameter name: :dry_run, in: :query, type: :boolean, required: false,
+                description: 'Validate rows without persisting bookings'
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+      let(:organizer) { create(:user, :organizer) }
+      let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+      let(:zone) { create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10) }
+      let!(:booth_price) do
+        create(:exhibitor_booth_price, event: event, exhibitor_zone: zone,
+          booth_type: 'Standard', label: 'Standard 3x3', price: 500, quota: 5)
+      end
+      let(:file) do
+        require 'caxlsx'
+
+        package = Axlsx::Package.new
+        package.workbook.add_worksheet(name: 'Exhibitors') do |sheet|
+          sheet.add_row(ExhibitorKitImportTemplateService::FIXED_HEADERS)
+          sheet.add_row([
+            'swagger-vendor@example.com', 'Swagger Vendor', '0123456789', 'Acme', 'Addr',
+            'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+          ])
+        end
+        tempfile = Tempfile.new(['import', '.xlsx'])
+        tempfile.binmode
+        package.serialize(tempfile.path)
+        tempfile.rewind
+        Rack::Test::UploadedFile.new(tempfile.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      end
+
+      response(200, 'import completed') do
+        schema type: :object,
+               properties: {
+                 total: { type: :integer },
+                 created: { type: :object },
+                 skipped: { type: :object },
+                 errors: { type: :object }
+               },
+               required: %w[total created skipped errors]
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+
+      response(422, 'file is missing') do
+        let(:file) { nil }
+
+        run_test!
+      end
     end
   end
 end

@@ -243,6 +243,7 @@ module V1
         :wish_wall_background_image,
         :remove_wish_wall_background_image,
         labels_data: {}, # Allows JSONB hash updates
+        exhibitor_labels_data: {}, # Allows JSONB hash updates
         booth_types: [], # Allows JSONB array updates
         event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email],
         wish_wall_setting_attributes: %i[

@@ -1,8 +1,16 @@
 class V1::ExhibitorKitsController < ApplicationController
+  # Some browsers/OS send the legacy .xls MIME type for .xlsx uploads; accept both,
+  # matching the existing xlsx allowlist in UploadsController::ALLOWED_CONTENT_TYPES.
+  XLSX_CONTENT_TYPES = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel'
+  ].freeze
+  MAX_IMPORT_FILE_SIZE = 50.megabytes
+
   before_action :authenticate_user!
   before_action :set_event
   before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration customs_duty_estimate permanently_delete force_delete]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order export import_template import]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -13,6 +21,77 @@ class V1::ExhibitorKitsController < ApplicationController
   def show
     authorize @exhibitor_kit
     render json: format_exhibitor_kit(@exhibitor_kit)
+  end
+
+  # GET /v1/events/:event_id/exhibitor_kits/export?format=xlsx|csv
+  # Downloads registered exhibitor kits for the event as an Excel workbook (default) or CSV.
+  def export
+    authorize @event, :analytics?
+
+    if params[:format] == 'csv'
+      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
+      send_data(
+        ExhibitorKitCsvService.export(@event.id),
+        filename: "exhibitor-kits-#{@event.id}-#{timestamp}.csv",
+        type: 'text/csv',
+        disposition: 'attachment'
+      )
+    else
+      result = ExhibitorKitExcelService.export(@event.id)
+      send_file(
+        result[:file_path],
+        filename: File.basename(result[:file_path]),
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        disposition: 'attachment'
+      )
+    end
+  rescue Pundit::NotAuthorizedError
+    render json: { error: 'Not authorized to export exhibitor kits for this event' }, status: :forbidden
+  end
+
+  # GET /v1/events/:event_id/exhibitor_kits/import_template
+  def import_template
+    authorize @event, :update?
+
+    result = ExhibitorKitImportTemplateService.export(@event.id)
+    send_file(
+      result[:file_path],
+      filename: File.basename(result[:file_path]),
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment'
+    )
+  end
+
+  # POST /v1/events/:event_id/exhibitor_kits/import
+  def import
+    authorize @event, :update?
+
+    file = params[:file]
+    unless file.present?
+      return render json: { error: 'No file provided' }, status: :unprocessable_content
+    end
+    unless file.respond_to?(:content_type) && XLSX_CONTENT_TYPES.include?(file.content_type)
+      return render json: { error: 'File must be an .xlsx workbook' }, status: :unprocessable_content
+    end
+    if file.size.to_i > MAX_IMPORT_FILE_SIZE
+      return render json: { error: 'File size exceeds the maximum allowed size of 50MB' }, status: :unprocessable_content
+    end
+
+    dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
+    results = ExhibitorKitImportService.import(file, event: @event, current_user: current_user, dry_run: dry_run)
+    total = results[:created][:count] + results[:errors][:count]
+
+    render json: {
+      total: total,
+      created: results[:created],
+      skipped: results[:skipped],
+      errors: results[:errors]
+    }, status: :ok
+  rescue Pundit::NotAuthorizedError
+    raise
+  rescue StandardError => e
+    Rails.logger.error "Exhibitor kit import error: #{e.message}"
+    render json: { error: 'Import failed', errors: [e.message] }, status: :unprocessable_content
   end
 
   def create

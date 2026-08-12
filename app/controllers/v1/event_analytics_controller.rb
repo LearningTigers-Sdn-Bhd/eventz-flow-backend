@@ -88,7 +88,8 @@ module V1
     # Flexible time-series analytics with hourly, daily, weekly, monthly grouping.
     #
     # Query params:
-    #   metric: tickets | scans | revenue | visitors | visitor_scans | leads | redemptions | redemption_value (required)
+    #   metric: tickets | scans | revenue | visitors | visitor_scans | leads | redemptions | redemption_value |
+    #           exhibitor_bookings | exhibitor_revenue (required)
     #   group_by: hour | day | week | month (optional, auto-detected from event duration)
     #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
     #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
@@ -97,7 +98,7 @@ module V1
       return render json: { error: 'metric parameter is required' }, status: :bad_request if metric.blank?
 
       group_by = params[:group_by].presence || auto_group_by
-      range = build_date_range
+      range = build_date_range_for_metric(metric)
 
       data = fetch_time_series_data(metric, range, group_by)
       return render json: { error: "Invalid metric: #{metric}" }, status: :bad_request if data.nil?
@@ -218,7 +219,7 @@ module V1
     end
 
     def settled_exhibitor_kit?(kit)
-      kit.paid? || kit.waived? || kit.sponsored?
+      kit.settled?
     end
 
     def exhibitor_collected_revenue(kits)
@@ -232,15 +233,7 @@ module V1
     end
 
     def exhibitor_pending_revenue(kits)
-      kits.select(&:unpaid?).sum { |kit| exhibitor_booking_value(kit) }.round(2).to_f
-    end
-
-    def exhibitor_booking_value(kit)
-      quantity = [kit.booth_quantity.to_i, 1].max
-      unit_price = kit.price_snapshot.to_d
-      return kit.amount_paid.to_d if unit_price.zero? && kit.amount_paid.present?
-
-      unit_price * quantity
+      kits.select(&:unpaid?).sum(&:booking_value).round(2).to_f
     end
 
     def exhibitor_breakdown(kits)
@@ -426,6 +419,12 @@ module V1
         # For redemptions, use earliest redemption_timestamp
         earliest = VoucherRedemptionLog.for_event(@event).minimum(:redemption_timestamp)
         earliest&.to_date || @event.start_date.to_date
+      when 'exhibitor_bookings'
+        earliest = exhibitor_kits_for_analytics.minimum(:created_at)
+        earliest&.to_date || @event.start_date.to_date
+      when 'exhibitor_revenue'
+        earliest = exhibitor_registration_payments_for_analytics.minimum(:paid_at)
+        earliest&.to_date || @event.start_date.to_date
       else
         # For tickets, visitors, revenue - use earliest registration
         find_earliest_registration_date
@@ -453,6 +452,12 @@ module V1
         latest&.to_date || @event.end_date.to_date
       when 'visitors'
         latest = @event.visitors.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'exhibitor_bookings'
+        latest = exhibitor_kits_for_analytics.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'exhibitor_revenue'
+        latest = exhibitor_registration_payments_for_analytics.maximum(:paid_at)
         latest&.to_date || @event.end_date.to_date
       else
         @event.end_date.to_date
@@ -511,6 +516,37 @@ module V1
       when 'redemption_value'
         VoucherRedemptionLog.for_event(@event)
                             .time_series_sum(:redemption_timestamp, :discount_applied_value, range: range, group_by: group_by)
+      when 'exhibitor_bookings'
+        exhibitor_kits_for_analytics
+          .where(created_at: range)
+          .send(groupdate_method(group_by), :created_at)
+          .count
+          .map { |period, value| { period: format_time_series_period(period, group_by), value: value } }
+      when 'exhibitor_revenue'
+        exhibitor_registration_payments_for_analytics
+          .where(paid_at: range)
+          .send(groupdate_method(group_by), :paid_at)
+          .sum(:amount)
+          .map { |period, value| { period: format_time_series_period(period, group_by), value: value.to_f } }
+      end
+    end
+
+    def exhibitor_registration_payments_for_analytics
+      ExhibitorRegistrationPayment
+        .paid
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+    end
+
+    def groupdate_method(group_by)
+      { 'hour' => :group_by_hour, 'day' => :group_by_day, 'week' => :group_by_week, 'month' => :group_by_month }.fetch(group_by)
+    end
+
+    def format_time_series_period(period, group_by)
+      case group_by
+      when 'hour'  then period.strftime('%Y-%m-%d %H:00')
+      when 'week', 'day' then period.strftime('%Y-%m-%d')
+      when 'month' then period.strftime('%Y-%m')
       end
     end
 

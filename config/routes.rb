@@ -273,6 +273,11 @@ Rails.application.routes.draw do
         get :ic_copy, on: :member
         get :customs_declaration, on: :member
         get :customs_duty_estimate, on: :member
+        collection do
+          get :export
+          get :import_template
+          post :import
+        end
         member do
           post :submit_order
           post :reject_payment_proof
