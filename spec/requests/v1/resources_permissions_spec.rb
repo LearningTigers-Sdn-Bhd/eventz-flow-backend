@@ -20,9 +20,9 @@ RSpec.describe 'V1::ResourcesPermissions', type: :request, openapi_spec: 'v1/swa
   # ============================================================
   # Test Users and Setup
   # ============================================================
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:visitor) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:visitor) { create(:user, role: :member) }
   let!(:resource_write_permission) { create(:resource_write_permission, user: writer) }
 
   # ============================================================
