@@ -54,16 +54,20 @@ class Rack::Attack
   end
 
   # 8. Public Registration Protection (Walk-in spam)
-  # Limit public registration to 5 per hour per IP
-  throttle("public_registration/ip", limit: 5, period: 1.hour) do |req|
+  # Limit public registration to 40 per hour per IP.
+  # Group bookings submit one POST per attendee (see submitGroupRegistrations
+  # in the panel frontend), so this must comfortably clear the largest
+  # supported group size plus retries, not just a single walk-in registrant.
+  throttle("public_registration/ip", limit: 40, period: 1.hour) do |req|
     if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
       req.ip
     end
   end
 
   # 9. Public Registration by Email (prevent same email spam)
-  # Limit by email to 3 per hour per email
-  throttle("public_registration/email", limit: 3, period: 1.hour) do |req|
+  # Limit by email to 40 per hour per email (see rationale above; a group
+  # leader's own attendee_email can also appear as one of the attendees).
+  throttle("public_registration/email", limit: 40, period: 1.hour) do |req|
     if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
       req.params['attendee_email'].presence
     end

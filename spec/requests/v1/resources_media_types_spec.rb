@@ -19,9 +19,9 @@ RSpec.describe 'V1::ResourcesMediaTypes', type: :request, openapi_spec: 'v1/swag
   # ============================================================
   # Test Users and Setup
   # ============================================================
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:visitor) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:visitor) { create(:user, role: :member) }
   let!(:resource_media_type) { create(:resource_media_type, name: "Article", description: "Written content") }
   let!(:deleted_resource_media_type) { create(:resource_media_type, name: "Deleted Type", deleted_at: 1.day.ago) }
 
