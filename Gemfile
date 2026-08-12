@@ -15,7 +15,10 @@ gem "puma", ">= 5.0"
 # gem "jbuilder"
 
 # Use Redis adapter to run Action Cable in production
-gem "redis", ">= 4.0.1"
+# Upper bound matches actioncable's own runtime constraint (gem "redis", ">= 4", "< 6")
+# in action_cable/subscription_adapter/redis.rb — without it bundler resolves redis 6.x,
+# which raises Gem::LoadError the first time ActionCable lazily loads its adapter.
+gem "redis", ">= 4.0.1", "< 6"
 
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
