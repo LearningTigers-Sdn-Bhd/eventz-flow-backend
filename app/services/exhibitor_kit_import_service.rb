@@ -9,8 +9,16 @@ class ExhibitorKitImportService
     Vendor\ Email PIC\ Name PIC\ Contact Booth\ Type Price\ Label Booth\ Quantity Payment\ Status
   ].freeze
 
-  def self.import(file, event:, current_user:, dry_run: false)
-    new(event, current_user: current_user).import(file, dry_run: dry_run)
+  # Row-content dedupe fingerprint (vendor + booth price + package + quantity),
+  # stamped on every kit this service creates. Re-uploading the same file — the
+  # actual bug this guards against — produces identical fingerprints for every
+  # row, so they land in `skipped` (not `created`, not silently re-booked)
+  # unless the caller explicitly approves that row via `force_duplicate_rows`
+  # (e.g. an admin deliberately wants a second, identical booking).
+  FINGERPRINT_KEY = '_import_dedupe_fingerprint'
+
+  def self.import(file, event:, current_user:, dry_run: false, force_duplicate_rows: [])
+    new(event, current_user: current_user).import(file, dry_run: dry_run, force_duplicate_rows: force_duplicate_rows)
   end
 
   def initialize(event, current_user: nil)
@@ -18,8 +26,16 @@ class ExhibitorKitImportService
     @current_user = current_user
   end
 
-  def import(file, dry_run: false)
+  def import(file, dry_run: false, force_duplicate_rows: [])
     results = { created: { count: 0, data: [] }, skipped: { count: 0, data: [] }, errors: { count: 0, data: [] } }
+    force_duplicate_rows = force_duplicate_rows.map(&:to_i).to_set
+
+    # Snapshotted once, up front — not re-queried per row. Two identical rows
+    # within *this same file* (a deliberate double booking) must both be allowed
+    # to create; only fingerprints that existed before this run started count as
+    # "a duplicate". Re-querying live would make row 2 wrongly see row 1's
+    # just-committed kit from a few lines above and skip itself.
+    existing_fingerprints = existing_fingerprint_index
 
     xlsx = Roo::Spreadsheet.open(file.respond_to?(:path) ? file.path : file)
     sheet = xlsx.sheet('Exhibitors')
@@ -38,7 +54,8 @@ class ExhibitorKitImportService
       next if row.values_at(*REQUIRED_HEADERS).all?(&:blank?) # fully empty row
 
       begin
-        import_row!(row, custom_columns, header_row, dry_run: dry_run, results: results, row_num: row_num)
+        import_row!(row, custom_columns, header_row, dry_run: dry_run, results: results, row_num: row_num,
+          force_duplicate_rows: force_duplicate_rows, existing_fingerprints: existing_fingerprints)
       rescue ExhibitorBookingCapacity::SoldOut
         record_error(results, row_num, 'Booth price or zone quota exceeded', row: row)
       rescue StandardError => e
@@ -51,7 +68,7 @@ class ExhibitorKitImportService
 
   private
 
-  def import_row!(row, custom_columns, header_row, dry_run:, results:, row_num:)
+  def import_row!(row, custom_columns, header_row, dry_run:, results:, row_num:, force_duplicate_rows:, existing_fingerprints:)
     missing = REQUIRED_HEADERS.select { |h| row[h].blank? }
     if missing.any?
       record_error(results, row_num, "Missing required field(s): #{missing.join(', ')}", row: row)
@@ -79,6 +96,25 @@ class ExhibitorKitImportService
     payment_status = row['Payment Status'].to_s.strip.downcase
     unless ExhibitorKit.payment_statuses.key?(payment_status)
       record_error(results, row_num, "Payment Status must be one of: #{ExhibitorKit.payment_statuses.keys.join(', ')}", row: row)
+      return
+    end
+
+    vendor_email = row['Vendor Email'].to_s.strip.downcase
+    fingerprint = row_fingerprint(vendor_email: vendor_email, booth_price: booth_price, package: package, quantity: quantity)
+    duplicate = existing_fingerprints[fingerprint]
+    if duplicate && !force_duplicate_rows.include?(row_num)
+      results[:skipped][:count] += 1
+      results[:skipped][:data] << row_preview(
+        row_num: row_num, row: row, booth_price: booth_price, package: package,
+        quantity: quantity, payment_status: payment_status
+      ).merge(
+        duplicate: true,
+        existing_kit_id: duplicate[:id],
+        existing_kit_public_id: duplicate[:public_id],
+        existing_created_at: duplicate[:created_at],
+        error: "Matches an existing booking (kit ##{duplicate[:id]}, created #{duplicate[:created_at].strftime('%Y-%m-%d %H:%M')}). " \
+               'Approve this row to import it anyway.'
+      )
       return
     end
 
@@ -148,7 +184,7 @@ class ExhibitorKitImportService
         price_snapshot: package&.price || booth_price.current_price,
         payment_status: payment_status,
         booking_status: booking_status,
-        custom_fields_data: custom_fields_data
+        custom_fields_data: custom_fields_data.merge(FINGERPRINT_KEY => fingerprint)
       )
     end
 
@@ -210,6 +246,30 @@ class ExhibitorKitImportService
       booth_quantity: row['Booth Quantity'],
       payment_status: row['Payment Status']
     }
+  end
+
+  # Content-based, not identity-based: same vendor + same booth price + same
+  # package + same quantity always hashes the same, regardless of which file or
+  # upload it came from. That's what makes re-uploading an unchanged file inert.
+  def row_fingerprint(vendor_email:, booth_price:, package:, quantity:)
+    Digest::SHA256.hexdigest([vendor_email, booth_price.id, package&.id, quantity].join('|'))
+  end
+
+  # One query, snapshotted before any row in this run is processed — see the
+  # comment in #import for why this can't be a live per-row lookup. Only
+  # *active/paid* kits count — a cancelled/expired booking freeing up the same
+  # booth/package/quantity combo should be rebookable, not flagged as a duplicate
+  # of itself. Fingerprints are only ever written by this service, so a match
+  # here always means "already imported in an earlier run of this exact file."
+  def existing_fingerprint_index
+    ExhibitorKit.joins(:event_vendor)
+      .where(event_vendors: { event_id: @event.id })
+      .merge(ExhibitorKit.active_or_paid)
+      .where("custom_fields_data ->> ? IS NOT NULL", FINGERPRINT_KEY)
+      .pluck(Arel.sql("custom_fields_data ->> '#{FINGERPRINT_KEY}'"), :id, :public_id, :created_at)
+      .each_with_object({}) do |(fingerprint, id, public_id, created_at), index|
+        index[fingerprint] ||= { id: id, public_id: public_id, created_at: created_at }
+      end
   end
 
   def resolve_booth_price(booth_type:, zone:, label:)

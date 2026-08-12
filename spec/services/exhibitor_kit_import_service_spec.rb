@@ -121,7 +121,8 @@ RSpec.describe ExhibitorKitImportService do
       expect(kit.exhibitor_booth_price).to eq(booth_price)
       expect(kit.payment_status).to eq('paid')
       expect(kit.booking_status).to eq('paid')
-      expect(kit.custom_fields_data).to eq('t_shirt_size' => 'L')
+      expect(kit.custom_fields_data).to include('t_shirt_size' => 'L')
+      expect(kit.custom_fields_data[described_class::FINGERPRINT_KEY]).to be_present
 
       expect(ActionMailer::Base.deliveries.map(&:subject).join).to be_present
     end
@@ -139,7 +140,8 @@ RSpec.describe ExhibitorKitImportService do
       described_class.import(file.path, event: event, current_user: organizer)
 
       kit = ExhibitorKit.last
-      expect(kit.custom_fields_data).to eq('t_shirt_size' => 'L')
+      expect(kit.custom_fields_data).to include('t_shirt_size' => 'L')
+      expect(kit.custom_fields_data[described_class::FINGERPRINT_KEY]).to be_present
     end
 
     it 'reuses an existing vendor User and EventVendor across two rows (multi-booth)' do
@@ -156,6 +158,35 @@ RSpec.describe ExhibitorKitImportService do
       }.to change(User, :count).by(0).and change(EventVendor, :count).by(1).and change(ExhibitorKit, :count).by(2)
 
       expect(existing_user.event_vendor_assignments.where(event: event).count).to eq(1)
+    end
+
+    it 'skips a row that matches a booking already created in an earlier import run, instead of creating a duplicate' do
+      row = ['repeat2@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+
+      first_result = described_class.import(build_upload([row]).path, event: event, current_user: organizer)
+      expect(first_result[:created][:count]).to eq(1)
+
+      expect {
+        second_result = described_class.import(build_upload([row]).path, event: event, current_user: organizer)
+        expect(second_result[:created][:count]).to eq(0)
+        expect(second_result[:skipped][:count]).to eq(1)
+        expect(second_result[:skipped][:data].first[:duplicate]).to eq(true)
+        expect(second_result[:skipped][:data].first[:error]).to include('Matches an existing booking')
+      }.not_to change(ExhibitorKit, :count)
+    end
+
+    it 'creates the row anyway when its row number is explicitly force-approved as a duplicate' do
+      row = ['repeat3@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+
+      described_class.import(build_upload([row]).path, event: event, current_user: organizer)
+
+      expect {
+        result = described_class.import(build_upload([row]).path, event: event, current_user: organizer, force_duplicate_rows: [2])
+        expect(result[:created][:count]).to eq(1)
+        expect(result[:skipped][:count]).to eq(0)
+      }.to change(ExhibitorKit, :count).by(1)
     end
 
     it 'records a row error and continues when booth price does not match' do
