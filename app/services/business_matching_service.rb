@@ -647,7 +647,11 @@ class BusinessMatchingService < BaseService
   # ExhibitorKit) — a uuid would silently mis-cast. booking_id is kept in
   # metadata instead for traceability.
   def _deliver_booking_email(mailer_action, args, booking)
-    EmailDelivery::AuditedDelivery.deliver_now(
+    # deliver_later (Sidekiq) rather than deliver_now: this runs inside the
+    # booking create/update request, and sending synchronously via the Resend
+    # HTTP API can push the request past a reverse-proxy gateway timeout,
+    # causing the client to see a 5xx / retry a successful create.
+    EmailDelivery::AuditedDelivery.deliver_later(
       mailer_name: 'BookingMailer',
       mailer_action: mailer_action,
       args: args,
