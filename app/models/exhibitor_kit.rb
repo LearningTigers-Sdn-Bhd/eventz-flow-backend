@@ -1,4 +1,19 @@
 class ExhibitorKit < ApplicationRecord
+  # custom_fields_data doubles as internal bookkeeping storage for a few flows
+  # (dedup fingerprints, batch tracking, in-flight payment method choice) alongside
+  # genuine admin/vendor-submitted custom form fields. Anything that treats
+  # custom_fields_data as "the custom fields the admin/exhibitor filled in" — the
+  # import template's column list, the import's write path — must exclude these keys.
+  SYSTEM_CUSTOM_FIELD_KEYS = [
+    PublicExhibitorBookingService::FINGERPRINT_KEY, # dedup fingerprint on public bookings
+    EventVendorBatchService::FINGERPRINT_FIELD,      # dedup fingerprint on admin batch bookings
+    EventVendorBatchService::BATCH_KEY_FIELD,        # admin batch grouping key
+    'booking_batch_id',                              # batch grouping id, written by both booking flows
+    'payment_option',                                # in-flight payment method choice, cleared on settle
+    'zone',                                           # booth zone snapshot at booking time, derived data
+    'is_booth_manager'                                # internal team-member-role flag, not a form field
+  ].freeze
+
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
   belongs_to :exhibitor_package, optional: true

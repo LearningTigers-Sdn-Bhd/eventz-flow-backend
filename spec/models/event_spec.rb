@@ -253,6 +253,49 @@ RSpec.describe Event, type: :model do
     end
   end
 
+  describe '#sync_custom_labels_to_exhibitor_kits' do
+    let(:event) { create(:event, exhibitor_labels_data: { 'product_description' => 'Product Description' }) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+
+    context 'when renaming a label' do
+      let!(:kit) do
+        create(:exhibitor_kit, event_vendor: exhibitor,
+                                custom_fields_data: { 'product_description' => 'Handmade soap' })
+      end
+
+      it 'updates exhibitor_kit custom_fields_data keys' do
+        event.update!(exhibitor_labels_data: { 'product_desc' => 'Product Desc' })
+
+        kit.reload
+        expect(kit.custom_fields_data).to eq({ 'product_desc' => 'Handmade soap' })
+      end
+    end
+
+    context 'when labels are not renamed' do
+      let!(:kit) do
+        create(:exhibitor_kit, event_vendor: exhibitor,
+                                custom_fields_data: { 'product_description' => 'Handmade soap' })
+      end
+
+      it 'does not change exhibitor_kit custom_fields_data' do
+        event.update!(exhibitor_labels_data: { 'product_description' => 'Product Description (v2)' })
+
+        kit.reload
+        expect(kit.custom_fields_data).to eq({ 'product_description' => 'Handmade soap' })
+      end
+    end
+
+    context 'when exhibitor_kit has empty custom_fields_data' do
+      let!(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, custom_fields_data: {}) }
+
+      it 'does not raise an error' do
+        expect do
+          event.update!(exhibitor_labels_data: { 'product_desc' => 'Product Desc' })
+        end.not_to raise_error
+      end
+    end
+  end
+
   describe '#webhook_urls' do
     it 'returns empty array when webhook_url is nil' do
       event = build(:event, webhook_url: nil)
