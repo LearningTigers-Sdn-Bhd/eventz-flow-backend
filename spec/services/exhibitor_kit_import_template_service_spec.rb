@@ -58,7 +58,7 @@ RSpec.describe ExhibitorKitImportTemplateService do
       xlsx = Roo::Spreadsheet.open(result[:file_path])
       sheet = xlsx.sheet('Reference')
 
-      row = (1..sheet.last_column).map { |col| sheet.cell(2, col) }
+      row = (1..7).map { |col| sheet.cell(2, col) }
       expect(row).to eq(['Standard', 'Hall A', 'Standard 3x3', 500.0, 5, 10, 'Basic Package'])
     end
 
@@ -80,5 +80,110 @@ RSpec.describe ExhibitorKitImportTemplateService do
       expect(row[4]).to eq('Unlimited') # Remaining Quota (This Price)
       expect(row[5]).to eq(0)           # Remaining Quota (Zone) - actually full
     end
+
+    it 'appends deduped Booth Type / Zone / Price Label / Package Name lookup columns below the price table' do
+      zone_a = create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10)
+      price_a = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone_a,
+        booth_type: 'Standard', label: 'Standard 3x3', price: 500)
+      create(:exhibitor_booth_price, event: event, exhibitor_zone: zone_a,
+        booth_type: 'Standard', label: 'Standard 6x3', price: 900)
+      create(:exhibitor_package, event: event, exhibitor_booth_price: price_a, name: 'Basic Package', price: 600)
+
+      result = described_class.export(event.id)
+      xlsx = Roo::Spreadsheet.open(result[:file_path])
+      sheet = xlsx.sheet('Reference')
+
+      # price table: header (row 1) + 2 price rows (rows 2-3) -> spacer row 4,
+      # lookup header row 5, first lookup value row 6. All in column A onward now.
+      expect(sheet.cell(5, 1)).to eq('Booth Type (lookup)')
+      expect(sheet.cell(6, 1)).to eq('Standard')
+      expect(sheet.cell(6, 2)).to eq('Hall A')
+      expect(sheet.cell(6, 3)).to eq('Standard 3x3')
+      expect(sheet.cell(7, 3)).to eq('Standard 6x3')
+      expect(sheet.cell(6, 4)).to eq('Basic Package')
+    end
+
+    it 'appends a real, valid sample row below the lookup lists (all in column A), safe from ever being imported' do
+      zone = create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10)
+      price = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone,
+        booth_type: 'Standard', label: 'Standard 3x3', price: 500)
+      create(:exhibitor_package, event: event, exhibitor_booth_price: price, name: 'Basic Package', price: 600)
+
+      result = described_class.export(event.id)
+      xlsx = Roo::Spreadsheet.open(result[:file_path])
+      sheet = xlsx.sheet('Reference')
+
+      header_row_num = (1..sheet.last_row).find { |r| sheet.cell(r, 1) == 'Vendor Email' }
+      expect(header_row_num).to be_present
+
+      value_row = (1..sheet.last_column).map { |c| sheet.cell(header_row_num + 1, c) }
+      expect(value_row[0]).to eq('vendor@example.com') # Vendor Email
+      expect(value_row[8]).to eq('Standard')             # Booth Type
+      expect(value_row[10]).to eq('Standard 3x3')        # Price Label
+      expect(value_row[11]).to eq('Basic Package')       # Package Name
+      expect(value_row[12]).to eq(1)                     # Booth Quantity — valid, unlike the old Exhibitors-sheet attempt
+    end
+
+    it 'is on the Reference sheet, so ExhibitorKitImportService (which only reads the Exhibitors sheet) never sees it' do
+      create(:exhibitor_booth_price, event: event, booth_type: 'Standard', label: 'Standard 3x3', price: 500)
+
+      result = described_class.export(event.id)
+      xlsx = Roo::Spreadsheet.open(result[:file_path])
+      exhibitors_sheet = xlsx.sheet('Exhibitors')
+
+      expect((1..exhibitors_sheet.last_row).map { |r| exhibitors_sheet.cell(r, 1) }).not_to include('vendor@example.com')
+    end
   end
+
+  describe '.export dropdown validation' do
+    it 'restricts Booth Type/Zone/Price Label/Package Name columns to the Reference sheet lookup range' do
+      zone = create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10)
+      create(:exhibitor_booth_price, event: event, exhibitor_zone: zone,
+        booth_type: 'Standard', label: 'Standard 3x3', price: 500)
+
+      result = described_class.export(event.id)
+      sheet_xml = read_zip_entry(result[:file_path], 'xl/worksheets/sheet1.xml')
+      doc = Nokogiri::XML(sheet_xml)
+      validations = doc.css('dataValidation').to_h { |node| [node['sqref'], node.at_css('formula1')&.text] }
+
+      # 1 price row (no package) -> spacer row 3, lookup header row 4, values start row 5.
+      # Lookup lists live in column A onward on the Reference sheet now (stacked, not beside the price table).
+      expect(validations['I2:I500']).to eq('Reference!$A$5:$A$5')
+      expect(validations['J2:J500']).to eq('Reference!$B$5:$B$5')
+      expect(validations['K2:K500']).to eq('Reference!$C$5:$C$5')
+      expect(validations['L2:L500']).to be_nil # no package configured -> nothing to restrict to
+    end
+
+    it 'adds a header comment pointing to the Reference sheet for each restricted column' do
+      result = described_class.export(event.id)
+      comments_xml = read_zip_entry(result[:file_path], 'xl/comments1.xml')
+      doc = Nokogiri::XML(comments_xml)
+      refs = doc.css('comment').map { |node| node['ref'] }
+
+      expect(refs).to include('I1', 'J1', 'K1', 'L1')
+    end
+
+    it 'restricts Payment Status to the fixed enum via an inline list' do
+      result = described_class.export(event.id)
+      sheet_xml = read_zip_entry(result[:file_path], 'xl/worksheets/sheet1.xml')
+      doc = Nokogiri::XML(sheet_xml)
+      validation = doc.css('dataValidation').find { |node| node['sqref'] == 'O2:O500' }
+
+      expect(validation.at_css('formula1').text).to eq('"unpaid,paid,waived,sponsored"')
+    end
+
+    it 'adds a required-field comment for non-reference required columns (e.g. Vendor Email)' do
+      result = described_class.export(event.id)
+      comments_xml = read_zip_entry(result[:file_path], 'xl/comments1.xml')
+      doc = Nokogiri::XML(comments_xml)
+      refs = doc.css('comment').map { |node| node['ref'] }
+
+      # A1 = Vendor Email
+      expect(refs).to include('A1')
+    end
+  end
+end
+
+def read_zip_entry(file_path, entry_name)
+  Zip::File.open(file_path) { |zip| zip.read(entry_name) }
 end

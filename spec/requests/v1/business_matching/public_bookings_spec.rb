@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
+  include ActiveJob::TestHelper
+
   let(:event) { create(:event, use_business_matching: true) }
   let(:host_user) { create(:user) }
   let(:session) do
@@ -32,10 +34,12 @@ RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
   end
 
   it "emails both the visitor and the host a confirmation" do
-    expect {
-      post "/v1/business_matching/events/#{event.id}/bookings/public",
-           params: booking_params, headers: auth_headers(visitor)
-    }.to change { ActionMailer::Base.deliveries.size }.by(2)
+    perform_enqueued_jobs do
+      expect {
+        post "/v1/business_matching/events/#{event.id}/bookings/public",
+             params: booking_params, headers: auth_headers(visitor)
+      }.to change { ActionMailer::Base.deliveries.size }.by(2)
+    end
 
     recipients = ActionMailer::Base.deliveries.last(2).flat_map(&:to)
     expect(recipients).to contain_exactly("visitor@example.com", host_user.email)
