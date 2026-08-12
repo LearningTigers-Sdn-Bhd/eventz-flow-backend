@@ -22,6 +22,7 @@ class Event < ApplicationRecord
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
+  has_many :exhibitor_kits, through: :exhibitors
   has_many :public_exhibitor_access_sessions, dependent: :destroy
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
@@ -61,6 +62,7 @@ class Event < ApplicationRecord
   # --- Callbacks ---
   after_commit :send_webhook_notification, on: %i[create update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
+  after_update :sync_custom_labels_to_exhibitor_kits, if: :saved_change_to_exhibitor_labels_data?
 
   accepts_nested_attributes_for :event_email_setting, update_only: true
   accepts_nested_attributes_for :wish_wall_setting, update_only: true
@@ -245,6 +247,33 @@ class Event < ApplicationRecord
     # Update visitors
     visitors.find_each do |visitor|
       update_custom_fields_keys(visitor, key_mapping)
+    end
+  end
+
+  # Sync custom label keys to exhibitor kits when exhibitor_labels_data changes.
+  # Same rename-by-position logic as sync_custom_labels_to_attendees, kept as a
+  # separate bucket/callback since exhibitor custom fields are also written by
+  # the public exhibitor registration microsite (a hardcoded key on that side,
+  # not driven by this schema) — mixing them into labels_data would rename keys
+  # the microsite doesn't know about.
+  def sync_custom_labels_to_exhibitor_kits
+    old_labels, new_labels = saved_change_to_exhibitor_labels_data
+    old_labels ||= {}
+    new_labels ||= {}
+
+    old_keys = old_labels.keys
+    new_keys = new_labels.keys
+
+    key_mapping = {}
+    old_keys.each_with_index do |old_key, index|
+      new_key = new_keys[index]
+      key_mapping[old_key] = new_key if new_key.present? && old_key != new_key
+    end
+
+    return if key_mapping.empty?
+
+    exhibitor_kits.find_each do |kit|
+      update_custom_fields_keys(kit, key_mapping)
     end
   end
 

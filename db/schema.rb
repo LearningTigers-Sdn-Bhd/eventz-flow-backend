@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_08_001936) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_12_095403) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -692,11 +692,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_08_001936) do
     t.jsonb "business_matching_interest_tags", default: [], null: false
     t.date "business_matching_default_start_date"
     t.date "business_matching_default_end_date"
-    t.jsonb "business_matching_default_hours", default: [{"start_time"=>"09:00", "end_time"=>"17:00"}], null: false
+    t.jsonb "business_matching_default_hours", default: [{"end_time" => "17:00", "start_time" => "09:00"}], null: false
     t.boolean "business_matching_hours_editable_default", default: true, null: false
     t.integer "business_matching_default_slot_duration", default: 30, null: false
     t.boolean "business_matching_public_booking_enabled", default: true, null: false
     t.date "business_matching_public_booking_cutoff_date"
+    t.jsonb "exhibitor_labels_data", default: {}
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1739,13 +1740,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_08_001936) do
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "business_matching_availabilities", "business_matching_participants"
   add_foreign_key "business_matching_availabilities", "business_matching_sessions"
-  add_foreign_key "business_matching_reminder_logs", "business_matching_bookings"
   add_foreign_key "business_matching_availabilities", "users", column: "host_user_id"
   add_foreign_key "business_matching_bookings", "business_matching_participants", column: "receiver_participant_id"
   add_foreign_key "business_matching_bookings", "business_matching_participants", column: "requester_participant_id"
   add_foreign_key "business_matching_bookings", "business_matching_sessions"
   add_foreign_key "business_matching_bookings", "users", column: "host_user_id"
   add_foreign_key "business_matching_participants", "events"
+  add_foreign_key "business_matching_reminder_logs", "business_matching_bookings"
   add_foreign_key "business_matching_sessions", "events"
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"

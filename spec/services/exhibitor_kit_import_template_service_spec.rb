@@ -23,9 +23,8 @@ RSpec.describe ExhibitorKitImportTemplateService do
   end
 
   describe '.export custom columns' do
-    it 'adds one plain-named column per distinct custom_fields_data key on the event' do
-      exhibitor = create(:exhibitor, event: event)
-      create(:exhibitor_kit, event_vendor: exhibitor, custom_fields_data: { 't_shirt_size' => 'L' })
+    it 'adds one column per label configured in the event exhibitor_labels_data schema' do
+      event.update!(exhibitor_labels_data: { 't_shirt_size' => 'T Shirt Size' })
 
       result = described_class.export(event.id)
       xlsx = Roo::Spreadsheet.open(result[:file_path])
@@ -35,29 +34,16 @@ RSpec.describe ExhibitorKitImportTemplateService do
       expect(header_row).to include('T Shirt Size')
     end
 
-    it 'excludes internal bookkeeping keys stored in custom_fields_data' do
+    it 'adds no custom columns for a fresh event with no exhibitor_labels_data configured, even with existing kits' do
       exhibitor = create(:exhibitor, event: event)
-      create(:exhibitor_kit, event_vendor: exhibitor, custom_fields_data: {
-        't_shirt_size' => 'L',
-        'booking_batch_id' => 'abc-123',
-        'payment_option' => 'now',
-        'zone' => 'Hall A',
-        PublicExhibitorBookingService::FINGERPRINT_KEY => 'deadbeef',
-        EventVendorBatchService::FINGERPRINT_FIELD => 'deadbeef',
-        EventVendorBatchService::BATCH_KEY_FIELD => 'batch-key'
-      })
+      create(:exhibitor_kit, event_vendor: exhibitor, custom_fields_data: { 't_shirt_size' => 'L' })
 
       result = described_class.export(event.id)
       xlsx = Roo::Spreadsheet.open(result[:file_path])
       sheet = xlsx.sheet('Exhibitors')
       header_row = (1..sheet.last_column).map { |col| sheet.cell(1, col) }
 
-      expect(header_row).to include('T Shirt Size')
-      # None of the excluded custom_fields_data keys should add an extra column at
-      # all — 'Zone' stays present exactly once, as the fixed column, not duplicated
-      # by a system-key-derived custom column.
-      expect(header_row.count('Zone')).to eq(1)
-      expect(header_row.grep(/Booking Batch|Payment Option|Fingerprint|Batch Key/)).to be_empty
+      expect(header_row).not_to include('T Shirt Size')
     end
   end
 

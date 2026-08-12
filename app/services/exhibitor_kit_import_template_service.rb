@@ -37,16 +37,12 @@ class ExhibitorKitImportTemplateService
 
   private
 
+  # Sourced from the event's configured exhibitor_labels_data schema (Event Settings)
+  # rather than scanning existing exhibitor_kits — a fresh event with zero exhibitors
+  # booked yet still gets its custom columns, instead of only appearing once someone
+  # has already registered with that field filled in.
   def custom_field_headers
-    keys = ExhibitorKit.joins(:event_vendor)
-      .where(event_vendors: { event_id: @event.id })
-      .pluck(:custom_fields_data)
-      .flat_map(&:keys)
-      .uniq
-      .reject { |key| ExhibitorKit::SYSTEM_CUSTOM_FIELD_KEYS.include?(key) }
-      .sort
-
-    keys.map { |key| key.to_s.tr('_', ' ').split.map(&:capitalize).join(' ') }
+    (@event.exhibitor_labels_data || {}).values
   end
 
   def build_exhibitors_sheet(package)
