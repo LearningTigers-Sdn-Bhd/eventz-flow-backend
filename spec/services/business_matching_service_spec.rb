@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe BusinessMatchingService do
+  include ActiveJob::TestHelper
+
   let(:user) { create(:user) }
   let(:service) { described_class.new(user) }
   let(:event) { create(:event, start_date: 1.day.from_now, end_date: 2.days.from_now) }
@@ -136,8 +138,10 @@ RSpec.describe BusinessMatchingService do
         time: "10:00 AM"
       }
 
-      expect { service.create_booking(session.id, event.id, params) }
-        .to change { ActionMailer::Base.deliveries.size }.by(2)
+      perform_enqueued_jobs do
+        expect { service.create_booking(session.id, event.id, params) }
+          .to change { ActionMailer::Base.deliveries.size }.by(2)
+      end
 
       recipients = ActionMailer::Base.deliveries.last(2).flat_map(&:to)
       expect(recipients).to contain_exactly("alice@example.com", host.email)

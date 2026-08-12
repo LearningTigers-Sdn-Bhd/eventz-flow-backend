@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'V1::BusinessMatching::Bookings reschedule/cancel', type: :request do
+  include ActiveJob::TestHelper
+
   let(:event) { create(:event, use_business_matching: true) }
   let(:host_user) { create(:user) }
   let(:session) do
@@ -18,10 +20,12 @@ RSpec.describe 'V1::BusinessMatching::Bookings reschedule/cancel', type: :reques
 
   describe 'PATCH /v1/business_matching/bookings/:id/reschedule' do
     it 'reschedules the booking and emails both participant and host' do
-      expect {
-        patch "/v1/business_matching/bookings/#{booking.id}/reschedule",
-              params: { date: (Date.current + 1).to_s, time: '11:00 AM' }
-      }.to change { ActionMailer::Base.deliveries.size }.by(2)
+      perform_enqueued_jobs do
+        expect {
+          patch "/v1/business_matching/bookings/#{booking.id}/reschedule",
+                params: { date: (Date.current + 1).to_s, time: '11:00 AM' }
+        }.to change { ActionMailer::Base.deliveries.size }.by(2)
+      end
 
       expect(response).to have_http_status(:ok)
       expect(booking.reload.booking_time).to eq('11:00 AM')
@@ -33,9 +37,11 @@ RSpec.describe 'V1::BusinessMatching::Bookings reschedule/cancel', type: :reques
 
   describe 'PATCH /v1/business_matching/bookings/:id/cancel' do
     it 'cancels the booking and emails both participant and host' do
-      expect {
-        patch "/v1/business_matching/bookings/#{booking.id}/cancel"
-      }.to change { ActionMailer::Base.deliveries.size }.by(2)
+      perform_enqueued_jobs do
+        expect {
+          patch "/v1/business_matching/bookings/#{booking.id}/cancel"
+        }.to change { ActionMailer::Base.deliveries.size }.by(2)
+      end
 
       expect(response).to have_http_status(:ok)
       expect(booking.reload.status).to eq('Cancelled')
