@@ -152,4 +152,119 @@ RSpec.describe ExhibitorKitService, type: :service do
       expect(foreign_exhibitor.reload.exhibitor_kits).to be_empty
     end
   end
+
+  describe '#update changing booth price / package / voucher' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:user) { create(:user, :organizer) }
+    let(:old_booth_price) { create(:exhibitor_booth_price, event: event, price: 1500.0, exhibitor_zone: nil) }
+    let(:new_booth_price) { create(:exhibitor_booth_price, event: event, price: 2000.0, exhibitor_zone: nil) }
+    let(:exhibitor_kit) do
+      create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event),
+        exhibitor_booth_price: old_booth_price, price_snapshot: 1500.0, amount_paid: 1500.0,
+        payment_status: :unpaid, booking_status: :active)
+    end
+
+    def update_with(attrs)
+      params = ActionController::Parameters.new(exhibitor_kit: attrs)
+      described_class.new(user: user, event: event, params: params).update(exhibitor_kit)
+    end
+
+    it 'recomputes price_snapshot and amount_paid for the new booth price' do
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id)
+
+      expect(result).to be_success
+      expect(exhibitor_kit.reload).to have_attributes(
+        exhibitor_booth_price_id: new_booth_price.id,
+        booth_type: new_booth_price.booth_type,
+        price_snapshot: 2000.0,
+        amount_paid: 2000.0
+      )
+    end
+
+    it 'rejects the change once the kit is settled' do
+      exhibitor_kit.update!(payment_status: :paid)
+
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id)
+
+      expect(result).not_to be_success
+      expect(result.status).to eq(:unprocessable_content)
+      expect(exhibitor_kit.reload.exhibitor_booth_price_id).to eq(old_booth_price.id)
+    end
+
+    it 'rejects a new booth price with no remaining capacity' do
+      new_booth_price.update!(quota: 0)
+
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id)
+
+      expect(result).not_to be_success
+      expect(result.errors).to eq('Booth capacity is sold out')
+      expect(exhibitor_kit.reload.exhibitor_booth_price_id).to eq(old_booth_price.id)
+    end
+
+    it 'releases a previously assigned booth when the booth price changes' do
+      booth = create(:exhibitor_booth, event: event, exhibitor_booth_price: old_booth_price,
+        exhibitor_kit: exhibitor_kit, status: :booked)
+      exhibitor_kit.update!(booth_number: booth.number)
+
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id)
+
+      expect(result).to be_success
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(exhibitor_kit.reload.booth_number).to be_nil
+    end
+
+    it 'rejects a package that does not belong to the selected booth price' do
+      mismatched_package = create(:exhibitor_package, event: event,
+        exhibitor_booth_price: create(:exhibitor_booth_price, event: event, exhibitor_zone: nil))
+
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id,
+        exhibitor_package_id: mismatched_package.id)
+
+      expect(result).not_to be_success
+      expect(result.errors).to eq('Booth price or package not found')
+    end
+
+    it 'prices from the package when one is selected' do
+      package = create(:exhibitor_package, event: event, exhibitor_booth_price: new_booth_price, price: 3200.0)
+
+      result = update_with(exhibitor_booth_price_id: new_booth_price.id, exhibitor_package_id: package.id)
+
+      expect(result).to be_success
+      expect(exhibitor_kit.reload).to have_attributes(
+        exhibitor_package_id: package.id,
+        price_snapshot: 3200.0,
+        amount_paid: 3200.0
+      )
+    end
+
+    it 'releases the old voucher and redeems the new one when the voucher code changes' do
+      old_voucher = create(:exhibitor_voucher, :redeemed, event: event, redeemed_by_exhibitor_kit: exhibitor_kit)
+      new_voucher = create(:exhibitor_voucher, :fixed_amount, event: event)
+
+      result = update_with(voucher_code: new_voucher.code)
+
+      expect(result).to be_success
+      expect(old_voucher.reload).to have_attributes(status: 'active', redeemed_by_exhibitor_kit_id: nil)
+      expect(new_voucher.reload).to have_attributes(status: 'redeemed', redeemed_by_exhibitor_kit_id: exhibitor_kit.id)
+      expect(exhibitor_kit.reload.price_snapshot).to eq(1000.0) # 1500 - 500 fixed off
+    end
+
+    it 'returns the old voucher to the pool when the voucher code is cleared' do
+      old_voucher = create(:exhibitor_voucher, :redeemed, event: event, redeemed_by_exhibitor_kit: exhibitor_kit)
+
+      result = update_with(voucher_code: '')
+
+      expect(result).to be_success
+      expect(old_voucher.reload).to have_attributes(status: 'active', redeemed_by_exhibitor_kit_id: nil)
+      expect(exhibitor_kit.reload.price_snapshot).to eq(1500.0)
+    end
+
+    it 'rejects an invalid voucher code' do
+      result = update_with(voucher_code: 'DOES-NOT-EXIST')
+
+      expect(result).not_to be_success
+      expect(result.errors).to eq('Voucher code is invalid or already used')
+      expect(exhibitor_kit.reload.price_snapshot).to eq(1500.0)
+    end
+  end
 end

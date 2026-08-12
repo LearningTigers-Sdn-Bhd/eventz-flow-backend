@@ -78,7 +78,10 @@ class V1::ExhibitorKitsController < ApplicationController
     end
 
     dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
-    results = ExhibitorKitImportService.import(file, event: @event, current_user: current_user, dry_run: dry_run)
+    force_duplicate_rows = Array(params[:force_duplicate_rows]).map(&:to_i)
+    results = ExhibitorKitImportService.import(
+      file, event: @event, current_user: current_user, dry_run: dry_run, force_duplicate_rows: force_duplicate_rows
+    )
     total = results[:created][:count] + results[:errors][:count]
 
     render json: {
