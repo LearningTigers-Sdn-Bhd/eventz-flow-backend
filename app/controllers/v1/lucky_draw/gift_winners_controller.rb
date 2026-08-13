@@ -12,7 +12,15 @@ module V1
       def create
         authorize GiftWinner.new(gift: @gift)
 
-        @winner = @gift.gift_winners.build(winner_params.merge(drawn_at: Time.current))
+        params_for_build = winner_params
+        if current_user.exhibitor? && !within_own_leads?(params_for_build[:ticket_id], params_for_build[:visitor_id])
+          return error_response(
+            message: 'Winner must be drawn from your own captured leads',
+            status: :unprocessable_content
+          )
+        end
+
+        @winner = @gift.gift_winners.build(params_for_build.merge(drawn_at: Time.current))
 
         if @winner.save
           @winner.reload
@@ -56,6 +64,11 @@ module V1
 
         ActiveRecord::Base.transaction do
           winners_data.each_with_index do |winner_data, index|
+            if current_user.exhibitor? && !within_own_leads?(winner_data[:ticket_id], winner_data[:visitor_id])
+              errors << { index: index, errors: ['Winner must be drawn from your own captured leads'] }
+              raise ActiveRecord::Rollback
+            end
+
             winner = @gift.gift_winners.build(
               ticket_id: winner_data[:ticket_id],
               visitor_id: winner_data[:visitor_id],
@@ -131,7 +144,19 @@ module V1
       end
 
       def authorize_event
-        authorize @event, :show?
+        authorize @session, :show?
+      end
+
+      # Exhibitors may only record winners from tickets/visitors they've captured as leads
+      def within_own_leads?(ticket_id, visitor_id)
+        return true if ticket_id.blank? && visitor_id.blank? # let normal validation reject blank winner
+
+        own_vendor = EventVendor.find_by(event_id: @event.id, vendor_id: current_user.id)
+        return false unless own_vendor
+
+        leadable_type = ticket_id.present? ? 'Ticket' : 'Visitor'
+        leadable_id = ticket_id.presence || visitor_id
+        EventLead.exists?(event_vendor_id: own_vendor.id, leadable_type: leadable_type, leadable_id: leadable_id)
       end
 
       def set_gift

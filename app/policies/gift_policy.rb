@@ -20,18 +20,21 @@ class GiftPolicy < ApplicationPolicy
     end
   end
 
-  # index? - event admins, team members, org admins
+  # index? - event admins, team members, org admins, and exhibitors viewing their own event's draw
   def index?
     return false if user.blank? || record.blank?
 
     # Organization-level permissions
     return true if user.is_org_owner? || user.is_organizer?
 
-    # Event-level permissions
     event = resolve_event
     return false unless event
 
-    user.is_event_admin?(event) || user.is_event_team_member?(event)
+    # Event-level permissions
+    return true if user.is_event_admin?(event) || user.is_event_team_member?(event)
+
+    # Exhibitors may view prizes to run the draw at their own event
+    user.exhibitor? && user.is_event_vendor?(event)
   end
 
   # show? - event admins, team members, org admins
@@ -39,18 +42,21 @@ class GiftPolicy < ApplicationPolicy
     index?
   end
 
-  # create? - event admins and org admins
+  # create? - event admins, org admins, and exhibitors adding their own event's prizes
   def create?
     return false if user.blank? || record.blank?
 
     # Organization-level permissions
     return true if user.is_org_owner? || user.is_organizer?
 
-    # Event-level permissions
     event = resolve_event
     return false unless event
 
-    user.is_event_admin?(event)
+    # Event-level permissions
+    return true if user.is_event_admin?(event)
+
+    # Exhibitors may add/manage their own prizes to run the draw at their own event
+    user.exhibitor? && user.is_event_vendor?(event)
   end
 
   # update? - event admins and org admins

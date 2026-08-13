@@ -21,8 +21,14 @@ RSpec.describe RouletteSessionPolicy, type: :policy do
       expect(policy).to permit(organizer, session_owned)
     end
 
-    it 'allows exhibitor' do
-      expect(policy).to permit(exhibitor, session_owned)
+    it 'denies exhibitor at the same event who does not own or is not assigned to this session' do
+      create(:exhibitor, event: event, vendor: exhibitor)
+      expect(policy).not_to permit(exhibitor, session_owned)
+    end
+
+    it 'allows exhibitor who owns their own session' do
+      own_session = create(:roulette_session, event: event, user: exhibitor)
+      expect(policy).to permit(exhibitor, own_session)
     end
 
     it 'allows owner' do

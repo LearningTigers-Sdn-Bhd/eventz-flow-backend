@@ -11,18 +11,21 @@ class GiftWinnerPolicy < ApplicationPolicy
     nil
   end
 
-  # create? - event admins, team members, org admins
+  # create? - event admins, team members, org admins, and exhibitors running their own event's draw
   def create?
     return false if user.blank? || record.blank?
 
     # Organization-level permissions
     return true if user.is_org_owner? || user.is_organizer?
 
-    # Event-level permissions
     gift = record.respond_to?(:gift) ? record.gift : nil
     return false unless gift&.event
 
-    user.is_event_admin?(gift.event) || user.is_event_team_member?(gift.event)
+    # Event-level permissions
+    return true if user.is_event_admin?(gift.event) || user.is_event_team_member?(gift.event)
+
+    # Exhibitors may record winners drawn from their own captured leads
+    user.exhibitor? && user.is_event_vendor?(gift.event)
   end
 
   # destroy? - event admins, team members, org admins
