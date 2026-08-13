@@ -41,7 +41,7 @@ class ExhibitorKit < ApplicationRecord
   delegate :event, to: :event_vendor
 
   validates :booth_type, presence: true
-  enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
+  enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3, deposit: 4 }
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
   scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
 
