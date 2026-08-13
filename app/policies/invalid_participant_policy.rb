@@ -1,40 +1,22 @@
 class InvalidParticipantPolicy < ApplicationPolicy
-  # Convenience method for delegating to the parent resource policy
-  def event_policy
-    return nil if record.blank?
-    event = resolve_event
-    return nil unless event
-
-    Pundit.policy(user, event)
-  rescue NoMethodError
-    nil
-  end
-
-  def resolve_event
-    if record.respond_to?(:event)
-      record.event
-    elsif record.respond_to?(:lucky_draw_session)
-      record.lucky_draw_session&.event
-    else
-      nil
+  # All invalid-participant actions are authorized through the parent lucky
+  # draw session, so an exhibitor can only manage entries on a session they
+  # created themselves, never an organizer/admin-owned session.
+  def resolve_session
+    if record.respond_to?(:lucky_draw_session)
+      record.lucky_draw_session
     end
   end
 
-  # index? - event admins, team members, org admins, and exhibitors at their own event
+  # index? - event admins, team members, org admins, and exhibitors on their own session
   def index?
     return false if user.blank? || record.blank?
+    session = resolve_session
+    return false unless session
 
-    # Organization-level permissions
-    return true if user.is_org_owner? || user.is_organizer?
+    return true if user.is_event_team_member?(session.event)
 
-    event = resolve_event
-    return false unless event
-
-    # Event-level permissions
-    return true if user.is_event_admin?(event) || user.is_event_team_member?(event)
-
-    # Exhibitors may manage invalid entries within their own event's draw
-    user.exhibitor? && user.is_event_vendor?(event)
+    LuckyDrawSessionPolicy.new(user, session).show?
   end
 
   # create? - event admins, team members, org admins
