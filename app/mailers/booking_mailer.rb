@@ -1,6 +1,6 @@
 # eventz_flow_api/app/mailers/booking_mailer.rb
 class BookingMailer < ApplicationMailer
-  default from: 'EventzFlow <notifications@updates.eventzflow.com>'
+  default from: 'no-reply@eventzflow.com' # Replace with your application's default sender email
 
   def confirmation_email(booking_data, event_title, event_id)
     @booking = booking_data
