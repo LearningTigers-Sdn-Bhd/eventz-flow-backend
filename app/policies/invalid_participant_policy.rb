@@ -20,18 +20,21 @@ class InvalidParticipantPolicy < ApplicationPolicy
     end
   end
 
-  # index? - event admins, team members, org admins
+  # index? - event admins, team members, org admins, and exhibitors at their own event
   def index?
     return false if user.blank? || record.blank?
 
     # Organization-level permissions
     return true if user.is_org_owner? || user.is_organizer?
 
-    # Event-level permissions
     event = resolve_event
     return false unless event
 
-    user.is_event_admin?(event) || user.is_event_team_member?(event)
+    # Event-level permissions
+    return true if user.is_event_admin?(event) || user.is_event_team_member?(event)
+
+    # Exhibitors may manage invalid entries within their own event's draw
+    user.exhibitor? && user.is_event_vendor?(event)
   end
 
   # create? - event admins, team members, org admins

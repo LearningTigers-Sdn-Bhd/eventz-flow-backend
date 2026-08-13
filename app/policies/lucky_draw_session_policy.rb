@@ -1,5 +1,5 @@
 class LuckyDrawSessionPolicy < ApplicationPolicy
-  # show? - event admins and org admins
+  # show? - event admins, org admins, and exhibitors running the draw at their own event
   def show?
     return false if user.blank? || record.blank?
 
@@ -7,27 +7,30 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
     return true if user.is_org_owner? || user.is_organizer?
 
     # Event-level permissions
-    user.is_event_admin?(record.event)
+    return true if user.is_event_admin?(record.event)
+
+    # Exhibitors may view/run the draw for their own event, using their leads
+    user.exhibitor? && user.is_event_vendor?(record.event)
   end
 
-  # create? - event admins and org admins
+  # create? - same as show?: event admins, org admins, and exhibitors managing their own event's draw
   def create?
     show?
   end
 
-  # update? - event admins and org admins
+  # update? - same as show?
   def update?
     show?
   end
 
-  # destroy? - event admins and org admins
+  # destroy? - same as show?
   def destroy?
     show?
   end
 
-  # background_manager? - event admins and org admins (same as update)
+  # background_manager? - same as show?
   def background_manager?
-    update?
+    show?
   end
 
   class Scope < Scope
@@ -35,8 +38,12 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
       if user.is_org_owner? || user.is_organizer?
         scope.all
       else
-        # Only sessions for events where user is admin
-        scope.joins(:event).where(events: { id: user.event_assignments.where(role: :event_admin).select(:event_id) })
+        # Sessions for events where user is admin, or an exhibitor at that event
+        admin_event_ids = user.event_assignments.where(role: :event_admin).select(:event_id)
+        vendor_event_ids = user.exhibitor? ? user.event_vendor_assignments.select(:event_id) : EventVendor.none.select(:event_id)
+        scope.joins(:event).where(events: { id: admin_event_ids }).or(
+          scope.joins(:event).where(events: { id: vendor_event_ids })
+        )
       end
     end
   end

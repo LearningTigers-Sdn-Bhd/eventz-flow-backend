@@ -8,7 +8,7 @@ module V1
 
       # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/participants
       def index
-        authorize @event, :show?
+        authorize @session, :show?
 
         # Build base query based on event's ticket/visitor system
         participants = build_participants_query
@@ -44,17 +44,29 @@ module V1
       end
 
       def authorize_event
-        authorize @event, :show?
+        authorize @session, :show?
       end
 
       def build_participants_query
-        if @event.use_ticket
-          # Event uses ticket system - return tickets
-          Ticket.where(event_id: @event.id)
-        else
-          # Event uses visitor system - return visitors
-          Visitor.where(event_id: @event.id)
-        end
+        leadable_type = @event.use_ticket ? 'Ticket' : 'Visitor'
+        base = leadable_type == 'Ticket' ? Ticket : Visitor
+        scope = base.where(event_id: @event.id)
+
+        # Exhibitors draw from their own captured leads only, not the whole event's attendees
+        return scope.where(id: own_lead_ids(leadable_type)) if current_user.exhibitor?
+
+        scope
+      end
+
+      def own_event_vendor
+        @own_event_vendor ||= EventVendor.find_by(event_id: @event.id, vendor_id: current_user.id)
+      end
+
+      def own_lead_ids(leadable_type)
+        return [] unless own_event_vendor
+
+        EventLead.where(event_vendor_id: own_event_vendor.id, leadable_type: leadable_type)
+                 .pluck(:leadable_id)
       end
 
       def filter_by_type(participants)
