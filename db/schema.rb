@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_12_095403) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_13_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -104,6 +104,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_12_095403) do
     t.datetime "updated_at", null: false
     t.bigint "requester_participant_id"
     t.bigint "receiver_participant_id"
+    t.text "booker_description"
+    t.text "booker_sourcing_intent"
+    t.text "booker_capabilities"
     t.index ["business_matching_session_id"], name: "index_bm_bookings_on_bm_session_id"
     t.index ["host_user_id", "booking_date", "booking_time"], name: "index_bm_bookings_host_time_unique", unique: true, where: "((status)::text <> 'Cancelled'::text)"
     t.index ["host_user_id"], name: "index_business_matching_bookings_on_host_user_id"

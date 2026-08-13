@@ -165,4 +165,35 @@ RSpec.describe BusinessMatchingService do
       expect(result2.errors).to include("already booked")
     end
   end
+
+  describe '#public_create_booking' do
+    let(:host) { create(:user) }
+    before do
+      BusinessHostAssignment.create!(
+        user: host,
+        event: event,
+        business_matching_event_id: session.id.to_s
+      )
+    end
+
+    it 'stores the booker profile fields separately from the internal host comment' do
+      params = {
+        name: "Alice Visitor",
+        email: "alice@example.com",
+        phone: "+6012",
+        date: event.start_date.to_date.to_s,
+        time: "10:00 AM",
+        booker_description: "We build fintech infrastructure",
+        booker_sourcing_intent: "Looking for banking partners",
+        booker_capabilities: "Core ledger APIs"
+      }
+
+      result = service.public_create_booking(session.id, event.id, nil, params)
+      expect(result.success?).to be true
+      expect(result.data[:booker_description]).to eq("We build fintech infrastructure")
+      expect(result.data[:booker_sourcing_intent]).to eq("Looking for banking partners")
+      expect(result.data[:booker_capabilities]).to eq("Core ledger APIs")
+      expect(result.data[:host_comment]).to eq("")
+    end
+  end
 end
