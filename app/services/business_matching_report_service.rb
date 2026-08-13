@@ -69,7 +69,10 @@ class BusinessMatchingReportService
   end
 
   def headers
-    ["Name", "Email", "Phone", "Date & Time", "Status", "Attendance", "Comment", "Potential Deal Value"]
+    [
+      "Name", "Email", "Phone", "Date & Time", "Status", "Attendance", "Comment",
+      "Description", "Sourcing Intent", "Capabilities", "Potential Deal Value"
+    ]
   end
 
   def row_data(booking)
@@ -81,6 +84,9 @@ class BusinessMatchingReportService
       booking[:status],
       booking[:attendance],
       booking[:host_comment],
+      booking[:booker_description],
+      booking[:booker_sourcing_intent],
+      booking[:booker_capabilities],
       booking[:potential_deal_value]
     ]
   end

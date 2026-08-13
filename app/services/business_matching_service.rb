@@ -352,7 +352,9 @@ class BusinessMatchingService < BaseService
       duration: session.slot_duration,
       status: "Approved",
       payment_status: "Pending",
-      host_comment: booking_params[:note]
+      booker_description: booking_params[:booker_description],
+      booker_sourcing_intent: booking_params[:booker_sourcing_intent],
+      booker_capabilities: booking_params[:booker_capabilities]
     )
 
     if booking.save
@@ -415,6 +417,9 @@ class BusinessMatchingService < BaseService
     updates[:attendance] = booking_params[:attendance] if booking_params.key?(:attendance)
     updates[:host_comment] = booking_params[:host_comment] if booking_params.key?(:host_comment)
     updates[:potential_deal_value] = booking_params[:potential_deal_value] if booking_params.key?(:potential_deal_value)
+    updates[:booker_description] = booking_params[:booker_description] if booking_params.key?(:booker_description)
+    updates[:booker_sourcing_intent] = booking_params[:booker_sourcing_intent] if booking_params.key?(:booker_sourcing_intent)
+    updates[:booker_capabilities] = booking_params[:booker_capabilities] if booking_params.key?(:booker_capabilities)
     updates[:host_user_id] = host_user_id if host_user_id.present?
 
     if booking.update(updates)
@@ -626,7 +631,10 @@ class BusinessMatchingService < BaseService
         attendance: b.attendance || "",
         host_comment: b.host_comment || "",
         potential_deal_value: b.potential_deal_value.to_f,
-        host_user_id: b.host_user_id.to_s
+        host_user_id: b.host_user_id.to_s,
+        booker_description: b.booker_description || "",
+        booker_sourcing_intent: b.booker_sourcing_intent || "",
+        booker_capabilities: b.booker_capabilities || ""
       }
     end
   end
