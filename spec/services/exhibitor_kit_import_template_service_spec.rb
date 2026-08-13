@@ -169,7 +169,7 @@ RSpec.describe ExhibitorKitImportTemplateService do
       doc = Nokogiri::XML(sheet_xml)
       validation = doc.css('dataValidation').find { |node| node['sqref'] == 'O2:O500' }
 
-      expect(validation.at_css('formula1').text).to eq('"unpaid,paid,waived,sponsored"')
+      expect(validation.at_css('formula1').text).to eq('"unpaid,paid,waived,sponsored,deposit"')
     end
 
     it 'adds a required-field comment for non-reference required columns (e.g. Vendor Email)' do

@@ -29,6 +29,27 @@ RSpec.describe ExhibitorKit, type: :model do
       .with_prefix(:booking)
   end
 
+  it do
+    should define_enum_for(:payment_status)
+      .with_values(unpaid: 0, paid: 1, waived: 2, sponsored: 3, deposit: 4)
+  end
+
+  describe 'deposit payment status' do
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, pic_email_address: 'pic@example.com') }
+
+    it 'does not trigger the payment confirmed email' do
+      perform_enqueued_jobs do
+        expect { kit.update!(payment_status: :deposit) }
+          .not_to have_enqueued_job.on_queue('mailers')
+      end
+    end
+
+    it 'is excluded from settled?' do
+      kit.update!(payment_status: :deposit)
+      expect(kit.settled?).to be false
+    end
+  end
+
   describe '.active_or_paid' do
     let!(:active_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
     let!(:paid_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :paid) }
