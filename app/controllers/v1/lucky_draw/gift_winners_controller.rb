@@ -13,7 +13,7 @@ module V1
         authorize GiftWinner.new(gift: @gift)
 
         params_for_build = winner_params
-        if current_user.exhibitor? && !within_own_leads?(params_for_build[:ticket_id], params_for_build[:visitor_id])
+        if current_user.exhibitor_for?(@event) && !within_own_leads?(params_for_build[:ticket_id], params_for_build[:visitor_id])
           return error_response(
             message: 'Winner must be drawn from your own captured leads',
             status: :unprocessable_content
@@ -64,7 +64,7 @@ module V1
 
         ActiveRecord::Base.transaction do
           winners_data.each_with_index do |winner_data, index|
-            if current_user.exhibitor? && !within_own_leads?(winner_data[:ticket_id], winner_data[:visitor_id])
+            if current_user.exhibitor_for?(@event) && !within_own_leads?(winner_data[:ticket_id], winner_data[:visitor_id])
               errors << { index: index, errors: ['Winner must be drawn from your own captured leads'] }
               raise ActiveRecord::Rollback
             end

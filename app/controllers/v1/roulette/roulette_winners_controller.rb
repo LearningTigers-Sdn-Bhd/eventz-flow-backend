@@ -70,7 +70,7 @@ module V1
         end
 
         # Exhibitors may only draw winners from their own captured leads
-        if current_user.exhibitor? && !within_own_leads?(ticket&.id, visitor&.id)
+        if current_user.exhibitor_for?(@event) && !within_own_leads?(ticket&.id, visitor&.id)
           return error_response(
             message: 'Winner must be drawn from your own captured leads',
             status: :unprocessable_content

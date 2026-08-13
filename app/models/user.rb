@@ -184,6 +184,16 @@ class User < ApplicationRecord
     event_vendor_assignments.exists?(event_id: event.id)
   end
 
+  # "exhibitor" is not a real User#role in practice (every registration path
+  # creates vendor-role users) — Exhibitor vs Merchant is decided per-event
+  # via the EventVendor STI type (see EventVendorService.determine_vendor_type).
+  # Use this instead of the dead role-based #exhibitor? check.
+  def exhibitor_for?(event)
+    return false unless event.present?
+
+    event_vendor_assignments.exists?(event_id: event.id, type: 'Exhibitor')
+  end
+
   def is_business_host?(event)
     return false unless event.present?
     exhibitor? ||

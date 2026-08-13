@@ -48,17 +48,15 @@ class EventRentableItemPolicy < ApplicationPolicy
       elsif user.exhibition_contractor? && user.exhibition_contractor_profile.present?
         scope.joins(event: :event_exhibition_contractors)
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
-      elsif user.exhibitor?
+      elsif user.vendor?
+        # "exhibitor" isn't a real user role in practice — Exhibitor vs
+        # Merchant is the EventVendor STI type, so filter on that directly
+        # rather than a live event flag (which can drift from the type
+        # stamped on the vendor record at registration time).
         scope.joins(:rentable_item)
              .joins(event: :event_vendors)
              .where(rentable_items: { status: RentableItem.statuses[:active] })
              .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' })
-      elsif user.vendor?
-        scope.joins(:rentable_item)
-             .joins(event: :event_vendors)
-             .where(rentable_items: { status: RentableItem.statuses[:active] })
-             .where(event_vendors: { vendor_id: user.id })
-             .where(events: { use_exhibitor_kit: true })
       elsif user.assigned_events.present? && user.is_staff?
         scope.joins(event: :event_assignments)
              .where(event_assignments: { user_id: user.id,
