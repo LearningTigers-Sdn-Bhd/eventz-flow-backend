@@ -262,13 +262,15 @@ module V1
       def booking_params
         params.require(:booking).permit(
           :name, :email, :phone, :booking_date, :booking_time, :status, :payment_status,
-          :attendance, :host_comment, :potential_deal_value, :host_user_id
+          :attendance, :host_comment, :potential_deal_value, :host_user_id,
+          :booker_description, :booker_sourcing_intent, :booker_capabilities
         )
       end
 
       def public_booking_create_params
         params.require(:booking).permit(
-          :name, :email, :phone, :date, :time, :note
+          :name, :email, :phone, :date, :time,
+          :booker_description, :booker_sourcing_intent, :booker_capabilities
         )
       end
     end
