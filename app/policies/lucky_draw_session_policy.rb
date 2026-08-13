@@ -11,7 +11,7 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
 
     # Exhibitors may view/run only the sessions they created themselves,
     # not organizer/admin-owned sessions for the same event
-    user.exhibitor? && user.is_event_vendor?(record.event) && record.created_by_id == user.id
+    user.exhibitor_for?(record.event) && record.created_by_id == user.id
   end
 
   # create? - same as show?: event admins, org admins, and exhibitors managing their own event's draw

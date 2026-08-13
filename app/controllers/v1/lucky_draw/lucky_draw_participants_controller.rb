@@ -53,7 +53,7 @@ module V1
         scope = base.where(event_id: @event.id)
 
         # Exhibitors draw from their own captured leads only, not the whole event's attendees
-        return scope.where(id: own_lead_ids(leadable_type)) if current_user.exhibitor?
+        return scope.where(id: own_lead_ids(leadable_type)) if current_user.exhibitor_for?(@event)
 
         scope
       end

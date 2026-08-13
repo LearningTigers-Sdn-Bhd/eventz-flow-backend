@@ -68,7 +68,7 @@ module V1
 
       # Exhibitors draw from their own captured leads only, everyone else (admins) from the full event
       def exhibitor_scoped?
-        current_user.exhibitor?
+        current_user.exhibitor_for?(@event)
       end
 
       def own_event_vendor
