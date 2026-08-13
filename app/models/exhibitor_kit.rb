@@ -8,6 +8,7 @@ class ExhibitorKit < ApplicationRecord
     PublicExhibitorBookingService::FINGERPRINT_KEY, # dedup fingerprint on public bookings
     EventVendorBatchService::FINGERPRINT_FIELD,      # dedup fingerprint on admin batch bookings
     EventVendorBatchService::BATCH_KEY_FIELD,        # admin batch grouping key
+    ExhibitorKitImportService::FINGERPRINT_KEY,      # dedup fingerprint on Excel import bookings
     'booking_batch_id',                              # batch grouping id, written by both booking flows
     'payment_option',                                # in-flight payment method choice, cleared on settle
     'zone',                                           # booth zone snapshot at booking time, derived data

@@ -1072,6 +1072,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_13_120000) do
     t.boolean "use_gifts", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "created_by_id"
+    t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
     t.index ["event_id"], name: "index_lucky_draw_sessions_on_event_id"
@@ -1858,6 +1860,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_13_120000) do
   add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
+  add_foreign_key "lucky_draw_sessions", "users", column: "created_by_id"
   add_foreign_key "pass_bundles", "events"
   add_foreign_key "pass_bundles", "registration_forms"
   add_foreign_key "pass_bundles", "ticket_types"

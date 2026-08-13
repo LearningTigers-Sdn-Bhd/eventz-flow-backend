@@ -41,7 +41,7 @@ class ExhibitorKitPrintingPolicy < ApplicationPolicy
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
              .where(events: { allow_contractor_printing_services: true })
              .where(printing_services: { user_id: user.id })
-      elsif user.exhibitor?
+      elsif user.vendor? # exhibitor is not a real role; type: 'Exhibitor' below does the filtering
         scope.joins(exhibitor_kit: :event_vendor).where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' })
       else
         scope.none

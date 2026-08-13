@@ -8,7 +8,7 @@ module V1
       def index
         authorize @event, :show?
 
-        @sessions = @event.lucky_draw_sessions.ordered
+        @sessions = policy_scope(@event.lucky_draw_sessions).ordered
 
         success_response(
           data: @sessions.map { |s| format_session_response(s) },
@@ -27,7 +27,7 @@ module V1
 
       # POST /v1/events/:event_id/lucky_draw/sessions
       def create
-        @session = @event.lucky_draw_sessions.build(session_params)
+        @session = @event.lucky_draw_sessions.build(session_params.merge(created_by: current_user))
         authorize @session
 
         # Handle logo upload via Active Storage

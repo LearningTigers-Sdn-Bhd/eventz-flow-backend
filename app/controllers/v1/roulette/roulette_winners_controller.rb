@@ -52,7 +52,7 @@ module V1
         visitor = nil
 
         if ticket_public_id.present?
-          ticket = Ticket.find_by(public_id: ticket_public_id)
+          ticket = Ticket.where(event_id: @event.id).find_by(public_id: ticket_public_id)
           unless ticket
             return error_response(
               message: 'Ticket not found',
@@ -60,13 +60,21 @@ module V1
             )
           end
         else
-          visitor = Visitor.find_by(public_id: visitor_public_id)
+          visitor = Visitor.where(event_id: @event.id).find_by(public_id: visitor_public_id)
           unless visitor
             return error_response(
               message: 'Visitor not found',
               status: :not_found
             )
           end
+        end
+
+        # Exhibitors may only draw winners from their own captured leads
+        if current_user.exhibitor_for?(@event) && !within_own_leads?(ticket&.id, visitor&.id)
+          return error_response(
+            message: 'Winner must be drawn from your own captured leads',
+            status: :unprocessable_content
+          )
         end
 
         # Check if prize has available quantity
@@ -165,6 +173,18 @@ module V1
 
       def set_winner
         @winner = @session.roulette_winners.find(params[:id])
+      end
+
+      # Exhibitors may only record winners from tickets/visitors they've captured as leads
+      def within_own_leads?(ticket_id, visitor_id)
+        return true if ticket_id.blank? && visitor_id.blank?
+
+        own_vendor = EventVendor.find_by(event_id: @event.id, vendor_id: current_user.id)
+        return false unless own_vendor
+
+        leadable_type = ticket_id.present? ? 'Ticket' : 'Visitor'
+        leadable_id = ticket_id.presence || visitor_id
+        EventLead.exists?(event_vendor_id: own_vendor.id, leadable_type: leadable_type, leadable_id: leadable_id)
       end
 
       def format_winner_response(winner)
