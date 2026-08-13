@@ -9,8 +9,9 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
     # Event-level permissions
     return true if user.is_event_admin?(record.event)
 
-    # Exhibitors may view/run the draw for their own event, using their leads
-    user.exhibitor? && user.is_event_vendor?(record.event)
+    # Exhibitors may view/run only the sessions they created themselves,
+    # not organizer/admin-owned sessions for the same event
+    user.exhibitor? && user.is_event_vendor?(record.event) && record.created_by_id == user.id
   end
 
   # create? - same as show?: event admins, org admins, and exhibitors managing their own event's draw
@@ -38,11 +39,11 @@ class LuckyDrawSessionPolicy < ApplicationPolicy
       if user.is_org_owner? || user.is_organizer?
         scope.all
       else
-        # Sessions for events where user is admin, or an exhibitor at that event
+        # Sessions for events where user is admin (sees all), or sessions an
+        # exhibitor created themselves (never organizer/admin-owned sessions)
         admin_event_ids = user.event_assignments.where(role: :event_admin).select(:event_id)
-        vendor_event_ids = user.exhibitor? ? user.event_vendor_assignments.select(:event_id) : EventVendor.none.select(:event_id)
         scope.joins(:event).where(events: { id: admin_event_ids }).or(
-          scope.joins(:event).where(events: { id: vendor_event_ids })
+          scope.joins(:event).where(created_by_id: user.id)
         )
       end
     end

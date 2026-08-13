@@ -1,6 +1,7 @@
 class LuckyDrawSession < ApplicationRecord
   # --- Associations ---
   belongs_to :event
+  belongs_to :created_by, class_name: 'User', optional: true
   has_many :gifts, dependent: :destroy
   has_many :invalid_participants, dependent: :destroy
 
