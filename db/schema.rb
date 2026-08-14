@@ -701,6 +701,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_14_005042) do
     t.boolean "business_matching_public_booking_enabled", default: true, null: false
     t.date "business_matching_public_booking_cutoff_date"
     t.jsonb "exhibitor_labels_data", default: {}
+    t.string "registration_path_template"
     t.boolean "business_matching_auto_approve_bookings", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true

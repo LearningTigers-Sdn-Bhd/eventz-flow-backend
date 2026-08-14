@@ -1,6 +1,23 @@
 require 'rails_helper'
 
 RSpec.describe Event, type: :model do
+  describe '#registration_path_for' do
+    it 'defaults to /register/:slug when no template is set' do
+      event = build(:event, registration_path_template: nil)
+      expect(event.registration_path_for('delegate')).to eq('/register/delegate')
+    end
+
+    it 'uses the template verbatim when it has no {slug} placeholder' do
+      event = build(:event, registration_path_template: '/luncheon-talk-registration?form=delegate')
+      expect(event.registration_path_for('delegate')).to eq('/luncheon-talk-registration?form=delegate')
+    end
+
+    it 'substitutes {slug} in the template when present' do
+      event = build(:event, registration_path_template: '/register/{slug}/custom')
+      expect(event.registration_path_for('delegate')).to eq('/register/delegate/custom')
+    end
+  end
+
   describe 'associations' do
     it { should have_many(:event_assignments).dependent(:destroy) }
     it { should have_many(:staff).through(:event_assignments) }

@@ -46,6 +46,23 @@ RSpec.describe 'V1::PassBundles', type: :request do
       )
       expect(json.first['bundle_link']).to include("/register/delegate?bundle=#{bundle.token}")
     end
+
+    it 'uses the event registration_path_template when set' do
+      event.update!(registration_path_template: '/luncheon-talk-registration?form=delegate')
+      bundle = create(
+        :pass_bundle,
+        event: event,
+        registration_form: registration_form,
+        ticket_type: ticket_type
+      )
+
+      get "/v1/events/#{event.id}/pass_bundles", headers: headers
+
+      json = JSON.parse(response.body)
+      expect(json.first['bundle_link']).to eq(
+        "#{event.normalized_public_registration_url}/luncheon-talk-registration?form=delegate&bundle=#{bundle.token}"
+      )
+    end
   end
 
   describe 'POST /v1/events/:event_id/pass_bundles' do
