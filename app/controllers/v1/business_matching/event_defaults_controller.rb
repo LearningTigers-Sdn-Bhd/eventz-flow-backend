@@ -42,6 +42,7 @@ module V1
           default_slot_duration: event.business_matching_default_slot_duration,
           public_booking_enabled: event.business_matching_public_booking_enabled,
           public_booking_cutoff_date: cutoff,
+          auto_approve_bookings: event.business_matching_auto_approve_bookings,
           # Enabled, but the cutoff date has already passed — the admin
           # probably wants to know public booking is still open past it.
           public_booking_past_cutoff_warning: event.business_matching_public_booking_enabled &&
@@ -52,7 +53,7 @@ module V1
       def event_defaults_params
         permitted = params.permit(
           :default_start_date, :default_end_date, :hours_editable_default, :default_slot_duration,
-          :public_booking_enabled, :public_booking_cutoff_date,
+          :public_booking_enabled, :public_booking_cutoff_date, :auto_approve_bookings,
           default_hours: [:start_time, :end_time]
         )
         attrs = {}
@@ -65,6 +66,9 @@ module V1
           attrs[:business_matching_public_booking_enabled] = ActiveModel::Type::Boolean.new.cast(permitted[:public_booking_enabled])
         end
         attrs[:business_matching_public_booking_cutoff_date] = permitted[:public_booking_cutoff_date] if params.key?(:public_booking_cutoff_date)
+        if params.key?(:auto_approve_bookings)
+          attrs[:business_matching_auto_approve_bookings] = ActiveModel::Type::Boolean.new.cast(permitted[:auto_approve_bookings])
+        end
         attrs
       end
     end
