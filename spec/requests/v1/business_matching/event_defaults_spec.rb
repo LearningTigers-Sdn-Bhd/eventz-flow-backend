@@ -18,7 +18,7 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
       expect(json_response['public_booking_enabled']).to eq(true)
       expect(json_response['public_booking_cutoff_date']).to be_nil
       expect(json_response['public_booking_past_cutoff_warning']).to eq(false)
-      expect(json_response['auto_approve_bookings']).to eq(true)
+      expect(json_response['auto_approve_bookings']).to eq(false)
     end
 
     it "returns the event's defaults to a business matching admin" do
@@ -89,14 +89,14 @@ RSpec.describe "V1::BusinessMatching::EventDefaults", type: :request do
       expect(event.reload.business_matching_public_booking_enabled).to eq(false)
     end
 
-    it "lets an organizer turn auto-approve off" do
+    it "lets an organizer turn auto-approve on" do
       put "/v1/business_matching/events/#{event.id}/defaults",
-          params: { auto_approve_bookings: false },
+          params: { auto_approve_bookings: true },
           headers: auth_headers(organizer_user)
 
       expect(response).to have_http_status(:ok)
-      expect(json_response['auto_approve_bookings']).to eq(false)
-      expect(event.reload.business_matching_auto_approve_bookings).to eq(false)
+      expect(json_response['auto_approve_bookings']).to eq(true)
+      expect(event.reload.business_matching_auto_approve_bookings).to eq(true)
     end
 
     it "flags the past-cutoff warning once enabled and the date has passed" do

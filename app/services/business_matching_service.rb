@@ -313,9 +313,9 @@ class BusinessMatchingService < BaseService
       booking_date: Date.parse(booking_params[:date]),
       booking_time: booking_params[:time],
       duration: session.slot_duration,
-      # Staff-created bookings are approved outright — the person adding it
-      # here *is* the approver.
-      status: "Approved",
+      # Never gated by the auto-approve setting: the staff member adding the
+      # booking here *is* the approver (see 2cabc1a).
+      status: "Confirmed",
       payment_status: "Pending"
     )
 
@@ -343,10 +343,6 @@ class BusinessMatchingService < BaseService
     end
     return BaseService::ServiceResult.new(success: false, errors: "No host assigned", status: :unprocessable_entity) unless target_host_id
 
-    # With auto-approve off, a booker-made booking is only a request until the
-    # host/admin approves it — it must not be presented as confirmed.
-    auto_approve = session.event&.business_matching_auto_approve_bookings != false
-
     booking = BusinessMatchingBooking.new(
       business_matching_session: session,
       host_user_id: target_host_id,
@@ -356,7 +352,11 @@ class BusinessMatchingService < BaseService
       booking_date: Date.parse(booking_params[:date]),
       booking_time: booking_params[:time],
       duration: session.slot_duration,
-      status: auto_approve ? "Approved" : "Pending",
+      # With auto-approve off, a booker-made booking is only a request until
+      # the host/admin approves it — anything but "Pending" would promise the
+      # booker a slot nobody has agreed to yet, and no Approve action would
+      # ever show for it in the panel.
+      status: session.event.business_matching_auto_approve_bookings? ? "Approved" : "Pending",
       payment_status: "Pending",
       booker_description: booking_params[:booker_description],
       booker_sourcing_intent: booking_params[:booker_sourcing_intent],

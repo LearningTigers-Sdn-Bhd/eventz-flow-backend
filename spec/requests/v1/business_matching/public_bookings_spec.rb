@@ -112,7 +112,7 @@ RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
       expect(booker_email.subject).not_to include("Booking Confirmation")
     end
 
-    it "still creates staff-made bookings as Approved" do
+    it "leaves staff-made bookings ungated by the setting" do
       admin = create(:user)
       create(:event_assignment, event: event, user: admin, role: :event_admin)
 
@@ -124,7 +124,7 @@ RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
            headers: auth_headers(admin)
 
       expect(response).to have_http_status(:created)
-      expect(BusinessMatchingBooking.last.status).to eq("Approved")
+      expect(BusinessMatchingBooking.last.status).to eq("Confirmed")
     end
   end
 end
