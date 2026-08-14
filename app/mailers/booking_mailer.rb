@@ -13,6 +13,27 @@ class BookingMailer < ApplicationMailer
     mail(to: @booking['email'], subject: "Booking Confirmation for #{@event_title}")
   end
 
+  # Sent instead of confirmation_email when the event requires approval — the
+  # booking exists but nothing is confirmed yet.
+  def pending_approval_email(booking_data, event_title, event_id)
+    @booking = booking_data
+    @event_title = event_title
+    _assign_booking_datetime
+    @dashboard_url = _dashboard_url(event_id)
+
+    mail(to: @booking['email'], subject: "Booking Request Received for #{@event_title} — Awaiting Approval")
+  end
+
+  # Sent once a host/admin approves a previously pending booking.
+  def approval_email(booking_data, event_title, event_id)
+    @booking = booking_data
+    @event_title = event_title
+    _assign_booking_datetime
+    @dashboard_url = _dashboard_url(event_id)
+
+    mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Is Confirmed")
+  end
+
   def host_confirmation_email(booking_data, event_title, event_id, host)
     @booking = booking_data
     @event_title = event_title
@@ -20,7 +41,13 @@ class BookingMailer < ApplicationMailer
     _assign_booking_datetime
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @host.email, subject: "New Booking: #{@booking['name']} for #{@event_title}")
+    subject = if @booking['status'] == 'Pending'
+                "Approval Needed: #{@booking['name']} requested a session for #{@event_title}"
+              else
+                "New Booking: #{@booking['name']} for #{@event_title}"
+              end
+
+    mail(to: @host.email, subject: subject)
   end
 
   def reschedule_email(booking_data, event_title, event_id, old_date, old_time)
