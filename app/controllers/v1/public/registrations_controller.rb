@@ -90,6 +90,48 @@ module V1
         }
       end
 
+      def registration_lookup
+        event = Event.friendly.find(params[:event_slug])
+        return render_registration_closed unless event.published?
+
+        ticket = RegistrationLookupService.new(
+          event: event, plate: params[:plate], email: params[:email]
+        ).call
+
+        return render_lookup_not_found unless ticket
+        return render_form_closed if ticket.vehicle_registration.registration_form.closed?
+
+        render json: { success: true, data: serialize_edit_ticket(ticket) }
+      end
+
+      def update
+        event = Event.friendly.find(params[:event_slug])
+        return render_registration_closed unless event.published?
+
+        lookup_ticket = RegistrationLookupService.new(
+          event: event, plate: params[:plate], email: params[:email]
+        ).call
+        return render_lookup_not_found unless lookup_ticket && lookup_ticket.public_id == params[:public_id]
+        return render_form_closed if lookup_ticket.vehicle_registration.registration_form.closed?
+
+        result = RegistrationUpdateService.new(
+          event: event,
+          plate: params[:plate],
+          email: params[:email],
+          public_id: params[:public_id],
+          attributes: edit_params,
+          documents: params[:documents] || {}
+        ).call
+
+        if result.success?
+          render json: { success: true, data: serialize_edit_ticket(result.ticket) }
+        elsif result.errors.include?(RegistrationUpdateService::NOT_FOUND_MESSAGE)
+          render_lookup_not_found
+        else
+          render json: { success: false, errors: result.errors }, status: :unprocessable_content
+        end
+      end
+
       def pass_bundle
         event = Event.friendly.find(params[:event_slug])
         bundle = event.pass_bundles.includes(:registration_form, :ticket_type).find_by(token: params[:token].to_s.strip)
@@ -454,6 +496,42 @@ module V1
         end
 
         permitted
+      end
+
+      def edit_params
+        permitted = params.permit(:attendee_name, :attendee_phone, :role, custom_fields_data: {})
+        permitted[:custom_fields_data] = permitted[:custom_fields_data].to_h if permitted[:custom_fields_data]
+        permitted
+      end
+
+      def render_lookup_not_found
+        render json: { success: false, message: RegistrationUpdateService::NOT_FOUND_MESSAGE }, status: :not_found
+      end
+
+      def render_registration_closed
+        render json: { success: false, message: 'Registration is not open for this event' }, status: :unprocessable_content
+      end
+
+      def render_form_closed
+        render json: { success: false, message: 'Registration is closed for this form' }, status: :unprocessable_content
+      end
+
+      def serialize_edit_ticket(ticket)
+        vehicle = ticket.vehicle_registration
+        {
+          public_id: ticket.public_id,
+          form_slug: vehicle.registration_form.slug,
+          form_name: vehicle.registration_form.name,
+          attendee_name: ticket.attendee_name,
+          attendee_phone: ticket.attendee_phone,
+          role: ticket.role,
+          ticket_type_id: ticket.ticket_type_id,
+          ticket_type_name: ticket.ticket_type.name,
+          custom_fields_data: ticket.custom_fields_data || {},
+          plate: vehicle.plate,
+          registered_roles: vehicle.active_tickets.where.not(id: ticket.id).pluck(:role),
+          documents: serialize_documents(ticket)
+        }
       end
 
       def indemnity_params
