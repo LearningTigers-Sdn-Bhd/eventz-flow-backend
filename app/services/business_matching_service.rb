@@ -313,7 +313,7 @@ class BusinessMatchingService < BaseService
       booking_date: Date.parse(booking_params[:date]),
       booking_time: booking_params[:time],
       duration: session.slot_duration,
-      status: "Confirmed",
+      status: session.event.business_matching_auto_approve_bookings? ? "Approved" : "Confirmed",
       payment_status: "Pending"
     )
 
