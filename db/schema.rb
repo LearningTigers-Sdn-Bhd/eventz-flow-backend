@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_13_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_14_005042) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -701,6 +701,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_13_120000) do
     t.boolean "business_matching_public_booking_enabled", default: true, null: false
     t.date "business_matching_public_booking_cutoff_date"
     t.jsonb "exhibitor_labels_data", default: {}
+    t.boolean "business_matching_auto_approve_bookings", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
