@@ -59,6 +59,8 @@ Rails.application.routes.draw do
         get 'registration_forms', to: 'registrations#registration_forms'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        get 'registration_lookup', to: 'registrations#registration_lookup'
+        patch 'registrations/:public_id', to: 'registrations#update'
         get 'pass_bundles/:token', to: 'registrations#pass_bundle'
         get 'ticket_rsvp/:token', to: 'ticket_rsvps#show'
         post 'ticket_rsvp/:token/confirm', to: 'ticket_rsvps#confirm'

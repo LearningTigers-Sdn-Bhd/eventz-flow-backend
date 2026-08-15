@@ -16,6 +16,7 @@ class VehicleRegistrationRules
       ],
       included_second: ['Expedition - Member', 'Expedition - Corporate'],
       included_ticket: 'Included 2nd Person - Member/Corporate',
+      included_second_extra_ticket: 'Additional Person - Non-Member',
       member_base: ['Expedition - Member', 'Expedition - Corporate'],
       additional_member_ticket: 'Additional Person - Member',
       additional_non_member_ticket: 'Additional Person - Non-Member'
@@ -97,9 +98,14 @@ class VehicleRegistrationRules
     return [] if occupancy >= capacity
 
     base_name = vehicle_registration.base_ticket_type.name
-    if occupancy == 1
-      included = rule.fetch(:included_second)
-      return [rule.fetch(:included_ticket)] if included == :all || included.include?(base_name)
+    included = rule.fetch(:included_second)
+    qualifies_for_included = included == :all || included.include?(base_name)
+
+    # The free included seat is a one-per-vehicle perk, not tied to seat
+    # position — it stays on offer for whichever seat (2nd, 3rd, 4th) claims
+    # it first, then disappears once someone has.
+    if qualifies_for_included && !included_ticket_claimed?(vehicle_registration)
+      return [rule.fetch(:included_ticket), rule[:included_second_extra_ticket]].compact
     end
 
     return [additional_ticket_name(base_name)] if rule[:lock_additional_to_base]
@@ -117,8 +123,7 @@ class VehicleRegistrationRules
   def invalid_ticket_message(vehicle_registration)
     return 'Choose a main vehicle ticket for a new car plate' unless vehicle_registration
 
-    if vehicle_registration.active_tickets.count == 1 &&
-       allowed_ticket_names(vehicle_registration) == [rule[:included_ticket]]
+    if allowed_ticket_names(vehicle_registration) == [rule[:included_ticket]]
       return 'The included second person must use the free included ticket'
     end
 
@@ -126,6 +131,11 @@ class VehicleRegistrationRules
   end
 
   private
+
+  def included_ticket_claimed?(vehicle_registration)
+    vehicle_registration.active_tickets.joins(:ticket_type)
+                         .exists?(ticket_types: { name: rule.fetch(:included_ticket) })
+  end
 
   def additional_ticket_names
     [rule.fetch(:additional_member_ticket), rule.fetch(:additional_non_member_ticket)].uniq
