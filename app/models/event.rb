@@ -83,6 +83,17 @@ class Event < ApplicationRecord
     public_registration_url.to_s.strip.chomp('/')
   end
 
+  # Path (relative to normalized_public_registration_url) for a given registration
+  # form slug. Defaults to the generic "/register/:slug" convention; events whose
+  # microsite uses a different route layout (e.g. sie2026's fixed per-form pages)
+  # can override via registration_path_template.
+  def registration_path_for(form_slug)
+    template = registration_path_template.to_s.strip
+    return "/register/#{form_slug}" if template.blank?
+
+    template.include?('{slug}') ? template.gsub('{slug}', form_slug.to_s) : template
+  end
+
   # --- Enums ---
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }

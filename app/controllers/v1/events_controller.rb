@@ -227,6 +227,7 @@ module V1
         :extra_guest_limit,
         :business_matching_webhook_url,
         :public_registration_url,
+        :registration_path_template,
         :use_sponsorship,
         :use_event_leads,
         :use_certificate,
