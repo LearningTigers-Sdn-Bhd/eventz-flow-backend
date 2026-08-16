@@ -9,7 +9,7 @@ class V1::ExhibitorKitsController < ApplicationController
 
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration customs_duty_estimate permanently_delete force_delete]
+  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
   before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order export import_template import]
 
   def index
@@ -205,6 +205,18 @@ class V1::ExhibitorKitsController < ApplicationController
               disposition: 'attachment'
   end
 
+  def indemnity_form
+    authorize @exhibitor_kit, :download_ic_copy?
+    unless @exhibitor_kit.indemnity_form.attached?
+      return render json: { error: 'Indemnity form not found' }, status: :not_found
+    end
+
+    send_data @exhibitor_kit.indemnity_form.download,
+              filename: @exhibitor_kit.indemnity_form.filename.to_s,
+              type: @exhibitor_kit.indemnity_form.content_type,
+              disposition: 'attachment'
+  end
+
   def customs_duty_estimate
     authorize @exhibitor_kit, :download_ic_copy?
     unless @exhibitor_kit.customs_duty_estimate.attached?
@@ -258,6 +270,7 @@ class V1::ExhibitorKitsController < ApplicationController
       ic_copy_uploaded: kit.ic_copy.attached?,
       customs_declaration_uploaded: kit.customs_declaration_form.attached?,
       customs_duty_estimate_uploaded: kit.customs_duty_estimate.attached?,
+      indemnity_form_uploaded: kit.indemnity_form.attached?,
       booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       payment_proof_url: kit.exhibitor_registration_payment&.payment_proof&.attached? ? url_for(kit.exhibitor_registration_payment.payment_proof) : nil,
       payment_proof_status: kit.exhibitor_registration_payment&.status || 'pending',

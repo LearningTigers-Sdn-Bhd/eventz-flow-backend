@@ -248,6 +248,8 @@ class PublicExhibitorBookingService
       signed_id: normalized['customs_declaration_signed_id'], allow_reuse: allow_reuse).call
     CustomsDutyEstimateAttacher.new(event: event, exhibitor_kit: kit,
       signed_id: normalized['customs_duty_estimate_signed_id'], allow_reuse: allow_reuse).call
+    IndemnityFormAttacher.new(event: event, exhibitor_kit: kit,
+      signed_id: normalized['indemnity_form_signed_id'], allow_reuse: allow_reuse).call
     kit.ic_copy.attach(source.ic_copy.blob) if normalized['ic_copy_signed_id'].blank? && source&.ic_copy&.attached?
     [Result.new(kit: kit, idempotent_replay: false), new_user, password, redeem_voucher ? nil : voucher_result[:voucher]]
   end
