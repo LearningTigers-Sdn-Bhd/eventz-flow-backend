@@ -178,7 +178,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
 
     data = JSON.parse(response.body).fetch('data')
     expect(data).to include('status' => 'existing', 'occupancy' => 1)
-    expect(data.fetch('allowed_ticket_type_ids')).to eq([included_member.id])
+    expect(data.fetch('allowed_ticket_type_ids')).to eq([included_member.id, additional_non_member.id])
   end
 
   it 'offers both paid additional tickets for person two of a non-member vehicle' do
@@ -212,7 +212,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     )
 
     expect(response).to have_http_status(:unprocessable_content)
-    expect(JSON.parse(response.body).fetch('message')).to match(/included second person/i)
+    expect(JSON.parse(response.body).fetch('message')).to match(/not available for the next person/i)
     expect(event.tickets.count).to eq(1)
   end
 
@@ -327,7 +327,7 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
     expect(JSON.parse(response.body).fetch('data')).to include(
       'status' => 'existing',
       'occupancy' => 1,
-      'allowed_ticket_type_ids' => [included_member.id]
+      'allowed_ticket_type_ids' => [included_member.id, additional_non_member.id]
     )
     expect(legacy_ticket.reload.vehicle_registration).to be_present
   end

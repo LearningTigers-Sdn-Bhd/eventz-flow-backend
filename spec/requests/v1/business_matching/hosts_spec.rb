@@ -166,7 +166,7 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
             params: { offering_tags: ["Made Up Tag"] },
             headers: auth_headers(admin)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "lets an admin set a host's description/sourcing_intent/capabilities directly" do
@@ -238,7 +238,7 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
            },
            headers: auth_headers(admin)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(User.exists?(email: "newhost2@example.com")).to eq(false)
     end
   end
@@ -310,7 +310,7 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
            params: { token: "totally-made-up-token" },
            headers: auth_headers(invitee)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(BusinessHostAssignment.where(user_id: invitee.id, event_id: event.id)).to be_empty
     end
 
@@ -322,7 +322,7 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
            params: { token: tampered },
            headers: auth_headers(invitee)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "requires authentication" do

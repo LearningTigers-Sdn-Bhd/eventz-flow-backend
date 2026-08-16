@@ -42,6 +42,7 @@ class PublicExhibitorBookingSerializer
       ic_copy_uploaded: kit.ic_copy.attached?,
       customs_declaration_uploaded: kit.customs_declaration_form.attached?,
       customs_duty_estimate_uploaded: kit.customs_duty_estimate.attached?,
+      indemnity_form_uploaded: kit.indemnity_form.attached?,
       custom_fields_data: kit.custom_fields_data.except(PublicExhibitorBookingService::FINGERPRINT_KEY)
     )
   end

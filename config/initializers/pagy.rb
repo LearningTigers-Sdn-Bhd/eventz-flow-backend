@@ -6,10 +6,9 @@ Pagy::OPTIONS[:limit] = 25
 # Maximum items per page allowed (client requested)
 Pagy::OPTIONS[:max_limit] = 100
 
-# Maximum page number allowed
-# ponytail: deprecated in pagy 43.6 in favor of https://ddnexus.github.io/pagy/guides/how-to/#paginate-only-max-records
-# still functional (warning only) — revisit if pagy drops the fallback in a future major
-Pagy::OPTIONS[:max_pages] = 1000
+# Maximum total records allowed (replaces deprecated max_pages: 1000 * limit 25)
+# https://ddnexus.github.io/pagy/guides/how-to/#paginate-only-max-records
+Pagy::OPTIONS[:max_records] = 25_000
 
 # Set to false if you want to disable the overflow handling
 Pagy::OPTIONS[:overflow] = :empty_page
