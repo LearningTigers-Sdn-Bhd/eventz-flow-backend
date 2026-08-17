@@ -9,6 +9,21 @@ class ExhibitorKitImportService
     Vendor\ Email PIC\ Name PIC\ Contact Booth\ Type Price\ Label Booth\ Quantity Payment\ Status
   ].freeze
 
+  # Never required — always optional, on every booth type. For a non-inventory
+  # booth type it's just a free-text label. For an inventory-managed one
+  # (see #resolve_inventory_booth!), a value claims that exact physical booth
+  # right away; leaving it blank still books the booth type/capacity but leaves
+  # the physical booth unassigned, to be picked later via the Booths page
+  # (same "assign after the fact" path as any other unassigned booking).
+  BOOTH_NO_HEADER = 'Booth No'
+
+  # Raised for anything wrong with a row's Booth No against real ExhibitorBooth
+  # inventory — not found, wrong booth price, or already taken. Caught by the
+  # generic StandardError rescue in #import like any other row failure, except
+  # BoothAlreadyTaken which gets its own rescue so the preview can flag it.
+  InvalidBoothNumber = Class.new(StandardError)
+  BoothAlreadyTaken = Class.new(InvalidBoothNumber)
+
   # Row-content dedupe fingerprint (vendor + booth price + package + quantity),
   # stamped on every kit this service creates. Re-uploading the same file — the
   # actual bug this guards against — produces identical fingerprints for every
@@ -37,6 +52,13 @@ class ExhibitorKitImportService
     # just-committed kit from a few lines above and skip itself.
     existing_fingerprints = existing_fingerprint_index
 
+    # In-file dedupe for inventory Booth No, keyed by [booth_price_id, normalized
+    # number] => the row that claimed it. Doubles as the *only* protection against
+    # a duplicate Booth No during dry_run: the DB lock inside the per-row
+    # transaction would normally catch this too, but dry_run always rolls back,
+    # so row 2 would otherwise see the booth as still available.
+    claimed_booth_numbers = {}
+
     xlsx = Roo::Spreadsheet.open(file.respond_to?(:path) ? file.path : file)
     sheet = xlsx.sheet('Exhibitors')
 
@@ -55,9 +77,12 @@ class ExhibitorKitImportService
 
       begin
         import_row!(row, custom_columns, header_row, dry_run: dry_run, results: results, row_num: row_num,
-          force_duplicate_rows: force_duplicate_rows, existing_fingerprints: existing_fingerprints)
+          force_duplicate_rows: force_duplicate_rows, existing_fingerprints: existing_fingerprints,
+          claimed_booth_numbers: claimed_booth_numbers)
       rescue ExhibitorBookingCapacity::SoldOut
         record_error(results, row_num, 'Booth price or zone quota exceeded', row: row)
+      rescue BoothAlreadyTaken => e
+        record_error(results, row_num, e.message, row: row, booth_taken: true)
       rescue StandardError => e
         record_error(results, row_num, e.message, row: row)
       end
@@ -68,7 +93,8 @@ class ExhibitorKitImportService
 
   private
 
-  def import_row!(row, custom_columns, header_row, dry_run:, results:, row_num:, force_duplicate_rows:, existing_fingerprints:)
+  def import_row!(row, custom_columns, header_row, dry_run:, results:, row_num:, force_duplicate_rows:, existing_fingerprints:,
+    claimed_booth_numbers:)
     missing = REQUIRED_HEADERS.select { |h| row[h].blank? }
     if missing.any?
       record_error(results, row_num, "Missing required field(s): #{missing.join(', ')}", row: row)
@@ -93,6 +119,27 @@ class ExhibitorKitImportService
       return
     end
 
+    # Booth No is optional even for an inventory-managed booth type: leaving it
+    # blank still books the booth type/capacity, just without claiming a specific
+    # physical booth — the kit can be assigned one later via the Booths page
+    # (ExhibitorBoothsController#assign), the same "assign after the fact" path
+    # already used for bookings made without a number picked up front.
+    booth_number = row[BOOTH_NO_HEADER].to_s.strip.presence
+    booth_key = nil
+    if booth_price.inventory? && booth_number.present?
+      if quantity != 1
+        record_error(results, row_num, 'Booth Quantity must be 1 when Booth No is used (inventory booths are numbered one at a time)', row: row)
+        return
+      end
+
+      booth_key = [booth_price.id, booth_number.upcase]
+      prior_row = claimed_booth_numbers[booth_key]
+      if prior_row
+        record_error(results, row_num, "Booth No '#{booth_number}' is already used by row #{prior_row} in this file", row: row)
+        return
+      end
+    end
+
     payment_status = row['Payment Status'].to_s.strip.downcase
     unless ExhibitorKit.payment_statuses.key?(payment_status)
       record_error(results, row_num, "Payment Status must be one of: #{ExhibitorKit.payment_statuses.keys.join(', ')}", row: row)
@@ -106,7 +153,7 @@ class ExhibitorKitImportService
       results[:skipped][:count] += 1
       results[:skipped][:data] << row_preview(
         row_num: row_num, row: row, booth_price: booth_price, package: package,
-        quantity: quantity, payment_status: payment_status
+        quantity: quantity, payment_status: payment_status, booth_number: booth_number
       ).merge(
         duplicate: true,
         existing_kit_id: duplicate[:id],
@@ -135,14 +182,19 @@ class ExhibitorKitImportService
     if dry_run
       ExhibitorKit.transaction do
         @event.lock!
+        # Resolve the specific requested booth first — when it's the reason capacity
+        # would fail (the only bookable booth left is a different one, or none at
+        # all), that's a more useful error than the generic quota message below.
+        resolve_inventory_booth!(booth_price: booth_price, booth_number: booth_number) if booth_price.inventory? && booth_number.present?
         check_capacity!(booth_price: booth_price, package: package, quantity: quantity)
         raise ActiveRecord::Rollback # dry run: validate only, never persist
       end
+      claimed_booth_numbers[booth_key] = row_num if booth_key
 
       results[:created][:count] += 1
       results[:created][:data] << row_preview(
         row_num: row_num, row: row, booth_price: booth_price, package: package,
-        quantity: quantity, payment_status: payment_status
+        quantity: quantity, payment_status: payment_status, booth_number: booth_number
       )
       return
     end
@@ -150,9 +202,11 @@ class ExhibitorKitImportService
     kit = nil
     new_user = nil
     password = nil
+    claimed_booth = nil
 
     ExhibitorKit.transaction do
       @event.lock!
+      claimed_booth = resolve_inventory_booth!(booth_price: booth_price, booth_number: booth_number) if booth_price.inventory? && booth_number.present?
       check_capacity!(booth_price: booth_price, package: package, quantity: quantity)
 
       email = row['Vendor Email'].to_s.strip.downcase
@@ -179,6 +233,7 @@ class ExhibitorKitImportService
         pic_full_name: row['PIC Name'],
         pic_contact_number: row['PIC Contact'],
         pic_email_address: row['PIC Email'],
+        booth_number: claimed_booth&.number || booth_number,
         booth_quantity: quantity,
         amount_paid: row['Amount Paid'],
         price_snapshot: package&.price || booth_price.current_price,
@@ -186,7 +241,13 @@ class ExhibitorKitImportService
         booking_status: booking_status,
         custom_fields_data: custom_fields_data.merge(FINGERPRINT_KEY => fingerprint)
       )
+
+      # Claim the physical booth in the same transaction as the kit — a booked
+      # kit with no corresponding booth claim (or vice versa) would let the
+      # normal manual-add flow sell this same booth again.
+      claimed_booth&.update!(status: (booking_status == :paid ? :booked : :reserved), exhibitor_kit: kit)
     end
+    claimed_booth_numbers[booth_key] = row_num if booth_key
 
     if new_user
       EmailDelivery::AuditedDelivery.deliver_now(
@@ -198,7 +259,7 @@ class ExhibitorKitImportService
     results[:created][:count] += 1
     results[:created][:data] << row_preview(
       row_num: row_num, row: row, booth_price: booth_price, package: package,
-      quantity: quantity, payment_status: payment_status
+      quantity: quantity, payment_status: payment_status, booth_number: booth_number
     ).merge(id: kit.id, public_id: kit.public_id)
   end
 
@@ -206,7 +267,7 @@ class ExhibitorKitImportService
   # frontend preview table and the post-import results table render identically
   # (real rows just additionally carry id/public_id, dry-run rows don't since
   # nothing was persisted).
-  def row_preview(row_num:, row:, booth_price:, package:, quantity:, payment_status:)
+  def row_preview(row_num:, row:, booth_price:, package:, quantity:, payment_status:, booth_number: nil)
     {
       row: row_num,
       vendor_email: row['Vendor Email'].to_s.strip.downcase,
@@ -216,6 +277,7 @@ class ExhibitorKitImportService
       booth_type: booth_price.booth_type,
       zone: booth_price.zone,
       price_label: booth_price.label,
+      booth_no: booth_number,
       package_name: package&.name,
       booth_quantity: quantity,
       payment_status: payment_status,
@@ -226,9 +288,13 @@ class ExhibitorKitImportService
   # `row` is the raw sheet row, not a resolved booth_price/package — a row can fail
   # precisely because it didn't resolve, so this reads straight from the cells the
   # admin typed, letting the preview table show what was entered even on failure.
-  def record_error(results, row_num, message, row: nil)
+  # `booth_taken:` flags the specific case of a Booth No that belongs to another,
+  # already-booked ExhibitorBooth — distinct from "not found"/"wrong type" so the
+  # frontend can badge it the same way a duplicate vendor booking is badged.
+  def record_error(results, row_num, message, row: nil, booth_taken: false)
     results[:errors][:count] += 1
     entry = { row: row_num, error: message }
+    entry[:booth_taken] = true if booth_taken
     entry.merge!(raw_row_summary(row)) if row
     results[:errors][:data] << entry
   end
@@ -242,6 +308,7 @@ class ExhibitorKitImportService
       booth_type: row['Booth Type'],
       zone: row['Zone'],
       price_label: row['Price Label'],
+      booth_no: row[BOOTH_NO_HEADER].to_s.strip.presence,
       package_name: row['Package Name'],
       booth_quantity: row['Booth Quantity'],
       payment_status: row['Payment Status']
@@ -294,5 +361,22 @@ class ExhibitorKitImportService
   def check_capacity!(booth_price:, package:, quantity:)
     ExhibitorBookingCapacity.lock!(booth_price, quantity: quantity)
     ExhibitorBookingCapacity.lock_package!(package, quantity: quantity) if package
+  end
+
+  # Locks and validates a real ExhibitorBooth for an inventory-managed booth
+  # price — same rule set EventVendorBatchService#lock_inventory! applies for the
+  # manual "add exhibitor" flow, so an imported row can't create a kit while
+  # leaving the actual booth inventory unaware it was just sold. Must run inside
+  # the row's transaction (uses .lock) — both the dry_run and real create paths
+  # call this there.
+  def resolve_inventory_booth!(booth_price:, booth_number:)
+    booth = @event.exhibitor_booths.lock.find_by(number: booth_number.to_s.strip.upcase)
+    raise InvalidBoothNumber, "Booth No '#{booth_number}' was not found for this event" unless booth
+    unless booth.exhibitor_booth_price_id == booth_price.id
+      raise InvalidBoothNumber, "Booth No '#{booth_number}' does not belong to the resolved Booth Type/Zone/Price Label"
+    end
+    raise BoothAlreadyTaken, "Booth No '#{booth_number}' is already taken" unless booth.available? && booth.bookable?
+
+    booth
   end
 end

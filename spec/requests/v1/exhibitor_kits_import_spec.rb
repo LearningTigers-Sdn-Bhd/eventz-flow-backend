@@ -46,7 +46,7 @@ RSpec.describe 'Exhibitor kits import', type: :request do
     it 'imports a valid row and returns created count' do
       file = upload_with_row([
         'reqspecvendor@example.com', 'Req Vendor', '0123456789', 'Acme', 'Addr',
-        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
       ])
 
       post "/v1/events/#{event.id}/exhibitor_kits/import", params: { file: file }, headers: headers
@@ -61,7 +61,7 @@ RSpec.describe 'Exhibitor kits import', type: :request do
       other_user = create(:user, role: :vendor)
       file = upload_with_row([
         'unauthorized@example.com', 'Unauthorized', '0123456789', 'Acme', 'Addr',
-        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
       ])
 
       post "/v1/events/#{event.id}/exhibitor_kits/import", params: { file: file },
@@ -79,7 +79,7 @@ RSpec.describe 'Exhibitor kits import', type: :request do
     it 'returns 422 when the upload is not an xlsx file' do
       file = upload_with_row([
         'wrong-type@example.com', 'Wrong Type', '0123456789', 'Acme', 'Addr',
-        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
       ], content_type: 'text/plain')
 
       post "/v1/events/#{event.id}/exhibitor_kits/import", params: { file: file }, headers: headers
@@ -91,7 +91,7 @@ RSpec.describe 'Exhibitor kits import', type: :request do
       stub_const('V1::ExhibitorKitsController::MAX_IMPORT_FILE_SIZE', 1.byte)
       file = upload_with_row([
         'oversized@example.com', 'Oversized', '0123456789', 'Acme', 'Addr',
-        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+        'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
       ])
 
       post "/v1/events/#{event.id}/exhibitor_kits/import", params: { file: file }, headers: headers

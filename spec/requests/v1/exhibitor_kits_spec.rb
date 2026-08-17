@@ -724,7 +724,7 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
           sheet.add_row(ExhibitorKitImportTemplateService::FIXED_HEADERS)
           sheet.add_row([
             'swagger-vendor@example.com', 'Swagger Vendor', '0123456789', 'Acme', 'Addr',
-            'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid'
+            'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
           ])
         end
         tempfile = Tempfile.new(['import', '.xlsx'])

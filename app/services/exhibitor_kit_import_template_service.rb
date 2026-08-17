@@ -9,7 +9,7 @@ class ExhibitorKitImportTemplateService
     'Vendor Email', 'Vendor Name', 'Vendor Phone',
     'Company Name', 'Company Address',
     'PIC Name', 'PIC Contact', 'PIC Email',
-    'Booth Type', 'Zone', 'Price Label', 'Package Name',
+    'Booth Type', 'Zone', 'Price Label', 'Booth No', 'Package Name',
     'Booth Quantity', 'Amount Paid', 'Payment Status'
   ].freeze
 
@@ -51,7 +51,10 @@ class ExhibitorKitImportTemplateService
   # Columns whose valid values live on the Reference sheet. Organizers kept mistyping
   # these (wrong zone for a booth type, stale price label) with no indication the
   # Reference sheet was the source of truth — hence the dropdown + comment + highlight.
-  REFERENCE_COLUMNS = ['Booth Type', 'Zone', 'Price Label', 'Package Name'].freeze
+  # Booth No's list is only ever bookable booth numbers (see #bookable_booths) — a
+  # number is unique per event (not per booth price), so a flat list is unambiguous
+  # even though it's not filtered to the row's own Booth Type/Zone/Price Label.
+  REFERENCE_COLUMNS = ['Booth Type', 'Zone', 'Price Label', 'Package Name', 'Booth No'].freeze
   MAX_TEMPLATE_ROWS = 500
 
   # Same required set ExhibitorKitImportService rejects a row for missing — kept as
@@ -98,23 +101,41 @@ class ExhibitorKitImportTemplateService
     end
   end
 
+  # Booth No is required only for booth types with real numbered-booth inventory
+  # set up (ExhibitorBooth records) — for those, it's validated against the
+  # "Available Booth Numbers" list on the Reference sheet, must be free, and the
+  # import claims it the same way the manual "add exhibitor" flow does. For a
+  # booth type with no such inventory, this column is a harmless free-text label.
+  BOOTH_NO_COMMENT =
+    'For a Booth Type with numbered booth inventory set up in this event, filling this in claims that exact ' \
+    'physical booth right away — see the "Available Booth Numbers" list on the Reference sheet for valid, ' \
+    "currently free numbers. Must match exactly, must not already be taken, and can't be reused across rows " \
+    'in this file — those rows will fail (or get flagged as taken) instead of double-booking the booth. Leave ' \
+    "it blank to book the booth type without picking a specific number yet — you can assign one later from " \
+    "the event's Booths page."
+
   def add_reference_dropdown(sheet, headers, column_name)
     col_index = headers.index(column_name)
     return unless col_index
 
     col_letter = Axlsx.col_ref(col_index)
-    required_note = required_columns.include?(column_name) ? ' Required — row is rejected if this is blank.' : ''
+    text = if column_name == 'Booth No'
+      BOOTH_NO_COMMENT
+    else
+      required_note = required_columns.include?(column_name) ? ' Required — row is rejected if this is blank.' : ''
+      "Must match a value from the Reference sheet's #{column_name} lookup list (below the price table). " \
+      "Mismatched combos are the most common reason a row fails to import.#{required_note}"
+    end
     sheet.add_comment(
       ref: "#{col_letter}1",
       author: 'EventzFlow',
       visible: false, # hover-only; caxlsx defaults to permanently expanded otherwise
-      text: "Must match a value from the Reference sheet's #{column_name} lookup list (below the price table). " \
-            "Mismatched combos are the most common reason a row fails to import.#{required_note}"
+      text: text
     )
 
     # No dropdown when there's nothing to choose from (e.g. an event with booth
-    # prices but zero packages configured) — an empty range would produce an
-    # invalid formula1 and corrupt the workbook for Excel.
+    # prices but zero packages configured, or zero ExhibitorBooth inventory) — an
+    # empty range would produce an invalid formula1 and corrupt the workbook.
     return if @reference_lookup_values.fetch(column_name).empty?
 
     sheet.add_data_validation("#{col_letter}2:#{col_letter}#{MAX_TEMPLATE_ROWS}", {
@@ -173,7 +194,8 @@ class ExhibitorKitImportTemplateService
       'Booth Type' => prices.map(&:booth_type).uniq,
       'Zone' => prices.filter_map(&:zone).uniq,
       'Price Label' => prices.map(&:label).uniq,
-      'Package Name' => prices.flat_map { |p| p.exhibitor_packages.map(&:name) }.uniq
+      'Package Name' => prices.flat_map { |p| p.exhibitor_packages.map(&:name) }.uniq,
+      'Booth No' => bookable_booths.map(&:number)
     }
 
     price_row_count = prices.sum { |p| p.exhibitor_packages.any? ? p.exhibitor_packages.size : 1 }
@@ -185,6 +207,18 @@ class ExhibitorKitImportTemplateService
     @reference_prices ||= @event.exhibitor_booth_prices
       .includes(:exhibitor_zone, :exhibitor_packages)
       .order(:booth_type, :label)
+  end
+
+  # Every currently-free ExhibitorBooth for this event, across all inventory-managed
+  # booth prices — snapshotted at export time same as the quota columns (can go
+  # stale by the time the file is re-uploaded; the import re-validates for real).
+  # Sorted by booth type/zone/label so same-type booths group together in both the
+  # dropdown list and the browsable "Available Booth Numbers" table.
+  def bookable_booths
+    @bookable_booths ||= @event.exhibitor_booths.bookable
+      .includes(exhibitor_booth_price: :exhibitor_zone)
+      .to_a
+      .sort_by { |b| [b.exhibitor_booth_price.booth_type, b.exhibitor_booth_price.zone.to_s, b.exhibitor_booth_price.label, b.number] }
   end
 
   # Two separate remaining-quota columns because a booth price's own quota being
@@ -237,6 +271,7 @@ class ExhibitorKitImportTemplateService
 
       write_reference_lookup_columns(sheet, styles)
       write_sample_row(sheet, styles)
+      write_booth_inventory_table(sheet, styles)
     end
   end
 
@@ -308,24 +343,54 @@ class ExhibitorKitImportTemplateService
 
     sheet.add_row(padding + headers, style: padding.map { nil } + Array.new(headers.size, styles[:header]))
 
+    # PIC (person in charge on-site) is deliberately a different person from the
+    # Vendor (the account holder) — using the same name for both in the sample
+    # made it look like Vendor Name and PIC Name were supposed to match, which
+    # they usually don't in real submissions.
     values = {
       'Vendor Email' => 'vendor@example.com',
       'Vendor Name' => 'Jane Vendor',
       'Vendor Phone' => '0123456789',
       'Company Name' => 'Example Sdn Bhd',
       'Company Address' => '1 Jalan Example, 88000 Kota Kinabalu',
-      'PIC Name' => 'Jane Vendor',
-      'PIC Contact' => '0123456789',
-      'PIC Email' => 'jane@example.com',
+      'PIC Name' => 'Ahmad Bakar',
+      'PIC Contact' => '0198765432',
+      'PIC Email' => 'ahmad@example.com',
       'Booth Type' => sample_price.booth_type,
       'Zone' => sample_price.zone,
       'Price Label' => sample_price.label,
+      'Booth No' => bookable_booths.find { |b| b.exhibitor_booth_price_id == sample_price.id }&.number,
       'Package Name' => sample_package&.name,
       'Booth Quantity' => 1,
       'Amount Paid' => sample_package&.price || sample_price.current_price,
       'Payment Status' => ExhibitorKit.payment_statuses.keys.first
     }
     sheet.add_row(padding + headers.map { |h| values[h] }, style: padding.map { nil } + Array.new(headers.size, styles[:sample_value]))
+  end
+
+  # Human-browsable "which numbers are actually free right now" list, separate
+  # from the flat lookup column that backs the Booth No dropdown (that one has no
+  # room for the Booth Type/Zone/Price Label context a number belongs to). Skipped
+  # entirely for an event with no ExhibitorBooth inventory at all — nothing to show.
+  def write_booth_inventory_table(sheet, styles)
+    booths = bookable_booths
+    return if booths.empty?
+
+    sheet.add_row([]) # spacer, separating this block from the sample row above
+
+    title_row_num = sheet.rows.size + 1
+    sheet.add_row(['Available Booth Numbers — pick one of these for Booth No', nil, nil, nil],
+      style: Array.new(4, styles[:sample_title]))
+    sheet.merge_cells("A#{title_row_num}:D#{title_row_num}")
+
+    sheet.add_row(['Booth Type', 'Zone', 'Price Label', 'Booth No'], style: Array.new(4, styles[:header]))
+    booths.each_with_index do |booth, i|
+      row_style = i.even? ? styles[:plain] : styles[:zebra]
+      sheet.add_row(
+        [booth.exhibitor_booth_price.booth_type, booth.exhibitor_booth_price.zone, booth.exhibitor_booth_price.label, booth.number],
+        style: Array.new(4, row_style)
+      )
+    end
   end
 
   def remaining_quota(quota, sold)
