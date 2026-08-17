@@ -410,6 +410,9 @@ Rails.application.routes.draw do
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
 
+      # Host/staff approval of a pending booking (authenticated)
+      patch 'bookings/:id/approve', to: 'bookings#approve'
+
       # Public booking view and reschedule (no auth — booking ID is UUID)
       get 'bookings/:id/public', to: 'bookings#public_show'
       patch 'bookings/:id/reschedule', to: 'bookings#reschedule'

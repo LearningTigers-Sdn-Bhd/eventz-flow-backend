@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <style>
+    <%= render 'booking_mailer/shared_styles' %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Booking Request Received for <%= @event_title %></h2>
+    </div>
+    <div class="content">
+      <p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
+      <p>
+        We've received your request for a business matching meeting at
+        <strong><%= @event_title %></strong>. Your booking is currently
+        <strong>awaiting approval</strong> from the host — it is not confirmed yet.
+      </p>
+
+      <h3>Requested Slot:</h3>
+      <div class="details">
+        <p><strong>Date:</strong> <%= @booking_date %></p>
+        <p><strong>Time:</strong> <%= @booking_time %></p>
+        <% if @booking['location'].present? %>
+          <p><strong>Location:</strong> <%= @booking['location'] %></p>
+        <% end %>
+        <p><strong>Status:</strong> Pending approval</p>
+      </div>
+
+      <p>
+        We'll email you again as soon as the host approves it. There's nothing
+        you need to do in the meantime.
+      </p>
+
+      <p>Best regards,<br>The Organizing Team</p>
+    </div>
+    <div class="footer">
+      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

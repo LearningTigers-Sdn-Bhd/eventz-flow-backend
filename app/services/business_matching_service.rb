@@ -313,6 +313,8 @@ class BusinessMatchingService < BaseService
       booking_date: Date.parse(booking_params[:date]),
       booking_time: booking_params[:time],
       duration: session.slot_duration,
+      # Never gated by the auto-approve setting: the staff member adding the
+      # booking here *is* the approver (see 2cabc1a).
       status: "Confirmed",
       payment_status: "Pending"
     )
@@ -350,7 +352,11 @@ class BusinessMatchingService < BaseService
       booking_date: Date.parse(booking_params[:date]),
       booking_time: booking_params[:time],
       duration: session.slot_duration,
-      status: session.event.business_matching_auto_approve_bookings? ? "Approved" : "Confirmed",
+      # With auto-approve off, a booker-made booking is only a request until
+      # the host/admin approves it — anything but "Pending" would promise the
+      # booker a slot nobody has agreed to yet, and no Approve action would
+      # ever show for it in the panel.
+      status: session.event.business_matching_auto_approve_bookings? ? "Approved" : "Pending",
       payment_status: "Pending",
       booker_description: booking_params[:booker_description],
       booker_sourcing_intent: booking_params[:booker_sourcing_intent],
@@ -366,6 +372,37 @@ class BusinessMatchingService < BaseService
     else
       BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
+  # Approves a pending booking and tells the booker it's now confirmed.
+  def approve_booking(booking_id)
+    booking = BusinessMatchingBooking.find_by(id: booking_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Booking not found", status: :not_found) unless booking
+
+    if booking.status == "Cancelled"
+      return BaseService::ServiceResult.new(success: false, errors: "Cancelled bookings cannot be approved", status: :unprocessable_entity)
+    end
+
+    session = booking.business_matching_session
+
+    if booking.status == "Approved"
+      # Already approved — treat as a no-op success so a double-click doesn't
+      # send the booker a second "confirmed" email.
+      return BaseService::ServiceResult.new(success: true, data: _transform_local_bookings([booking], session).first)
+    end
+
+    unless booking.update(status: "Approved")
+      return BaseService::ServiceResult.new(success: false, errors: booking.errors.full_messages.join(', '), status: :unprocessable_entity)
+    end
+
+    ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: "booking_updated" })
+
+    transformed = _transform_local_bookings([booking], session).first
+    _deliver_booking_email('approval_email', [transformed.with_indifferent_access, session&.title, session&.event_id], booking)
+
+    BaseService::ServiceResult.new(success: true, data: transformed)
   rescue StandardError => e
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
@@ -625,7 +662,6 @@ class BusinessMatchingService < BaseService
         location: sess&.location || "",
         cancel_link: "/event/#{sess&.event_id}/booking/#{b.id}/cancel",
         reschedule_link: "/event/#{sess&.event_id}/booking/#{b.id}/reschedule",
-        meeting_approval_link: "/event/#{sess&.event_id}/booking/#{b.id}/approve",
         payment_status: b.payment_status,
         created_at: b.created_at.iso8601,
         attendance: b.attendance || "",
@@ -642,11 +678,16 @@ class BusinessMatchingService < BaseService
   def _send_booking_confirmation_emails(booking, session, event_id)
     transformed = _transform_local_bookings([booking], session).first.with_indifferent_access
 
-    _deliver_booking_email('confirmation_email', [transformed, session.title, event_id], booking)
+    # A booking still awaiting approval must not be announced as confirmed —
+    # the booker gets a "we received your request" note instead.
+    booker_action = booking.status == 'Pending' ? 'pending_approval_email' : 'confirmation_email'
+    _deliver_booking_email(booker_action, [transformed, session.title, event_id], booking)
 
     host = booking.host_user
     return unless host
 
+    # The host template branches on the booking status itself, so a pending
+    # booking reads as an approval request rather than a done deal.
     _deliver_booking_email('host_confirmation_email', [transformed, session.title, event_id, host], booking)
   end
 

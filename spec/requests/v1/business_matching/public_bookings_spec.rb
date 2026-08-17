@@ -88,4 +88,43 @@ RSpec.describe "V1::BusinessMatching::Bookings public_create", type: :request do
 
     expect(response).to have_http_status(:created)
   end
+
+  context "when auto-approve is disabled for the event" do
+    before { event.update!(business_matching_auto_approve_bookings: false) }
+
+    it "creates the booking as Pending rather than Approved" do
+      post "/v1/business_matching/events/#{event.id}/bookings/public",
+           params: booking_params, headers: auth_headers(visitor)
+
+      expect(response).to have_http_status(:created)
+      expect(json_response["status"]).to eq("Pending")
+      expect(BusinessMatchingBooking.last.status).to eq("Pending")
+    end
+
+    it "tells the booker the request is awaiting approval instead of confirming it" do
+      perform_enqueued_jobs do
+        post "/v1/business_matching/events/#{event.id}/bookings/public",
+             params: booking_params, headers: auth_headers(visitor)
+      end
+
+      booker_email = ActionMailer::Base.deliveries.find { |m| m.to.include?("visitor@example.com") }
+      expect(booker_email.subject).to include("Awaiting Approval")
+      expect(booker_email.subject).not_to include("Booking Confirmation")
+    end
+
+    it "leaves staff-made bookings ungated by the setting" do
+      admin = create(:user)
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+
+      post "/v1/business_matching/events/#{session.id}/bookings",
+           params: {
+             event_id: event.id,
+             booking: { name: "Walk-in", email: "walkin@example.com", phone: "0123456789", date: Date.current.to_s, time: "11:00 AM" }
+           },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:created)
+      expect(BusinessMatchingBooking.last.status).to eq("Confirmed")
+    end
+  end
 end
