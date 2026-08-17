@@ -655,6 +655,7 @@ module V1
           ticket_type_id: ticket.ticket_type_id,
           price: ticket.ticket_type&.current_price || 0,
           payment_status: ticket.payment_status,
+          payment_proof_uploaded: ticket.ticket_payment&.payment_proof&.attached? || false,
           status: ticket.status,
           waiting_list: ticket.waiting_list,
           created_at: ticket.created_at,
