@@ -105,7 +105,7 @@ RSpec.describe ExhibitorKitImportService do
         'newvendor@example.com', 'New Vendor', '0123456789',
         'Acme Sdn Bhd', '123 Main St',
         'Jane PIC', '0198765432', 'jane@example.com',
-        'Standard', 'Hall A', 'Standard 3x3', nil,
+        'Standard', 'Hall A', 'Standard 3x3', '', nil,
         1, 500, 'paid', 'L'
       ]])
 
@@ -131,7 +131,7 @@ RSpec.describe ExhibitorKitImportService do
       file = build_upload(
         [[
           'systemkeys@example.com', 'System Keys', '0123456789', 'Acme', 'Addr',
-          'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', nil,
+          'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil,
           1, 500, 'unpaid', 'L', 'sneaky-batch-id', 'later'
         ]],
         custom_headers: ['T Shirt Size', 'Booking Batch Id', 'Payment Option']
@@ -148,9 +148,9 @@ RSpec.describe ExhibitorKitImportService do
       existing_user = create(:user, email: 'repeat@example.com', role: :vendor)
       file = build_upload([
         ['repeat@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-         'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', ''],
+         'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', ''],
         ['repeat@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-         'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+         'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', '']
       ])
 
       expect {
@@ -162,7 +162,7 @@ RSpec.describe ExhibitorKitImportService do
 
     it 'skips a row that matches a booking already created in an earlier import run, instead of creating a duplicate' do
       row = ['repeat2@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', '']
 
       first_result = described_class.import(build_upload([row]).path, event: event, current_user: organizer)
       expect(first_result[:created][:count]).to eq(1)
@@ -178,7 +178,7 @@ RSpec.describe ExhibitorKitImportService do
 
     it 'creates the row anyway when its row number is explicitly force-approved as a duplicate' do
       row = ['repeat3@example.com', 'Repeat Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', '']
 
       described_class.import(build_upload([row]).path, event: event, current_user: organizer)
 
@@ -192,9 +192,9 @@ RSpec.describe ExhibitorKitImportService do
     it 'records a row error and continues when booth price does not match' do
       file = build_upload([
         ['bad@example.com', 'Bad', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-         'Nonexistent', 'Nowhere', 'Nope', nil, 1, 500, 'unpaid', ''],
+         'Nonexistent', 'Nowhere', 'Nope', '', nil, 1, 500, 'unpaid', ''],
         ['good@example.com', 'Good', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-         'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', '']
+         'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', '']
       ])
 
       results = described_class.import(file.path, event: event, current_user: organizer)
@@ -217,7 +217,7 @@ RSpec.describe ExhibitorKitImportService do
         exhibitor_booth_price: booth_price, booth_quantity: 5, booking_status: :paid)
       file = build_upload([[
         'overflow@example.com', 'Overflow', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', ''
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', ''
       ]])
 
       expect {
@@ -230,7 +230,7 @@ RSpec.describe ExhibitorKitImportService do
     it 'dry_run: true validates without persisting, and returns a preview row' do
       file = build_upload([[
         'dryrun@example.com', 'Dry Run', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', ''
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', ''
       ]])
 
       results = nil
@@ -254,7 +254,7 @@ RSpec.describe ExhibitorKitImportService do
         exhibitor_booth_price: booth_price, booth_quantity: 5, booking_status: :paid)
       file = build_upload([[
         'dryrun-overflow@example.com', 'Dry Run Overflow', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
-        'Standard', 'Hall A', 'Standard 3x3', nil, 1, 500, 'unpaid', ''
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid', ''
       ]])
 
       results = described_class.import(file.path, event: event, current_user: organizer, dry_run: true)
@@ -262,6 +262,184 @@ RSpec.describe ExhibitorKitImportService do
       expect(results[:errors][:count]).to eq(1)
       expect(results[:errors][:data].first[:error]).to eq('Booth price or zone quota exceeded')
       expect(User.find_by(email: 'dryrun-overflow@example.com')).to be_nil
+    end
+  end
+
+  describe '.import with inventory booths (a Booth No column on a booth type that has real ExhibitorBooth records)' do
+    let!(:organizer) { create(:user, role: :organizer) }
+    let!(:inventory_booth) { create(:exhibitor_booth, event: event, exhibitor_booth_price: booth_price, number: 'A-01') }
+
+    def build_upload(rows, custom_headers: [])
+      package = Axlsx::Package.new
+      package.workbook.add_worksheet(name: 'Exhibitors') do |sheet|
+        sheet.add_row(ExhibitorKitImportTemplateService::FIXED_HEADERS + custom_headers)
+        rows.each { |row| sheet.add_row(row) }
+      end
+      Tempfile.new(['import', '.xlsx']).tap do |f|
+        f.binmode
+        package.serialize(f.path)
+        f.rewind
+      end
+    end
+
+    it 'claims the matching ExhibitorBooth and stamps its number on the created kit' do
+      file = build_upload([[
+        'inv@example.com', 'Inv Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'a-01', nil, 1, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:created][:count]).to eq(1)
+      kit = ExhibitorKit.last
+      expect(kit.booth_number).to eq('A-01')
+      expect(inventory_booth.reload.status).to eq('reserved')
+      expect(inventory_booth.exhibitor_kit).to eq(kit)
+    end
+
+    it 'marks the booth booked instead of reserved when Payment Status settles the booking' do
+      file = build_upload([[
+        'invpaid@example.com', 'Inv Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'paid'
+      ]])
+
+      described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(inventory_booth.reload.status).to eq('booked')
+    end
+
+    it 'creates the kit without claiming any booth when Booth No is left blank for an inventory-managed booth type' do
+      file = build_upload([[
+        'noboothno@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(0)
+      expect(results[:created][:count]).to eq(1)
+      kit = ExhibitorKit.last
+      expect(kit.booth_number).to be_nil
+      expect(kit.exhibitor_booth_price).to eq(booth_price)
+      expect(inventory_booth.reload.status).to eq('available') # left for later manual assignment
+    end
+
+    it 'still enforces capacity by count when quantity > 1 and Booth No is left blank' do
+      create(:exhibitor_booth, event: event, exhibitor_booth_price: booth_price, number: 'A-02')
+      # Only 2 bookable booths exist (A-01 + A-02) — asking for 3 without picking
+      # numbers should still fail the aggregate capacity check.
+      file = build_upload([[
+        'overcapacity@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', '', nil, 3, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to eq('Booth price or zone quota exceeded')
+    end
+
+    it 'errors the row when Booth No does not exist for the event' do
+      file = build_upload([[
+        'notfound@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'Z-99', nil, 1, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to include('not found')
+    end
+
+    it 'errors the row when Booth No belongs to a different booth price' do
+      other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: nil, booth_type: 'Premium', label: 'Premium 3x3', price: 800)
+      create(:exhibitor_booth, event: event, exhibitor_booth_price: other_price, number: 'B-01')
+      file = build_upload([[
+        'wrongprice@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'B-01', nil, 1, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to include('does not belong to the resolved Booth Type')
+    end
+
+    it 'errors and flags booth_taken when Booth No is already claimed by another active kit' do
+      taken_kit = create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event),
+        exhibitor_booth_price: booth_price, booth_quantity: 1, booking_status: :active)
+      inventory_booth.update!(status: :reserved, exhibitor_kit: taken_kit)
+
+      file = build_upload([[
+        'taken@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to include('already taken')
+      expect(results[:errors][:data].first[:booth_taken]).to eq(true)
+    end
+
+    it 'errors the row when Booth Quantity is more than 1 alongside a Booth No' do
+      file = build_upload([[
+        'multiqty@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 3, 500, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to include('Booth Quantity must be 1')
+    end
+
+    it 'errors the second row when two rows in the same file claim the same Booth No' do
+      file = build_upload([
+        ['dup1@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+         'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'unpaid'],
+        ['dup2@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+         'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'unpaid']
+      ])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:created][:count]).to eq(1)
+      expect(results[:errors][:count]).to eq(1)
+      expect(results[:errors][:data].first[:error]).to include('already used by row 2')
+    end
+
+    it 'dry_run: true validates the booth without claiming it, and still catches an in-file duplicate' do
+      file = build_upload([
+        ['dry1@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+         'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'unpaid'],
+        ['dry2@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+         'Standard', 'Hall A', 'Standard 3x3', 'A-01', nil, 1, 500, 'unpaid']
+      ])
+
+      results = nil
+      expect {
+        results = described_class.import(file.path, event: event, current_user: organizer, dry_run: true)
+      }.not_to change(ExhibitorKit, :count)
+
+      expect(results[:created][:count]).to eq(1)
+      expect(results[:created][:data].first[:booth_no]).to eq('A-01')
+      expect(results[:errors][:count]).to eq(1)
+      expect(inventory_booth.reload.status).to eq('available') # never actually claimed
+    end
+
+    it 'passes Booth No straight through as a label for a booth type with no ExhibitorBooth inventory' do
+      no_inventory_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: nil,
+        booth_type: 'Premium', label: 'Premium 3x3', price: 800)
+      file = build_upload([[
+        'freeform@example.com', 'Vendor', '0123456789', 'Acme', 'Addr', 'Jane', '0198765432', '',
+        'Premium', '', 'Premium 3x3', 'Whatever I Want', nil, 2, 800, 'unpaid'
+      ]])
+
+      results = described_class.import(file.path, event: event, current_user: organizer)
+
+      expect(results[:errors][:count]).to eq(0)
+      expect(ExhibitorKit.last.booth_number).to eq('Whatever I Want')
     end
   end
 end
