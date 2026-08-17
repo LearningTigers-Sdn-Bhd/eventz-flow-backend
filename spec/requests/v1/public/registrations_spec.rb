@@ -240,8 +240,27 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data']['pending_tickets'].find do |t|
         t['public_id'] == pending_ticket.public_id
       end['registered_by_email']).to eq('leader@example.com')
+      expect(json['data']['pending_tickets'].find do |t|
+        t['public_id'] == pending_ticket.public_id
+      end['payment_proof_uploaded']).to be(false)
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).not_to include(other_form_ticket.public_id)
       expect(json['data']['paid_tickets'].map { |t| t['public_id'] }).to include(paid_ticket.public_id)
+    end
+
+    it 'reports when a pending ticket already has payment proof' do
+      payment = pending_ticket.create_ticket_payment!(amount: ticket_type.current_price, status: :pending)
+      payment.payment_proof.attach(fixture_file_upload('test_image.png', 'image/png'))
+
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: 'john@example.com',
+        form_slug: 'delegate'
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      pending = json['data']['pending_tickets'].find { |ticket| ticket['public_id'] == pending_ticket.public_id }
+
+      expect(pending['payment_proof_uploaded']).to be(true)
     end
 
     it 'returns 422 when email is blank' do
