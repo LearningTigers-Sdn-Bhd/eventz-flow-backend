@@ -3,10 +3,10 @@ Application Update
 Dear <%= @ticket.attendee_name %>,
 
 Thank you for applying to <%= @event.title %>.
-After careful review, we are unable to accept your delegate application at this time due to limited capacity.
+Unfortunately, your application was not successful this time.
 
-Application Status
-- Not selected in the current intake
+Reason
+- <%= @rejection_reason %>
 
 We truly appreciate your interest in being part of <%= @event.title %> and thank you for your understanding.
 <% if @contact_email.present? %>

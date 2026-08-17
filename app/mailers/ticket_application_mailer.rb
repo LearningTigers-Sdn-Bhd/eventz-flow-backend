@@ -40,6 +40,8 @@ class TicketApplicationMailer < ApplicationMailer
     @ticket_type = @ticket.ticket_type
     @setting = ticket_application.registration_form.registration_form_rsvp_setting
     @contact_email = @event.event_email_setting&.contact_email.presence
+    @rejection_reason = ticket_application.rejection_reason.presence ||
+                         'After careful review, we are unable to accept your delegate application at this time due to limited capacity.'
   end
 
   def sender_from
