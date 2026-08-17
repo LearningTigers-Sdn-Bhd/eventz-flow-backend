@@ -413,8 +413,8 @@ RSpec.describe 'V1::Public::VehicleRegistrations', type: :request do
       email: 'support-member-driver@example.com'
     )
     lookup(form: support_form, plate: 'ss100')
-    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to eq(
-      [support_included.id]
+    expect(JSON.parse(response.body).dig('data', 'allowed_ticket_type_ids')).to contain_exactly(
+      support_included.id, support_additional_non_member.id
     )
 
     register(

@@ -32,12 +32,12 @@
 
         <p class="message">
           Thank you for applying to <strong><%= @event.title %></strong>.
-          After careful review, we are unable to accept your delegate application at this time due to limited capacity.
+          Unfortunately, your application was not successful this time.
         </p>
 
         <div class="info-box">
-          <p class="info-title">Application Status</p>
-          <p class="info-text">Not selected in the current intake</p>
+          <p class="info-title">Reason</p>
+          <p class="info-text"><%= @rejection_reason %></p>
         </div>
 
         <p class="message">

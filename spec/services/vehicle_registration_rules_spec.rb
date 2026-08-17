@@ -12,6 +12,31 @@ RSpec.describe VehicleRegistrationRules do
     expect(rules.allowed_ticket_names(nil)).to include('Support - Corporate')
   end
 
+  it 'offers the free included seat and a paid non-member seat for competitor-support 2nd person' do
+    event = create(:event)
+    form = create(:registration_form, event: event, slug: 'competitor-support')
+    member = create(:ticket_type, event: event, name: 'Support - Member', status: :published, hidden: false)
+    included = create(:ticket_type, event: event, name: 'Included 2nd Person - Member/Corporate', status: :published,
+                                     hidden: false)
+    non_member = create(:ticket_type, event: event, name: 'Additional Person - Non-Member', status: :published,
+                                       hidden: false)
+    [member, included, non_member].each do |ticket_type|
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: ticket_type)
+    end
+
+    vehicle_registration = VehicleRegistration.create!(
+      event: event, registration_form: form, base_ticket_type: member,
+      plate: 'ABC1234', normalized_plate: VehicleRegistration.normalize_plate('ABC1234')
+    )
+    create(:ticket, event: event, ticket_type: member, vehicle_registration: vehicle_registration)
+
+    rules = described_class.new(form)
+
+    expect(rules.allowed_ticket_names(vehicle_registration)).to contain_exactly(
+      'Included 2nd Person - Member/Corporate', 'Additional Person - Non-Member'
+    )
+  end
+
   it 'offers the free included seat and a paid non-member seat for expedition 2nd person' do
     event = create(:event)
     form = create(:registration_form, event: event, slug: 'expedition-a-tags-on')
@@ -29,6 +54,31 @@ RSpec.describe VehicleRegistrationRules do
       plate: 'ABC1234', normalized_plate: VehicleRegistration.normalize_plate('ABC1234')
     )
     create(:ticket, event: event, ticket_type: member, vehicle_registration: vehicle_registration)
+
+    rules = described_class.new(form)
+
+    expect(rules.allowed_ticket_names(vehicle_registration)).to contain_exactly(
+      'Included 2nd Person - Member/Corporate', 'Additional Person - Non-Member'
+    )
+  end
+
+  it 'qualifies Support - Corporate for the free included seat like Support - Member' do
+    event = create(:event)
+    form = create(:registration_form, event: event, slug: 'competitor-support')
+    corporate = create(:ticket_type, event: event, name: 'Support - Corporate', status: :published, hidden: false)
+    included = create(:ticket_type, event: event, name: 'Included 2nd Person - Member/Corporate', status: :published,
+                                     hidden: false)
+    non_member = create(:ticket_type, event: event, name: 'Additional Person - Non-Member', status: :published,
+                                       hidden: false)
+    [corporate, included, non_member].each do |ticket_type|
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: ticket_type)
+    end
+
+    vehicle_registration = VehicleRegistration.create!(
+      event: event, registration_form: form, base_ticket_type: corporate,
+      plate: 'ABC1234', normalized_plate: VehicleRegistration.normalize_plate('ABC1234')
+    )
+    create(:ticket, event: event, ticket_type: corporate, vehicle_registration: vehicle_registration)
 
     rules = described_class.new(form)
 

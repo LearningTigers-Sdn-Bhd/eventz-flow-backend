@@ -175,6 +175,27 @@ module V1
         }, status: :ok
       end
 
+      # PATCH /api/v1/business_matching/bookings/:id/approve
+      # Staff/host action — authenticated, unlike the booker-facing
+      # reschedule/cancel links below.
+      def approve
+        booking = BusinessMatchingBooking.find_by(id: params[:id])
+        return render json: { error: 'Booking not found' }, status: :not_found unless booking
+
+        session = booking.business_matching_session
+        return render json: { error: 'Session not found' }, status: :not_found unless session
+
+        authorize session, :update?
+
+        service_result = BusinessMatchingService.new(current_user).approve_booking(booking.id)
+
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
+        end
+      end
+
       # PATCH /api/v1/business_matching/bookings/:id/reschedule
       def reschedule
         booking = BusinessMatchingBooking.find_by(id: params[:id])

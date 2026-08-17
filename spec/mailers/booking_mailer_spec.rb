@@ -25,6 +25,26 @@ RSpec.describe BookingMailer, type: :mailer do
     end
   end
 
+  describe '#pending_approval_email' do
+    let(:mail) { described_class.pending_approval_email(booking_data, session.title, event.id) }
+
+    it 'tells the participant the booking is not confirmed yet' do
+      expect(mail.to).to eq(['alice@example.com'])
+      expect(mail.subject).to include('Awaiting Approval')
+      expect(mail.body.encoded).to include('awaiting approval')
+    end
+  end
+
+  describe '#approval_email' do
+    let(:mail) { described_class.approval_email(booking_data, session.title, event.id) }
+
+    it 'tells the participant the booking is now confirmed' do
+      expect(mail.to).to eq(['alice@example.com'])
+      expect(mail.subject).to include('Is Confirmed')
+      expect(mail.body.encoded).to include('10:00 AM')
+    end
+  end
+
   describe '#host_confirmation_email' do
     let(:mail) { described_class.host_confirmation_email(booking_data, session.title, event.id, host) }
 
@@ -33,6 +53,15 @@ RSpec.describe BookingMailer, type: :mailer do
       expect(mail.subject).to include('Alice Visitor')
       expect(mail.body.encoded).to include('Jamie Host')
       expect(mail.body.encoded).to include('alice@example.com')
+    end
+
+    it 'reads as an approval request when the booking is still pending' do
+      pending_mail = described_class.host_confirmation_email(
+        booking_data.merge('status' => 'Pending'), session.title, event.id, host
+      )
+
+      expect(pending_mail.subject).to include('Approval Needed')
+      expect(pending_mail.body.encoded).to include('pending your approval')
     end
   end
 

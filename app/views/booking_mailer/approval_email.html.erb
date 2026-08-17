@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <style>
+    <%= render 'booking_mailer/shared_styles' %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Your Booking for <%= @event_title %> Is Confirmed</h2>
+    </div>
+    <div class="content">
+      <p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
+      <p>
+        Good news — the host has approved your request. Your business matching
+        meeting for <strong><%= @event_title %></strong> is now confirmed.
+      </p>
+
+      <h3>Booking Details:</h3>
+      <div class="details">
+        <p><strong>Date:</strong> <%= @booking_date %></p>
+        <p><strong>Time:</strong> <%= @booking_time %></p>
+        <% if @booking['location'].present? %>
+          <p><strong>Location:</strong> <%= @booking['location'] %></p>
+        <% end %>
+      </div>
+
+      <p>We look forward to seeing you there!</p>
+
+      <p>Best regards,<br>The Organizing Team</p>
+    </div>
+    <div class="footer">
+      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
