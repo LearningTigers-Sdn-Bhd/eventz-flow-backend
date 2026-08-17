@@ -63,9 +63,15 @@
               <td>Booth:</td>
               <td><%= @booth_label %></td>
             </tr>
+            <% if @exhibitor_kit.price_snapshot.to_f > 0 %>
+              <tr>
+                <td>Price:</td>
+                <td>RM <%= @exhibitor_kit.price_snapshot %></td>
+              </tr>
+            <% end %>
             <% if @exhibitor_kit.amount_paid.to_f > 0 %>
               <tr>
-                <td>Amount:</td>
+                <td>Amount Paid:</td>
                 <td>RM <%= @exhibitor_kit.amount_paid %></td>
               </tr>
             <% end %>
@@ -76,7 +82,7 @@
           </table>
         </div>
 
-        <% if @exhibitor_kit.amount_paid.to_f > 0 %>
+        <% if @exhibitor_kit.price_snapshot.to_f > 0 %>
           <div class="notice">
             If your payment is still pending, please complete payment to secure and confirm your booth reservation.
           </div>
