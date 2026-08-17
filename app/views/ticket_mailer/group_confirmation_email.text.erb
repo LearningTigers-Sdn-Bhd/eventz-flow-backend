@@ -1,0 +1,43 @@
+You're Registered!
+
+Hi <%= @tickets.first.attendee_name %>,
+
+Your <%= @tickets.one? ? 'registration is' : 'registrations are' %> confirmed. Here are your ticket details:
+
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+
+<% @tickets.each_with_index do |ticket, index| %>
+Ticket <%= index + 1 %>
+Ticket Type: <%= ticket.ticket_type.name %>
+Name: <%= ticket.attendee_name %>
+Your Ticket ID: <%= ticket.public_id %>
+
+<% ticket_payment = ticket.ticket_payment %>
+<% amount_paid = (ticket_payment&.amount || ticket.ticket_type.current_price).to_f %>
+<% if ticket.paid? && amount_paid.positive? %>
+Payment Receipt
+- Receipt No: <%= ticket.public_id %>
+- Payment Status: Paid
+<% if ticket_payment&.paid_at.present? %>- Payment Date: <%= ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
+<% end %>- Amount Paid: <%= (ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (ticket_payment&.amount || ticket.ticket_type.current_price).to_f) %>
+<% if ticket_payment&.gateway_payment_id.presence %>- Transaction ID: <%= ticket_payment.gateway_payment_id %>
+<% end %><% if ticket_payment&.gateway_response&.dig('order_id').presence %>- Order ID: <%= ticket_payment.gateway_response['order_id'] %>
+<% end %>
+<% end %>
+<% end %>
+Please show the relevant ticket ID or attached QR code at check-in.
+
+<% if @contact_email.present? %>
+Should you have any questions, please reach out to us at <%= @contact_email %>.
+<% end %>
+See you at the event!
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

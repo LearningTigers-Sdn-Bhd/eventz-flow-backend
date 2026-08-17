@@ -32,6 +32,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data'].first['original_price'].to_f).to eq(100.0)
       expect(json['data'].first['current_tier']).to be_nil
       expect(json['data'].first['custom_fields_data']['company_name']).to eq('text')
+      expect(json['data'].first['allow_multiple_tickets_per_email']).to be false
     end
 
     context 'with active price tier' do
