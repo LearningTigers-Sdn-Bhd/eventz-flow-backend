@@ -365,6 +365,40 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       end
     end
 
+    context 'when attendees_payload bundles more than one attendee' do
+      it 'rejects the submission instead of silently creating only the first attendee' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['errors']).to include(a_string_matching(/not supported/))
+      end
+    end
+
+    context 'when attendees_payload has only one attendee' do
+      it 'registers normally (single-attendee payloads are unaffected)' do
+        params = valid_params.merge(
+          attendees_payload: [{ attendee_name: 'John Doe', attendee_email: 'john@example.com' }].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+      end
+    end
+
     context 'when registration form delegate approval is enabled' do
       let!(:interested_form) do
         form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')

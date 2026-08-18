@@ -318,6 +318,13 @@ module V1
           }, status: :unprocessable_content
         end
 
+        if (attendees_error = multiple_attendees_error)
+          return render json: {
+            success: false,
+            errors: [attendees_error]
+          }, status: :unprocessable_content
+        end
+
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
         approval_enabled = delegate_approval_enabled_for_form?(form)
@@ -473,6 +480,24 @@ module V1
       end
 
       private
+
+      # `attendees_payload` (bundled multi-attendee JSON some microsites send) has
+      # no backend handling — registration_params never lists it, so it was being
+      # silently dropped: only the first attendee got a ticket, the rest vanished
+      # with no error. Reject loudly instead of losing data quietly.
+      # ponytail: real fix is N-tickets-per-payment (deferred feature); this just
+      # stops the silent data loss until that's built.
+      def multiple_attendees_error
+        raw = params[:attendees_payload]
+        return nil if raw.blank?
+
+        parsed = raw.is_a?(String) ? JSON.parse(raw) : raw
+        return nil unless parsed.is_a?(Array) && parsed.size > 1
+
+        'Registering multiple attendees in one submission is not supported yet. Please submit each attendee separately.'
+      rescue JSON::ParserError
+        nil
+      end
 
       def vehicle_registration_ticket_type?(event:, ticket_type:)
         forms = event.registration_forms
