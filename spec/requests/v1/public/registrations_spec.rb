@@ -366,10 +366,30 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
     end
 
     context 'when attendees_payload bundles more than one attendee' do
-      it 'rejects the submission instead of silently creating only the first attendee' do
+      it 'creates one ticket per attendee and returns all their public_ids' do
         params = valid_params.merge(
           attendees_payload: [
-            { attendee_name: 'John Doe', attendee_email: 'john@example.com' },
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(2)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be true
+        expect(json['data']['group_public_ids'].size).to eq(2)
+        expect(json['data']['group_public_ids'].first).to eq(json['data']['public_id'])
+        expect(Ticket.find_by(attendee_email: 'jane@example.com')).to be_present
+      end
+
+      it 'rejects and creates nothing when an extra attendee is missing required fields' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
             { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com' }
           ].to_json
         )
@@ -381,7 +401,25 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(response).to have_http_status(:unprocessable_content)
         json = JSON.parse(response.body)
         expect(json['success']).to be false
-        expect(json['errors']).to include(a_string_matching(/not supported/))
+        expect(json['errors']).to include(a_string_matching(/name, email, and phone/))
+      end
+
+      it 'rejects when the ticket type does not have enough seats for the whole group' do
+        ticket_type.update!(quantity: 1)
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['code']).to eq('ticket_sold_out')
       end
     end
 

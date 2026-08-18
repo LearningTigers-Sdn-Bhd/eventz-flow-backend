@@ -59,6 +59,39 @@ RSpec.describe 'V1::Public::TicketPaymentProofs', type: :request do
     end
   end
 
+  describe 'POST payment_proof with sibling_public_ids (group bookings)' do
+    let(:sibling) do
+      create(:ticket, event: event, ticket_type: ticket_type, status: :pending_payment, payment_status: :pending)
+    end
+
+    it 'shares the same uploaded blob across every sibling ticket payment' do
+      post proof_path, params: { payment_proof: file, sibling_public_ids: [sibling.public_id] }
+
+      expect(response).to have_http_status(:ok)
+      primary_payment = ticket.reload.ticket_payment
+      sibling_payment = sibling.reload.ticket_payment
+      expect(primary_payment.payment_proof).to be_attached
+      expect(sibling_payment.payment_proof).to be_attached
+      expect(sibling_payment.payment_proof.blob_id).to eq(primary_payment.payment_proof.blob_id)
+      expect(sibling_payment.payment_method).to eq('bank_transfer')
+    end
+
+    it 'skips a sibling that is already paid instead of erroring' do
+      sibling.update!(payment_status: :paid, status: :purchased)
+
+      post proof_path, params: { payment_proof: file, sibling_public_ids: [sibling.public_id] }
+
+      expect(response).to have_http_status(:ok)
+      expect(sibling.reload.ticket_payment).to be_nil
+    end
+
+    it 'skips an unknown sibling public_id instead of erroring' do
+      post proof_path, params: { payment_proof: file, sibling_public_ids: [SecureRandom.uuid] }
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   describe 'DELETE payment_proof' do
     it 'purges the proof and clears the screenshot url' do
       post proof_path, params: { payment_proof: file }
