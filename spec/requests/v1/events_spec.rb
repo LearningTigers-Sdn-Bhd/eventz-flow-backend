@@ -14,6 +14,7 @@ EVENT_SCHEMA = {
     description: { type: :string, example: 'Event description.' },
     status: { type: :string, example: 'draft' },
     multiple_scans: { type: :boolean, example: false },
+    allow_multiple_tickets_per_email: { type: :boolean, example: false },
     start_date: { type: :string, format: :date_time },
     end_date: { type: :string, format: :date_time },
     location: { type: :string, example: 'New York City' },
@@ -458,6 +459,7 @@ RSpec.describe 'V1::Events', type: :request do
             event: {
               title: 'New Title',
               enable_exhibitor_management: true,
+              allow_multiple_tickets_per_email: true,
               use_sponsorship: true,
               use_wedding: true,
               auto_approve_wishes: true,
@@ -477,6 +479,7 @@ RSpec.describe 'V1::Events', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['enable_exhibitor_management']).to be true
+          expect(json['allow_multiple_tickets_per_email']).to be true
           expect(json['use_sponsorship']).to be true
           expect(json['use_wedding']).to be true
           expect(json['auto_approve_wishes']).to be true

@@ -22,6 +22,24 @@ class TicketMailer < ApplicationMailer
     )
   end
 
+  def group_confirmation_email(ticket)
+    @tickets = sibling_passes(ticket)
+    @event = ticket.event
+    set_email_config
+    bcc_recipients = payment_receipt_bcc(additional: email_setting&.payment_receipt_email)
+
+    @tickets.each_with_index do |pass, index|
+      attachments.inline["qr_code_#{index}.png"] = QrCodeService.generate_png(pass.public_id, size: 600)
+    end
+
+    mail(
+      to: ticket.attendee_email,
+      from: sender_from,
+      bcc: bcc_recipients.presence,
+      subject: "Your #{@tickets.one? ? 'ticket' : 'tickets'} for #{@event.title}"
+    )
+  end
+
   def payment_pending_email(ticket)
     @ticket = ticket
     @event = ticket.event
@@ -55,5 +73,20 @@ class TicketMailer < ApplicationMailer
   def borneo_upgrade_ticket?
     @event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX) &&
       @ticket_type.name.to_s.include?('Exhibitor & Conference')
+  end
+
+  def sibling_passes(ticket)
+    return [ticket] if ticket.registered_by_email.blank?
+
+    Ticket
+      .where(
+        event_id: ticket.event_id,
+        registered_by_email: ticket.registered_by_email,
+        attendee_email: ticket.attendee_email,
+        payment_status: :paid
+      )
+      .where.not(status: %i[canceled refunded])
+      .order(:id)
+      .to_a
   end
 end
