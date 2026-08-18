@@ -207,6 +207,7 @@ module V1
         :description,
         :status,
         :multiple_scans,
+        :allow_multiple_tickets_per_email,
         :start_date,
         :end_date,
         :venue_name,

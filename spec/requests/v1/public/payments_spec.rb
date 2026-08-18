@@ -480,6 +480,88 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       expect(existing_ticket.role).to eq('Custom Exhibitor Role')
     end
 
+    it 'does not send a grouped confirmation to a borneo upgrade ticket also sent its own upgrade email' do
+      borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
+      exhibitor_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Premium Exhibitor Access',
+        price: 120.0,
+        status: :published,
+        hidden: false
+      )
+      standard_ticket_type = create(
+        :ticket_type,
+        event: borneo_event,
+        name: 'Standard',
+        price: 50.0,
+        status: :published,
+        hidden: false
+      )
+      # Batch scoping (payment_scope_ticket_type_ids) falls back to the
+      # representative ticket's registration form's ticket_type_ids — link
+      # both types to one form so the sibling is picked up as part of the
+      # same batch.
+      form = create(:registration_form, event: borneo_event)
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: exhibitor_ticket_type)
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: standard_ticket_type)
+      existing_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: exhibitor_ticket_type,
+        attendee_name: 'Existing Exhibitor',
+        attendee_email: 'exhibitor@example.com',
+        registered_by_email: 'buyer@example.com',
+        status: :purchased,
+        payment_status: :paid
+      )
+      sibling_ticket = create(
+        :ticket,
+        event: borneo_event,
+        ticket_type: standard_ticket_type,
+        attendee_name: 'Sibling Attendee',
+        attendee_email: 'sibling@example.com',
+        registered_by_email: 'buyer@example.com',
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_batch_upgrade_123').and_return(
+        {
+          'id' => 'pay_batch_upgrade_123',
+          'order_id' => 'order_batch_upgrade_123',
+          'method' => 'card',
+          'notes' => {
+            'ticket_public_id' => existing_ticket.public_id,
+            'upgrade_target' => 'conference'
+          }
+        }
+      )
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      post "/v1/public/events/#{borneo_event.slug}/payments/verify", params: {
+        ticket_public_id: existing_ticket.public_id,
+        razorpay_order_id: 'order_batch_upgrade_123',
+        razorpay_payment_id: 'pay_batch_upgrade_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:ok)
+      expect(sibling_ticket.reload.payment_status).to eq('paid')
+
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).exactly(2).times
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'group_confirmation_email', related: sibling_ticket)
+      ).once
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'confirmation_email', related: existing_ticket)
+      ).once
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'group_confirmation_email', related: existing_ticket)
+      )
+    end
+
     it 'marks conference-upgrade verification as paid and purchased even if the source exhibitor ticket was pending' do
       borneo_event = create(:event, slug: 'borneo-expo-2026', status: :published)
       exhibitor_ticket_type = create(
@@ -591,6 +673,66 @@ RSpec.describe 'V1::Public::Payments', type: :request do
   end
 
   describe 'POST /v1/public/events/:event_slug/payments/callback' do
+    it 'queues one grouped confirmation per distinct attendee address for a payment batch' do
+      registered_by_email = 'buyer@example.com'
+      pending_ticket.update!(
+        attendee_email: 'shared@example.com',
+        registered_by_email: registered_by_email
+      )
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Shared Member',
+        attendee_email: 'shared@example.com',
+        registered_by_email: registered_by_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Distinct Member One',
+        attendee_email: 'distinct-one@example.com',
+        registered_by_email: registered_by_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Distinct Member Two',
+        attendee_email: 'distinct-two@example.com',
+        registered_by_email: registered_by_email,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_batch_123').and_return(
+        { 'id' => 'pay_batch_123', 'order_id' => 'order_batch_123', 'method' => 'card' }
+      )
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      post "/v1/public/events/#{event.slug}/payments/callback", params: {
+        ticket_public_id: pending_ticket.public_id,
+        razorpay_order_id: 'order_batch_123',
+        razorpay_payment_id: 'pay_batch_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:found)
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).exactly(3).times
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_name: 'TicketMailer', mailer_action: 'group_confirmation_email')
+      ).exactly(3).times
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'confirmation_email')
+      )
+    end
+
     it 'redirects to the event public registration URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       allow(gateway_instance).to receive(:fetch_payment).with('pay_sandbox_123').and_return(

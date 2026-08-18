@@ -464,7 +464,8 @@ module V1
             custom_labels_data: rule&.custom_labels_data || [],
             registration_mode: rule&.registration_mode || 'single',
             min_attendees: rule&.min_attendees || 1,
-            max_attendees: rule&.max_attendees
+            max_attendees: rule&.max_attendees,
+            allow_multiple_tickets_per_email: event.allow_multiple_tickets_per_email
           }
         end
 

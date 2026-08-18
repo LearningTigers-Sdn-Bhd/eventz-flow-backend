@@ -16,6 +16,7 @@ class Ticket < ApplicationRecord
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
   before_validation :normalize_attendee_fields
+  before_validation :mirror_event_multi_ticket_flag
   after_update :sync_vehicle_registration_category, if: :saved_change_to_ticket_type_id?
 
   # --- Associations ---
@@ -98,6 +99,7 @@ class Ticket < ApplicationRecord
   after_commit :send_confirmation_email, if: :should_send_confirmation?
 
   attr_accessor :skip_webhooks
+  attr_accessor :suppress_confirmation_email
 
   # --- Class Methods ---
   def self.total_revenue_cents
@@ -176,8 +178,15 @@ class Ticket < ApplicationRecord
     self.public_id ||= SecureRandom.uuid
   end
 
+  def mirror_event_multi_ticket_flag
+    return if event.blank?
+
+    self.allow_multiple_tickets_per_email = event.allow_multiple_tickets_per_email?
+  end
+
   def unique_custom_fields_within_event
     return if event_id.blank?
+    return if allow_multiple_tickets_per_email?
 
     UNIQUE_CUSTOM_FIELD_KEYS.each do |key|
       value = custom_fields_data.to_h[key].to_s.strip
@@ -328,6 +337,7 @@ class Ticket < ApplicationRecord
   end
 
   def should_send_confirmation?
+    return false if suppress_confirmation_email
     return false if attendee_email.blank?
 
     return true if previously_new_record? && paid? && purchased?
