@@ -365,6 +365,96 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       end
     end
 
+    context 'when attendees_payload bundles more than one attendee' do
+      it 'creates one ticket per attendee and returns all their public_ids' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(2)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be true
+        expect(json['data']['group_public_ids'].size).to eq(2)
+        expect(json['data']['group_public_ids'].first).to eq(json['data']['public_id'])
+        expect(Ticket.find_by(attendee_email: 'jane@example.com')).to be_present
+      end
+
+      it 'rejects and creates nothing when an extra attendee is missing required fields' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['errors']).to include(a_string_matching(/name, email, and phone/))
+      end
+
+      it 'stamps the same registration_batch_id on the primary ticket and every sibling' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        primary = Ticket.find_by(attendee_email: 'john@example.com')
+        sibling = Ticket.find_by(attendee_email: 'jane@example.com')
+
+        expect(primary.registration_batch_id).to be_present
+        expect(primary.registration_batch_id).to eq(primary.public_id)
+        expect(sibling.registration_batch_id).to eq(primary.registration_batch_id)
+      end
+
+      it 'rejects when the ticket type does not have enough seats for the whole group' do
+        ticket_type.update!(quantity: 1)
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['code']).to eq('ticket_sold_out')
+      end
+    end
+
+    context 'when attendees_payload has only one attendee' do
+      it 'registers normally (single-attendee payloads are unaffected)' do
+        params = valid_params.merge(
+          attendees_payload: [{ attendee_name: 'John Doe', attendee_email: 'john@example.com' }].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+      end
+    end
+
     context 'when registration form delegate approval is enabled' do
       let!(:interested_form) do
         form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')

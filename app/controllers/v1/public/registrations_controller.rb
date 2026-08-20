@@ -318,6 +318,29 @@ module V1
           }, status: :unprocessable_content
         end
 
+        group_attendees, attendees_error = parse_group_attendees
+        if attendees_error
+          return render json: {
+            success: false,
+            errors: [attendees_error]
+          }, status: :unprocessable_content
+        end
+
+        if group_attendees.present? && VehicleRegistrationRules.supported?(form)
+          return render json: {
+            success: false,
+            errors: ['Group registration is not supported for this form']
+          }, status: :unprocessable_content
+        end
+
+        if group_attendees.present? && !ticket_type_has_capacity?(ticket_type: ticket_type, seats_needed: 1 + group_attendees.size)
+          return render json: {
+            success: false,
+            code: 'ticket_sold_out',
+            message: 'This ticket type does not have enough seats left for this group size'
+          }, status: :unprocessable_content
+        end
+
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
         approval_enabled = delegate_approval_enabled_for_form?(form)
@@ -384,17 +407,65 @@ module V1
           return render json: { success: false, message: e.message }, status: :unprocessable_content
         end
 
+        sibling_tickets = []
+
         begin
-          saved = if VehicleRegistrationRules.supported?(form)
-                    VehicleRegistrationAssignment.new(
-                      event: event,
-                      form: form,
-                      ticket: ticket,
-                      plate: params[:vehicle_plate]
-                    ).save
-                  else
-                    ticket.save
-                  end
+          saved = ActiveRecord::Base.transaction do
+            result = if VehicleRegistrationRules.supported?(form)
+                       VehicleRegistrationAssignment.new(
+                         event: event,
+                         form: form,
+                         ticket: ticket,
+                         plate: params[:vehicle_plate]
+                       ).save
+                     else
+                       ticket.save
+                     end
+            raise ActiveRecord::Rollback unless result
+
+            # Batch id ties every ticket from this submission together —
+            # payment confirmation scopes to it instead of email+ticket_type,
+            # which wrongly swept up an unrelated later submission by the
+            # same registrant. Reuse the primary ticket's own public_id
+            # rather than minting a new uuid.
+            ticket.update_column(:registration_batch_id, ticket.public_id) if group_attendees.present?
+
+            # ponytail: group siblings get the same payment_status/waiting_list
+            # branch as the primary ticket, just no bundle/vehicle/document
+            # handling — group mode isn't offered alongside those flows.
+            group_attendees.each do |attendee|
+              sibling = event.tickets.new(
+                attendee_name: attendee[:attendee_name],
+                attendee_email: attendee[:attendee_email],
+                attendee_phone: attendee[:attendee_phone],
+                role: attendee[:role],
+                registered_by_email: registration_params[:registered_by_email].presence || ticket.attendee_email,
+                registration_batch_id: ticket.registration_batch_id
+              )
+              sibling.ticket_type = ticket_type
+              sibling.waiting_list = ticket.waiting_list
+              sibling.status = ticket.status
+              sibling.payment_status = ticket.payment_status
+              # Booking-source marker (e.g. "reserved_by": "EventzFlow Online")
+              # applies to the whole submission, not just the primary attendee
+              # — copy it so the panel's "Reserved By" column isn't blank for
+              # siblings. Don't copy the rest of custom_fields_data: fields like
+              # ic_passport_no/membership_no carry a per-event unique index
+              # (schema.rb) and duplicating them onto siblings would collide.
+              sibling.custom_fields_data = (ticket.custom_fields_data || {}).slice('reserved_by')
+              apply_indemnity!(sibling)
+              apply_terms_agreement!(sibling, form: form)
+
+              unless sibling.save
+                @sibling_errors = sibling.errors.full_messages
+                raise ActiveRecord::Rollback
+              end
+
+              sibling_tickets << sibling
+            end
+
+            true
+          end
         rescue VehicleRegistrationAssignment::Error => e
           return render json: {
             success: false,
@@ -413,15 +484,18 @@ module V1
         if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
           send_payment_pending_notification(ticket)
+          sibling_tickets.each { |sibling| send_payment_pending_notification(sibling) }
 
           render json: {
             success: true,
-            data: serialize_ticket(ticket, ticket.ticket_type)
+            data: serialize_ticket(ticket, ticket.ticket_type).merge(
+              group_public_ids: [ticket.public_id, *sibling_tickets.map(&:public_id)]
+            )
           }, status: :created
         else
           render json: {
             success: false,
-            errors: ticket.errors.full_messages
+            errors: @sibling_errors || ticket.errors.full_messages
           }, status: :unprocessable_content
         end
       end
@@ -473,6 +547,44 @@ module V1
       end
 
       private
+
+      # `attendees_payload` (group registration mode) is [primary, *extra_attendees].
+      # The primary entry is already handled by registration_params / the main
+      # ticket build — this returns just the extra attendees (index 1..) plus
+      # any validation error, so the caller can create one Ticket per extra seat.
+      def parse_group_attendees
+        raw = params[:attendees_payload]
+        return [[], nil] if raw.blank?
+
+        parsed = raw.is_a?(String) ? JSON.parse(raw) : raw
+        return [[], nil] unless parsed.is_a?(Array) && parsed.size > 1
+
+        extras = parsed.drop(1).map do |entry|
+          {
+            attendee_name: entry['attendee_name'].to_s.strip,
+            attendee_email: entry['attendee_email'].to_s.strip.downcase,
+            attendee_phone: entry['attendee_phone'].to_s.strip,
+            role: entry['role'].to_s.strip.presence
+          }
+        end
+
+        if extras.any? { |a| a[:attendee_name].blank? || a[:attendee_email].blank? || a[:attendee_phone].blank? }
+          return [[], 'Each attendee needs a name, email, and phone number']
+        end
+
+        [extras, nil]
+      rescue JSON::ParserError
+        [[], 'Invalid attendees data']
+      end
+
+      # held_ticket_count (paid only) mirrors TicketType#available_for_purchase? —
+      # same looseness against concurrent pending submissions, just extended to
+      # check N seats instead of 1.
+      def ticket_type_has_capacity?(ticket_type:, seats_needed:)
+        return true if ticket_type.quantity.blank?
+
+        ticket_type.held_ticket_count + seats_needed <= ticket_type.quantity
+      end
 
       def vehicle_registration_ticket_type?(event:, ticket_type:)
         forms = event.registration_forms

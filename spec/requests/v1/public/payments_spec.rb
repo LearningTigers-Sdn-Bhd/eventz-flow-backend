@@ -733,6 +733,59 @@ RSpec.describe 'V1::Public::Payments', type: :request do
       )
     end
 
+    it 'does not sweep an unrelated later submission by the same email into an earlier payment' do
+      registered_by_email = 'buyer@example.com'
+      batch_a_id = SecureRandom.uuid
+      batch_b_id = SecureRandom.uuid
+
+      pending_ticket.update!(
+        attendee_email: 'batch-a@example.com',
+        registered_by_email: registered_by_email,
+        registration_batch_id: batch_a_id
+      )
+      create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Batch A Sibling',
+        attendee_email: 'batch-a-sibling@example.com',
+        registered_by_email: registered_by_email,
+        registration_batch_id: batch_a_id,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      # A second, unrelated submission by the same registrant, same ticket
+      # type, made later — must stay untouched by batch A's payment.
+      batch_b_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: 'Batch B Buyer',
+        attendee_email: 'batch-b@example.com',
+        registered_by_email: registered_by_email,
+        registration_batch_id: batch_b_id,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      allow(gateway_instance).to receive(:valid_signature?).and_return(true)
+      allow(gateway_instance).to receive(:fetch_payment).with('pay_batch_a_123').and_return(
+        { 'id' => 'pay_batch_a_123', 'order_id' => 'order_batch_a_123', 'method' => 'card' }
+      )
+
+      post "/v1/public/events/#{event.slug}/payments/callback", params: {
+        ticket_public_id: pending_ticket.public_id,
+        razorpay_order_id: 'order_batch_a_123',
+        razorpay_payment_id: 'pay_batch_a_123',
+        razorpay_signature: 'valid_signature'
+      }
+
+      expect(response).to have_http_status(:found)
+      expect(pending_ticket.reload.payment_status).to eq('paid')
+      expect(Ticket.find_by(attendee_email: 'batch-a-sibling@example.com').payment_status).to eq('paid')
+      expect(batch_b_ticket.reload.payment_status).to eq('pending')
+    end
+
     it 'redirects to the event public registration URL on successful callback' do
       allow(gateway_instance).to receive(:valid_signature?).and_return(true)
       allow(gateway_instance).to receive(:fetch_payment).with('pay_sandbox_123').and_return(
