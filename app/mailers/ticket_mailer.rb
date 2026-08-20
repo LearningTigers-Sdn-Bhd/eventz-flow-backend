@@ -76,6 +76,22 @@ class TicketMailer < ApplicationMailer
   end
 
   def sibling_passes(ticket)
+    # Prefer registration_batch_id — ties QR codes to exactly this
+    # submission. Old email-based match kept only for tickets predating the
+    # batch id; it risked pulling in an unrelated paid purchase by the same
+    # registrant (e.g. a separate table booked another day).
+    if ticket.registration_batch_id.present?
+      return Ticket
+        .where(
+          event_id: ticket.event_id,
+          registration_batch_id: ticket.registration_batch_id,
+          payment_status: :paid
+        )
+        .where.not(status: %i[canceled refunded])
+        .order(:id)
+        .to_a
+    end
+
     return [ticket] if ticket.registered_by_email.blank?
 
     Ticket

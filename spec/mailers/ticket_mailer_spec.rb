@@ -215,6 +215,26 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(mails.drop(1)).to all(satisfy { |mail| mail.attachments.size == 1 })
     end
 
+    it 'scopes by registration_batch_id, keeping two separate batches by the same email/address apart' do
+      batch_a_id = SecureRandom.uuid
+      batch_b_id = SecureRandom.uuid
+
+      batch_a_tickets = 2.times.map do |index|
+        create_paid_ticket(name: "Batch A Attendee #{index + 1}", email: 'shared@example.com')
+          .tap { |t| t.update!(registration_batch_id: batch_a_id) }
+      end
+      # Same registered_by_email AND same attendee_email as batch A, but a
+      # separate submission made another time — must not bleed into batch A's
+      # QR email just because the old email-only match would have grouped them.
+      batch_b_ticket = create_paid_ticket(name: 'Batch B Attendee', email: 'shared@example.com')
+      batch_b_ticket.update!(registration_batch_id: batch_b_id)
+
+      mail = described_class.group_confirmation_email(batch_a_tickets.first)
+
+      expect(mail.attachments.map(&:filename)).to contain_exactly('qr_code_0.png', 'qr_code_1.png')
+      expect(mail.body.encoded).not_to include(batch_b_ticket.attendee_name)
+    end
+
     it 'does not group tickets without a registered-by email' do
       first_ticket = create_paid_ticket(name: 'First Attendee', email: 'shared@example.com', registered_by: nil)
       second_ticket = create_paid_ticket(name: 'Second Attendee', email: 'shared@example.com', registered_by: nil)

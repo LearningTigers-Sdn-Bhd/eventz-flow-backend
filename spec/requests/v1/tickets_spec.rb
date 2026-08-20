@@ -261,6 +261,49 @@ RSpec.describe 'V1::Tickets', type: :request do
         let(:Authorization) { "Bearer #{staff_token}" }
         run_test!
       end
+
+      response '201', 'Creates a registration batch of N tickets when quantity > 1 and the event allows it' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:ticket) do
+          {
+            ticket: valid_ticket_params[:ticket].merge(payment_status: 1),
+            quantity: 3
+          }
+        end
+
+        before do
+          organizer_event.update!(allow_multiple_tickets_per_email: true)
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+        end
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['group_public_ids'].size).to eq(3)
+          batch_id = Ticket.find_by(public_id: json['public_id']).registration_batch_id
+          expect(batch_id).to be_present
+          expect(Ticket.where(registration_batch_id: batch_id).count).to eq(3)
+
+          # One batched email with all 3 QR codes, not 3 individual ones.
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'group_confirmation_email')
+          ).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'confirmation_email')
+          )
+        end
+      end
+
+      response '422', 'Rejects quantity greater than 1 when the event does not allow multiple tickets per email' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:ticket) { valid_ticket_params.merge(quantity: 3) }
+
+        run_test! do
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(Ticket.count).to eq(2)
+        end
+      end
     end
   end
 
@@ -349,6 +392,52 @@ RSpec.describe 'V1::Tickets', type: :request do
           expect(json['payment_status']).to eq('paid')
           expect(json['status']).to eq('purchased')
           expect(pending_payment_ticket.reload.status).to eq('purchased')
+        end
+      end
+
+      response '200', 'Approving one ticket in a registration batch auto-approves its siblings and sends one grouped email' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        let!(:batch_id) { SecureRandom.uuid }
+        let!(:primary) do
+          create(
+            :ticket,
+            event: organizer_event,
+            ticket_type: general_ticket_type,
+            status: :pending_payment,
+            payment_status: :pending,
+            registration_batch_id: batch_id,
+            attendee_email: 'batch-primary@example.com'
+          )
+        end
+        let!(:sibling) do
+          create(
+            :ticket,
+            event: organizer_event,
+            ticket_type: general_ticket_type,
+            status: :pending_payment,
+            payment_status: :pending,
+            registration_batch_id: batch_id,
+            attendee_email: 'batch-sibling@example.com'
+          )
+        end
+        let(:id) { primary.public_id }
+
+        before { allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later) }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          expect(primary.reload.payment_status).to eq('paid')
+          expect(sibling.reload.payment_status).to eq('paid')
+          expect(sibling.reload.status).to eq('purchased')
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'group_confirmation_email')
+          ).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'confirmation_email')
+          )
         end
       end
 

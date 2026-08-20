@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_17_000002) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_20_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1558,6 +1558,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_17_000002) do
     t.bigint "vehicle_registration_id"
     t.boolean "waiting_list", default: false, null: false
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
+    t.uuid "registration_batch_id"
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
     t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
@@ -1569,6 +1570,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_17_000002) do
     t.index ["event_id"], name: "index_tickets_on_event_id"
     t.index ["pass_bundle_id"], name: "index_tickets_on_pass_bundle_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
+    t.index ["registration_batch_id"], name: "index_tickets_on_registration_batch_id"
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"

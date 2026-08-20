@@ -423,6 +423,13 @@ module V1
                      end
             raise ActiveRecord::Rollback unless result
 
+            # Batch id ties every ticket from this submission together —
+            # payment confirmation scopes to it instead of email+ticket_type,
+            # which wrongly swept up an unrelated later submission by the
+            # same registrant. Reuse the primary ticket's own public_id
+            # rather than minting a new uuid.
+            ticket.update_column(:registration_batch_id, ticket.public_id) if group_attendees.present?
+
             # ponytail: group siblings get the same payment_status/waiting_list
             # branch as the primary ticket, just no bundle/vehicle/document
             # handling — group mode isn't offered alongside those flows.
@@ -432,7 +439,8 @@ module V1
                 attendee_email: attendee[:attendee_email],
                 attendee_phone: attendee[:attendee_phone],
                 role: attendee[:role],
-                registered_by_email: registration_params[:registered_by_email].presence || ticket.attendee_email
+                registered_by_email: registration_params[:registered_by_email].presence || ticket.attendee_email,
+                registration_batch_id: ticket.registration_batch_id
               )
               sibling.ticket_type = ticket_type
               sibling.waiting_list = ticket.waiting_list
