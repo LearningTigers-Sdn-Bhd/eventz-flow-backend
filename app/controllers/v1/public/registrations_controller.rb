@@ -483,8 +483,7 @@ module V1
 
         if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
-          send_payment_pending_notification(ticket)
-          sibling_tickets.each { |sibling| send_payment_pending_notification(sibling) }
+          send_batched_payment_pending_notifications([ticket, *sibling_tickets])
 
           render json: {
             success: true,
@@ -814,6 +813,31 @@ module V1
           related: ticket,
           dedupe: true
         )
+      end
+
+      # Group submissions let each attendee use a different email, so siblings
+      # aren't grouped by registration_batch_id here — recipients who share
+      # an address get one batched email; everyone else gets their own,
+      # same as before.
+      def send_batched_payment_pending_notifications(tickets)
+        tickets.group_by(&:attendee_email).each_value do |recipient_tickets|
+          representative = recipient_tickets.first
+          next if representative.attendee_email.blank?
+          next if representative.paid? || representative.waiting_list || representative.ticket_application.present?
+          next if representative.exhibitor_ticket_type?
+
+          if recipient_tickets.size > 1
+            EmailDelivery::AuditedDelivery.deliver_later(
+              mailer_name: 'TicketMailer',
+              mailer_action: 'group_payment_pending_email',
+              args: [recipient_tickets],
+              related: representative,
+              dedupe: true
+            )
+          else
+            send_payment_pending_notification(representative)
+          end
+        end
       end
 
       def delegate_approval_enabled_for_form?(form)

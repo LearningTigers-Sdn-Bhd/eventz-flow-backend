@@ -69,5 +69,39 @@ RSpec.describe 'V1::Tickets resend confirmation email', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
     end
+
+    it 'resends the batched group email when the ticket belongs to a paid registration batch' do
+      batch_id = SecureRandom.uuid
+      primary = create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: 'batch-primary@example.com',
+        registration_batch_id: batch_id
+      )
+      create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_email: 'batch-sibling@example.com',
+        registration_batch_id: batch_id
+      )
+      headers = auth_headers(org_owner)
+      delivery = create(:email_delivery, status: 'queued')
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later).and_return(delivery)
+
+      post "/v1/events/#{event.id}/tickets/#{primary.public_id}/resend_confirmation_email", headers: headers
+
+      expect(response).to have_http_status(:accepted)
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'group_confirmation_email',
+        args: [primary],
+        related: primary,
+        metadata: hash_including(source: 'ticket_actions_menu_manual_resend', event_id: event.id)
+      )
+    end
   end
 end

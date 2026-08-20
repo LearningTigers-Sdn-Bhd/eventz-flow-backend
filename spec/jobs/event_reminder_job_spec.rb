@@ -80,5 +80,19 @@ RSpec.describe EventReminderJob, type: :job do
 
       expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
     end
+
+    it 'sends one batched group_reminder and logs each ticket when siblings share an email' do
+      sibling = create(:ticket, :paid, event: event, attendee_email: 'test@example.com')
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      expect { described_class.new.perform }.to change(EventReminderLog, :count).by(2)
+
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'group_reminder', args: [match_array([ticket, sibling]), event, '7_day'])
+      ).once
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'reminder')
+      )
+    end
   end
 end

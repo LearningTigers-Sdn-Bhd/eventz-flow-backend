@@ -28,6 +28,7 @@
   </style>
 </head>
 <body>
+  <% ticket_types_uniform = @tickets.map(&:ticket_type_id).uniq.one? %>
   <div class="wrapper">
     <div class="container">
       <div class="header">
@@ -39,7 +40,8 @@
         <p class="greeting">Hi there,</p>
 
         <p class="message">
-          Please complete your payment to confirm your registration for <strong><%= @event.title %></strong>.
+          Please complete your payment to confirm your <%= @tickets.size %> ticket registrations for
+          <strong><%= @event.title %></strong>.
         </p>
 
         <div class="section-title">Registration Details</div>
@@ -47,21 +49,31 @@
           <table>
             <tr>
               <td>Attendee:</td>
-              <td><%= @ticket.attendee_email %></td>
+              <td><%= @tickets.first.attendee_email %></td>
             </tr>
             <tr>
               <td>Event:</td>
               <td><%= @event.title %></td>
             </tr>
+            <% if ticket_types_uniform %>
+            <tr>
+              <td>Ticket Type:</td>
+              <td><%= @tickets.first.ticket_type.name %></td>
+            </tr>
+            <% end %>
+            <tr>
+              <td>Tickets Pending:</td>
+              <td><%= @tickets.size %></td>
+            </tr>
           </table>
         </div>
 
         <div class="notice">
-          Your registration is still pending payment. Once your payment is confirmed by our team, your e-ticket
-          and QR code will be sent to this email address automatically.
+          Your registrations are still pending payment. Once your payment is confirmed by our team, your e-tickets
+          and QR codes will be sent to this email address automatically.
         </div>
 
-        <p class="closing">Once payment is completed, your ticket will be ready for the event.</p>
+        <p class="closing">Once payment is completed, your tickets will be ready for the event.</p>
       </div>
 
       <div class="footer">

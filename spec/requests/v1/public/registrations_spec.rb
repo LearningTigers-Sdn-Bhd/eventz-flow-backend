@@ -422,6 +422,47 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(sibling.registration_batch_id).to eq(primary.registration_batch_id)
       end
 
+      it 'sends one batched pending-payment email when siblings share the same email' do
+        allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+        params = valid_params.merge(
+          attendee_email: 'shared@example.com',
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'shared@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'shared@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'group_payment_pending_email')
+        ).once
+        expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'payment_pending_email')
+        )
+      end
+
+      it 'sends separate pending-payment emails when siblings use distinct emails' do
+        allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'payment_pending_email')
+        ).twice
+        expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'group_payment_pending_email')
+        )
+      end
+
       it 'rejects when the ticket type does not have enough seats for the whole group' do
         ticket_type.update!(quantity: 1)
         params = valid_params.merge(
