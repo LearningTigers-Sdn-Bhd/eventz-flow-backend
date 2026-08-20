@@ -529,6 +529,18 @@ module V1
       end
 
       def pending_payment_batch_tickets(ticket:, event:, registered_by_email:, payment_entity: nil)
+        # Group submissions are tied by registration_batch_id — scope to
+        # exactly this submission's tickets. Falls back to the old
+        # email+ticket_type match only for tickets predating the batch id
+        # (nil column, single-ticket submissions with no siblings to find).
+        if ticket.registration_batch_id.present?
+          return event.tickets.where(
+            registration_batch_id: ticket.registration_batch_id,
+            payment_status: %i[pending failed],
+            status: :pending_payment
+          ).to_a
+        end
+
         scope = event.tickets.where(
           registered_by_email: registered_by_email,
           payment_status: %i[pending failed],

@@ -404,6 +404,24 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(json['errors']).to include(a_string_matching(/name, email, and phone/))
       end
 
+      it 'stamps the same registration_batch_id on the primary ticket and every sibling' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        primary = Ticket.find_by(attendee_email: 'john@example.com')
+        sibling = Ticket.find_by(attendee_email: 'jane@example.com')
+
+        expect(primary.registration_batch_id).to be_present
+        expect(primary.registration_batch_id).to eq(primary.public_id)
+        expect(sibling.registration_batch_id).to eq(primary.registration_batch_id)
+      end
+
       it 'rejects when the ticket type does not have enough seats for the whole group' do
         ticket_type.update!(quantity: 1)
         params = valid_params.merge(

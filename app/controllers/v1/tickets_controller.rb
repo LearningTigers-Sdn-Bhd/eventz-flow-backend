@@ -81,8 +81,18 @@ module V1
       # Authorization check
       authorize @event, :create_ticket?
 
+      quantity = params[:quantity].to_i
+      quantity = 1 if quantity < 1
+
+      if quantity > 1 && !@event.allow_multiple_tickets_per_email?
+        return render json: {
+          errors: ['Multiple tickets per email is not enabled for this event']
+        }, status: :unprocessable_content
+      end
+
       # Build the ticket using ONLY the strong parameters.
-      @ticket = @event.tickets.build(ticket_params_with_payment_sync)
+      attrs = ticket_params_with_payment_sync
+      @ticket = @event.tickets.build(attrs)
 
       # @ticket.user = current_user # Hide this for now
 
@@ -90,9 +100,47 @@ module V1
       # seen in the test environment, even if @event.tickets.build is supposed to do it.
       @ticket.event_id = @event.id
 
-      if @ticket.save
+      extra_tickets = []
+
+      saved = ActiveRecord::Base.transaction do
+        # Bulk-add: same attendee info repeated across N tickets, tied by
+        # batch id so payment approval and confirmation email treat them as
+        # one purchase — mirrors the public group-registration flow. Suppress
+        # each ticket's own confirmation email; one batched email fires below
+        # instead once the whole batch is confirmed paid.
+        @ticket.suppress_confirmation_email = true if quantity > 1
+        raise ActiveRecord::Rollback unless @ticket.save
+
+        @ticket.update_column(:registration_batch_id, @ticket.public_id) if quantity > 1
+
+        (quantity - 1).times do
+          extra = @event.tickets.new(attrs)
+          extra.registration_batch_id = @ticket.registration_batch_id
+          extra.suppress_confirmation_email = true
+          raise ActiveRecord::Rollback unless extra.save
+
+          extra_tickets << extra
+        end
+
+        true
+      end
+
+      if saved
         @ticket.reload
-        render json: ticket_response(@ticket), status: :created
+
+        if quantity > 1 && @ticket.paid? && @ticket.purchased? && @ticket.attendee_email.present?
+          EmailDelivery::AuditedDelivery.deliver_later(
+            mailer_name: 'TicketMailer',
+            mailer_action: 'group_confirmation_email',
+            args: [@ticket],
+            related: @ticket,
+            metadata: { source: 'panel_bulk_ticket_create', event_id: @event.id }
+          )
+        end
+
+        render json: ticket_response(@ticket).merge(
+          group_public_ids: [@ticket.public_id, *extra_tickets.map(&:public_id)]
+        ), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -102,7 +150,17 @@ module V1
       # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
 
+      # Manual bank-transfer approval mirrors the online-gateway path
+      # (PaymentsController#mark_tickets_paid!): approving one ticket in a
+      # group registration_batch auto-approves its siblings too (safe now
+      # that the batch id scopes to exactly this submission, not just
+      # email+ticket_type) and sends one batched QR email instead of N.
+      marking_paid = @ticket.pending_payment? && ticket_params[:payment_status].to_s.in?(%w[paid 1])
+      siblings = marking_paid && @ticket.registration_batch_id.present? ? batch_siblings(@ticket) : Ticket.none
+      @ticket.suppress_confirmation_email = true if siblings.exists?
+
       if @ticket.update(ticket_params_with_payment_sync)
+        mark_batch_siblings_paid!(primary: @ticket, siblings: siblings) if siblings.exists?
         render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
@@ -482,6 +540,29 @@ module V1
         ticket.event_id,
         ticket.attendee_name,
         custom_fields_data: ticket.custom_fields_data
+      )
+    end
+
+    def batch_siblings(ticket)
+      @event.tickets.where(
+        registration_batch_id: ticket.registration_batch_id,
+        payment_status: %i[pending failed],
+        status: :pending_payment
+      ).where.not(id: ticket.id)
+    end
+
+    def mark_batch_siblings_paid!(primary:, siblings:)
+      siblings.find_each do |sibling|
+        sibling.suppress_confirmation_email = true
+        sibling.update!(payment_status: :paid, status: :purchased)
+      end
+
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'group_confirmation_email',
+        args: [primary],
+        related: primary,
+        metadata: { source: 'manual_payment_approval_batch', event_id: @event.id }
       )
     end
 
