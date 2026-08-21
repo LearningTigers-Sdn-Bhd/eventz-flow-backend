@@ -247,7 +247,10 @@ module V1
         labels_data: {}, # Allows JSONB hash updates
         exhibitor_labels_data: {}, # Allows JSONB hash updates
         booth_types: [], # Allows JSONB array updates
-        event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email],
+        event_email_setting_attributes: [
+          :sender_name, :sender_address, :contact_email, :payment_receipt_email,
+          :emails_enabled, { disabled_categories: [] }
+        ],
         wish_wall_setting_attributes: %i[
           display_mode
           animation_shape
@@ -259,6 +262,14 @@ module V1
       ]
 
       permitted.delete(:slug) unless current_user&.org_owner?
+
+      unless current_user&.org_owner?
+        email_setting_permitted = permitted.find { |p| p.is_a?(Hash) && p.key?(:event_email_setting_attributes) }
+        email_setting_permitted&.[](:event_email_setting_attributes)&.reject! do |attr|
+          attr == :emails_enabled || (attr.is_a?(Hash) && attr.key?(:disabled_categories))
+        end
+      end
+
       params.require(:event).permit(*permitted)
     end
 

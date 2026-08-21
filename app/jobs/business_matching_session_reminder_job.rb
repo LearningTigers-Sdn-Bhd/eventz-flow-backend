@@ -55,6 +55,7 @@ class BusinessMatchingSessionReminderJob < ApplicationJob
       mailer_name: 'BookingMailer',
       mailer_action: 'session_reminder_email',
       args: [transformed, session.title, session.event_id],
+      event: session.event,
       metadata: { event_id: session.event_id, booking_id: booking.id.to_s }
     )
 

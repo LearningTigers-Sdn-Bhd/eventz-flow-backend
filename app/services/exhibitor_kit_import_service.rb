@@ -252,7 +252,7 @@ class ExhibitorKitImportService
     if new_user
       EmailDelivery::AuditedDelivery.deliver_now(
         mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
-        args: [new_user.email, password, new_user.full_name], related: new_user, metadata: {}, dedupe: true
+        args: [new_user.email, password, new_user.full_name], related: new_user, event: @event, metadata: {}, dedupe: true
       )
     end
 

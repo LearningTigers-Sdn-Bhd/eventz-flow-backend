@@ -46,7 +46,7 @@ class PublicExhibitorBookingService
     if new_user
       EmailDelivery::AuditedDelivery.deliver_now(
         mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
-        args: [new_user.email, password, new_user.full_name], related: new_user, metadata: {}, dedupe: true
+        args: [new_user.email, password, new_user.full_name], related: new_user, event: @event, metadata: {}, dedupe: true
       )
     end
     result
@@ -109,7 +109,7 @@ class PublicExhibitorBookingService
     if new_user
       EmailDelivery::AuditedDelivery.deliver_now(
         mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
-        args: [new_user.email, password, new_user.full_name], related: new_user, metadata: {}, dedupe: true
+        args: [new_user.email, password, new_user.full_name], related: new_user, event: @event, metadata: {}, dedupe: true
       )
     end
     { batch_id: results.first.kit.custom_fields_data['booking_batch_id'], results: results,
