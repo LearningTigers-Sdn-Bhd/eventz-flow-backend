@@ -248,5 +248,19 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
         ).to be_empty
       end
     end
+
+    it 'sends one batched group_pending_payment_reminder and logs each ticket when siblings share an email' do
+      sibling = create(:ticket, :pending_payment, event: event, attendee_email: 'pending@example.com')
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      expect { perform_job }.to change(EventReminderLog, :count).by(2)
+
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'group_pending_payment_reminder', args: [match_array([ticket, sibling]), event])
+      ).once
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'pending_payment_reminder')
+      )
+    end
   end
 end

@@ -704,6 +704,7 @@ class BusinessMatchingService < BaseService
       mailer_name: 'BookingMailer',
       mailer_action: mailer_action,
       args: args,
+      event: booking.business_matching_session&.event,
       metadata: { event_id: booking.business_matching_session&.event_id, booking_id: booking.id.to_s }
     )
   rescue StandardError => e

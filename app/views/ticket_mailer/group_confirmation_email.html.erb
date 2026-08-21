@@ -26,17 +26,23 @@
       .receipt-info td:first-child, .ticket-info td:first-child { padding-bottom: 0 !important; }
       .receipt-info td:last-child, .ticket-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
     }
-    .qr-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
-    .qr-section h3 { margin: 0 0 8px; font-size: 16px; color: #1e40af; }
-    .qr-section p { margin: 0 0 16px; font-size: 14px; color: #666; }
-    .qr-section img { border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-radius: 4px; }
-    .ticket-id { margin-top: 12px; font-size: 12px; color: #999; letter-spacing: 0.5px; }
+    .attendee-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 16px; text-align: center; }
+    .attendee-card .attendee-name { font-size: 15px; font-weight: bold; color: #1e293b; margin: 0 0 2px; }
+    .attendee-card .attendee-index { font-size: 12px; color: #94a3b8; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .attendee-card img { border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-radius: 4px; }
+    .attendee-card .ticket-id { margin-top: 12px; font-size: 12px; color: #999; letter-spacing: 0.5px; }
+    .qr-note { font-size: 14px; color: #666; margin: 0 0 16px; }
     .closing { font-size: 15px; color: #555; line-height: 1.7; margin-bottom: 8px; }
     .signature { font-size: 15px; color: #333; font-weight: bold; }
     .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
   </style>
 </head>
 <body>
+  <% ticket_types_uniform = @tickets.map(&:ticket_type_id).uniq.one? %>
+  <% representative = @tickets.first %>
+  <% ticket_payment = representative.ticket_payment %>
+  <% unit_price = (ticket_payment&.amount || representative.ticket_type.current_price).to_f %>
+  <% show_payment_receipt = representative.paid? && unit_price.positive? %>
   <div class="wrapper">
     <div class="container">
       <div class="header">
@@ -45,95 +51,110 @@
       </div>
 
       <div class="content">
-        <p class="greeting">Dear <strong><%= @tickets.first.attendee_name %></strong>,</p>
+        <p class="greeting">Dear <strong><%= representative.attendee_name %></strong>,</p>
 
         <p class="message">
-          Thank you for registering for <strong><%= @event.title %></strong>. We are delighted to confirm your participation and look forward to seeing you at the event. Please find your <%= @tickets.one? ? 'ticket' : 'tickets' %> and QR code<%= @tickets.one? ? '' : 's' %> below — kindly present the relevant QR code at the registration counter upon arrival.
+          Thank you for registering for <strong><%= @event.title %></strong>. We are delighted to confirm
+          <%= @tickets.one? ? 'your participation' : "your #{@tickets.size} tickets" %> and look forward to
+          seeing you at the event. Please find your event details<%= @tickets.one? ? '' : ", one QR code per attendee," %>
+          below — kindly present the relevant QR code at the registration counter upon arrival.
         </p>
 
-        <% @tickets.each_with_index do |ticket, index| %>
-          <div class="section-title"><%= @tickets.one? ? 'Event Details' : "Ticket #{index + 1} Details" %></div>
-          <div class="ticket-info">
+        <div class="section-title">Event Details</div>
+        <div class="ticket-info">
+          <table>
+            <tr>
+              <td>Event:</td>
+              <td><%= @event.title %></td>
+            </tr>
+            <tr>
+              <td>Date:</td>
+              <td>
+                <%= @event.start_date.strftime("%B %d, %Y") %>
+                <% if @event.end_date.present? && @event.end_date.to_date != @event.start_date.to_date %>
+                  &ndash; <%= @event.end_date.strftime("%B %d, %Y") %>
+                <% end %>
+              </td>
+            </tr>
+            <% if @event.event_locations.any? %>
+            <tr>
+              <td>Venue:</td>
+              <td><%= @event.event_locations.first.name %></td>
+            </tr>
+            <% end %>
+            <% if ticket_types_uniform %>
+            <tr>
+              <td>Ticket Type:</td>
+              <td><%= representative.ticket_type.name %></td>
+            </tr>
+            <% end %>
+            <% unless @tickets.one? %>
+            <tr>
+              <td>Tickets:</td>
+              <td><%= @tickets.size %></td>
+            </tr>
+            <% end %>
+          </table>
+        </div>
+
+        <% if show_payment_receipt %>
+          <div class="section-title">Payment Receipt</div>
+          <div class="receipt-info">
             <table>
               <tr>
-                <td>Event:</td>
-                <td><%= @event.title %></td>
+                <td>Receipt No:</td>
+                <td><%= representative.public_id %></td>
               </tr>
               <tr>
-                <td>Date:</td>
+                <td>Payment Status:</td>
+                <td>Paid</td>
+              </tr>
+              <% if ticket_payment&.paid_at.present? %>
+                <tr>
+                  <td>Payment Date:</td>
+                  <td><%= ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %></td>
+                </tr>
+              <% end %>
+              <tr>
+                <td>Amount Paid:</td>
                 <td>
-                  <%= @event.start_date.strftime("%B %d, %Y") %>
-                  <% if @event.end_date.present? && @event.end_date.to_date != @event.start_date.to_date %>
-                    &ndash; <%= @event.end_date.strftime("%B %d, %Y") %>
+                  <% currency = ticket_payment&.currency.presence || 'MYR' %>
+                  <% if @tickets.one? %>
+                    <%= currency %> <%= format('%.2f', unit_price) %>
+                  <% else %>
+                    <%= currency %> <%= format('%.2f', unit_price) %> &times; <%= @tickets.size %> = <strong><%= currency %> <%= format('%.2f', unit_price * @tickets.size) %></strong>
                   <% end %>
                 </td>
               </tr>
-              <% if @event.event_locations.any? %>
-              <tr>
-                <td>Venue:</td>
-                <td><%= @event.event_locations.first.name %></td>
-              </tr>
+              <% if ticket_payment&.gateway_payment_id.presence %>
+                <tr>
+                  <td>Transaction ID:</td>
+                  <td><%= ticket_payment.gateway_payment_id %></td>
+                </tr>
               <% end %>
-              <tr>
-                <td>Ticket Type:</td>
-                <td><%= ticket.ticket_type.name %></td>
-              </tr>
-              <tr>
-                <td>Attendee:</td>
-                <td><%= ticket.attendee_name %></td>
-              </tr>
+              <% if ticket_payment&.gateway_response&.dig('order_id').presence %>
+                <tr>
+                  <td>Order ID:</td>
+                  <td><%= ticket_payment.gateway_response['order_id'] %></td>
+                </tr>
+              <% end %>
             </table>
           </div>
+        <% end %>
 
-          <% ticket_payment = ticket.ticket_payment %>
-          <% amount_paid = (ticket_payment&.amount || ticket.ticket_type.current_price).to_f %>
-          <% show_payment_receipt = ticket.paid? && amount_paid.positive? %>
-          <% if show_payment_receipt %>
-            <div class="section-title">Payment Receipt</div>
-            <div class="receipt-info">
-              <table>
-                <tr>
-                  <td>Receipt No:</td>
-                  <td><%= ticket.public_id %></td>
-                </tr>
-                <tr>
-                  <td>Payment Status:</td>
-                  <td>Paid</td>
-                </tr>
-                <% if ticket_payment&.paid_at.present? %>
-                  <tr>
-                    <td>Payment Date:</td>
-                    <td><%= ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %></td>
-                  </tr>
-                <% end %>
-                <tr>
-                  <td>Amount Paid:</td>
-                  <td>
-                    <%= (ticket_payment&.currency.presence || 'MYR') %>
-                    <%= format('%.2f', (ticket_payment&.amount || ticket.ticket_type.current_price).to_f) %>
-                  </td>
-                </tr>
-                <% if ticket_payment&.gateway_payment_id.presence %>
-                  <tr>
-                    <td>Transaction ID:</td>
-                    <td><%= ticket_payment.gateway_payment_id %></td>
-                  </tr>
-                <% end %>
-                <% if ticket_payment&.gateway_response&.dig('order_id').presence %>
-                  <tr>
-                    <td>Order ID:</td>
-                    <td><%= ticket_payment.gateway_response['order_id'] %></td>
-                  </tr>
-                <% end %>
-              </table>
-            </div>
-          <% end %>
+        <div class="section-title"><%= @tickets.one? ? 'Your Entry QR Code' : 'Your Entry QR Codes' %></div>
+        <p class="qr-note">Please present the relevant QR code at the registration counter for each attendee.</p>
 
-          <div class="section-title">Your Entry QR Code</div>
-          <div class="qr-section">
-            <h3>Scan at Check-In</h3>
-            <p>Please present this QR code at the registration counter</p>
-            <%= image_tag "cid:qr_code_#{index}.png", alt: "QR Code", width: 200, height: 200 %>
+        <% @tickets.each_with_index do |ticket, index| %>
+          <div class="attendee-card">
+            <p class="attendee-name"><%= ticket.attendee_name %></p>
+            <% unless @tickets.one? %>
+              <p class="attendee-index">
+                Ticket <%= index + 1 %> of <%= @tickets.size %>
+                <% unless ticket_types_uniform %>&middot; <%= ticket.ticket_type.name %><% end %>
+              </p>
+            <% end %>
+            <%= image_tag "cid:qr_code_#{index}.png", alt: "QR Code", width: 160, height: 160 %>
             <p class="ticket-id">Ticket ID: <%= ticket.public_id %></p>
           </div>
         <% end %>

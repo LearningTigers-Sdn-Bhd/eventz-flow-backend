@@ -99,4 +99,71 @@ RSpec.describe EmailDelivery::AuditedDelivery do
       end.to change(EmailDelivery, :count).by(1)
     end
   end
+
+  describe 'event email toggles' do
+    let(:exhibitor_kit) { create(:exhibitor_kit) }
+    let(:event) { exhibitor_kit.event_vendor.event }
+
+    it 'does not send (and does not even call the mailer) when the specific category is disabled' do
+      event.create_event_email_setting!(disabled_categories: ['exhibitor_registration_received'])
+
+      expect(ExhibitorRegistrationMailer).not_to receive(:registration_received_email)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'registration_received_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('skipped')
+    end
+
+    it 'still sends a category NOT in disabled_categories for the same event' do
+      event.create_event_email_setting!(disabled_categories: ['exhibitor_registration_received'])
+      message_delivery = ExhibitorRegistrationMailer.payment_confirmed_email(exhibitor_kit)
+      allow(ExhibitorRegistrationMailer).to receive(:payment_confirmed_email).and_return(message_delivery)
+      allow(message_delivery).to receive(:deliver_now)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'payment_confirmed_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('sent')
+    end
+
+    it 'blocks every category once the master switch (emails_enabled) is off, even ones not in disabled_categories' do
+      event.create_event_email_setting!(emails_enabled: false, disabled_categories: [])
+
+      expect(ExhibitorRegistrationMailer).not_to receive(:payment_confirmed_email)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'payment_confirmed_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('skipped')
+    end
+
+    it 'via deliver_later: master switch off skips without enqueuing EmailDeliveryJob' do
+      event.create_event_email_setting!(emails_enabled: false)
+      clear_enqueued_jobs
+
+      expect do
+        described_class.deliver_later(
+          mailer_name: 'ExhibitorRegistrationMailer',
+          mailer_action: 'registration_received_email',
+          args: [exhibitor_kit],
+          related: exhibitor_kit
+        )
+      end.not_to have_enqueued_job(EmailDeliveryJob)
+
+      expect(EmailDelivery.last.status).to eq('skipped')
+    end
+  end
 end

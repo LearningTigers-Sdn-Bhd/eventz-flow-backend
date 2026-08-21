@@ -249,9 +249,15 @@ module V1
         return render json: { errors: ['Ticket is on the waiting list and has not been confirmed'] }, status: :unprocessable_content
       end
 
+      # Resend the batched email (all QR codes) when this ticket belongs to a
+      # paid group registration_batch — otherwise the admin's resend would
+      # only cover this one attendee, dropping the others from the resend.
+      batched = @ticket.paid? && @ticket.registration_batch_id.present? &&
+        @event.tickets.where(registration_batch_id: @ticket.registration_batch_id, payment_status: :paid).count > 1
+
       delivery = EmailDelivery::AuditedDelivery.deliver_later(
         mailer_name: 'TicketMailer',
-        mailer_action: 'confirmation_email',
+        mailer_action: batched ? 'group_confirmation_email' : 'confirmation_email',
         args: [@ticket],
         related: @ticket,
         metadata: {

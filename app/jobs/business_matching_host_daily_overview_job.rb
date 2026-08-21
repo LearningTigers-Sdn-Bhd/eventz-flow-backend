@@ -30,6 +30,7 @@ class BusinessMatchingHostDailyOverviewJob < ApplicationJob
       mailer_action: 'host_daily_overview_email',
       args: [host, bookings, date],
       related: host,
+      event: bookings.first&.business_matching_session&.event,
       dedupe: true,
       metadata: { host_user_id: host.id.to_s, date: date.to_s }
     )

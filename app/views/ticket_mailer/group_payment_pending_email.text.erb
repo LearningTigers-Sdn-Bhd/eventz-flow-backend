@@ -1,0 +1,26 @@
+We've Got Your Registration!
+
+Hi <%= @tickets.first.attendee_name %>,
+
+Thank you for registering for <%= @event.title %>! We've received your <%= @tickets.size %> ticket registration<%= @tickets.one? ? '' : 's' %>. If you've already made payment, our team is now verifying it. If you haven't paid yet, please complete your payment as instructed to secure your spot.
+
+Registration Details
+- Event: <%= @event.title %>
+<% ticket_types_uniform = @tickets.map(&:ticket_type_id).uniq.one? %>
+<% if ticket_types_uniform %>- Ticket Type: <%= @tickets.first.ticket_type.name %>
+<% end %>
+<% unless @tickets.one? %>- Tickets: <%= @tickets.size %>
+<% end %>
+
+Your registration<%= @tickets.one? ? ' is' : 's are' %> currently pending payment verification. Once your payment is confirmed by our team, your e-ticket<%= @tickets.one? ? '' : 's' %> and QR code<%= @tickets.one? ? '' : 's' %> will be sent to this email address automatically.
+
+<% if @contact_email.present? %>
+Have a question in the meantime? Reach out to us at <%= @contact_email %>.
+<% end %>
+We can't wait to see you there!
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

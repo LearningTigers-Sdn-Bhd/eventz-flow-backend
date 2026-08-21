@@ -8,6 +8,7 @@ class EmailDelivery < ApplicationRecord
     bounced
     complained
     suppressed
+    skipped
   ].freeze
 
   TRANSIENT_FAILURE_REASONS = %w[

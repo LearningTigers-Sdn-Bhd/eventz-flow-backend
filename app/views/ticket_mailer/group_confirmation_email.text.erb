@@ -1,43 +1,49 @@
-You're Registered!
+Registration Confirmed!
 
-Hi <%= @tickets.first.attendee_name %>,
+Dear <%= @tickets.first.attendee_name %>,
 
-Your <%= @tickets.one? ? 'registration is' : 'registrations are' %> confirmed. Here are your ticket details:
+Thank you for registering for <%= @event.title %>. <%= @tickets.one? ? 'Your participation is confirmed.' : "Your #{@tickets.size} tickets are confirmed." %>
 
-Event: <%= @event.title %>
-Date: <%= @event.start_date.strftime("%B %d, %Y") %>
-<% if @event.event_locations.any? %>
-Venue: <%= @event.event_locations.first.name %>
+Event Details
+- Event: <%= @event.title %>
+- Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>- Venue: <%= @event.event_locations.first.name %>
+<% end %>
+<% ticket_types_uniform = @tickets.map(&:ticket_type_id).uniq.one? %>
+<% if ticket_types_uniform %>- Ticket Type: <%= @tickets.first.ticket_type.name %>
+<% end %>
+<% unless @tickets.one? %>- Tickets: <%= @tickets.size %>
 <% end %>
 
-<% @tickets.each_with_index do |ticket, index| %>
-Ticket <%= index + 1 %>
-Ticket Type: <%= ticket.ticket_type.name %>
-Name: <%= ticket.attendee_name %>
-Your Ticket ID: <%= ticket.public_id %>
-
-<% ticket_payment = ticket.ticket_payment %>
-<% amount_paid = (ticket_payment&.amount || ticket.ticket_type.current_price).to_f %>
-<% if ticket.paid? && amount_paid.positive? %>
+<% representative = @tickets.first %>
+<% ticket_payment = representative.ticket_payment %>
+<% unit_price = (ticket_payment&.amount || representative.ticket_type.current_price).to_f %>
+<% if representative.paid? && unit_price.positive? %>
 Payment Receipt
-- Receipt No: <%= ticket.public_id %>
+- Receipt No: <%= representative.public_id %>
 - Payment Status: Paid
 <% if ticket_payment&.paid_at.present? %>- Payment Date: <%= ticket_payment.paid_at.in_time_zone.strftime("%B %d, %Y %I:%M %p %Z") %>
-<% end %>- Amount Paid: <%= (ticket_payment&.currency.presence || 'MYR') %> <%= format('%.2f', (ticket_payment&.amount || ticket.ticket_type.current_price).to_f) %>
-<% if ticket_payment&.gateway_payment_id.presence %>- Transaction ID: <%= ticket_payment.gateway_payment_id %>
+<% end %><% currency = ticket_payment&.currency.presence || 'MYR' %>
+<% if @tickets.one? %>- Amount Paid: <%= currency %> <%= format('%.2f', unit_price) %>
+<% else %>- Amount Paid: <%= currency %> <%= format('%.2f', unit_price) %> x <%= @tickets.size %> = <%= currency %> <%= format('%.2f', unit_price * @tickets.size) %>
+<% end %><% if ticket_payment&.gateway_payment_id.presence %>- Transaction ID: <%= ticket_payment.gateway_payment_id %>
 <% end %><% if ticket_payment&.gateway_response&.dig('order_id').presence %>- Order ID: <%= ticket_payment.gateway_response['order_id'] %>
 <% end %>
 <% end %>
+<%= @tickets.one? ? 'Your Entry QR Code' : 'Your Entry QR Codes' %> (attached to this email)
+<% @tickets.each_with_index do |ticket, index| %>
+<%= index + 1 %>. <%= ticket.attendee_name %><% unless ticket_types_uniform %> (<%= ticket.ticket_type.name %>)<% end %> — Ticket ID: <%= ticket.public_id %>
 <% end %>
-Please show the relevant ticket ID or attached QR code at check-in.
+
+Please present the relevant QR code at the registration counter upon arrival.
 
 <% if @contact_email.present? %>
 Should you have any questions, please reach out to us at <%= @contact_email %>.
 <% end %>
-See you at the event!
+We wish you a wonderful and memorable experience at the event.
 
 Warm regards,
 <%= @sender_name %>
 
 ---
-This email was sent by EventzFlow
+This is an automated confirmation email from EventzFlow. Please do not reply to this email.

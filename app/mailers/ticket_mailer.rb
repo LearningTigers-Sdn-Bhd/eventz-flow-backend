@@ -53,6 +53,21 @@ class TicketMailer < ApplicationMailer
     )
   end
 
+  # Batched variant of payment_pending_email for a group submission where
+  # multiple tickets share one recipient's email — one "we've received your
+  # registration" email listing every ticket instead of N separate ones.
+  def group_payment_pending_email(tickets)
+    @tickets = tickets
+    @event = tickets.first.event
+    set_email_config
+
+    mail(
+      to: tickets.first.attendee_email,
+      from: sender_from,
+      subject: "We've received your registration for #{@event.title}"
+    )
+  end
+
   private
 
   def email_setting
