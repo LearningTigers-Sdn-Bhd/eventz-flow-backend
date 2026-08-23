@@ -15,6 +15,24 @@ module V1
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
+      # GET /v1/public/events/:event_slug/booth_plans
+      def booth_plans
+        event = Event.friendly.find(params[:event_slug])
+
+        render json: {
+          success: true,
+          data: event.booth_plans.active.ordered.map do |plan|
+            {
+              id: plan.id,
+              name: plan.name,
+              position: plan.position,
+              image_url: plan.image.attached? ? url_for(plan.image) : nil,
+              updated_at: plan.updated_at
+            }
+          end
+        }
+      end
+
       def gone
         render json: { success: false, code: 'legacy_exhibitor_endpoint_removed',
           message: 'This exhibitor endpoint is no longer available' }, status: :gone

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_21_150300) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_22_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -57,6 +57,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_21_150300) do
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["scope"], name: "index_api_keys_on_scope"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
+  end
+
+  create_table "booth_plans", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "position"], name: "index_booth_plans_on_event_id_and_position"
+    t.index ["event_id"], name: "index_booth_plans_on_event_id"
   end
 
   create_table "business_host_assignments", force: :cascade do |t|
@@ -1749,6 +1760,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_21_150300) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "api_keys", "events"
   add_foreign_key "api_keys", "users"
+  add_foreign_key "booth_plans", "events"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
   add_foreign_key "business_matching_availabilities", "business_matching_participants"

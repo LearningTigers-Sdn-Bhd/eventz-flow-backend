@@ -67,6 +67,7 @@ Rails.application.routes.draw do
         post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
+        get 'booth_plans', to: 'exhibitor_registrations#booth_plans'
         post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
         post 'customs_declaration_upload', to: 'customs_declaration_uploads#create'
         post 'customs_duty_estimate_upload', to: 'customs_duty_estimate_uploads#create'
@@ -193,6 +194,7 @@ Rails.application.routes.draw do
       end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
+      resources :booth_plans, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
