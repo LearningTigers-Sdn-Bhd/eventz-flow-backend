@@ -10,7 +10,7 @@ class Ticket < ApplicationRecord
   DOCUMENT_KEYS = %w[passport_copy photo_1 photo_2 indemnity_form signature].freeze
 
   # Server-written custom_fields_data keys — stripped from all client input.
-  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity _terms_agreement].freeze
+  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity _terms_agreement _table_number].freeze
 
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.

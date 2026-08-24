@@ -24,7 +24,7 @@ module V1
       ActiveRecord::Base.transaction do
         if params[:plan_objects].present?
           params[:plan_objects].each do |obj_params|
-            permitted = obj_params.permit(:id, :object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index, :image)
+            permitted = obj_params.permit(:id, :object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :table_number, :capacity, :locked, :z_index, :image)
             # Find object ensuring it belongs to the plan
             obj = @plan.plan_objects.find_by(id: permitted[:id])
             if obj
@@ -55,7 +55,7 @@ module V1
       ActiveRecord::Base.transaction do
         if params[:plan_objects].present?
           params[:plan_objects].each do |obj_params|
-            permitted = obj_params.permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index)
+            permitted = obj_params.permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :table_number, :capacity, :locked, :z_index)
             obj = @plan.plan_objects.new(permitted)
             unless obj.save
               errors << { label: obj.label, errors: obj.errors }
@@ -98,7 +98,7 @@ module V1
     end
 
     def plan_object_params
-      params.require(:plan_object).permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :capacity, :locked, :z_index, :image)
+      params.require(:plan_object).permit(:object_type, :layer, :x, :y, :rotation, :width, :height, :path, :label, :table_number, :capacity, :locked, :z_index, :image)
     end
   end
 end
