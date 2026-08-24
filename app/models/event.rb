@@ -38,6 +38,7 @@ class Event < ApplicationRecord
   has_many :exhibitor_vouchers, dependent: :destroy
   has_many :exhibitor_booths, dependent: :destroy
   has_many :exhibitor_zones, dependent: :destroy
+  has_many :booth_plans, dependent: :destroy, inverse_of: :event
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
