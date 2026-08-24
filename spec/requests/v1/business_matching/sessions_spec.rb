@@ -59,6 +59,44 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       )
     end
 
+    it "adds offering/interest tags supplied at creation to the event's tag lists" do
+      post "/v1/business_matching/sessions",
+           params: {
+             event_id: event.id,
+             session: {
+               title: "Tagged Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+               offering_tags: ["SaaS", " Consulting "], interest_tags: ["Distributors"]
+             }
+           },
+           headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:created)
+      expect(json_response['offering_tags']).to contain_exactly("SaaS", "Consulting")
+      expect(json_response['interest_tags']).to contain_exactly("Distributors")
+      event.reload
+      expect(event.business_matching_offering_tags).to contain_exactly("SaaS", "Consulting")
+      expect(event.business_matching_interest_tags).to contain_exactly("Distributors")
+    end
+
+    it "merges newly supplied tags with the event's existing tags without dropping either" do
+      event.update!(business_matching_offering_tags: ["SaaS"], business_matching_interest_tags: ["Seed Fund"])
+
+      post "/v1/business_matching/sessions",
+           params: {
+             event_id: event.id,
+             session: {
+               title: "Second Session", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+               offering_tags: ["Consulting"]
+             }
+           },
+           headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:created)
+      event.reload
+      expect(event.business_matching_offering_tags).to contain_exactly("SaaS", "Consulting")
+      expect(event.business_matching_interest_tags).to contain_exactly("Seed Fund")
+    end
+
     it "rejects an end_date before the start_date" do
       post "/v1/business_matching/sessions",
            params: {

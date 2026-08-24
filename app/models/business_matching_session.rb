@@ -69,7 +69,7 @@ class BusinessMatchingSession < ApplicationRecord
   end
 
   def ensure_no_bookings
-    if business_matching_bookings.any?
+    if business_matching_bookings.where.not(status: 'Cancelled').exists?
       errors.add(:base, "Cannot delete session with active bookings. Please cancel or remove all bookings first.")
       throw(:abort)
     end

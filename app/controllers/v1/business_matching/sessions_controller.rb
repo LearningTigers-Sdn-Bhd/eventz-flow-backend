@@ -15,6 +15,7 @@ module V1
 
         if session.save
           ensure_default_availabilities(session)
+          merge_event_tags(event)
 
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })
           render json: {
@@ -30,7 +31,9 @@ module V1
             start_date: session.start_date,
             end_date: session.end_date,
             tags_editable: session.tags_editable,
-            hours_editable: session.hours_editable
+            hours_editable: session.hours_editable,
+            offering_tags: event.business_matching_offering_tags,
+            interest_tags: event.business_matching_interest_tags
           }, status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -130,6 +133,30 @@ module V1
           :title, :slot_duration, :location, :admin_email, :admin_wa_number,
           :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable, :hours_editable
         )
+      end
+
+      # Tags are event-scoped, not session-scoped, so a new session only adds
+      # to the event's existing offering/interest tag lists — it never
+      # removes or overwrites tags another session may already rely on.
+      def merge_event_tags(event)
+        tag_params = params.require(:session).permit(offering_tags: [], interest_tags: [])
+        return unless tag_params.key?(:offering_tags) || tag_params.key?(:interest_tags)
+
+        update_attrs = {}
+        if tag_params.key?(:offering_tags)
+          update_attrs[:business_matching_offering_tags] =
+            sanitize_tags(event.business_matching_offering_tags + tag_params[:offering_tags])
+        end
+        if tag_params.key?(:interest_tags)
+          update_attrs[:business_matching_interest_tags] =
+            sanitize_tags(event.business_matching_interest_tags + tag_params[:interest_tags])
+        end
+
+        event.update!(update_attrs)
+      end
+
+      def sanitize_tags(tags)
+        Array(tags).map(&:to_s).map(&:strip).reject(&:blank?).uniq
       end
     end
   end
