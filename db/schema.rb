@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_22_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_24_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1115,10 +1115,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_22_000000) do
     t.datetime "expires_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "plan_object_id"
     t.index ["created_by_id"], name: "index_pass_bundles_on_created_by_id"
     t.index ["event_id", "status"], name: "index_pass_bundles_on_event_id_and_status"
     t.index ["event_id", "token"], name: "index_pass_bundles_on_event_id_and_token", unique: true
     t.index ["event_id"], name: "index_pass_bundles_on_event_id"
+    t.index ["plan_object_id"], name: "index_pass_bundles_on_plan_object_id"
     t.index ["registration_form_id"], name: "index_pass_bundles_on_registration_form_id"
     t.index ["ticket_type_id"], name: "index_pass_bundles_on_ticket_type_id"
     t.check_constraint "pass_limit >= 0", name: "chk_pass_bundles_pass_limit_non_negative"
@@ -1882,6 +1884,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_22_000000) do
   add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "lucky_draw_sessions", "users", column: "created_by_id"
   add_foreign_key "pass_bundles", "events"
+  add_foreign_key "pass_bundles", "plan_objects"
   add_foreign_key "pass_bundles", "registration_forms"
   add_foreign_key "pass_bundles", "ticket_types"
   add_foreign_key "pass_bundles", "users", column: "created_by_id"

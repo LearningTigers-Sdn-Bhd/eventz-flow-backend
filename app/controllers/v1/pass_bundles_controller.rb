@@ -66,7 +66,8 @@ module V1
         :payment_mode,
         :payment_status,
         :status,
-        :expires_at
+        :expires_at,
+        :plan_object_id
       )
     end
 
@@ -91,6 +92,10 @@ module V1
         ticket_type: {
           id: bundle.ticket_type.id,
           name: bundle.ticket_type.name
+        },
+        plan_object: bundle.plan_object && {
+          id: bundle.plan_object.id,
+          label: bundle.plan_object.label
         },
         bundle_link: bundle_link(bundle),
         created_at: bundle.created_at,

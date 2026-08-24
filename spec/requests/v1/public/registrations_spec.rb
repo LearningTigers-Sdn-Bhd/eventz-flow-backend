@@ -1124,6 +1124,40 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(response).to have_http_status(:unprocessable_content)
         expect(JSON.parse(response.body)['message']).to eq('This bundle link is not valid for the selected pass.')
       end
+
+      context 'when the bundle has a table linked' do
+        let!(:plan) { create(:plan, event: event) }
+        let!(:table) { create(:plan_object, :table, plan: plan, capacity: 2) }
+
+        before { pass_bundle.update!(plan_object: table) }
+
+        it 'auto-assigns the created ticket to the bundle table' do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+            form_slug: 'delegate',
+            bundle: pass_bundle.token
+          )
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+          assignment = TableAssignment.find_by(ticket: created_ticket)
+          expect(assignment).to be_present
+          expect(assignment.plan_object).to eq(table)
+        end
+
+        it 'still creates the ticket when the table is already full' do
+          create(:table_assignment, plan_object: table, ticket: create(:ticket, event: event, ticket_type: ticket_type))
+          create(:table_assignment, plan_object: table, ticket: create(:ticket, event: event, ticket_type: ticket_type))
+
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+            form_slug: 'delegate',
+            bundle: pass_bundle.token
+          )
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+          expect(TableAssignment.exists?(ticket: created_ticket)).to be(false)
+        end
+      end
     end
   end
 
