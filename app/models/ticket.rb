@@ -355,7 +355,11 @@ class Ticket < ApplicationRecord
     )
   end
 
-  # Helper method for delegation to handle creation of payment record on demand
+  # Helper method for delegation to handle creation of payment record on demand.
+  # Public (not under the `private` above) — TicketsController#attach_payment_proof!
+  # calls it directly to attach an admin-uploaded payment proof.
+  public
+
   def payment_record
     ticket_payment || build_ticket_payment(amount: ticket_type&.price || 0)
   end
