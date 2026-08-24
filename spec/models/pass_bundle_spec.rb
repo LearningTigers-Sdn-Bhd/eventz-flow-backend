@@ -87,6 +87,25 @@ RSpec.describe PassBundle, type: :model do
       expect(bundle).not_to be_valid
       expect(bundle.errors[:pass_limit]).to include('cannot be lower than used passes')
     end
+
+    it 'allows a table plan_object to be linked' do
+      plan = create(:plan, event: event)
+      table = create(:plan_object, :table, plan: plan)
+
+      bundle = build(:pass_bundle, event: event, registration_form: registration_form, ticket_type: ticket_type, plan_object: table)
+
+      expect(bundle).to be_valid
+    end
+
+    it 'rejects a non-table plan_object' do
+      plan = create(:plan, event: event)
+      wall = create(:plan_object, :wall, plan: plan)
+
+      bundle = build(:pass_bundle, event: event, registration_form: registration_form, ticket_type: ticket_type, plan_object: wall)
+
+      expect(bundle).not_to be_valid
+      expect(bundle.errors[:plan_object]).to include('must be a table')
+    end
   end
 
   describe '#accepting_registrations?' do

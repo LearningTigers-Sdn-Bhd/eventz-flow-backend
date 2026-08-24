@@ -483,6 +483,7 @@ module V1
 
         if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
+          assign_bundle_table!(ticket: ticket, bundle: bundle) if bundle.present?
           send_batched_payment_pending_notifications([ticket, *sibling_tickets])
 
           render json: {
@@ -970,6 +971,17 @@ module V1
           ticket.status = 'pending_payment'
           ticket.payment_status = 'pending'
         end
+      end
+
+      # Every ticket registered through a bundle link with a table attached
+      # inherits that table automatically. Table capacity/uniqueness is
+      # still enforced by TableAssignment's own validations — if the table
+      # is already full, the ticket itself still succeeds; it's just left
+      # unassigned for the organizer to sort out manually.
+      def assign_bundle_table!(ticket:, bundle:)
+        return if bundle.plan_object_id.blank?
+
+        TableAssignment.create(ticket: ticket, plan_object_id: bundle.plan_object_id)
       end
 
       def resolve_pass_bundle(event:, form:, ticket_type:)

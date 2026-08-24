@@ -90,6 +90,30 @@ RSpec.describe 'V1::PassBundles', type: :request do
       expect(PassBundle.last.created_by).to eq(organizer)
     end
 
+    it 'links a table plan_object when provided' do
+      plan = create(:plan, event: event)
+      table = create(:plan_object, :table, plan: plan)
+
+      post "/v1/events/#{event.id}/pass_bundles",
+           params: {
+             pass_bundle: {
+               name: 'SESB',
+               pass_limit: table.capacity,
+               registration_form_id: registration_form.id,
+               ticket_type_id: ticket_type.id,
+               payment_mode: 'free',
+               payment_status: 'sponsored',
+               status: 'active',
+               plan_object_id: table.id
+             }
+           },
+           headers: headers
+
+      expect(response).to have_http_status(:created)
+      json = JSON.parse(response.body)
+      expect(json['plan_object']).to include('id' => table.id, 'label' => table.label)
+    end
+
     it 'rejects users without event update access' do
       post "/v1/events/#{event.id}/pass_bundles",
            params: {
