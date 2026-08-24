@@ -1,5 +1,9 @@
 module V1
   class TicketsController < ApplicationController
+    include PublicFileValidation
+
+    MAX_PAYMENT_PROOF_SIZE = 10.megabytes
+
     # Load and Authorize the parent event before every action
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
@@ -92,6 +96,9 @@ module V1
 
       # Build the ticket using ONLY the strong parameters.
       attrs = ticket_params_with_payment_sync
+      payment_proof_file = attrs.delete(:payment_proof)
+      return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
+
       @ticket = @event.tickets.build(attrs)
 
       # @ticket.user = current_user # Hide this for now
@@ -127,6 +134,7 @@ module V1
 
       if saved
         @ticket.reload
+        attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
 
         if quantity > 1 && @ticket.paid? && @ticket.purchased? && @ticket.attendee_email.present?
           EmailDelivery::AuditedDelivery.deliver_later(
@@ -159,7 +167,12 @@ module V1
       siblings = marking_paid && @ticket.registration_batch_id.present? ? batch_siblings(@ticket) : Ticket.none
       @ticket.suppress_confirmation_email = true if siblings.exists?
 
-      if @ticket.update(ticket_params_with_payment_sync)
+      attrs = ticket_params_with_payment_sync
+      payment_proof_file = attrs.delete(:payment_proof)
+      return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
+
+      if @ticket.update(attrs)
+        attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
         mark_batch_siblings_paid!(primary: @ticket, siblings: siblings) if siblings.exists?
         render json: ticket_response(@ticket), status: :ok
       else
@@ -614,6 +627,7 @@ module V1
         :payment_method,
         :transaction_id,
         :payment_screenshot_url,
+        :payment_proof,
         :role,
         :skip_webhooks,
         custom_fields_data: {}
@@ -634,6 +648,14 @@ module V1
         permitted[:custom_fields_data] = permitted[:custom_fields_data].except(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
       end
 
+      # multipart/form-data (used when payment_proof is uploaded) stringifies
+      # every field, but Ticket#payment_status is an integer-backed enum and
+      # rejects a digit string like "0" as an invalid key — only the bare
+      # integer or its label ("pending") is accepted.
+      if permitted[:payment_status].present? && permitted[:payment_status].to_s.match?(/\A\d+\z/)
+        permitted[:payment_status] = permitted[:payment_status].to_i
+      end
+
       permitted
     end
 
@@ -648,6 +670,35 @@ module V1
       return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
 
       permitted_params.merge(status: :purchased)
+    end
+
+    # Renders an error and returns false when the uploaded payment proof
+    # fails type/size checks (mirrors V1::Public::TicketPaymentProofsController).
+    def valid_payment_proof!(file)
+      unless file.respond_to?(:content_type) && allowed_file_type?(file)
+        render json: { errors: ['Payment proof must be a JPEG, PNG, WebP, or PDF'] }, status: :unprocessable_content
+        return false
+      end
+
+      if file_too_large?(file, MAX_PAYMENT_PROOF_SIZE)
+        render json: { errors: ["Payment proof is too large (max #{MAX_PAYMENT_PROOF_SIZE / 1.megabyte}MB)"] },
+               status: :unprocessable_content
+        return false
+      end
+
+      true
+    end
+
+    # Attaches an admin-uploaded payment proof to the ticket's payment record
+    # via Active Storage, replacing the legacy free-text payment_screenshot_url.
+    def attach_payment_proof!(ticket, file)
+      payment = ticket.payment_record
+      # On a brand-new ticket (create action), payment_record builds an
+      # unsaved TicketPayment — Active Storage can't attach to an unpersisted
+      # record (no id to generate a signed_id from), so save it first.
+      payment.save! if payment.new_record?
+      payment.payment_proof.attach(file)
+      payment.update!(payment_screenshot_url: url_for(payment.payment_proof))
     end
 
     def ticket_response(ticket)
