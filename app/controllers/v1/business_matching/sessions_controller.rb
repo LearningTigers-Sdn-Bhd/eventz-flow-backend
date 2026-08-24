@@ -10,12 +10,17 @@ module V1
 
         authorize event, :manage_business_matching_sessions?
 
+        tag_params = params.require(:session).permit(offering_tags: [], interest_tags: [])
+        invalid_tags = disallowed_tags(event, tag_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}. Add them via Manage Tags first."] }, status: :unprocessable_entity
+        end
+
         session = BusinessMatchingSession.new(session_params)
         session.event = event
 
         if session.save
           ensure_default_availabilities(session)
-          merge_event_tags(event)
 
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })
           render json: {
@@ -135,28 +140,17 @@ module V1
         )
       end
 
-      # Tags are event-scoped, not session-scoped, so a new session only adds
-      # to the event's existing offering/interest tag lists — it never
-      # removes or overwrites tags another session may already rely on.
-      def merge_event_tags(event)
-        tag_params = params.require(:session).permit(offering_tags: [], interest_tags: [])
-        return unless tag_params.key?(:offering_tags) || tag_params.key?(:interest_tags)
-
-        update_attrs = {}
-        if tag_params.key?(:offering_tags)
-          update_attrs[:business_matching_offering_tags] =
-            sanitize_tags(event.business_matching_offering_tags + tag_params[:offering_tags])
+      # Tags are curated exclusively via "Manage Tags" — creating a session
+      # may only select from that existing list, never introduce a new tag.
+      def disallowed_tags(event, tag_params)
+        invalid = []
+        if tag_params[:offering_tags].present?
+          invalid += Array(tag_params[:offering_tags]) - (event.business_matching_offering_tags || [])
         end
-        if tag_params.key?(:interest_tags)
-          update_attrs[:business_matching_interest_tags] =
-            sanitize_tags(event.business_matching_interest_tags + tag_params[:interest_tags])
+        if tag_params[:interest_tags].present?
+          invalid += Array(tag_params[:interest_tags]) - (event.business_matching_interest_tags || [])
         end
-
-        event.update!(update_attrs)
-      end
-
-      def sanitize_tags(tags)
-        Array(tags).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+        invalid.uniq
       end
     end
   end
