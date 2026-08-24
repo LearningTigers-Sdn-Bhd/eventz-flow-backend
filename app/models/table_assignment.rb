@@ -8,6 +8,12 @@ class TableAssignment < ApplicationRecord
   validate :plan_object_must_be_table
   validate :table_capacity_available
 
+  # Keeps the ticket's `_table_number` custom field in sync with whichever
+  # table it's actually seated at — badge/export templates read the custom
+  # field directly rather than joining through table_assignments.
+  after_commit :sync_ticket_table_number, on: %i[create update]
+  after_destroy :clear_ticket_table_number
+
   def insufficient_space_payload(required_seats: 1)
     remaining = remaining_capacity
     needed = [required_seats - remaining, 0].max
@@ -67,5 +73,29 @@ class TableAssignment < ApplicationRecord
 
     assigned_count = plan_object.table_assignments.where.not(id: id).count
     [plan_object.capacity - assigned_count, 0].max
+  end
+
+  # Visitors don't carry custom_fields_data — only tickets do.
+  def sync_ticket_table_number
+    return if ticket_id.blank?
+
+    ticket.update_column(
+      :custom_fields_data,
+      (ticket.custom_fields_data || {}).merge('_table_number' => table_name_label)
+    )
+  end
+
+  def clear_ticket_table_number
+    return if ticket_id.blank? || ticket.blank?
+
+    ticket.update_column(:custom_fields_data, (ticket.custom_fields_data || {}).except('_table_number'))
+  end
+
+  # Prefers the dedicated table_number field (e.g. "12", "A1") over the
+  # sponsor/company label so the ticket's operational table number stays
+  # distinct from its display name — falls back to label, then a generic
+  # id, for tables that were never assigned a number.
+  def table_name_label
+    plan_object.table_number.presence || plan_object.label.presence || "Table #{plan_object.id}"
   end
 end
