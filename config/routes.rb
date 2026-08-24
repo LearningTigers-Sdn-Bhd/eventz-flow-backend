@@ -464,7 +464,9 @@ Rails.application.routes.draw do
 
     # Event Leads (exhibitor lead capture — replaces visitor stamps)
     scope 'events/:event_id' do
-      resources :event_leads, only: %i[index create update], path: 'event-leads'
+      resources :event_leads, only: %i[index create update], path: 'event-leads' do
+        get 'export', on: :collection
+      end
     end
     post 'event-leads/scan', to: 'event_leads#scan'
     get 'event-leads/recent', to: 'event_leads#recent'
