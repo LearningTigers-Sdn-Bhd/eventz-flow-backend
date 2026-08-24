@@ -10,12 +10,6 @@ module V1
 
         authorize event, :manage_business_matching_sessions?
 
-        tag_params = params.require(:session).permit(offering_tags: [], interest_tags: [])
-        invalid_tags = disallowed_tags(event, tag_params)
-        if invalid_tags.any?
-          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}. Add them via Manage Tags first."] }, status: :unprocessable_entity
-        end
-
         session = BusinessMatchingSession.new(session_params)
         session.event = event
 
@@ -36,9 +30,7 @@ module V1
             start_date: session.start_date,
             end_date: session.end_date,
             tags_editable: session.tags_editable,
-            hours_editable: session.hours_editable,
-            offering_tags: event.business_matching_offering_tags,
-            interest_tags: event.business_matching_interest_tags
+            hours_editable: session.hours_editable
           }, status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
@@ -138,19 +130,6 @@ module V1
           :title, :slot_duration, :location, :admin_email, :admin_wa_number,
           :start_time, :end_time, :is_active, :start_date, :end_date, :tags_editable, :hours_editable
         )
-      end
-
-      # Tags are curated exclusively via "Manage Tags" — creating a session
-      # may only select from that existing list, never introduce a new tag.
-      def disallowed_tags(event, tag_params)
-        invalid = []
-        if tag_params[:offering_tags].present?
-          invalid += Array(tag_params[:offering_tags]) - (event.business_matching_offering_tags || [])
-        end
-        if tag_params[:interest_tags].present?
-          invalid += Array(tag_params[:interest_tags]) - (event.business_matching_interest_tags || [])
-        end
-        invalid.uniq
       end
     end
   end
