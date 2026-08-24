@@ -453,6 +453,7 @@ Rails.application.routes.draw do
           post 'join', to: 'hosts#join', on: :collection
           post 'invite_link', to: 'hosts#invite_link', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
+          post 'link_exhibitor', to: 'hosts#link_exhibitor', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection
         end
       end

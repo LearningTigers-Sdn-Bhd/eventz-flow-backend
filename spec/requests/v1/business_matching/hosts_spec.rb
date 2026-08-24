@@ -4,7 +4,8 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
   let(:event) do
     create(:event, use_business_matching: true,
                     business_matching_offering_tags: ["Ruby", "Rails"],
-                    business_matching_interest_tags: ["React", "NextJS"])
+                    business_matching_interest_tags: ["React", "NextJS"],
+                    business_matching_linked_exhibitor_enabled: true)
   end
   let(:host_user) { create(:user) }
 
@@ -240,6 +241,98 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(User.exists?(email: "newhost2@example.com")).to eq(false)
+    end
+  end
+
+  describe "POST /v1/business_matching/events/:event_id/hosts/link_exhibitor" do
+    let(:admin) { create(:user, role: :organizer) }
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it "attaches host access to the exhibitor's existing user, without creating a new user" do
+      exhibitor = create(:exhibitor, event: event)
+
+      expect {
+        post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+             params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+             headers: auth_headers(admin)
+      }.not_to change(User, :count)
+
+      expect(response).to have_http_status(:created)
+      expect(json_response['id']).to eq(exhibitor.vendor_id)
+      expect(json_response['email']).to eq(exhibitor.vendor.email)
+
+      expect(
+        BusinessHostAssignment.exists?(
+          user_id: exhibitor.vendor_id, event_id: event.id, business_matching_event_id: "bm-1"
+        )
+      ).to eq(true)
+      expect(
+        EventAssignment.exists?(user_id: exhibitor.vendor_id, event_id: event.id, role: :business_host)
+      ).to eq(true)
+    end
+
+    it "rejects when the event has not opted in to linked exhibitor hosting" do
+      event.update!(business_matching_linked_exhibitor_enabled: false)
+      exhibitor = create(:exhibitor, event: event)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(
+        BusinessHostAssignment.exists?(user_id: exhibitor.vendor_id, event_id: event.id)
+      ).to eq(false)
+    end
+
+    it "rejects a merchant (not an exhibitor)" do
+      merchant = create(:merchant, event: event)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: merchant.id },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "rejects linking the same exhibitor to the same session twice" do
+      exhibitor = create(:exhibitor, event: event)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+           headers: auth_headers(admin)
+      expect(response).to have_http_status(:created)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "rejects an exhibitor who already holds a different staff role for this event" do
+      exhibitor = create(:exhibitor, event: event)
+      create(:event_assignment, event: event, user: exhibitor.vendor, role: :event_team_member)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_response['error']).to include("event_team_member")
+    end
+
+    it "rejects a non-admin" do
+      exhibitor = create(:exhibitor, event: event)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/link_exhibitor",
+           params: { business_matching_event_id: "bm-1", event_vendor_id: exhibitor.id },
+           headers: auth_headers(host_user)
+
+      expect(response).to have_http_status(:forbidden)
     end
   end
 
