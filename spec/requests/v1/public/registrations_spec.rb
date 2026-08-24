@@ -497,6 +497,10 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
     end
 
     context 'when registration form delegate approval is enabled' do
+      # The approval workflow reviews free (RM0) tickets only — paid tickets
+      # on the same form stay on the normal payment-proof flow.
+      before { ticket_type.update!(price: 0) }
+
       let!(:interested_form) do
         form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')
         form.ticket_types << ticket_type
@@ -534,6 +538,116 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(application.registration_form_id).to eq(interested_form.id)
         expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
         expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Your ticket for')
+      end
+
+      context 'when the form mixes free and paid ticket types' do
+        let!(:free_ticket_type) do
+          create(
+            :ticket_type,
+            event: event,
+            name: 'Included 2nd Person',
+            price: 0,
+            status: :published,
+            hidden: false
+          )
+        end
+
+        before do
+          # Parent context zeroes the shared ticket type for the approval
+          # specs; restore it here so this context has a genuinely paid
+          # ticket type alongside the free one.
+          ticket_type.update!(price: 100.00)
+          interested_form.ticket_types << free_ticket_type
+        end
+
+        it 'routes free tickets through approval review' do
+          perform_enqueued_jobs do
+            expect do
+              post "/v1/public/events/#{event.slug}/register",
+                   params: valid_params.merge(
+                     form_slug: interested_form.slug,
+                     ticket_type_id: free_ticket_type.id,
+                     attendee_email: 'included@example.com'
+                   )
+            end.to change(Ticket, :count).by(1)
+              .and change(TicketApplication, :count).by(1)
+          end
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+
+          expect(created_ticket.status).to eq('pending_payment')
+          expect(created_ticket.payment_status).to eq('pending')
+          expect(created_ticket.ticket_application.review_status).to eq('pending_review')
+          expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
+        end
+
+        it 'keeps paid tickets on the normal payment flow' do
+          perform_enqueued_jobs do
+            expect do
+              post "/v1/public/events/#{event.slug}/register",
+                   params: valid_params.merge(
+                     form_slug: interested_form.slug,
+                     attendee_email: 'paying@example.com'
+                   )
+            end.to change(Ticket, :count).by(1)
+              .and change(TicketApplication, :count).by(0)
+          end
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+
+          expect(created_ticket.status).to eq('pending_payment')
+          expect(created_ticket.payment_status).to eq('pending')
+          expect(created_ticket.ticket_application).to be_nil
+          expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Application received for')
+        end
+
+        it 'sends the payment pending email for paid tickets' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(
+                 form_slug: interested_form.slug,
+                 attendee_email: 'paying@example.com'
+               )
+
+          expect(response).to have_http_status(:created)
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_name: 'TicketMailer', mailer_action: 'payment_pending_email')
+          )
+        end
+
+        it 'still blocks re-registration for previously rejected free-ticket applicants' do
+          rejected_ticket = create(
+            :ticket,
+            event: event,
+            ticket_type: free_ticket_type,
+            attendee_email: 'included@example.com',
+            status: :canceled,
+            payment_status: :pending
+          )
+          create(
+            :ticket_application,
+            ticket: rejected_ticket,
+            registration_form: interested_form,
+            review_status: :rejected,
+            rejection_reason: 'Not eligible'
+          )
+
+          expect do
+            post "/v1/public/events/#{event.slug}/register",
+                 params: valid_params.merge(
+                   form_slug: interested_form.slug,
+                   ticket_type_id: free_ticket_type.id,
+                   attendee_email: 'included@example.com'
+                 )
+          end.not_to change(Ticket, :count)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          json = JSON.parse(response.body)
+          expect(json['message']).to include('application was not selected in this intake')
+        end
       end
 
       it 'blocks re-registration for previously rejected applicants on the same form' do

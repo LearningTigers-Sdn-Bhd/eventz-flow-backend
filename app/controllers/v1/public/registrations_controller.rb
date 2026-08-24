@@ -384,7 +384,12 @@ module V1
           ticket.pass_bundle = bundle if bundle.present?
           ticket.waiting_list = form&.waiting_list? || false
 
-          if ticket.waiting_list || approval_enabled
+          # Approval review applies to free (RM0) tickets only — e.g. an
+          # included co-driver seat the organizer wants to vet first. Paid
+          # tickets on the same form keep the normal payment-proof flow:
+          # they must not get a TicketApplication either (its presence
+          # suppresses the payment-pending email downstream).
+          if ticket.waiting_list || (approval_enabled && ticket_type.current_price.zero?)
             ticket.status = 'pending_payment'
             ticket.payment_status = 'pending'
           elsif bundle.present?
@@ -782,6 +787,13 @@ module V1
 
         setting = registration_form.registration_form_rsvp_setting
         return unless setting&.enabled?
+
+        # Approval workflow reviews free (RM0) tickets only; paid tickets on
+        # the same form stay on the payment-proof flow. Creating an
+        # application for them would also suppress their payment-pending
+        # email (send_payment_pending_notification skips tickets with an
+        # application).
+        return unless ticket.ticket_type.current_price.zero?
 
         application = ticket.ticket_application || ticket.create_ticket_application!(
           registration_form: registration_form,
