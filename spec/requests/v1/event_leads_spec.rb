@@ -289,6 +289,41 @@ RSpec.describe 'V1::EventLeads', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/event-leads/export' do
+    context 'when user is org_owner' do
+      it 'returns an xlsx file with all leads for the event' do
+        get "/v1/events/#{event.id}/event-leads/export", headers: { 'Authorization' => "Bearer #{org_owner_token}" }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.content_type).to eq('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        expect(response.body).not_to be_empty
+      end
+    end
+
+    context 'when user is a vendor' do
+      it 'returns 200 with only their own leads' do
+        get "/v1/events/#{event.id}/event-leads/export", headers: { 'Authorization' => "Bearer #{vendor_token}" }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.content_type).to eq('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      end
+    end
+
+    context 'when user is not authenticated' do
+      it 'returns 401 unauthorized' do
+        get "/v1/events/#{event.id}/event-leads/export"
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when event does not exist' do
+      it 'returns 404 not found' do
+        get "/v1/events/99999/event-leads/export", headers: { 'Authorization' => "Bearer #{vendor_token}" }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
   describe 'POST /v1/event-leads/scan' do
     context 'when vendor is assigned to scanned ticket event' do
       it 'creates a lead successfully' do
