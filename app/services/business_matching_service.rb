@@ -30,8 +30,11 @@ class BusinessMatchingService < BaseService
     data = sessions.map do |session|
       host_user = host_lookup[session.id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      offering_tags = h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []
-      interest_tags = h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []
+      # No host yet means no one's tags to show — falling back to the
+      # event's whole curated list here would make an untouched session
+      # look like it already has tags "attached".
+      offering_tags = host_user ? (h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []) : []
+      interest_tags = host_user ? (h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []) : []
 
       {
         id: session.id.to_s,
@@ -525,8 +528,9 @@ class BusinessMatchingService < BaseService
       bm_event_id = event_data["id"] || event_data["_id"]
       host_user = host_lookup[bm_event_id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      offering_tags = h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []
-      interest_tags = h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []
+      # No host yet means no one's tags to show — see fetch_events.
+      offering_tags = host_user ? (h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []) : []
+      interest_tags = host_user ? (h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []) : []
 
       {
         id: bm_event_id.to_s,

@@ -28,6 +28,24 @@ RSpec.describe BusinessMatchingService do
       expect(result.data.first[:duration]).to eq(30)
       expect(result.data.first[:location]).to eq("VIP Lounge")
     end
+
+    it "shows no tags for a session with no host attached, even when the event has curated tags" do
+      event.update!(business_matching_offering_tags: ["SaaS"], business_matching_interest_tags: ["Seed Fund"])
+
+      result = service.fetch_events(event.id)
+      expect(result.data.first[:offering_tags]).to eq([])
+      expect(result.data.first[:interest_tags]).to eq([])
+    end
+
+    it "shows the host's tags (falling back to the event's list) once a host is attached" do
+      event.update!(business_matching_offering_tags: ["SaaS"], business_matching_interest_tags: ["Seed Fund"])
+      host_user = create(:user)
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+
+      result = service.fetch_events(event.id)
+      expect(result.data.first[:offering_tags]).to eq(["SaaS"])
+      expect(result.data.first[:interest_tags]).to eq(["Seed Fund"])
+    end
   end
 
   describe '#fetch_availability' do
