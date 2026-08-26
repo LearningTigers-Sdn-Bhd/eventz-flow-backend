@@ -50,6 +50,34 @@ RSpec.describe ExhibitorKit, type: :model do
     end
   end
 
+  describe 'payment_recorded_at stamping' do
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid) }
+
+    it 'stamps payment_recorded_at when payment_status transitions into a money status' do
+      travel_to(1.day.from_now) do
+        kit.update!(payment_status: :deposit)
+      end
+
+      expect(kit.payment_recorded_at).to be_within(1.second).of(1.day.from_now)
+    end
+
+    it 'does not shift payment_recorded_at when an unrelated field is edited' do
+      travel_to(1.day.from_now) { kit.update!(payment_status: :deposit) }
+      recorded_at = kit.payment_recorded_at
+
+      travel_to(5.days.from_now) { kit.update!(company_name: 'Renamed Co') }
+
+      expect(kit.reload.payment_recorded_at).to be_within(1.second).of(recorded_at)
+    end
+
+    it 'clears payment_recorded_at when reverted to unpaid' do
+      kit.update!(payment_status: :deposit)
+      kit.update!(payment_status: :unpaid)
+
+      expect(kit.payment_recorded_at).to be_nil
+    end
+  end
+
   describe '.active_or_paid' do
     let!(:active_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
     let!(:paid_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :paid) }

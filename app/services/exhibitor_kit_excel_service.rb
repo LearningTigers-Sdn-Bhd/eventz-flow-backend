@@ -12,6 +12,7 @@ class ExhibitorKitExcelService
   TEXT_DARK = 'FF111827'
   TEXT_MUTED = 'FF6B7280'
   WHITE = 'FFFFFFFF'
+  TOTAL_AMBER = 'FFFEF3C7'
 
   def self.export(event_id)
     new(event_id).export
@@ -82,7 +83,12 @@ class ExhibitorKitExcelService
                                  format_code: '\R\M\ #,##0.00', alignment: { horizontal: :right }),
       date_cell: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border, format_code: 'yyyy-mm-dd hh:mm'),
       date_cell_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border,
-                                  format_code: 'yyyy-mm-dd hh:mm')
+                                  format_code: 'yyyy-mm-dd hh:mm'),
+      total_label: s.add_style(sz: 10, b: true, fg_color: TEXT_DARK, bg_color: TOTAL_AMBER, border: cell_border),
+      total_number: s.add_style(sz: 10, b: true, fg_color: TEXT_DARK, bg_color: TOTAL_AMBER, border: cell_border,
+                                 alignment: { horizontal: :right }),
+      total_currency: s.add_style(sz: 10, b: true, fg_color: TEXT_DARK, bg_color: TOTAL_AMBER, border: cell_border,
+                                   format_code: '\R\M\ #,##0.00', alignment: { horizontal: :right })
     }
   end
 
@@ -103,38 +109,47 @@ class ExhibitorKitExcelService
       sheet.add_row []
 
       sheet.add_row ['Overview'], style: @styles[:section_header]
-      merge_row_across(sheet, 7)
+      merge_row_across(sheet, 8)
 
-      sheet.add_row ['Total Exhibitors', 'Paid', 'Unpaid', 'Collected Revenue', 'Pending Revenue'],
-                    style: Array.new(5, @styles[:stat_label])
+      sheet.add_row ['Total Exhibitors', 'Paid', 'Deposit', 'Unpaid', 'Collected Revenue', 'Pending Revenue'],
+                    style: Array.new(6, @styles[:stat_label])
       sheet.add_row [
-        paid_partner_ids.size + unpaid_partner_ids.size,
+        paid_partner_ids.size + deposit_partner_ids.size + unpaid_partner_ids.size,
         paid_partner_ids.size,
+        deposit_partner_ids.size,
         unpaid_partner_ids.size,
         collected_revenue,
         pending_revenue
-      ], style: [@styles[:stat_value], @styles[:stat_value], @styles[:stat_value],
+      ], style: [@styles[:stat_value], @styles[:stat_value], @styles[:stat_value], @styles[:stat_value],
                  @styles[:currency], @styles[:currency]], height: 20
 
       sheet.add_row []
       sheet.add_row ['Booth Pricing Breakdown'], style: @styles[:section_header]
-      merge_row_across(sheet, 7)
+      merge_row_across(sheet, 8)
 
-      headers = ['Pricing', 'Zone', 'Booked', 'Paid', 'Unpaid', 'Collected Revenue', 'Pending Revenue']
+      headers = ['Pricing', 'Zone', 'Booked', 'Paid', 'Deposit', 'Unpaid', 'Collected Revenue', 'Pending Revenue']
       sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
       header_row_number = sheet.rows.size
 
-      breakdown_rows.each_with_index do |row, index|
+      rows = breakdown_rows
+      rows.each_with_index do |row, index|
         style = index.even? ? @styles[:cell] : @styles[:cell_alt]
         number_style = index.even? ? @styles[:number] : @styles[:number_alt]
         currency_style = index.even? ? @styles[:currency] : @styles[:currency_alt]
         sheet.add_row(
-          [row[:label], row[:zone] || 'Unassigned', row[:booked], row[:paid], row[:unpaid],
+          [row[:label], row[:zone] || 'Unassigned', row[:booked], row[:paid], row[:deposit], row[:unpaid],
            row[:collected], row[:pending]],
-          style: [style, style, number_style, number_style, number_style,
+          style: [style, style, number_style, number_style, number_style, number_style,
                   currency_style, currency_style]
         )
       end
+
+      sheet.add_row(
+        ['Total', '', rows.sum { |r| r[:booked] }, rows.sum { |r| r[:paid] }, rows.sum { |r| r[:deposit] },
+         rows.sum { |r| r[:unpaid] }, rows.sum { |r| r[:collected] }.round(2), rows.sum { |r| r[:pending] }.round(2)],
+        style: [@styles[:total_label], @styles[:total_label], @styles[:total_number], @styles[:total_number],
+                @styles[:total_number], @styles[:total_number], @styles[:total_currency], @styles[:total_currency]]
+      )
 
       sheet.sheet_view.pane do |pane|
         pane.top_left_cell = "A#{header_row_number + 1}"
@@ -164,7 +179,8 @@ class ExhibitorKitExcelService
       sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
       sheet.column_widths(*column_widths)
 
-      ExhibitorKitReportRows.for(@kits).each_with_index do |row, index|
+      kit_rows = ExhibitorKitReportRows.for(@kits)
+      kit_rows.each_with_index do |row, index|
         style = index.even? ? @styles[:cell] : @styles[:cell_alt]
         text_style = index.even? ? @styles[:text] : @styles[:text_alt]
         currency_style = index.even? ? @styles[:currency] : @styles[:currency_alt]
@@ -178,6 +194,16 @@ class ExhibitorKitExcelService
           ]
         )
       end
+
+      # Booking Value (index 11) and Amount Paid (index 12) - the two summable money columns.
+      total_row = Array.new(headers.size, '')
+      total_row[0] = 'Total'
+      total_row[11] = kit_rows.sum { |row| row[11].to_f }.round(2)
+      total_row[12] = kit_rows.sum { |row| row[12].to_f }.round(2)
+      sheet.add_row(
+        total_row,
+        style: Array.new(headers.size) { |i| [11, 12].include?(i) ? @styles[:total_currency] : @styles[:total_label] }
+      )
 
       sheet.auto_filter = "A1:#{Axlsx.col_ref(headers.size - 1)}#{@kits.size + 1}"
       sheet.sheet_view.pane do |pane|
@@ -230,8 +256,14 @@ class ExhibitorKitExcelService
     @paid_partner_ids ||= @kits.select(&:settled?).map(&:event_vendor_id).uniq
   end
 
+  # Deposit is its own bucket (not settled?, not unpaid?) - matches how the panel UI
+  # treats it: a distinct badge/filter, amount_paid holds the deposit received so far.
+  def deposit_partner_ids
+    @deposit_partner_ids ||= @kits.select(&:deposit?).map(&:event_vendor_id).uniq - paid_partner_ids
+  end
+
   def unpaid_partner_ids
-    @unpaid_partner_ids ||= @kits.map(&:event_vendor_id).uniq - paid_partner_ids
+    @unpaid_partner_ids ||= @kits.map(&:event_vendor_id).uniq - paid_partner_ids - deposit_partner_ids
   end
 
   def collected_revenue
@@ -239,7 +271,9 @@ class ExhibitorKitExcelService
   end
 
   def pending_revenue
-    @kits.select(&:unpaid?).sum(&:booking_value).round(2).to_f
+    unpaid_pending = @kits.select(&:unpaid?).sum(&:booking_value)
+    deposit_pending = @kits.select(&:deposit?).sum { |k| k.booking_value - k.amount_paid.to_d }
+    (unpaid_pending + deposit_pending).round(2).to_f
   end
 
   def breakdown_rows
@@ -252,6 +286,7 @@ class ExhibitorKitExcelService
       first_kit = kits.first
       booth_price = first_kit.exhibitor_booth_price
       paid_kits = kits.select(&:settled?)
+      deposit_kits = kits.select(&:deposit?)
       unpaid_kits = kits.select(&:unpaid?)
 
       {
@@ -259,9 +294,11 @@ class ExhibitorKitExcelService
         zone: booth_price&.zone,
         booked: kits.sum { |k| [k.booth_quantity.to_i, 1].max },
         paid: paid_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
+        deposit: deposit_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
         unpaid: unpaid_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
         collected: collected_revenue_for(kits),
-        pending: unpaid_kits.sum(&:booking_value).round(2).to_f
+        pending: (unpaid_kits.sum(&:booking_value) +
+                  deposit_kits.sum { |k| k.booking_value - k.amount_paid.to_d }).round(2).to_f
       }
     end
 
@@ -277,18 +314,21 @@ class ExhibitorKitExcelService
       .to_a
       .reject { |booth_price| booked_price_ids.include?(booth_price.id) }
       .map do |booth_price|
-        { label: booth_price.label, zone: booth_price.zone, booked: 0, paid: 0, unpaid: 0,
+        { label: booth_price.label, zone: booth_price.zone, booked: 0, paid: 0, deposit: 0, unpaid: 0,
           collected: 0.0, pending: 0.0 }
       end
   end
 
   def collected_revenue_for(kits)
-    kits.select(&:paid?).sum do |kit|
+    settled_revenue = kits.select(&:paid?).sum do |kit|
       payment = kit.exhibitor_registration_payment
       next payment.amount.to_d if payment&.status == 'paid'
       next kit.amount_paid.to_d if payment.nil?
 
       0.to_d
-    end.round(2).to_f
+    end
+    deposit_revenue = kits.select(&:deposit?).sum { |kit| kit.amount_paid.to_d }
+
+    (settled_revenue + deposit_revenue).round(2).to_f
   end
 end
