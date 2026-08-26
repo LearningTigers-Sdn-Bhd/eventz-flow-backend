@@ -243,6 +243,87 @@ module V1
         render json: { errors: e.message }, status: :internal_server_error
       end
 
+      # POST /v1/business_matching/events/:event_id/hosts/link_exhibitor
+      # Staff-only. Attaches host access to an EXISTING exhibitor's user
+      # account for this event, instead of creating a brand-new user like
+      # create_and_assign does. Only available when the event has opted in
+      # via business_matching_linked_exhibitor_enabled.
+      def link_exhibitor
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_hosts?
+
+        unless event.business_matching_linked_exhibitor_enabled?
+          return render json: { error: 'Linked exhibitor hosting is not enabled for this event' }, status: :unprocessable_entity
+        end
+
+        bm_event_id = params[:business_matching_event_id]
+        return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        return render json: { error: 'Exhibitor is required' }, status: :bad_request unless params[:event_vendor_id].present?
+
+        event_vendor = event.exhibitors.find_by(id: params[:event_vendor_id])
+        return render json: { error: 'Exhibitor not found for this event' }, status: :not_found unless event_vendor
+
+        host_user = event_vendor.vendor
+
+        tag_params = params.permit(interest_tags: [], offering_tags: [])
+        invalid_tags = disallowed_tags(event, tag_params)
+        if invalid_tags.any?
+          return render json: { errors: ["The following tags are not available for this event: #{invalid_tags.join(', ')}"] }, status: :unprocessable_entity
+        end
+
+        # EventAssignment allows only one role per (user, event) pair. If this
+        # exhibitor already holds a different staff role for this event (e.g.
+        # event_team_member), find_or_create_by! below would raise a raw
+        # uniqueness error — catch it here with a clear message instead.
+        existing_assignment = EventAssignment.find_by(user_id: host_user.id, event_id: event.id)
+        if existing_assignment && !existing_assignment.business_host?
+          return render json: { error: "#{host_user.full_name} already has the #{existing_assignment.role} role for this event and can't also be a business host" }, status: :unprocessable_entity
+        end
+
+        ActiveRecord::Base.transaction do
+          EventAssignment.find_or_create_by!(
+            user_id: host_user.id,
+            event_id: event.id,
+            role: :business_host
+          )
+
+          BusinessHostAssignment.create!(
+            user_id: host_user.id,
+            event_id: event.id,
+            business_matching_event_id: bm_event_id
+          )
+
+          if tag_params[:interest_tags].present? || tag_params[:offering_tags].present?
+            BusinessMatchingService.new(current_user).update_host_profile(
+              event.id, tag_params, target_user_id: host_user.id
+            )
+          end
+        end
+
+        update_event_cache(event, bm_event_id, host_user)
+        ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
+
+        render json: {
+          id: host_user.id,
+          full_name: host_user.full_name,
+          email: host_user.email,
+          phone: host_user.phone,
+          event_vendor_id: event_vendor.id,
+          interest_tags: tag_params[:interest_tags] || [],
+          offering_tags: tag_params[:offering_tags] || []
+        }, status: :created
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      rescue Pundit::NotAuthorizedError
+        render json: { error: "You are not authorized to perform this action." }, status: :forbidden
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
       # DELETE /v1/business_matching/events/:event_id/hosts/remove
       def remove
         event = Event.find_by(id: params[:event_id])

@@ -37,14 +37,32 @@ RSpec.describe BusinessMatchingService do
       expect(result.data.first[:interest_tags]).to eq([])
     end
 
-    it "shows the host's tags (falling back to the event's list) once a host is attached" do
+    it "shows no tags for a newly attached host, even when the event has curated tags" do
       event.update!(business_matching_offering_tags: ["SaaS"], business_matching_interest_tags: ["Seed Fund"])
       host_user = create(:user)
       BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
 
       result = service.fetch_events(event.id)
-      expect(result.data.first[:offering_tags]).to eq(["SaaS"])
-      expect(result.data.first[:interest_tags]).to eq(["Seed Fund"])
+      expect(result.data.first[:offering_tags]).to eq([])
+      expect(result.data.first[:interest_tags]).to eq([])
+      expect(result.data.first[:host][:offering_tags]).to eq([])
+      expect(result.data.first[:host][:interest_tags]).to eq([])
+    end
+
+    it "shows the host's own tags once they've set them, without any fallback to the event's list" do
+      event.update!(business_matching_offering_tags: ["SaaS"], business_matching_interest_tags: ["Seed Fund"])
+      host_user = create(:user)
+      BusinessHostAssignment.create!(user: host_user, event: event, business_matching_event_id: session.id.to_s)
+      BusinessMatchingParticipant.create!(
+        event: event,
+        registerable: host_user,
+        offering_tags: ["Fintech"],
+        interest_tags: ["Series A"]
+      )
+
+      result = service.fetch_events(event.id)
+      expect(result.data.first[:offering_tags]).to eq(["Fintech"])
+      expect(result.data.first[:interest_tags]).to eq(["Series A"])
     end
   end
 
