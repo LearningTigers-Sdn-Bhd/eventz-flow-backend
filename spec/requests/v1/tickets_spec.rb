@@ -84,6 +84,12 @@ RSpec.describe 'V1::Tickets', type: :request do
   let!(:checked_in_ticket) do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
   end
+  let(:paid_purchased_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, payment_status: :paid, attendee_name: 'Paid Purchased Attendee')
+  end
+  let(:paid_checked_in_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :scanned, checked_in: true, check_in_at: Time.current, payment_status: :paid, attendee_name: 'Paid Scanned Attendee')
+  end
   let(:pending_payment_ticket) do
     create(
       :ticket,
@@ -392,6 +398,31 @@ RSpec.describe 'V1::Tickets', type: :request do
           expect(json['payment_status']).to eq('paid')
           expect(json['status']).to eq('purchased')
           expect(pending_payment_ticket.reload.status).to eq('purchased')
+        end
+      end
+
+      response '200', 'Paid, purchased ticket reverts to pending payment when un-paid' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { paid_purchased_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'pending' } } }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['payment_status']).to eq('pending')
+          expect(json['status']).to eq('pending_payment')
+          expect(paid_purchased_ticket.reload.status).to eq('pending_payment')
+        end
+      end
+
+      response '422', 'Cannot un-pay a ticket that has already been checked in' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { paid_checked_in_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'pending' } } }
+
+        run_test! do
+          expect(paid_checked_in_ticket.reload.payment_status).to eq('paid')
         end
       end
 
