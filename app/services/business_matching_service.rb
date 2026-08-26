@@ -30,11 +30,11 @@ class BusinessMatchingService < BaseService
     data = sessions.map do |session|
       host_user = host_lookup[session.id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      # No host yet means no one's tags to show — falling back to the
-      # event's whole curated list here would make an untouched session
-      # look like it already has tags "attached".
-      offering_tags = host_user ? (h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []) : []
-      interest_tags = host_user ? (h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []) : []
+      # A host with no tags of their own shows as untagged — never fall back
+      # to the event's whole curated tag list, or a freshly attached host
+      # looks like they already picked every available tag.
+      offering_tags = h_profile&.offering_tags || []
+      interest_tags = h_profile&.interest_tags || []
 
       {
         id: session.id.to_s,
@@ -500,7 +500,6 @@ class BusinessMatchingService < BaseService
   end
 
   def transform_events(raw_events, event_id)
-    event = Event.find_by(id: event_id)
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
     host_lookup = host_assignments.each_with_object({}) do |assignment, memo|
@@ -528,9 +527,9 @@ class BusinessMatchingService < BaseService
       bm_event_id = event_data["id"] || event_data["_id"]
       host_user = host_lookup[bm_event_id.to_s]
       h_profile = host_user ? participant_lookup[host_user.id] : nil
-      # No host yet means no one's tags to show — see fetch_events.
-      offering_tags = host_user ? (h_profile&.offering_tags.presence || event&.business_matching_offering_tags || []) : []
-      interest_tags = host_user ? (h_profile&.interest_tags.presence || event&.business_matching_interest_tags || []) : []
+      # A host with no tags of their own shows as untagged — see fetch_events.
+      offering_tags = h_profile&.offering_tags || []
+      interest_tags = h_profile&.interest_tags || []
 
       {
         id: bm_event_id.to_s,
