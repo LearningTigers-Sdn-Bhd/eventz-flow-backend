@@ -267,6 +267,7 @@ module V1
 
       {
         id: exhibitor_kit.id,
+        public_id: exhibitor_kit.public_id,
         event_vendor_id: exhibitor_kit.event_vendor_id,
         created_at: exhibitor_kit.created_at,
         updated_at: exhibitor_kit.updated_at,

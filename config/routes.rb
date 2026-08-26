@@ -38,6 +38,10 @@ Rails.application.routes.draw do
       # Public booking details
       resources :bookings, only: [:show]
 
+      # No-login exhibitor kit team member self-service (link keyed by kit public_id)
+      get 'exhibitor_kits/:public_id/team_members', to: 'exhibitor_team_members#show'
+      patch 'exhibitor_kits/:public_id/team_members', to: 'exhibitor_team_members#update'
+
       # Public registration for walk-ins
       post 'payments/webhook', to: 'payments#webhook'
       scope 'events/:event_slug' do
