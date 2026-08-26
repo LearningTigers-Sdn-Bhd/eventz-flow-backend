@@ -269,6 +269,7 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                  mode: { type: :string, enum: %w[exhibitor vendor] },
                  totalPartners: { type: :integer },
                  paidPartners: { type: :integer },
+                 depositPartners: { type: :integer },
                  unpaidPartners: { type: :integer },
                  collectedRevenue: { type: :number },
                  pendingRevenue: { type: :number },
@@ -316,34 +317,43 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                  exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
                  amount_paid: 750, price_snapshot: 750,
                  payment_status: :sponsored, booking_status: :active)
+
+          deposit_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: deposit_exhibitor,
+                 exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
+                 amount_paid: 300, price_snapshot: 750,
+                 payment_status: :deposit, booking_status: :active)
         end
 
         run_test! do |response|
           data = JSON.parse(response.body)
 
           expect(data['mode']).to eq('exhibitor')
-          expect(data['totalPartners']).to eq(4)
+          expect(data['totalPartners']).to eq(5)
           expect(data['paidPartners']).to eq(3)
+          expect(data['depositPartners']).to eq(1)
           expect(data['unpaidPartners']).to eq(1)
-          expect(data['collectedRevenue']).to eq(2000.0)
-          expect(data['pendingRevenue']).to eq(750.0)
+          expect(data['collectedRevenue']).to eq(2300.0)
+          expect(data['pendingRevenue']).to eq(1200.0)
 
           breakdown = data['breakdown'].index_by { |row| row['label'] }
           expect(breakdown['Shell Scheme']).to include(
             'zone' => 'zone_shell',
             'bookedQuantity' => 2,
             'paidQuantity' => 2,
+            'depositQuantity' => 0,
             'unpaidQuantity' => 0,
             'collectedRevenue' => 2000.0,
             'pendingRevenue' => 0.0
           )
           expect(breakdown['Raw Space']).to include(
             'zone' => 'zone_raw',
-            'bookedQuantity' => 3,
+            'bookedQuantity' => 4,
             'paidQuantity' => 2,
+            'depositQuantity' => 1,
             'unpaidQuantity' => 1,
-            'collectedRevenue' => 0.0,
-            'pendingRevenue' => 750.0
+            'collectedRevenue' => 300.0,
+            'pendingRevenue' => 1200.0
           )
         end
       end
@@ -574,12 +584,28 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
                        payment_status: :paid, booking_status: :paid, created_at: ticket_created_at)
           create(:exhibitor_registration_payment, exhibitor_kit: kit,
                  amount: 1000, status: 'paid', paid_at: ticket_created_at)
+
+          deposit_exhibitor = create(:exhibitor, event: event)
+          # travel_to so the payment_recorded_at auto-stamped by the model callback lands
+          # inside the query range, same as created_at above.
+          travel_to(ticket_created_at) do
+            create(:exhibitor_kit, event_vendor: deposit_exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 300, price_snapshot: 1000,
+                   payment_status: :deposit, booking_status: :active, created_at: ticket_created_at)
+
+            # Marked paid directly (e.g. admin manual update) with no ExhibitorRegistrationPayment
+            # ever created - must still show up via the amount_paid fallback, same as the KPI does.
+            no_payment_record_exhibitor = create(:exhibitor, event: event)
+            create(:exhibitor_kit, event_vendor: no_payment_record_exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 800, price_snapshot: 1000,
+                   payment_status: :paid, booking_status: :paid, created_at: ticket_created_at)
+          end
         end
 
         run_test! do |response|
           data = JSON.parse(response.body)
           expect(data['metric']).to eq('exhibitor_revenue')
-          expect(data['data'].sum { |point| point['value'] }).to eq(1000)
+          expect(data['data'].sum { |point| point['value'] }).to eq(2100)
         end
       end
 
@@ -605,6 +631,33 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           data = JSON.parse(response.body)
           expect(data['metric']).to eq('exhibitor_bookings')
           expect(data['data'].sum { |point| point['value'] }).to eq(1)
+        end
+      end
+
+      response '200', 'Includes deposit revenue recorded after the event ended under all_time' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_revenue' }
+        let(:date_mode) { 'all_time' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          # No ExhibitorRegistrationPayment record exists at all, so the range can't fall back to
+          # a paid_at - it must pick up the deposit kit's own payment_recorded_at, even though
+          # that's well after the event's own end_date.
+          travel_to(event.end_date + 30.days) do
+            create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 300, price_snapshot: 1000,
+                   payment_status: :deposit, booking_status: :active)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(300)
         end
       end
 

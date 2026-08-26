@@ -43,6 +43,7 @@ class ExhibitorKit < ApplicationRecord
 
   validates :booth_type, presence: true
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3, deposit: 4 }
+  MONEY_STATUSES = %w[paid waived sponsored deposit].freeze
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
   scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
 
@@ -78,6 +79,7 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   before_save :remove_payment_option_when_payment_is_settled
+  before_save :stamp_payment_recorded_at, if: :will_save_change_to_payment_status?
   after_save :sync_booth_status, if: :saved_change_to_booking_status?
   before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
@@ -188,6 +190,13 @@ class ExhibitorKit < ApplicationRecord
 
   def revert_booking_status_when_unpaid
     update!(booking_status: :active)
+  end
+
+  # Fires only on an actual payment_status transition (not on every save, so editing an
+  # unrelated field like company name never shifts this) - the analytics revenue trend uses
+  # this instead of updated_at so its date doesn't drift when the kit is later edited.
+  def stamp_payment_recorded_at
+    self.payment_recorded_at = MONEY_STATUSES.include?(payment_status) ? Time.current : nil
   end
 
   def remove_payment_option_when_payment_is_settled

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_24_010000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_26_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -870,6 +870,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_24_010000) do
     t.string "currency", default: "MYR", null: false
     t.integer "lock_version", default: 0, null: false
     t.bigint "exhibitor_package_id"
+    t.datetime "payment_recorded_at"
     t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"

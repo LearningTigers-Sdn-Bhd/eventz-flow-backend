@@ -138,13 +138,14 @@ module V1
     end
 
     def partner_metrics_for_event(event)
-      exhibitor_counts = event.use_exhibitor_kit? ? exhibitor_counts_for_event(event.id) : { total: 0, paid: 0, unpaid: 0 }
+      exhibitor_counts = event.use_exhibitor_kit? ? exhibitor_counts_for_event(event.id) : { total: 0, paid: 0, deposit: 0, unpaid: 0 }
 
       {
         use_exhibitor_kit: event.use_exhibitor_kit?,
         total_vendors: event.event_vendors.count,
         total_exhibitors: exhibitor_counts[:total],
         paid_exhibitors: exhibitor_counts[:paid],
+        deposit_exhibitors: exhibitor_counts[:deposit],
         unpaid_exhibitors: exhibitor_counts[:unpaid]
       }
     end
@@ -159,11 +160,17 @@ module V1
       paid_statuses = %w[paid waived sponsored].flat_map do |status|
         [status, ExhibitorKit.payment_statuses.fetch(status).to_s]
       end
+      deposit_statuses = [ExhibitorKit.payment_statuses.fetch('deposit').to_s, 'deposit']
       paid_count = exhibitors.count do |_event_vendor_id, exhibitor_kits|
         exhibitor_kits.any? { |_event_vendor_id, payment_status| paid_statuses.include?(payment_status.to_s) }
       end
+      deposit_count = exhibitors.count do |_event_vendor_id, exhibitor_kits|
+        next false if exhibitor_kits.any? { |_event_vendor_id, payment_status| paid_statuses.include?(payment_status.to_s) }
 
-      { total: exhibitors.size, paid: paid_count, unpaid: exhibitors.size - paid_count }
+        exhibitor_kits.any? { |_event_vendor_id, payment_status| deposit_statuses.include?(payment_status.to_s) }
+      end
+
+      { total: exhibitors.size, paid: paid_count, deposit: deposit_count, unpaid: exhibitors.size - paid_count - deposit_count }
     end
 
     def scoped_tickets

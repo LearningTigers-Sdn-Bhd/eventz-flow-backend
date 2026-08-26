@@ -171,12 +171,14 @@ module V1
       partner_ids = kits.map(&:event_vendor_id).uniq
       paid_partner_ids = kits.select { |kit| settled_exhibitor_kit?(kit) }
                             .map(&:event_vendor_id).uniq
+      deposit_partner_ids = kits.select(&:deposit?).map(&:event_vendor_id).uniq - paid_partner_ids
 
       {
         mode: 'exhibitor',
         totalPartners: partner_ids.size,
         paidPartners: paid_partner_ids.size,
-        unpaidPartners: partner_ids.size - paid_partner_ids.size,
+        depositPartners: deposit_partner_ids.size,
+        unpaidPartners: partner_ids.size - paid_partner_ids.size - deposit_partner_ids.size,
         collectedRevenue: exhibitor_collected_revenue(kits),
         pendingRevenue: exhibitor_pending_revenue(kits),
         breakdown: exhibitor_breakdown(kits),
@@ -190,6 +192,7 @@ module V1
         mode: 'vendor',
         totalPartners: @event.event_vendors.count,
         paidPartners: 0,
+        depositPartners: 0,
         unpaidPartners: 0,
         collectedRevenue: 0.0,
         pendingRevenue: 0.0,
@@ -223,17 +226,23 @@ module V1
     end
 
     def exhibitor_collected_revenue(kits)
-      kits.select(&:paid?).sum do |kit|
+      settled_revenue = kits.select(&:paid?).sum do |kit|
         payment = kit.exhibitor_registration_payment
         next payment.amount.to_d if payment&.status == 'paid'
         next kit.amount_paid.to_d if payment.nil?
 
         0.to_d
-      end.round(2).to_f
+      end
+      deposit_revenue = kits.select(&:deposit?).sum { |kit| kit.amount_paid.to_d }
+
+      (settled_revenue + deposit_revenue).round(2).to_f
     end
 
     def exhibitor_pending_revenue(kits)
-      kits.select(&:unpaid?).sum(&:booking_value).round(2).to_f
+      unpaid_pending = kits.select(&:unpaid?).sum(&:booking_value)
+      deposit_pending = kits.select(&:deposit?).sum { |kit| kit.booking_value - kit.amount_paid.to_d }
+
+      (unpaid_pending + deposit_pending).round(2).to_f
     end
 
     def exhibitor_breakdown(kits)
@@ -247,6 +256,7 @@ module V1
         booth_price = first_kit.exhibitor_booth_price
         package = first_kit.exhibitor_package
         paid_kits = grouped_kits.select { |kit| settled_exhibitor_kit?(kit) }
+        deposit_kits = grouped_kits.select(&:deposit?)
         unpaid_kits = grouped_kits.select(&:unpaid?)
 
         {
@@ -261,6 +271,7 @@ module V1
           packageLabel: package&.name,
           bookedQuantity: grouped_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
           paidQuantity: paid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          depositQuantity: deposit_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
           unpaidQuantity: unpaid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
           collectedRevenue: exhibitor_collected_revenue(grouped_kits),
           pendingRevenue: exhibitor_pending_revenue(grouped_kits)
@@ -280,6 +291,7 @@ module V1
             packageLabel: nil,
             bookedQuantity: 0,
             paidQuantity: 0,
+            depositQuantity: 0,
             unpaidQuantity: 0,
             collectedRevenue: 0.0,
             pendingRevenue: 0.0
@@ -423,7 +435,14 @@ module V1
         earliest = exhibitor_kits_for_analytics.minimum(:created_at)
         earliest&.to_date || @event.start_date.to_date
       when 'exhibitor_revenue'
-        earliest = exhibitor_registration_payments_for_analytics.minimum(:paid_at)
+        # Deposit kits (and paid kits without a payment record) contribute to collected revenue
+        # via amount_paid/payment_recorded_at rather than an ExhibitorRegistrationPayment -
+        # without this, the range could exclude their money entirely and fall back to the
+        # event's own dates, which may not cover when those kits were actually recorded.
+        payment_earliest = exhibitor_registration_payments_for_analytics.minimum(:paid_at)
+        kit_earliest = exhibitor_kits_for_analytics.where(payment_status: %i[paid deposit])
+                                                    .minimum(:payment_recorded_at)
+        earliest = [payment_earliest, kit_earliest].compact.min
         earliest&.to_date || @event.start_date.to_date
       else
         # For tickets, visitors, revenue - use earliest registration
@@ -457,7 +476,10 @@ module V1
         latest = exhibitor_kits_for_analytics.maximum(:created_at)
         latest&.to_date || @event.end_date.to_date
       when 'exhibitor_revenue'
-        latest = exhibitor_registration_payments_for_analytics.maximum(:paid_at)
+        payment_latest = exhibitor_registration_payments_for_analytics.maximum(:paid_at)
+        kit_latest = exhibitor_kits_for_analytics.where(payment_status: %i[paid deposit])
+                                                  .maximum(:payment_recorded_at)
+        latest = [payment_latest, kit_latest].compact.max
         latest&.to_date || @event.end_date.to_date
       else
         @event.end_date.to_date
@@ -523,11 +545,40 @@ module V1
           .count
           .map { |period, value| { period: format_time_series_period(period, group_by), value: value } }
       when 'exhibitor_revenue'
-        exhibitor_registration_payments_for_analytics
+        settled_by_period = exhibitor_registration_payments_for_analytics
           .where(paid_at: range)
           .send(groupdate_method(group_by), :paid_at)
           .sum(:amount)
-          .map { |period, value| { period: format_time_series_period(period, group_by), value: value.to_f } }
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        # Deposit kits never create an ExhibitorRegistrationPayment (that only happens once a kit
+        # is fully settled), so their amount_paid would otherwise be invisible in this trend even
+        # though it counts toward Collected Revenue. payment_recorded_at only moves when
+        # payment_status itself changes (unlike updated_at, which bumps on any unrelated edit).
+        deposit_by_period = exhibitor_kits_for_analytics
+          .where(payment_status: :deposit, payment_recorded_at: range)
+          .send(groupdate_method(group_by), :payment_recorded_at)
+          .sum(:amount_paid)
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        # Same gap for kits marked paid without ever creating a payment record (e.g. admin set
+        # payment_status manually) - Collected Revenue already falls back to amount_paid for
+        # these (see exhibitor_collected_revenue), so the trend needs to match or it undercounts.
+        paid_without_payment_by_period = exhibitor_kits_for_analytics
+          .where(payment_status: :paid, payment_recorded_at: range)
+          .where.missing(:exhibitor_registration_payment)
+          .send(groupdate_method(group_by), :payment_recorded_at)
+          .sum(:amount_paid)
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        periods = settled_by_period.keys | deposit_by_period.keys | paid_without_payment_by_period.keys
+        periods.map do |period|
+          {
+            period: period,
+            value: settled_by_period[period].to_f + deposit_by_period[period].to_f +
+                   paid_without_payment_by_period[period].to_f
+          }
+        end
       end
     end
 
