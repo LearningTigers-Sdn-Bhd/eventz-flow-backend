@@ -65,6 +65,57 @@ RSpec.describe TicketApplicationReviewService do
     end
   end
 
+  describe '#revert_to_pending!' do
+    it 'reverts an approved, manually-paid ticket back to pending' do
+      registration_form.registration_form_rsvp_setting.update!(rsvp_required: false)
+      described_class.new(application, reviewer: reviewer).approve!
+      create(:ticket_payment, ticket: ticket, status: 'paid', gateway: nil)
+
+      result = described_class.new(application, reviewer: reviewer).revert_to_pending!
+
+      expect(result.success?).to eq(true)
+      expect(application.reload.review_status).to eq('pending_review')
+      expect(application.reviewed_by).to be_nil
+      expect(application.reviewed_at).to be_nil
+      expect(ticket.reload.status).to eq('pending_payment')
+      expect(ticket.payment_status).to eq('pending')
+      expect(ticket.ticket_payment.reload.status).to eq('refunded')
+    end
+
+    it 'blocks revert when the ticket was paid via a gateway, unless confirmed' do
+      registration_form.registration_form_rsvp_setting.update!(rsvp_required: false)
+      described_class.new(application, reviewer: reviewer).approve!
+      create(:ticket_payment, ticket: ticket, status: 'paid', gateway: 'razorpay')
+
+      result = described_class.new(application, reviewer: reviewer).revert_to_pending!
+
+      expect(result.success?).to eq(false)
+      expect(result.error).to match(/gateway/i)
+      expect(application.reload.review_status).to eq('approved')
+
+      confirmed_result = described_class.new(application, reviewer: reviewer).revert_to_pending!(confirm_manual_refund: true)
+      expect(confirmed_result.success?).to eq(true)
+      expect(application.reload.review_status).to eq('pending_review')
+    end
+
+    it 'blocks revert when the ticket has already been checked in' do
+      described_class.new(application, reviewer: reviewer).approve!
+      ticket.update!(status: :scanned)
+
+      result = described_class.new(application, reviewer: reviewer).revert_to_pending!
+
+      expect(result.success?).to eq(false)
+      expect(result.error).to match(/checked in/i)
+    end
+
+    it 'rejects revert when the application is not approved' do
+      result = described_class.new(application, reviewer: reviewer).revert_to_pending!
+
+      expect(result.success?).to eq(false)
+      expect(result.error).to eq('Application is not approved')
+    end
+  end
+
   describe '#confirm_rsvp!' do
     it 'confirms RSVP and converts the ticket into a QR-confirmed ticket' do
       raw_token = described_class.new(application, reviewer: reviewer).approve!

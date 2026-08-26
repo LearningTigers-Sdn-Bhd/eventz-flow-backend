@@ -167,6 +167,17 @@ module V1
       siblings = marking_paid && @ticket.registration_batch_id.present? ? batch_siblings(@ticket) : Ticket.none
       @ticket.suppress_confirmation_email = true if siblings.exists?
 
+      reverting_paid = @ticket.paid? && ticket_params[:payment_status].present? &&
+                        !ticket_params[:payment_status].to_s.in?(%w[paid 1])
+      if reverting_paid && @ticket.scanned?
+        return render json: { error: 'Ticket already checked in, cannot revert payment status' },
+                      status: :unprocessable_content
+      end
+      if reverting_paid && @ticket.ticket_application&.approved?
+        return render json: { error: 'This ticket has an approved application — use "Revert to Pending" instead' },
+                      status: :unprocessable_content
+      end
+
       attrs = ticket_params_with_payment_sync
       payment_proof_file = attrs.delete(:payment_proof)
       return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
@@ -663,13 +674,19 @@ module V1
       permitted_params = ticket_params
       payment_status = permitted_params[:payment_status]
 
-      return permitted_params unless @ticket&.pending_payment?
       return permitted_params unless payment_status.present?
 
       paid_value = Ticket.payment_statuses[:paid]
-      return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
+      going_paid = payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
 
-      permitted_params.merge(status: :purchased)
+      return permitted_params.merge(status: :purchased) if @ticket&.pending_payment? && going_paid
+
+      # Reverting a paid, not-yet-scanned ticket back to an unpaid status also
+      # resets its lifecycle status to pending_payment, mirroring the forward
+      # sync above (organizer un-paying = same as reverting an approval).
+      return permitted_params.merge(status: :pending_payment) if @ticket&.paid? && @ticket.purchased? && !going_paid
+
+      permitted_params
     end
 
     # Renders an error and returns false when the uploaded payment proof
