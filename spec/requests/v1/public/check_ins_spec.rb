@@ -225,6 +225,8 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
 
         it 'returns error for already checked-in ticket' do
           paid_ticket.update!(checked_in: true, check_in_at: Time.current, status: :scanned)
+          create(:scan_log, event: event, scannable: paid_ticket,
+                            scanned_at: paid_ticket.check_in_at)
 
           post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
 
@@ -274,6 +276,31 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
 
             paid_ticket.reload
             expect(paid_ticket.checked_in).to eq(true)
+          end
+        end
+
+        context 'with multiple scans' do
+          before { event.update!(multiple_scans: true, multiple_scan_mode: :unlimited) }
+
+          it 'allows a repeat kiosk check-in and records the kiosk source' do
+            post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
+            expect(response).to have_http_status(:ok)
+
+            post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
+            expect(response).to have_http_status(:ok)
+
+            expect(ScanLog.for_scannable(paid_ticket).count).to eq(2)
+            expect(ScanLog.for_scannable(paid_ticket).pluck(:source).uniq).to eq(['kiosk'])
+          end
+
+          it 'blocks a repeat kiosk check-in when the toggle is off' do
+            event.update!(multiple_scans: false)
+
+            post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
+            post endpoint, params: { method: 'scan', value: paid_ticket.public_id }
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(ScanLog.for_scannable(paid_ticket).count).to eq(1)
           end
         end
       end
@@ -385,6 +412,8 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
 
         it 'returns error for already checked-in visitor' do
           visitor.update!(checked_in: true, check_in_at: Time.current)
+          create(:scan_log, event: event, scannable: visitor,
+                            scanned_at: visitor.check_in_at)
 
           post endpoint, params: { method: 'scan', value: visitor.public_id }
 
@@ -397,6 +426,21 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
 
           expect(response).to have_http_status(:not_found)
           expect(json_response['message']).to eq('Resource not found')
+        end
+
+        context 'with multiple scans' do
+          before { event.update!(multiple_scans: true, multiple_scan_mode: :unlimited) }
+
+          it 'allows a repeat kiosk check-in and records the kiosk source' do
+            post endpoint, params: { method: 'scan', value: visitor.public_id }
+            expect(response).to have_http_status(:ok)
+
+            post endpoint, params: { method: 'scan', value: visitor.public_id }
+            expect(response).to have_http_status(:ok)
+
+            expect(ScanLog.for_scannable(visitor).count).to eq(2)
+            expect(ScanLog.for_scannable(visitor).pluck(:source).uniq).to eq(['kiosk'])
+          end
         end
 
         context 'with check_in_url parameter' do

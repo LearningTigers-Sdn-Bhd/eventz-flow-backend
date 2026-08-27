@@ -82,7 +82,10 @@ RSpec.describe 'V1::Tickets', type: :request do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
   let!(:checked_in_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    create(:scan_log, event: organizer_event, scannable: ticket,
+                      scanned_at: ticket.check_in_at, scanned_by: staff_user)
+    ticket
   end
   let(:paid_purchased_ticket) do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, payment_status: :paid, attendee_name: 'Paid Purchased Attendee')
@@ -1014,6 +1017,110 @@ RSpec.describe 'V1::Tickets', type: :request do
 
         run_test!
       end
+    end
+  end
+
+  describe 'PATCH /v1/tickets/:public_id/check_in with multiple scans' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, event: event) }
+    let(:admin) { create(:user, :org_owner) }
+    let(:admin_token) { JwtService.generate_tokens(admin)[:access_token] }
+    let(:headers) { { 'Authorization' => "Bearer #{admin_token}" } }
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it 'allows a second scan and appends a log' do
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      expect(ScanLog.for_scannable(ticket).count).to eq(2)
+    end
+
+    it 'returns blocked_by when the mode forbids the re-scan' do
+      event.update!(multiple_scan_mode: :per_day)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['blocked_by']).to include('scanned_at')
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+
+    it 'still blocks the second scan when the toggle is off' do
+      event.update!(multiple_scans: false)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+  end
+
+  describe 'POST /v1/tickets/self_check_in with multiple scans' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, event: event) }
+
+    it 'allows a repeat self check-in and records the source' do
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      expect(response).to have_http_status(:ok)
+
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      expect(response).to have_http_status(:ok)
+
+      logs = ScanLog.for_scannable(ticket)
+      expect(logs.count).to eq(2)
+      expect(logs.pluck(:source).uniq).to eq(['self_check_in'])
+      expect(ticket.reload.scanned_by_id).to be_nil
+    end
+
+    it 'blocks a repeat when the toggle is off' do
+      event.update!(multiple_scans: false)
+
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+  end
+
+  describe 'PATCH /v1/tickets/:id/unscan with scan history' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, event: event) }
+    let(:owner) { create(:user, :org_owner) }
+    let(:owner_token) { JwtService.generate_tokens(owner)[:access_token] }
+    let(:headers) { { 'Authorization' => "Bearer #{owner_token}" } }
+
+    it 'walks back one scan at a time' do
+      ScanGate.record!(ticket, by: owner, at: 2.hours.ago)
+      ScanGate.record!(ticket, by: owner, at: 1.hour.ago)
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      ticket.reload
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+      expect(ticket.checked_in).to be true
+      expect(ticket.status).to eq('scanned')
+    end
+
+    it 'fully resets once the last scan is removed' do
+      ScanGate.record!(ticket, by: owner)
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+
+      ticket.reload
+      expect(ScanLog.for_scannable(ticket)).to be_empty
+      expect(ticket.checked_in).to be false
+      expect(ticket.check_in_at).to be_nil
+      expect(ticket.status).to eq('purchased')
     end
   end
 end

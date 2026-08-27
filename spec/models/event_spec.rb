@@ -82,6 +82,18 @@ RSpec.describe Event, type: :model do
     it { should define_enum_for(:payment_status).with_values(unpaid: 0, paid: 1, waived: 2) }
   end
 
+  describe 'multiple_scan_mode' do
+    it 'defaults to unlimited' do
+      expect(create(:event).multiple_scan_mode).to eq('unlimited')
+    end
+
+    it 'exposes prefixed predicates' do
+      event = create(:event, multiple_scan_mode: :per_location)
+      expect(event.scan_mode_per_location?).to be true
+      expect(event.scan_mode_per_day?).to be false
+    end
+  end
+
   describe 'soft delete scopes' do
     let!(:active_event) { create(:event) }
     let!(:deleted_event) { create(:event).tap { |e| e.update_column(:deleted_at, Time.current) } }

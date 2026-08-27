@@ -32,9 +32,12 @@ RSpec.describe 'V1::Scan', type: :request do
   end
 
   let!(:checked_in_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
-           checked_in: true, check_in_at: 1.hour.ago, status: :scanned,
-           attendee_name: 'Scanned Attendee', scanned_by: staff_user)
+    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                    checked_in: true, check_in_at: 1.hour.ago, status: :scanned,
+                    attendee_name: 'Scanned Attendee', scanned_by: staff_user)
+    create(:scan_log, event: organizer_event, scannable: ticket,
+                      scanned_at: ticket.check_in_at, scanned_by: staff_user)
+    ticket
   end
 
   # --- Setup Visitors ---
@@ -43,8 +46,11 @@ RSpec.describe 'V1::Scan', type: :request do
   end
 
   let!(:checked_in_visitor) do
-    create(:visitor, event: organizer_event, full_name: 'Checked Visitor', email: 'checked@example.com',
-           checked_in: true, check_in_at: 30.minutes.ago, scanned_by: staff_user)
+    visitor = create(:visitor, event: organizer_event, full_name: 'Checked Visitor', email: 'checked@example.com',
+                     checked_in: true, check_in_at: 30.minutes.ago, scanned_by: staff_user)
+    create(:scan_log, event: organizer_event, scannable: visitor,
+                      scanned_at: visitor.check_in_at, scanned_by: staff_user)
+    visitor
   end
 
   # =========================================================================
@@ -322,6 +328,27 @@ RSpec.describe 'V1::Scan', type: :request do
         expect(json['limit']).to eq(100)
       end
     end
+
+    context 'when another staff member has also scanned in this event' do
+      before do
+        create(:event_assignment, role: :event_team_member, event: organizer_event, user: other_staff_user)
+      end
+
+      it "shows only the current user's own scans, not every staff member's" do
+        other_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                              checked_in: true, check_in_at: 1.minute.ago, status: :scanned,
+                              attendee_name: "Other Staff's Scan", scanned_by: other_staff_user)
+        create(:scan_log, event: organizer_event, scannable: other_ticket,
+                          scanned_at: other_ticket.check_in_at, scanned_by: other_staff_user)
+
+        get '/v1/scan/recent_check_ins', headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        names = json['check_ins'].map { |c| c['name'] }
+        expect(names).not_to include("Other Staff's Scan")
+      end
+    end
   end
 
   describe 'Unified Check-in Behavior' do
@@ -371,6 +398,26 @@ RSpec.describe 'V1::Scan', type: :request do
       expect(response).to have_http_status(:forbidden)
       json = JSON.parse(response.body)
       expect(json['message']).to eq('Email verification required')
+    end
+  end
+
+  describe 'GET /v1/scan/recent_check_ins with multiple scans' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:staff) { create(:user, :org_owner) }
+    let(:early) { create(:ticket, event: event, attendee_name: 'Early Bird') }
+    let(:late) { create(:ticket, event: event, attendee_name: 'Late Returner') }
+
+    it 'orders by the most recent scan, not by first arrival' do
+      ScanGate.record!(early, by: staff, at: 2.hours.ago)
+      ScanGate.record!(late, by: staff, at: 90.minutes.ago)
+      # Early Bird re-enters — should now be the most recent entry.
+      ScanGate.record!(early, by: staff, at: 10.minutes.ago)
+
+      get '/v1/scan/recent_check_ins', headers: { 'Authorization' => "Bearer #{JwtService.generate_tokens(staff)[:access_token]}" }
+
+      expect(response).to have_http_status(:ok)
+      names = JSON.parse(response.body)['check_ins'].map { |r| r['name'] || r['attendee_name'] }
+      expect(names.first).to eq('Early Bird')
     end
   end
 end

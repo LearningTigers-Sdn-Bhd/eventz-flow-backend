@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_26_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_27_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -770,6 +770,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_26_000000) do
     t.string "registration_path_template"
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
+    t.integer "multiple_scan_mode", default: 0, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1491,6 +1492,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_26_000000) do
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "roulette_winners_exactly_one_participant"
   end
 
+  create_table "scan_logs", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "scannable_type", null: false
+    t.bigint "scannable_id", null: false
+    t.bigint "event_location_id"
+    t.bigint "scanned_by_id"
+    t.datetime "scanned_at", null: false
+    t.integer "source", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "scanned_at"], name: "index_scan_logs_on_event_id_and_scanned_at"
+    t.index ["event_id"], name: "index_scan_logs_on_event_id"
+    t.index ["event_location_id"], name: "index_scan_logs_on_event_location_id"
+    t.index ["scannable_type", "scannable_id", "scanned_at"], name: "idx_scan_logs_on_scannable"
+  end
+
   create_table "sponsors", force: :cascade do |t|
     t.bigint "group_id", null: false
     t.string "name", null: false
@@ -1980,6 +1997,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_26_000000) do
   add_foreign_key "roulette_winners", "roulette_sessions"
   add_foreign_key "roulette_winners", "tickets", on_delete: :cascade
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
+  add_foreign_key "scan_logs", "event_locations"
+  add_foreign_key "scan_logs", "events"
+  add_foreign_key "scan_logs", "users", column: "scanned_by_id"
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "table_assignments", "plan_objects"

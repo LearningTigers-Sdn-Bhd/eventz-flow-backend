@@ -1,6 +1,7 @@
 module V1
   class TicketsController < ApplicationController
     include PublicFileValidation
+    include ScannableCheckIn
 
     MAX_PAYMENT_PROOF_SIZE = 10.megabytes
 
@@ -297,27 +298,26 @@ module V1
     end
 
     def global_check_in
-      # 1. Global Lookup (Find the ticket by its UUID)
       @ticket = Ticket.find_by!(public_id: params[:public_id])
-
-      # 2. Authorization (Must authorize against the found ticket's event)
-      # The user must be staff/manager for @ticket.event
       authorize @ticket, :check_in?
 
-      # 3. Perform Check-in Logic
-      if @ticket.checked_in?
-        render json: { error: 'Ticket has already been checked in.' }, status: :unprocessable_content and return
+      status, log = ScanGate.record!(
+        @ticket,
+        by: current_user,
+        source: :staff_scan,
+        location: scan_location_for(@ticket.event)
+      )
+
+      if status == :blocked
+        render json: scan_blocked_payload(log, message: 'Ticket has already been checked in.'),
+               status: :unprocessable_content and return
       end
 
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
-        broadcast_to_welcome_screen(@ticket)
-        render json: @ticket.as_json(include: {
-          ticket_type: { only: [:id, :name, :price] },
-          event: { only: [:id, :title] }
-        }), status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
-      end
+      broadcast_to_welcome_screen(@ticket)
+      render json: @ticket.reload.as_json(include: {
+        ticket_type: { only: %i[id name price] },
+        event: { only: %i[id title] }
+      }), status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     end
@@ -462,99 +462,66 @@ module V1
     def self_check_in
       public_id = params[:public_id]
 
-      # Validate public_id is provided
       if public_id.blank?
         render json: { error: 'Ticket ID is required' }, status: :bad_request and return
       end
 
-      # Find the ticket by public_id
       @ticket = Ticket.find_by(public_id: public_id)
 
       if @ticket.nil?
         render json: { error: 'Ticket not found' }, status: :not_found and return
       end
 
-      # Check if already checked in
-      if @ticket.checked_in?
-        render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
-      end
-
-      # Prepare update parameters for check-in
-      update_params = {
-        checked_in: true,
-        check_in_at: Time.current,
-        status: :scanned
-      }
-
-      # Update phone number if provided and currently missing
+      # Fill in contact details the attendee supplied, if we don't have them yet.
+      contact_updates = {}
       if params[:attendee_phone].present? && @ticket.attendee_phone.blank?
-        update_params[:attendee_phone] = params[:attendee_phone]
+        contact_updates[:attendee_phone] = params[:attendee_phone]
       end
-
-      # Update email if provided and currently missing
       if params[:attendee_email].present? && @ticket.attendee_email.blank?
-        update_params[:attendee_email] = params[:attendee_email]
+        contact_updates[:attendee_email] = params[:attendee_email]
+      end
+      @ticket.update!(contact_updates) if contact_updates.any?
+
+      # The ticket.checked_in webhook reads this thread-local.
+      Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
+
+      status, log = ScanGate.record!(@ticket, by: nil, source: :self_check_in)
+
+      if status == :blocked
+        render json: scan_blocked_payload(log, message: 'This ticket has already been checked in.'),
+               status: :unprocessable_content and return
       end
 
-      # Store check_in_url temporarily in Thread for webhook access
-      if params[:check_in_url].present?
-        Thread.current[:check_in_url] = params[:check_in_url]
-      end
-
-      # Perform self check-in (WITHOUT scanned_by_id)
-      if @ticket.update(update_params)
-        # Clear the thread-local variable after update
-        Thread.current[:check_in_url] = nil
-
-        broadcast_to_welcome_screen(@ticket)
-        render json: @ticket.as_json(
-          include: {
-            ticket_type: { only: [:id, :name, :price] },
-            event: { only: [:id, :title] }
-          }
-        ), status: :ok
-      else
-        # Clear the thread-local variable on error
-        Thread.current[:check_in_url] = nil
-        render json: @ticket.errors, status: :unprocessable_content
-      end
+      broadcast_to_welcome_screen(@ticket)
+      render json: @ticket.reload.as_json(
+        include: {
+          ticket_type: { only: %i[id name price] },
+          event: { only: %i[id title] }
+        }
+      ), status: :ok
     rescue StandardError => e
-      # Clear the thread-local variable on exception
-      Thread.current[:check_in_url] = nil
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
+    ensure
+      Thread.current[:check_in_url] = nil
     end
 
     # PATCH /v1/tickets/:id/unscan
     # Org owner only - unscan a ticket (reset check-in status)
     def unscan
-      # Find the ticket by ID (internal ID or public_id)
       @ticket = Ticket.find_by(id: params[:id]) || Ticket.find_by!(public_id: params[:id])
-
-      # Authorization: Only org_owner can unscan tickets
       authorize @ticket, :unscan?
 
-      # Check if ticket is actually scanned
-      unless @ticket.checked_in?
+      unless ScanGate.undo!(@ticket)
         render json: { error: 'Ticket is not checked in' }, status: :unprocessable_content and return
       end
 
-      # Reset ticket to not scanned state
-      if @ticket.update(
-        checked_in: false,
-        check_in_at: nil,
-        scanned_by_id: nil,
-        status: :purchased
-      )
-        render json: {
-          message: 'Ticket successfully unscanned',
-          ticket: @ticket.as_json(
-            methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-            include: { ticket_type: { only: [:id, :name, :price] } }
-          )
-        }, status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
-      end
+      render json: {
+        message: 'Ticket successfully unscanned',
+        ticket: @ticket.reload.as_json(
+          methods: %i[payment_method transaction_id payment_screenshot_url],
+          include: { ticket_type: { only: %i[id name price] } }
+        )
+      }, status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
