@@ -26,6 +26,7 @@ class Event < ApplicationRecord
   has_many :public_exhibitor_access_sessions, dependent: :destroy
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
+  has_many :scan_logs, dependent: :destroy
   has_many :wishes, dependent: :destroy
   has_one :wish_wall_setting, dependent: :destroy
   has_many :vouchers, dependent: :destroy
@@ -98,6 +99,7 @@ class Event < ApplicationRecord
   # --- Enums ---
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
+  enum :multiple_scan_mode, { unlimited: 0, per_location: 1, per_day: 2 }, prefix: :scan_mode
 
   # --- Soft Delete Scopes ---
   default_scope { where(deleted_at: nil) }
