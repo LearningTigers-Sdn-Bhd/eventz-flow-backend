@@ -1,16 +1,17 @@
 # Single source of truth for "may this ticket/visitor be scanned right now?".
 # Every check-in endpoint delegates here; none carries its own checked_in? guard.
 class ScanGate
-  # Returns :allowed, or the ScanLog row that blocks this scan.
+  # Returns :allowed, :unpaid, or the ScanLog row that blocks this scan.
   def self.call(scannable, at: Time.current, location: nil)
     new(scannable, at: at, location: location).call
   end
 
   # Records a scan if the gate allows it.
-  # Returns [:ok, scan_log] or [:blocked, blocking_scan_log].
+  # Returns [:ok, scan_log], [:unpaid, nil], or [:blocked, blocking_scan_log].
   def self.record!(scannable, by: nil, source: :staff_scan, location: nil, at: Time.current)
     scannable.with_lock do
       decision = call(scannable, at: at, location: location)
+      next [:unpaid, nil] if decision == :unpaid
       next [:blocked, decision] unless decision == :allowed
 
       first_scan = ScanLog.for_scannable(scannable).none?
@@ -76,12 +77,20 @@ class ScanGate
   end
 
   def call
+    return :unpaid if unpaid_ticket?
+
     blocking_scan || :allowed
   end
 
   private
 
   attr_reader :scannable, :at, :location
+
+  # Tickets with pending/failed/refunded payment must never be checked in.
+  # Visitors have no payment_status, so this only applies to Ticket.
+  def unpaid_ticket?
+    scannable.is_a?(Ticket) && !scannable.paid?
+  end
 
   def event
     scannable.event

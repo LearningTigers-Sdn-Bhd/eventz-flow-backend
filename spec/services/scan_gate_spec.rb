@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe ScanGate do
   let(:event) { create(:event, multiple_scans: false) }
-  let(:ticket) { create(:ticket, event: event) }
+  let(:ticket) { create(:ticket, :paid, event: event) }
   let(:main_hall) { create(:event_location, event: event, name: 'Main Hall') }
   let(:vip) { create(:event_location, event: event, name: 'VIP Lounge') }
 
@@ -67,6 +67,23 @@ RSpec.describe ScanGate do
     it 'allows a scan on the next day' do
       log(at: 1.day.ago, location: main_hall)
       expect(described_class.call(ticket, location: main_hall)).to eq(:allowed)
+    end
+  end
+
+  context 'with a ticket that has not been paid for' do
+    let(:pending_ticket) { create(:ticket, event: event, payment_status: :pending) }
+
+    it 'blocks the scan regardless of check-in history' do
+      expect(described_class.call(pending_ticket)).to eq(:unpaid)
+    end
+
+    it 'record! returns :unpaid and writes nothing' do
+      status, log = described_class.record!(pending_ticket, by: create(:user))
+
+      expect(status).to eq(:unpaid)
+      expect(log).to be_nil
+      expect(pending_ticket.reload.checked_in).to be false
+      expect(ScanLog.for_scannable(pending_ticket)).to be_empty
     end
   end
 
@@ -179,7 +196,7 @@ RSpec.describe ScanGate do
       # was unscanned.
       webhooked_event = create(:event, multiple_scans: true, multiple_scan_mode: :unlimited,
                                        webhook_url: 'https://example.com/webhook')
-      webhooked_ticket = create(:ticket, event: webhooked_event)
+      webhooked_ticket = create(:ticket, :paid, event: webhooked_event)
       described_class.record!(webhooked_ticket, by: staff)
 
       expect { described_class.undo!(webhooked_ticket) }

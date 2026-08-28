@@ -136,14 +136,11 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
           expect(json_response['message']).to eq('Resource not found')
         end
 
-        it 'returns unpaid tickets' do
+        it 'does not return unpaid tickets' do
           post endpoint, params: { method: 'name', value: 'Jane Unpaid' }
 
-          expect(response).to have_http_status(:ok)
-          data = json_response['data']
-          expect(data['action']).to eq('select')
-          expect(data['attendees'].length).to eq(1)
-          expect(data['attendees'][0]['name']).to eq('Jane Unpaid')
+          expect(response).to have_http_status(:not_found)
+          expect(json_response['message']).to eq('Resource not found')
         end
 
         it 'does not return tickets from other events' do
@@ -249,16 +246,14 @@ RSpec.describe 'V1::Public::CheckIns', type: :request do
           expect(json_response['message']).to eq('Resource not found')
         end
 
-        it 'successfully checks in unpaid ticket' do
+        it 'refuses to check in an unpaid ticket' do
           post endpoint, params: { method: 'scan', value: unpaid_ticket.public_id }
 
-          expect(response).to have_http_status(:ok)
-          data = json_response['data']
-          expect(data['action']).to eq('checked_in')
-          expect(data['attendee']['public_id']).to eq(unpaid_ticket.public_id)
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json_response['message']).to include('payment is still pending')
 
           unpaid_ticket.reload
-          expect(unpaid_ticket.checked_in).to eq(true)
+          expect(unpaid_ticket.checked_in).to eq(false)
         end
 
         context 'with check_in_url parameter' do

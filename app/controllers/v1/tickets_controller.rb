@@ -308,6 +308,11 @@ module V1
         location: scan_location_for(@ticket.event)
       )
 
+      if status == :unpaid
+        render json: { error: 'Ticket payment is still pending. Cannot check in until payment is confirmed.' },
+               status: :unprocessable_content and return
+      end
+
       if status == :blocked
         render json: scan_blocked_payload(log, message: 'Ticket has already been checked in.'),
                status: :unprocessable_content and return
@@ -486,6 +491,11 @@ module V1
       Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
 
       status, log = ScanGate.record!(@ticket, by: nil, source: :self_check_in)
+
+      if status == :unpaid
+        render json: { error: 'Ticket payment is still pending. Cannot check in until payment is confirmed.' },
+               status: :unprocessable_content and return
+      end
 
       if status == :blocked
         render json: scan_blocked_payload(log, message: 'This ticket has already been checked in.'),

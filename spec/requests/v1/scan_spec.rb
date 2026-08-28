@@ -28,11 +28,11 @@ RSpec.describe 'V1::Scan', type: :request do
 
   # --- Setup Tickets ---
   let!(:purchased_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
+    create(:ticket, :paid, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
 
   let!(:checked_in_ticket) do
-    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+    ticket = create(:ticket, :paid, event: organizer_event, ticket_type: general_ticket_type,
                     checked_in: true, check_in_at: 1.hour.ago, status: :scanned,
                     attendee_name: 'Scanned Attendee', scanned_by: staff_user)
     create(:scan_log, event: organizer_event, scannable: ticket,
@@ -404,8 +404,8 @@ RSpec.describe 'V1::Scan', type: :request do
   describe 'GET /v1/scan/recent_check_ins with multiple scans' do
     let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
     let(:staff) { create(:user, :org_owner) }
-    let(:early) { create(:ticket, event: event, attendee_name: 'Early Bird') }
-    let(:late) { create(:ticket, event: event, attendee_name: 'Late Returner') }
+    let(:early) { create(:ticket, :paid, event: event, attendee_name: 'Early Bird') }
+    let(:late) { create(:ticket, :paid, event: event, attendee_name: 'Late Returner') }
 
     it 'orders by the most recent scan, not by first arrival' do
       ScanGate.record!(early, by: staff, at: 2.hours.ago)

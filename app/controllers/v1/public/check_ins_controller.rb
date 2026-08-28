@@ -90,6 +90,13 @@ module V1
           location: scan_location_for(attendee.event)
         )
 
+        if status == :unpaid
+          return error_response(
+            message: 'Ticket payment is still pending. Cannot check in until payment is confirmed.',
+            status: :unprocessable_content
+          )
+        end
+
         if status == :blocked
           # This controller's established envelope is success/message/errors
           # (unlike the other four scan endpoints, which render raw hashes) —
@@ -140,7 +147,7 @@ module V1
 
       def search_tickets
         search_attendees_by(
-          @event.tickets,
+          @event.tickets.paid,
           name_col: 'attendee_name',
           email_col: 'attendee_email',
           phone_col: 'attendee_phone'

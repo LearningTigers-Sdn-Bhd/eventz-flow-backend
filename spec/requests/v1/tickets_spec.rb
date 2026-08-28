@@ -726,14 +726,15 @@ RSpec.describe 'V1::Tickets', type: :request do
       let(:public_id) { purchased_ticket.public_id }
 
       response '200', 'Check-in successful via global scan by staff' do
+        let(:public_id) { paid_purchased_ticket.public_id }
         let(:Authorization) { "Bearer #{staff_token}" }
 
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
 
         run_test! do
-          purchased_ticket.reload
-          expect(purchased_ticket.checked_in).to be true
+          paid_purchased_ticket.reload
+          expect(paid_purchased_ticket.checked_in).to be true
         end
       end
 
@@ -1022,7 +1023,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
   describe 'PATCH /v1/tickets/:public_id/check_in with multiple scans' do
     let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
-    let(:ticket) { create(:ticket, event: event) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
     let(:admin) { create(:user, :org_owner) }
     let(:admin_token) { JwtService.generate_tokens(admin)[:access_token] }
     let(:headers) { { 'Authorization' => "Bearer #{admin_token}" } }
@@ -1065,7 +1066,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
   describe 'POST /v1/tickets/self_check_in with multiple scans' do
     let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
-    let(:ticket) { create(:ticket, event: event) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
 
     it 'allows a repeat self check-in and records the source' do
       post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
@@ -1093,7 +1094,7 @@ RSpec.describe 'V1::Tickets', type: :request do
 
   describe 'PATCH /v1/tickets/:id/unscan with scan history' do
     let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
-    let(:ticket) { create(:ticket, event: event) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
     let(:owner) { create(:user, :org_owner) }
     let(:owner_token) { JwtService.generate_tokens(owner)[:access_token] }
     let(:headers) { { 'Authorization' => "Bearer #{owner_token}" } }

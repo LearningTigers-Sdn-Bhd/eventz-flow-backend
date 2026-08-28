@@ -64,6 +64,12 @@ module V1
         location: scan_location_for(@record.event)
       )
 
+      if status == :unpaid
+        render json: { error: 'Ticket payment is still pending. Cannot check in until payment is confirmed.', type: @type },
+               status: :unprocessable_content
+        return
+      end
+
       if status == :blocked
         render json: scan_blocked_payload(
           log, message: "#{@type.capitalize} has already been checked in."
