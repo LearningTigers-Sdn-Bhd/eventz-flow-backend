@@ -8,9 +8,12 @@ class TableAssignment < ApplicationRecord
   validate :plan_object_must_be_table
   validate :table_capacity_available
 
-  # Keeps the ticket's `_table_number` custom field in sync with whichever
+  # Keeps the ticket's `table_number` custom field in sync with whichever
   # table it's actually seated at — badge/export templates read the custom
-  # field directly rather than joining through table_assignments.
+  # field directly rather than joining through table_assignments. Writes into
+  # whatever key the event already uses for table number (case-insensitive
+  # match, e.g. an existing "table_number" from the registration form) so we
+  # never end up with two competing fields; falls back to "table_number".
   after_commit :sync_ticket_table_number, on: %i[create update]
   after_destroy :clear_ticket_table_number
 
@@ -79,16 +82,25 @@ class TableAssignment < ApplicationRecord
   def sync_ticket_table_number
     return if ticket_id.blank?
 
-    ticket.update_column(
-      :custom_fields_data,
-      (ticket.custom_fields_data || {}).merge('_table_number' => table_name_label)
-    )
+    data = ticket.custom_fields_data || {}
+    key = table_number_key(data)
+    ticket.update_column(:custom_fields_data, data.except('_table_number').merge(key => table_name_label))
   end
 
   def clear_ticket_table_number
     return if ticket_id.blank? || ticket.blank?
 
-    ticket.update_column(:custom_fields_data, (ticket.custom_fields_data || {}).except('_table_number'))
+    data = ticket.custom_fields_data || {}
+    key = table_number_key(data)
+    ticket.update_column(:custom_fields_data, data.except('_table_number', key))
+  end
+
+  # Detects the key the event already uses for table number (from a prior
+  # registration form / import) so seating sync merges into it instead of
+  # creating a second field. Falls back to the plain "table_number" key,
+  # ignoring the legacy reserved "_table_number" this used to write.
+  def table_number_key(data)
+    data.keys.find { |k| k != '_table_number' && k.casecmp?('table_number') } || 'table_number'
   end
 
   # Prefers the dedicated table_number field (e.g. "12", "A1") over the

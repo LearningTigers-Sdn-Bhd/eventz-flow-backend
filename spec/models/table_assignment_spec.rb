@@ -55,4 +55,51 @@ RSpec.describe TableAssignment, type: :model do
       expect(assignment.reload.notes).to eq("Near stage")
     end
   end
+
+  describe "ticket custom field sync" do
+    it "writes table_number when the ticket has no existing table number field" do
+      table = create(:plan_object, :table, table_number: "12")
+      ticket = create(:ticket, event: table.plan.event, custom_fields_data: { "special_diet" => "Vegan" })
+
+      create(:table_assignment, ticket: ticket, plan_object: table)
+
+      data = ticket.reload.custom_fields_data
+      expect(data["table_number"]).to eq("12")
+      expect(data).not_to have_key("_table_number")
+    end
+
+    it "merges into the event's existing table_number key instead of creating a second field" do
+      table = create(:plan_object, :table, table_number: "21")
+      ticket = create(:ticket, event: table.plan.event, custom_fields_data: { "table_number" => "-" })
+
+      create(:table_assignment, ticket: ticket, plan_object: table)
+
+      data = ticket.reload.custom_fields_data
+      expect(data["table_number"]).to eq("21")
+      expect(data.keys.count { |k| k.casecmp?("table_number") }).to eq(1)
+    end
+
+    it "removes a stray legacy _table_number key on sync" do
+      table = create(:plan_object, :table, table_number: "5")
+      ticket = create(:ticket, event: table.plan.event, custom_fields_data: { "_table_number" => "old" })
+
+      create(:table_assignment, ticket: ticket, plan_object: table)
+
+      data = ticket.reload.custom_fields_data
+      expect(data["table_number"]).to eq("5")
+      expect(data).not_to have_key("_table_number")
+    end
+
+    it "clears the same detected key when the assignment is removed" do
+      table = create(:plan_object, :table, table_number: "8")
+      ticket = create(:ticket, event: table.plan.event, custom_fields_data: { "Table_Number" => "old" })
+      assignment = create(:table_assignment, ticket: ticket, plan_object: table)
+
+      assignment.destroy
+
+      data = ticket.reload.custom_fields_data
+      expect(data).not_to have_key("Table_Number")
+      expect(data).not_to have_key("table_number")
+    end
+  end
 end
