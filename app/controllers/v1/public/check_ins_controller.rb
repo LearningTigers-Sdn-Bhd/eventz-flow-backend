@@ -9,6 +9,7 @@ module V1
       skip_before_action :require_verified_email!
 
       before_action :find_event!
+      before_action :softly_identify_scanner
 
       VALID_METHODS = %w[name email phone scan].freeze
 
@@ -48,6 +49,25 @@ module V1
         raise ArgumentError, 'Value is required' if @value.blank?
       end
 
+      # This page is walk-up/no-login by design and must never refuse service.
+      # If a staff member happens to be logged in on this device (e.g. a
+      # registration counter running the panel session), attribute the scan
+      # to them and gate it like any other staff scan. Any failure here
+      # (missing header, expired token, no matching session) silently leaves
+      # current_user nil — the page keeps working exactly as an anonymous
+      # kiosk, as it always has.
+      def softly_identify_scanner
+        header = request.headers['Authorization']
+        return unless header&.start_with?('Bearer ')
+
+        token = header.split(' ').last
+        payload = JwtService.decode(token)
+        session = UserSession.find_by(jti: payload[:jti], user_id: payload[:user_id])
+        @current_user = session.user if session&.active?
+      rescue StandardError
+        nil
+      end
+
       def event_info
         {
           id: @event.id,
@@ -63,12 +83,24 @@ module V1
       def perform_check_in(attendee)
         Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
 
-        status, log = ScanGate.record!(attendee, by: nil, source: :kiosk)
+        status, log = ScanGate.record!(
+          attendee,
+          by: current_user,
+          source: :kiosk,
+          location: scan_location_for(attendee.event)
+        )
 
         if status == :blocked
+          # This controller's established envelope is success/message/errors
+          # (unlike the other four scan endpoints, which render raw hashes) —
+          # nest the same blocked_by detail those endpoints expose inside
+          # errors, via the shared helper, rather than inventing a new shape.
           return error_response(
             message: 'Already checked in',
-            errors: { check_in_at: log.scanned_at&.iso8601 },
+            errors: {
+              check_in_at: log.scanned_at&.iso8601,
+              blocked_by: scan_blocked_payload(log)[:blocked_by]
+            },
             status: :unprocessable_content
           )
         end
