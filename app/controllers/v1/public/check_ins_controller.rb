@@ -3,10 +3,13 @@
 module V1
   module Public
     class CheckInsController < ApplicationController
+      include ScannableCheckIn
+
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
 
       before_action :find_event!
+      before_action :softly_identify_scanner
 
       VALID_METHODS = %w[name email phone scan].freeze
 
@@ -22,7 +25,7 @@ module V1
         validate_search_params!
 
         if @method == 'scan'
-          perform_check_in
+          perform_check_in(find_attendee_by_public_id)
         else
           search_attendees
         end
@@ -46,6 +49,25 @@ module V1
         raise ArgumentError, 'Value is required' if @value.blank?
       end
 
+      # This page is walk-up/no-login by design and must never refuse service.
+      # If a staff member happens to be logged in on this device (e.g. a
+      # registration counter running the panel session), attribute the scan
+      # to them and gate it like any other staff scan. Any failure here
+      # (missing header, expired token, no matching session) silently leaves
+      # current_user nil — the page keeps working exactly as an anonymous
+      # kiosk, as it always has.
+      def softly_identify_scanner
+        header = request.headers['Authorization']
+        return unless header&.start_with?('Bearer ')
+
+        token = header.split(' ').last
+        payload = JwtService.decode(token)
+        session = UserSession.find_by(jti: payload[:jti], user_id: payload[:user_id])
+        @current_user = session.user if session&.active?
+      rescue StandardError
+        nil
+      end
+
       def event_info
         {
           id: @event.id,
@@ -58,15 +80,38 @@ module V1
 
       # --- Check-in Logic ---
 
-      def perform_check_in
-        attendee = find_attendee_by_public_id
-        return already_checked_in_error(attendee) if attendee.checked_in?
+      def perform_check_in(attendee)
+        Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
 
-        if check_in_attendee(attendee)
-          success_response(data: { action: 'checked_in', message: 'Successfully checked in.', attendee: format_attendee(attendee) })
-        else
-          error_response(message: 'Check-in failed', errors: attendee.errors, status: :unprocessable_entity)
+        status, log = ScanGate.record!(
+          attendee,
+          by: current_user,
+          source: :kiosk,
+          location: scan_location_for(attendee.event)
+        )
+
+        if status == :blocked
+          # This controller's established envelope is success/message/errors
+          # (unlike the other four scan endpoints, which render raw hashes) —
+          # nest the same blocked_by detail those endpoints expose inside
+          # errors, via the shared helper, rather than inventing a new shape.
+          return error_response(
+            message: 'Already checked in',
+            errors: {
+              check_in_at: log.scanned_at&.iso8601,
+              blocked_by: scan_blocked_payload(log)[:blocked_by]
+            },
+            status: :unprocessable_content
+          )
         end
+
+        success_response(data: {
+          action: 'checked_in',
+          message: 'Successfully checked in.',
+          attendee: format_attendee(attendee.reload)
+        })
+      ensure
+        Thread.current[:check_in_url] = nil
       end
 
       def find_attendee_by_public_id
@@ -78,39 +123,6 @@ module V1
 
         raise ActiveRecord::RecordNotFound, 'Attendee not found' if attendee.nil?
         attendee
-      end
-
-      def check_in_attendee(attendee)
-        # Store check_in_url in Thread for webhook/printer integration
-        Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
-
-        result = if attendee.is_a?(Ticket)
-          attendee.update(checked_in: true, check_in_at: Time.current, status: :scanned)
-        else
-          attendee.update(checked_in: true, check_in_at: Time.current)
-        end
-
-        # Broadcast to welcome screen after successful check-in
-        if result
-          attendee_name = attendee.is_a?(Ticket) ? attendee.attendee_name : attendee.full_name
-          WelcomeScreenQueueService.enqueue(
-            @event.id,
-            attendee_name,
-            custom_fields_data: attendee.custom_fields_data
-          )
-        end
-
-        # Clear thread-local variable after update
-        Thread.current[:check_in_url] = nil
-        result
-      end
-
-      def already_checked_in_error(attendee)
-        error_response(
-          message: 'Already checked in',
-          errors: { check_in_at: attendee.check_in_at&.iso8601 },
-          status: :unprocessable_entity
-        )
       end
 
       # --- Search Logic ---
