@@ -7,8 +7,10 @@ Rails.application.routes.draw do
     mount LetterOpenerWeb::Engine, at: '/letter_opener'
   end
 
-  # Rswag Documentation Endpoints
-  if defined?(Rswag)
+  # Rswag Documentation Endpoints — local (development/test) only. Using
+  # Rails.env.local? rather than !production? so staging (which runs in the
+  # production env or a staging env) does NOT expose the API schema (audit #10).
+  if defined?(Rswag) && Rails.env.local?
     mount Rswag::Ui::Engine => '/api-docs'
     mount Rswag::Api::Engine => '/api-docs'
   end

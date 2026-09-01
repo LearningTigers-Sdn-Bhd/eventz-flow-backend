@@ -21,6 +21,17 @@ class Rack::Attack
     end
   end
 
+  # 3b. Account-Existence Enumeration (audit #6)
+  # check_account reveals whether an email/phone is registered. Two layers:
+  #   - hourly cap stays generous for real signups behind a shared office/NAT IP
+  #   - per-minute burst cap stops a script scraping a list at machine speed
+  throttle('check_account/ip', limit: 30, period: 1.hour) do |req|
+    req.ip if req.path == '/v1/auth/check_account' && req.get?
+  end
+  throttle('check_account/burst', limit: 3, period: 1.minute) do |req|
+    req.ip if req.path == '/v1/auth/check_account' && req.get?
+  end
+
   # 4. Login Protection (IP based fallback)
   # Limit login attempts to 20 per minute per IP (in case email varies)
   throttle('login/ip', limit: 20, period: 1.minute) do |req|

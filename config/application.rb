@@ -62,6 +62,34 @@ module EventzFlowApi
     #   end
     # end
 
+    # --- Trusted proxies (so request.remote_ip is the REAL client, not the edge) ---
+    # The app sits behind Coolify's Traefik reverse proxy. Without this,
+    # ActionDispatch::RemoteIp treats the proxy as the client, so anything reading
+    # request.remote_ip (JwtService session records, audit logs) attributes every
+    # request to the proxy address.
+    #
+    # NOTE: this does NOT affect Rack::Attack. Rack::Attack::Request is a bare
+    # subclass of ::Rack::Request, so its `req.ip` uses Rack's own ip_filter and
+    # never consults trusted_proxies. Rack's default filter already treats RFC1918
+    # and loopback as proxies, so the per-IP throttles were already keyed on the
+    # real client.
+    #
+    # Rails REPLACES its built-in TRUSTED_PROXIES when this is set (see
+    # action_dispatch/middleware/remote_ip.rb), so the IPv6 entries below must be
+    # listed explicitly — omitting them silently breaks remote_ip on any IPv6 hop.
+    # Scope trust to private/Docker-overlay ranges only, never 0.0.0.0/0.
+    # Override/extend via TRUSTED_PROXIES="cidr1,cidr2" if the edge moves to a public IP.
+    default_trusted = [
+      IPAddr.new('10.0.0.0/8'),     # Docker overlay / RFC1918
+      IPAddr.new('172.16.0.0/12'),  # Docker default bridge / RFC1918
+      IPAddr.new('192.168.0.0/16'), # RFC1918
+      IPAddr.new('127.0.0.0/8'),    # IPv4 loopback
+      IPAddr.new('::1'),            # IPv6 loopback
+      IPAddr.new('fc00::/7'),       # IPv6 unique local (Docker IPv6 overlay)
+    ].freeze
+    extra_trusted = ENV.fetch('TRUSTED_PROXIES', '').split(',').map(&:strip).reject(&:empty?)
+    config.action_dispatch.trusted_proxies = default_trusted + extra_trusted.map { |cidr| IPAddr.new(cidr) }
+
     # --- Rate Limiting ---
     config.middleware.use Rack::Attack
 
