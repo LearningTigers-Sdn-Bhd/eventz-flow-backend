@@ -22,12 +22,28 @@ class ExhibitorTeamMember < ApplicationRecord
 
   private
 
+  # These run after_commit — the ExhibitorTeamMember row is already saved by the
+  # time they execute. Letting an exception here escape would 500 a request whose
+  # actual data (the member) already landed, with no way for the client to tell
+  # the difference from a real failure — so ticket sync failures are logged loudly
+  # for us to investigate, but never fail the member save itself.
   def sync_attendee_record
     ExhibitorTeamMemberAttendeeSyncService.new(self).call
+  rescue StandardError => e
+    log_ticket_sync_failure('attendee sync', e)
   end
 
   def reconcile_tickets_after_commit
     ExhibitorTeamMemberTicketReconciliationService.new(exhibitor_kit).call
+  rescue StandardError => e
+    log_ticket_sync_failure('ticket reconciliation', e)
+  end
+
+  def log_ticket_sync_failure(stage, error)
+    Rails.logger.error(
+      "[ExhibitorTeamMember##{id}] #{stage} failed for exhibitor_kit_id=#{exhibitor_kit_id}: " \
+      "#{error.class}: #{error.message}\n#{error.backtrace&.first(10)&.join("\n")}"
+    )
   end
 
   def destroy_attendee_record
