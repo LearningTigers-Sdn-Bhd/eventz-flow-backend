@@ -295,6 +295,7 @@ Rails.application.routes.draw do
         member do
           post :submit_order
           post :reject_payment_proof
+          post :resync_team_members
           delete :permanently_delete
           delete :force_delete
         end

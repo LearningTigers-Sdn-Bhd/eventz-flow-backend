@@ -41,6 +41,34 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'POST /v1/events/:event_id/exhibitor_kits/:id/resync_team_members' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true, use_ticket: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, company_name: 'Correct Co') }
+
+    it 'reapplies the kit company name to stale member tickets and reports the outcome' do
+      kit
+      member = kit.exhibitor_team_members.first
+      member.attendee.update!(custom_fields_data: member.attendee.custom_fields_data.to_h.merge('company' => 'Old Typo Co'))
+
+      post "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/resync_team_members", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body['updated'].map { |r| r['id'] }).to include(member.id)
+      expect(member.attendee.reload.custom_fields_data['company']).to eq('Correct Co')
+    end
+
+    it 'rejects a user with no authorization over the kit' do
+      other_user = create(:user)
+
+      post "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/resync_team_members", headers: auth_headers(other_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
   describe 'GET /v1/events/:event_id/exhibitor_kits/export' do
     let(:admin_user) { create(:user, :org_owner) }
     let(:member_user) { create(:user, :member) }

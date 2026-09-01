@@ -9,8 +9,8 @@ class V1::ExhibitorKitsController < ApplicationController
 
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order export import_template import]
+  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof resync_team_members ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order resync_team_members export import_template import]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -181,6 +181,23 @@ class V1::ExhibitorKitsController < ApplicationController
 
     payment.update!(status: 'rejected', note: params[:note].to_s.strip.presence)
     render json: format_exhibitor_kit(@exhibitor_kit.reload), status: :ok
+  end
+
+  # POST /v1/events/:event_id/exhibitor_kits/:id/resync_team_members
+  # Re-applies the kit's current company_name onto every team member's linked
+  # ticket. Fixes tickets left stale after someone corrects a company name typo
+  # post-registration, without touching ticket status/payment.
+  def resync_team_members
+    authorize @exhibitor_kit, :update?
+
+    result = ExhibitorTeamMemberCompanyResyncService.new(@exhibitor_kit).call
+
+    render json: {
+      updated: result[:updated],
+      unchanged: result[:unchanged],
+      skipped: result[:skipped],
+      failed: result[:failed]
+    }, status: :ok
   end
 
   def ic_copy
