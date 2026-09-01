@@ -294,6 +294,11 @@ module V1
         payment_proof_status: exhibitor_kit.exhibitor_registration_payment&.status || 'pending',
         payment_note: exhibitor_kit.exhibitor_registration_payment&.note || exhibitor_kit.payment_note,
         amount_paid: exhibitor_kit.amount_paid,
+        booth_quantity: exhibitor_kit.booth_quantity,
+        price_snapshot: exhibitor_kit.price_snapshot,
+        # Booth price x quantity for this kit. Sent so the panel's bulk payment
+        # action can pre-fill amount_paid per kit without re-deriving the price.
+        booking_value: exhibitor_kit.booking_value,
         indemnity_link: exhibitor_kit.indemnity_link,
         exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
         exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,

@@ -1,6 +1,23 @@
 # app/controllers/v1/authentication_controller.rb
 module V1
   class AuthenticationController < ApplicationController
+    # Constant-time login guard (audit follow-up): a missing account must take
+    # the same time as a wrong password, otherwise response latency reveals
+    # which emails are registered. We always run exactly one bcrypt compare.
+    #
+    # The dummy digest MUST be built at the same cost has_secure_password uses,
+    # otherwise the timing gap simply inverts. Rails does NOT lower
+    # BCrypt::Engine.cost in test — it flips the separate
+    # ActiveModel::SecurePassword.min_cost flag (set from Rails.env.test? in the
+    # ActiveModel railtie), which makes real digests MIN_COST. Mirror that exact
+    # branch here, and build lazily so the live flag is read, not a boot-time one.
+    def self.dummy_password_digest
+      @dummy_password_digest ||= begin
+        cost = ActiveModel::SecurePassword.min_cost ? BCrypt::Engine::MIN_COST : BCrypt::Engine.cost
+        BCrypt::Password.create('invalid-password-dummy', cost: cost)
+      end
+    end
+
     skip_before_action :authenticate_user!, only: %i[login register refresh_token register_invited_vendor check_account]
     skip_before_action :require_verified_email!,
                        only: %i[logout send_verification_code verify_email refresh_token register_invited_vendor check_account
@@ -50,8 +67,19 @@ module V1
 
       user = User.find_by(email: email.downcase)
 
+      # Always perform one bcrypt verification, even when the account is
+      # missing or inactive, so unknown-email and wrong-password responses are
+      # indistinguishable by timing. Keep `user` intact for the success branch.
+      authenticated = if user&.active?
+                        user.authenticate(login_params[:password])
+                      else
+                        BCrypt::Password.new(self.class.dummy_password_digest)
+                                        .is_password?(login_params[:password].to_s)
+                        false
+                      end
+
       # Check if user exists, is active, and credentials are valid
-      if user&.active? && user.authenticate(login_params[:password])
+      if authenticated
         tokens = JwtService.generate_tokens(user, request)
 
         # Set cookie for browser-based access (optional - frontend will also handle)
@@ -67,23 +95,12 @@ module V1
           message: 'Login successful',
           status: :ok
         )
-      elsif user.nil?
-        # Provide specific error messages based on the failure reason
-        error_response(
-          message: 'Authentication failed',
-          errors: [{ field: 'email', message: 'Email not found' }],
-          status: :unauthorized
-        )
-      elsif !user.active?
-        error_response(
-          message: 'Authentication failed',
-          errors: [{ field: 'account', message: 'Account is inactive' }],
-          status: :unauthorized
-        )
       else
+        # Use a single generic message for every failure branch so the login
+        # endpoint cannot be used to enumerate valid accounts (audit #5).
         error_response(
-          message: 'Authentication failed',
-          errors: [{ field: 'password', message: 'Invalid password' }],
+          message: 'Invalid email or password',
+          errors: [{ field: 'base', message: 'Invalid email or password' }],
           status: :unauthorized
         )
       end
