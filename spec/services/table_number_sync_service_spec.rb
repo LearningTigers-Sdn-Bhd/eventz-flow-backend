@@ -53,19 +53,31 @@ RSpec.describe TableNumberSyncService do
     end
 
     it 'warns when the matching table is already full' do
-      create(:ticket, event: event).table_assignments.create!(plan_object: table_b)
+      # Creating this assignment also writes the occupant's own `table_number`
+      # field back to "B2" (TableAssignment#sync_ticket_table_number), so it's
+      # counted as already-synced below - the overflow ticket is the one that
+      # should be rejected for lack of space.
+      occupant = create(:ticket, event: event)
+      occupant.table_assignments.create!(plan_object: table_b)
       overflow_ticket = ticket_with_table_number('B2')
 
       result = subject.call
 
-      expect(result[:synced_count]).to eq(0)
-      expect(result[:warnings].first[:ticket_id]).to eq(overflow_ticket.id)
-      expect(result[:warnings].first[:reason]).to match(/insufficient space/i)
+      expect(result[:warnings]).to contain_exactly(
+        hash_including(ticket_id: overflow_ticket.id, reason: match(/insufficient space/i))
+      )
+      expect(overflow_ticket.reload.table_assignments).to be_empty
+      expect(occupant.reload.table_assignments.first.plan_object).to eq(table_b)
     end
 
     it 'moves an existing assignment when the table_number field points to a different table' do
-      ticket = ticket_with_table_number('B2')
+      ticket = create(:ticket, event: event)
       ticket.table_assignments.create!(plan_object: table_a)
+      # Simulate the field having been changed independently afterwards (e.g.
+      # a bulk import) rather than through the seating plan itself - the
+      # assignment's own after_commit sync would otherwise immediately
+      # overwrite this back to table_a's number.
+      ticket.update_column(:custom_fields_data, { 'table_number' => 'B2' })
 
       result = subject.call
 
