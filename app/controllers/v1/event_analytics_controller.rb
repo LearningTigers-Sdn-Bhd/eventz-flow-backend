@@ -13,8 +13,11 @@ module V1
     end
 
     # GET /v1/events/:event_id/metrics/total_scanned_tickets
+    # Pass include_multi_scans=true to count every re-entry scan (ScanLog rows)
+    # instead of unique checked-in tickets — only meaningful for events with
+    # multiple_scans enabled.
     def total_scanned_tickets
-      count = paid_tickets.checked_in.count
+      count = include_multi_scans? ? scan_logs_for(paid_tickets).count : paid_tickets.checked_in.count
       render json: { totalScannedTickets: count }, status: :ok
     end
 
@@ -32,7 +35,7 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_scanned_visitors
     def total_scanned_visitors
-      count = @event.visitors.checked_in.count
+      count = include_multi_scans? ? scan_logs_for(@event.visitors).count : @event.visitors.checked_in.count
       render json: { totalScannedVisitors: count }, status: :ok
     end
 
@@ -151,6 +154,16 @@ module V1
 
     def paid_tickets
       eligible_tickets.where(payment_status: :paid)
+    end
+
+    # true when the caller asked to count every re-entry scan (ScanLog rows)
+    # instead of unique checked-in tickets/visitors.
+    def include_multi_scans?
+      ActiveModel::Type::Boolean.new.cast(params[:include_multi_scans])
+    end
+
+    def scan_logs_for(scannable_relation)
+      ScanLog.where(event: @event, scannable: scannable_relation)
     end
 
     def pending_tickets
@@ -414,12 +427,11 @@ module V1
     def find_earliest_date_for_metric(metric)
       case metric
       when 'scans'
-        # For ticket scans, use earliest check_in_at
-        earliest = @event.tickets.checked_in.minimum(:check_in_at)
+        # For ticket scans, use earliest scan (all scan events when multi-scans included, else first check-in)
+        earliest = include_multi_scans? ? scan_logs_for(paid_tickets).minimum(:scanned_at) : @event.tickets.checked_in.minimum(:check_in_at)
         earliest&.to_date || @event.start_date.to_date
       when 'visitor_scans'
-        # For visitor scans, use earliest check_in_at
-        earliest = @event.visitors.checked_in.minimum(:check_in_at)
+        earliest = include_multi_scans? ? scan_logs_for(@event.visitors).minimum(:scanned_at) : @event.visitors.checked_in.minimum(:check_in_at)
         earliest&.to_date || @event.start_date.to_date
       when 'leads'
         # For leads, use earliest lead created_at
@@ -453,10 +465,10 @@ module V1
     def find_latest_date_for_metric(metric)
       case metric
       when 'scans'
-        latest = @event.tickets.checked_in.maximum(:check_in_at)
+        latest = include_multi_scans? ? scan_logs_for(paid_tickets).maximum(:scanned_at) : @event.tickets.checked_in.maximum(:check_in_at)
         latest&.to_date || @event.end_date.to_date
       when 'visitor_scans'
-        latest = @event.visitors.checked_in.maximum(:check_in_at)
+        latest = include_multi_scans? ? scan_logs_for(@event.visitors).maximum(:scanned_at) : @event.visitors.checked_in.maximum(:check_in_at)
         latest&.to_date || @event.end_date.to_date
       when 'leads'
         latest = EventLead.joins(:event_vendor)
@@ -519,7 +531,11 @@ module V1
       when 'tickets'
         eligible_tickets.time_series_count(:created_at, range: range, group_by: group_by)
       when 'scans'
-        paid_tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        if include_multi_scans?
+          scan_logs_for(paid_tickets).time_series_count(:scanned_at, range: range, group_by: group_by)
+        else
+          paid_tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        end
       when 'revenue'
         paid_tickets
           .joins(:ticket_type)
@@ -527,7 +543,11 @@ module V1
       when 'visitors'
         @event.visitors.time_series_count(:created_at, range: range, group_by: group_by)
       when 'visitor_scans'
-        @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        if include_multi_scans?
+          scan_logs_for(@event.visitors).time_series_count(:scanned_at, range: range, group_by: group_by)
+        else
+          @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        end
       when 'leads'
         EventLead.joins(:event_vendor)
                  .where(event_vendors: { event_id: @event.id })
@@ -632,11 +652,11 @@ module V1
       when 'tickets'
         eligible_tickets
       when 'scans'
-        paid_tickets.checked_in
+        include_multi_scans? ? scan_logs_for(paid_tickets) : paid_tickets.checked_in
       when 'visitors'
         @event.visitors
       when 'visitor_scans'
-        @event.visitors.checked_in
+        include_multi_scans? ? scan_logs_for(@event.visitors) : @event.visitors.checked_in
       when 'leads'
         EventLead.joins(:event_vendor).where(event_vendors: { event_id: @event.id })
       when 'redemptions'
@@ -647,7 +667,7 @@ module V1
     def timestamp_column_for_metric(metric)
       case metric
       when 'scans', 'visitor_scans'
-        :check_in_at
+        include_multi_scans? ? :scanned_at : :check_in_at
       when 'redemptions'
         :redemption_timestamp
       else

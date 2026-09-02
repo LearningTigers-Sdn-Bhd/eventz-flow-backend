@@ -1,7 +1,7 @@
 module V1
   class PlansController < ApplicationController
     before_action :set_event, only: [:index, :create]
-    before_action :set_plan, only: [:show, :update, :destroy, :auto_distribute, :export]
+    before_action :set_plan, only: [:show, :update, :destroy, :auto_distribute, :sync_table_numbers, :export]
     before_action :set_active_storage_host, only: [:show, :index]
 
     def index
@@ -81,6 +81,12 @@ module V1
 
     def auto_distribute
       service = AutoDistributeService.new(@plan)
+      result = service.call
+      render json: result
+    end
+
+    def sync_table_numbers
+      service = TableNumberSyncService.new(@plan, field_key: params[:field_key])
       result = service.call
       render json: result
     end

@@ -29,7 +29,9 @@ Rails.application.routes.draw do
         get :business_matching_events, on: :member
         get :business_matching_booking_status, on: :member
         # Public check-in endpoint - scoped to event
-        resource :check_in, only: %i[show create], controller: 'check_ins'
+        resource :check_in, only: %i[show create], controller: 'check_ins' do
+          post :reprint
+        end
         # Public check-in display settings
         resource :check_in_display, only: [:show], controller: 'check_in_displays'
       end
@@ -175,6 +177,7 @@ Rails.application.routes.draw do
           end
         end
         post :auto_distribute, on: :member
+        post :sync_table_numbers, on: :member
         get :export, on: :member
       end
       resources :tickets, only: %i[index show create update destroy] do

@@ -90,7 +90,7 @@ class PlanPdfGenerator
       pdf.fill_color "F3F4F6"
       pdf.fill_rectangle [0, pdf.cursor], pdf.bounds.width, 20
       pdf.fill_color "000000"
-      pdf.pad(5) { pdf.indent(10) { pdf.text "#{table.label || "Table"} (Cap: #{table.capacity})", style: :bold, size: 10 } }
+      pdf.pad(5) { pdf.indent(10) { pdf.text "#{table_display_name(table)} (Cap: #{table.capacity})", style: :bold, size: 10 } }
       
       # Sort assignments alphabetically by guest name
       assignments = table.table_assignments.sort_by { |asgn| (asgn.ticket&.attendee_name || asgn.visitor&.full_name || "").downcase }
@@ -158,7 +158,7 @@ class PlanPdfGenerator
         pdf.bounding_box([x_pos, initial_y], width: column_width) do
           # Table Header
           pdf.fill_color "000000"
-          pdf.text table.label || "Table", style: :bold, size: 12
+          pdf.text table_display_name(table), style: :bold, size: 12
           pdf.stroke_color "DDDDDD"
           pdf.stroke_horizontal_rule
           pdf.move_down 8
@@ -183,6 +183,18 @@ class PlanPdfGenerator
 
   private
 
+  # Table number is the operational identifier; label (e.g. sponsor name) is
+  # shown alongside it when both are set, mirroring the canvas display.
+  def table_display_name(table)
+    if table.table_number.present? && table.label.present?
+      "#{table.table_number} — #{table.label}"
+    elsif table.table_number.present?
+      "Table #{table.table_number}"
+    else
+      table.label.presence || "Table"
+    end
+  end
+
   def day_suffix(time)
     case time.day
     when 1, 21, 31 then "st"
@@ -206,7 +218,8 @@ class PlanPdfGenerator
       end
       pdf.fill_color "000000"
       pdf.bounding_box([draw_x, draw_y], width: w, height: h) do
-        pdf.text_box obj.label || "", at: [0, h], width: w, height: h, align: :center, valign: :center, size: [8, w/4].min
+        text = [obj.table_number.presence, obj.label.presence].compact.join("\n")
+        pdf.text_box text, at: [0, h], width: w, height: h, align: :center, valign: :center, size: [8, w/4].min
       end
     when 'floor'
       pdf.fill_color "FAFAFA"; pdf.stroke_color "E5E7EB"; pdf.fill_and_stroke_rectangle [draw_x, draw_y], w, h; pdf.fill_color "000000"
