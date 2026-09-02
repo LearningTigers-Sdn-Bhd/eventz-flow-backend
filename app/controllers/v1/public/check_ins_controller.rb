@@ -33,6 +33,66 @@ module V1
         error_response(message: e.message, status: :bad_request)
       end
 
+      # POST /v1/public/events/:event_slug/check_in/reprint
+      # Re-fires the scanned webhook for an attendee who is already checked
+      # in (wrong name / broken ticket needs a fresh badge), by literally
+      # flipping checked_in false then true again — the exact same
+      # determine_event_type/build_webhook_payload path a real scan takes,
+      # so the payload is identical to a normal scan, not a bespoke one.
+      # The unscan half is silenced (skip_webhooks) so only the final
+      # 'ticket.scanned'/'visitor.scanned' webhook fires, not an extra
+      # 'ticket.updated' for the intermediate flip. Doesn't go through
+      # ScanGate.record! — that's for gating the *first* check-in attempt,
+      # and would just record this as :blocked. Logged as its own ScanLog
+      # source so it's distinguishable from an ordinary multi-scan rescan
+      # in the scan history.
+      def reprint
+        @value = params[:value].to_s.strip
+        raise ArgumentError, 'Value is required' if @value.blank?
+
+        attendee = find_attendee_by_public_id
+        status = ScanGate.call(attendee)
+        if status == :unpaid
+          return error_response(
+            message: 'Ticket payment is still pending. Cannot check in until payment is confirmed.',
+            status: :unprocessable_content
+          )
+        end
+
+        Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
+
+        # Two separate saves on purpose (not wrapped in a transaction): each
+        # save! commits and fires its after_commit synchronously before the
+        # next line runs, so toggling skip_webhooks in between actually
+        # lands before the first save's callback reads it.
+        attendee.skip_webhooks = true
+        attendee.assign_attributes(checked_in: false)
+        attendee.save!(validate: false)
+
+        attendee.skip_webhooks = false
+        attendee.assign_attributes(checked_in: true, check_in_at: Time.current, scanned_by_id: current_user&.id)
+        attendee.save!(validate: false)
+
+        ScanLog.create!(
+          event: @event,
+          scannable: attendee,
+          event_location: scan_location_for(attendee.event),
+          scanned_by_id: current_user&.id,
+          scanned_at: Time.current,
+          source: :reprint
+        )
+
+        success_response(data: {
+          action: 'checked_in',
+          message: 'Reprint requested.',
+          attendee: format_attendee(attendee.reload)
+        })
+      rescue ArgumentError => e
+        error_response(message: e.message, status: :bad_request)
+      ensure
+        Thread.current[:check_in_url] = nil
+      end
+
       private
 
       def find_event!
@@ -83,6 +143,11 @@ module V1
       def perform_check_in(attendee)
         Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
 
+        # Read before ScanGate.record! mutates it — record! only flips
+        # checked_in on the very first scan, so if it's already true here,
+        # this call is a multi-scan-allowed rescan, not a first entry.
+        already_checked_in = attendee.checked_in
+
         status, log = ScanGate.record!(
           attendee,
           by: current_user,
@@ -106,7 +171,8 @@ module V1
             message: 'Already checked in',
             errors: {
               check_in_at: log.scanned_at&.iso8601,
-              blocked_by: scan_blocked_payload(log)[:blocked_by]
+              blocked_by: scan_blocked_payload(log)[:blocked_by],
+              attendee: format_attendee(attendee.reload)
             },
             status: :unprocessable_content
           )
@@ -115,6 +181,7 @@ module V1
         success_response(data: {
           action: 'checked_in',
           message: 'Successfully checked in.',
+          rescanned: already_checked_in,
           attendee: format_attendee(attendee.reload)
         })
       ensure

@@ -29,7 +29,9 @@ Rails.application.routes.draw do
         get :business_matching_events, on: :member
         get :business_matching_booking_status, on: :member
         # Public check-in endpoint - scoped to event
-        resource :check_in, only: %i[show create], controller: 'check_ins'
+        resource :check_in, only: %i[show create], controller: 'check_ins' do
+          post :reprint
+        end
         # Public check-in display settings
         resource :check_in_display, only: [:show], controller: 'check_in_displays'
       end
