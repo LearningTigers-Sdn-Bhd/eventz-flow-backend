@@ -177,6 +177,7 @@ Rails.application.routes.draw do
           end
         end
         post :auto_distribute, on: :member
+        post :sync_table_numbers, on: :member
         get :export, on: :member
       end
       resources :tickets, only: %i[index show create update destroy] do
