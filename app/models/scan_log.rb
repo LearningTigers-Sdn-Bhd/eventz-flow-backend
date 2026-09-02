@@ -1,4 +1,6 @@
 class ScanLog < ApplicationRecord
+  include TimeSeriesAnalytics
+
   belongs_to :event
   belongs_to :scannable, polymorphic: true
   belongs_to :event_location, optional: true
