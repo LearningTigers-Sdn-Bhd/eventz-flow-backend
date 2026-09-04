@@ -3,10 +3,7 @@ module V1
     before_action :set_event_and_authorize
 
     def index
-      scope = apply_filters(
-        policy_scope(ScanLog).where(event_id: @event.id)
-      ).includes(:event_location, :scanned_by, :scannable)
-       .order(scanned_at: :desc)
+      scope = filtered_scope
 
       @pagy, logs = pagy(scope, limit: pagination_params[:per_page])
 
@@ -16,11 +13,52 @@ module V1
       )
     end
 
+    # GET /v1/events/:event_id/scan_logs/export?format=xlsx|csv|pdf
+    # Downloads the event's scan logs, honouring the same filters as #index.
+    def export
+      authorize ScanLog, :export?
+
+      logs = filtered_scope.to_a
+      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
+
+      case params[:format]
+      when 'csv'
+        send_data(
+          ScanLogCsvService.export(logs),
+          filename: "scan-logs-#{@event.id}-#{timestamp}.csv",
+          type: 'text/csv',
+          disposition: 'attachment'
+        )
+      when 'pdf'
+        send_data(
+          ScanLogPdfGenerator.new(@event, logs).generate,
+          filename: "scan-logs-#{@event.id}-#{timestamp}.pdf",
+          type: 'application/pdf',
+          disposition: 'attachment'
+        )
+      else
+        result = ScanLogExcelService.export(@event, logs)
+        send_file(
+          result[:file_path],
+          filename: File.basename(result[:file_path]),
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          disposition: 'attachment'
+        )
+      end
+    end
+
     private
 
     def set_event_and_authorize
       @event = Event.find(params[:event_id])
       authorize @event, :show?
+    end
+
+    def filtered_scope
+      apply_filters(
+        policy_scope(ScanLog).where(event_id: @event.id)
+      ).includes(:event_location, :scanned_by, :scannable)
+       .order(scanned_at: :desc)
     end
 
     def apply_filters(scope)
