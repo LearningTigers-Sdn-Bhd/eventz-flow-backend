@@ -32,6 +32,11 @@ class EventEmailSetting < ApplicationRecord
       group: 'ticket',
       mailers: [%w[TicketMailer voucher_showcase_email]]
     },
+    'business_matching_invite' => {
+      label: 'Business Matching Invite',
+      group: 'general',
+      mailers: [%w[TicketMailer business_matching_email]]
+    },
     'certificate' => {
       label: 'E-Certificate',
       group: 'ticket',
@@ -93,6 +98,13 @@ class EventEmailSetting < ApplicationRecord
     return true unless category
 
     disabled_categories.exclude?(category)
+  end
+
+  # Ticket-type opt-in for the business_matching_invite category — the
+  # category toggle alone gates whether the mailer fires at all, this
+  # narrows it further to only the ticket types the organizer picked.
+  def business_matching_enabled_for_ticket_type?(ticket_type_id)
+    Array(business_matching_ticket_type_ids).map(&:to_i).include?(ticket_type_id.to_i)
   end
 
   private

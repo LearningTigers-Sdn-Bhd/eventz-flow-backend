@@ -12,7 +12,8 @@ class EmailDelivery::ArgsRebuilder
   def call
     case [@delivery.mailer_name, @delivery.mailer_action]
     when ['TicketMailer', 'confirmation_email'], ['TicketMailer', 'payment_pending_email'],
-         ['TicketMailer', 'group_confirmation_email'], ['TicketMailer', 'voucher_showcase_email']
+         ['TicketMailer', 'group_confirmation_email'], ['TicketMailer', 'voucher_showcase_email'],
+         ['TicketMailer', 'business_matching_email']
       [@delivery.related].compact if @delivery.related.is_a?(Ticket)
     when ['ExhibitorRegistrationMailer', 'registration_received_email'],
          ['ExhibitorRegistrationMailer', 'payment_confirmed_email']

@@ -41,10 +41,10 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(mail.html_part.body.decoded).to include('/event/test-event/voucher-showcase')
     end
 
-    it 'explains redemption requires scanning both the voucher QR and the ticket QR at the booth' do
+    it 'explains redemption requires scanning both the voucher QR and the registration QR at the booth' do
       body = mail.html_part.body.decoded
       expect(body).to include("scan the voucher's QR code")
-      expect(body).to include('your ticket QR code')
+      expect(body).to include('your registration QR code')
     end
   end
 end
