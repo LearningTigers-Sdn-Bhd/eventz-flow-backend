@@ -18,6 +18,8 @@ class EmailDelivery::AuditedDelivery
 
     delivery = instance.build_record
     EmailDeliveryJob.perform_later(delivery.id, mailer_name, mailer_action, args)
+    EmailDelivery::VoucherFollowUp.enqueue_after(mailer_name, mailer_action, args)
+    EmailDelivery::BusinessMatchingFollowUp.enqueue_after(mailer_name, mailer_action, args)
     delivery
   end
 
