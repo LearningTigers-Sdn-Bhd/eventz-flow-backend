@@ -7,6 +7,10 @@ class ScanLogPolicy < ApplicationPolicy
     index?
   end
 
+  def export?
+    index?
+  end
+
   class Scope < Scope
     def resolve
       scope.where(event: Pundit.policy_scope(user, Event))
