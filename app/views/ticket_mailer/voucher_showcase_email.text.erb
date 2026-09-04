@@ -1,0 +1,24 @@
+A Little Something For You 🎁
+
+Dear <%= @ticket.attendee_name %>,
+
+Thank you again for joining us at <%= @event.title %> — we're so glad to have you! To make your visit even more rewarding, our exhibitors have put together <%= pluralize(@voucher_count, 'exclusive voucher') %> just for attendees like you.
+
+<% if @vouchers.any? %>
+Featured Vouchers:
+<% @vouchers.each do |voucher| %>
+- <%= voucher.title %> (<%= voucher.vendor&.full_name %>)
+<% end %>
+<% end %>
+
+View all vouchers here: <%= @showcase_url %>
+
+How to redeem: Head to the booth, and their team will scan the voucher's QR code followed by your ticket QR code to apply it — no extra code needed from you.
+
+We hope these deals add a little extra joy to your time with us. Enjoy the event, and happy shopping!
+
+Warm regards,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

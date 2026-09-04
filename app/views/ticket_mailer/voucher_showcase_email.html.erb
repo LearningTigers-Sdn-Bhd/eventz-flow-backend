@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; padding: 40px 30px; text-align: center; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.85; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 16px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 24px; line-height: 1.7; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #2563eb; margin-bottom: 12px; }
+    .voucher-grid { margin-bottom: 24px; }
+    .voucher-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; }
+    .voucher-card .voucher-body { padding: 14px 16px; }
+    .voucher-card .voucher-vendor { font-size: 13px; color: #94a3b8; margin: 0 0 2px; }
+    .voucher-card .voucher-title { font-size: 15px; font-weight: bold; color: #1e293b; margin: 0; }
+    .cta-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
+    .cta-section p { margin: 0 0 16px; font-size: 14px; color: #666; }
+    .cta-button { display: inline-block; background: linear-gradient(135deg, #1e40af, #2563eb); color: white !important; text-decoration: none; font-weight: bold; font-size: 15px; padding: 14px 32px; border-radius: 8px; }
+    .redeem-note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #92400e; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; margin-bottom: 8px; }
+    .signature { font-size: 15px; color: #333; font-weight: bold; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>A Little Something For You 🎁</h1>
+        <p>Exclusive exhibitor deals at <%= @event.title %></p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Dear <strong><%= @ticket.attendee_name %></strong>,</p>
+
+        <p class="message">
+          Thank you again for joining us at <strong><%= @event.title %></strong> — we're so glad to have you! To make your visit even more rewarding, our exhibitors have put together
+          <strong><%= pluralize(@voucher_count, 'exclusive voucher') %></strong> just for attendees like you. Take a look below and treat yourself while you're there.
+        </p>
+
+        <% if @vouchers.any? %>
+          <div class="section-title">Featured Vouchers</div>
+          <div class="voucher-grid">
+            <% @vouchers.each do |voucher| %>
+              <div class="voucher-card">
+                <div class="voucher-body">
+                  <p class="voucher-vendor"><%= voucher.vendor&.full_name %></p>
+                  <p class="voucher-title"><%= voucher.title %></p>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+
+        <div class="cta-section">
+          <p>Browse every deal available at the event</p>
+          <a href="<%= @showcase_url %>" class="cta-button">View All Vouchers</a>
+        </div>
+
+        <div class="redeem-note">
+          💡 <strong>How to redeem:</strong> Head to the booth, and their team will scan the voucher's QR code followed by your ticket QR code to apply it — no extra code needed from you.
+        </div>
+
+        <p class="closing">
+          We hope these deals add a little extra joy to your time with us. Enjoy the event, and happy shopping!
+        </p>
+
+        <p class="closing">Warm regards,</p>
+        <p class="signature"><%= @sender_name %></p>
+      </div>
+
+      <div class="footer">
+        <p>This is an automated email from EventzFlow. Please do not reply to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

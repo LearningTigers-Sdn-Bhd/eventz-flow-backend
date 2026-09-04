@@ -27,6 +27,11 @@ class EventEmailSetting < ApplicationRecord
       group: 'ticket',
       mailers: [%w[EventReminderMailer pending_payment_reminder], %w[EventReminderMailer group_pending_payment_reminder]]
     },
+    'voucher_showcase' => {
+      label: 'Voucher Showcase Follow-up',
+      group: 'ticket',
+      mailers: [%w[TicketMailer voucher_showcase_email]]
+    },
     'certificate' => {
       label: 'E-Certificate',
       group: 'ticket',

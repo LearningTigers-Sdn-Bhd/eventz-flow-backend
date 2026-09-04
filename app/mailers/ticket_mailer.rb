@@ -68,7 +68,31 @@ class TicketMailer < ApplicationMailer
     )
   end
 
+  # Follow-up sent right after confirmation_email/group_confirmation_email
+  # (see EmailDelivery::VoucherFollowUp) — points attendees at the event's
+  # voucher showcase page. One action regardless of single/group ticket
+  # since the content (event vouchers) doesn't differ.
+  def voucher_showcase_email(ticket)
+    @ticket = ticket
+    @event = ticket.event
+    @vouchers = @event.vouchers.active.includes(:vendor).order(created_at: :desc).limit(6)
+    @voucher_count = @event.vouchers.active.count
+    @showcase_url = voucher_showcase_url(@event)
+    set_email_config
+
+    mail(
+      to: ticket.attendee_email,
+      from: sender_from,
+      subject: "🎁 Exclusive deals are waiting for you at #{@event.title}"
+    )
+  end
+
   private
+
+  def voucher_showcase_url(event)
+    base_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
+    "#{base_url}/event/#{event.slug.presence || event.id}/voucher-showcase"
+  end
 
   def email_setting
     @event.event_email_setting
