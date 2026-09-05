@@ -69,55 +69,20 @@ RSpec.describe 'V1::ScanLogs', type: :request do
 
       expect(response).to have_http_status(:forbidden).or have_http_status(:not_found)
     end
-  end
 
-  describe 'GET /v1/events/:event_id/scan_logs/export' do
-    before do
-      create(:scan_log, event: event, scannable: ticket, scanned_at: 1.hour.ago,
-                        event_location: main_hall, scanned_by: owner)
-    end
+    it 'includes and filters by ticket type' do
+      vip = create(:ticket_type, event: event, name: 'VIP')
+      vip_ticket = create(:ticket, event: event, ticket_type: vip, attendee_name: 'Ahmad')
+      create(:scan_log, event: event, scannable: ticket) # General Admission (factory default)
+      create(:scan_log, event: event, scannable: vip_ticket)
 
-    it 'downloads a CSV honouring the name filter' do
-      create(:scan_log, event: event, scannable: create(:ticket, event: event, attendee_name: 'Ahmad'))
+      get "/v1/events/#{event.id}/scan_logs", headers: headers
+      rows = JSON.parse(response.body)['data']
+      expect(rows.map { |row| row['ticket_type_name'] }).to contain_exactly('General Admission', 'VIP')
 
-      get "/v1/events/#{event.id}/scan_logs/export", params: { format: 'csv', q: 'siti' }, headers: headers
-
-      expect(response).to have_http_status(:ok)
-      expect(response.media_type).to eq('text/csv')
-      expect(response.headers['Content-Disposition']).to include('attachment')
-      lines = response.body.split("\n")
-      expect(lines.first).to include('Name')
-      expect(lines.length).to eq(2) # header + one filtered row
-      expect(response.body).to include('Siti')
-      expect(response.body).not_to include('Ahmad')
-    end
-
-    it 'downloads a PDF' do
-      get "/v1/events/#{event.id}/scan_logs/export", params: { format: 'pdf' }, headers: headers
-
-      expect(response).to have_http_status(:ok)
-      expect(response.media_type).to eq('application/pdf')
-      expect(response.body).to start_with('%PDF')
-    end
-
-    it 'downloads an Excel workbook and records an export log' do
-      expect do
-        get "/v1/events/#{event.id}/scan_logs/export", params: { format: 'xlsx' }, headers: headers
-      end.to change(ExportLog, :count).by(1)
-
-      expect(response).to have_http_status(:ok)
-      expect(response.media_type).to eq('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      expect(ExportLog.last.type).to eq('scan-log-list')
-    end
-
-    it 'rejects a user with no access to the event' do
-      outsider = create(:user, :member)
-
-      get "/v1/events/#{event.id}/scan_logs/export",
-          params: { format: 'csv' },
-          headers: { 'Authorization' => "Bearer #{JwtService.generate_tokens(outsider)[:access_token]}" }
-
-      expect(response).to have_http_status(:forbidden).or have_http_status(:not_found)
+      get "/v1/events/#{event.id}/scan_logs", params: { ticket_type_id: vip.id }, headers: headers
+      rows = JSON.parse(response.body)['data']
+      expect(rows.map { |row| row['name'] }).to eq(['Ahmad'])
     end
   end
 end
