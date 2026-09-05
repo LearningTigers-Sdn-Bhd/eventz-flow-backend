@@ -69,7 +69,8 @@ module V1
         result = TicketExcelService.export(
           params[:event_id],
           from: params[:from].present? ? Date.parse(params[:from]) : nil,
-          to: params[:to].present? ? Date.parse(params[:to]) : nil
+          to: params[:to].present? ? Date.parse(params[:to]) : nil,
+          ticket_type_id: params[:ticket_type_id].presence
         )
 
         success_response(

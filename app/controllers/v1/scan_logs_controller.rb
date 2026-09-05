@@ -13,40 +13,6 @@ module V1
       )
     end
 
-    # GET /v1/events/:event_id/scan_logs/export?format=xlsx|csv|pdf
-    # Downloads the event's scan logs, honouring the same filters as #index.
-    def export
-      authorize ScanLog, :export?
-
-      logs = filtered_scope.to_a
-      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-
-      case params[:format]
-      when 'csv'
-        send_data(
-          ScanLogCsvService.export(logs),
-          filename: "scan-logs-#{@event.id}-#{timestamp}.csv",
-          type: 'text/csv',
-          disposition: 'attachment'
-        )
-      when 'pdf'
-        send_data(
-          ScanLogPdfGenerator.new(@event, logs).generate,
-          filename: "scan-logs-#{@event.id}-#{timestamp}.pdf",
-          type: 'application/pdf',
-          disposition: 'attachment'
-        )
-      else
-        result = ScanLogExcelService.export(@event, logs)
-        send_file(
-          result[:file_path],
-          filename: File.basename(result[:file_path]),
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          disposition: 'attachment'
-        )
-      end
-    end
-
     private
 
     def set_event_and_authorize
@@ -57,7 +23,7 @@ module V1
     def filtered_scope
       apply_filters(
         policy_scope(ScanLog).where(event_id: @event.id)
-      ).includes(:event_location, :scanned_by, :scannable)
+      ).includes(:event_location, :scanned_by, scannable: :ticket_type)
        .order(scanned_at: :desc)
     end
 
@@ -68,7 +34,15 @@ module V1
       scope = scope.where(source: params[:source]) if params[:source].present?
       scope = scope.on_date(Date.parse(params[:date])) if params[:date].present?
       scope = filter_by_name(scope, params[:q]) if params[:q].present?
+      scope = filter_by_ticket_type(scope, params[:ticket_type_id]) if params[:ticket_type_id].present?
       scope
+    end
+
+    # Ticket type only exists on Ticket scans - Visitor walk-ins have none, so
+    # filtering by it implicitly excludes Visitor rows.
+    def filter_by_ticket_type(scope, ticket_type_id)
+      ticket_ids = Ticket.where(event_id: @event.id, ticket_type_id: ticket_type_id).select(:id)
+      scope.where(scannable_type: 'Ticket', scannable_id: ticket_ids)
     end
 
     def filter_by_name(scope, query)
@@ -96,6 +70,7 @@ module V1
         name: scannable.is_a?(Ticket) ? scannable.attendee_name : scannable&.full_name,
         email: scannable.is_a?(Ticket) ? scannable.attendee_email : scannable&.email,
         phone: scannable.is_a?(Ticket) ? scannable.attendee_phone : scannable&.phone,
+        ticket_type_name: scannable.is_a?(Ticket) ? scannable.ticket_type&.name : nil,
         location_name: log.event_location&.name,
         scanned_by_name: log.scanned_by&.full_name
       }

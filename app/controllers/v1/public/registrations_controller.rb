@@ -451,13 +451,13 @@ module V1
               sibling.waiting_list = ticket.waiting_list
               sibling.status = ticket.status
               sibling.payment_status = ticket.payment_status
-              # Booking-source marker (e.g. "reserved_by": "EventzFlow Online")
-              # applies to the whole submission, not just the primary attendee
-              # — copy it so the panel's "Reserved By" column isn't blank for
-              # siblings. Don't copy the rest of custom_fields_data: fields like
-              # ic_passport_no/membership_no carry a per-event unique index
-              # (schema.rb) and duplicating them onto siblings would collide.
-              sibling.custom_fields_data = (ticket.custom_fields_data || {}).slice('reserved_by')
+              # Family/group siblings (e.g. SIE visitor pax) share the head's
+              # company/address/nationality/etc — copy the whole submission
+              # onto each one. Exclude UNIQUE_CUSTOM_FIELD_KEYS only: fields
+              # like ic_passport_no/membership_no carry a per-event unique
+              # index (schema.rb) and duplicating them onto siblings would
+              # collide.
+              sibling.custom_fields_data = (ticket.custom_fields_data || {}).except(*Ticket::UNIQUE_CUSTOM_FIELD_KEYS)
               apply_indemnity!(sibling)
               apply_terms_agreement!(sibling, form: form)
 

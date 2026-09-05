@@ -1,119 +1,317 @@
 require 'caxlsx'
 require 'roo'
 
+# Exports an event's tickets as an Excel workbook.
+#
+# Sheet 1 ("Tickets") is the reimportable source of truth: same column order
+# TicketExcelService.import has always expected (Attendee Name .. Review
+# Status, then labels) - only cell *styling* changed, never structure, so a
+# round-trip export -> edit -> import keeps working unchanged. Every sheet
+# after it (Entry Timeline, per ticket-type detail tabs, Summary) is a
+# report-only view built for humans, never read back by #import.
 class TicketExcelService
+  BRAND_NAVY = 'FF1F2A44'
+  BRAND_BLUE = 'FF2766EC'
+  LIGHT_GRAY = 'FFF3F4F6'
+  BORDER_GRAY = 'FFD1D5DB'
+  TEXT_DARK = 'FF111827'
+  TEXT_MUTED = 'FF6B7280'
+  WHITE = 'FFFFFFFF'
+
+  FLAT_HEADERS = [
+    'Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title',
+    'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status',
+    'Checked In', 'Created At', 'Review Status'
+  ].freeze
+
+  DETAIL_HEADERS = [
+    'Attendee Name', 'Attendee Email', 'Attendee Phone', 'Role', 'Public ID',
+    'Payment Status', 'Checked In', 'Check-in At', 'Check-in Location',
+    'Checked In By', 'Created At', 'Review Status'
+  ].freeze
+
   # Export tickets to Excel file
   # @param event_id [Integer] The event ID to export tickets for
+  # @param ticket_type_id [Integer, nil] restrict to one ticket type; nil exports all types
   # @return [Hash] { file_path: String, export_log: ExportLog }
-  def self.export(event_id, from: nil, to: nil)
-    event = Event.find(event_id)
-    tickets = event.tickets.includes(:ticket_type, :event, :ticket_application)
-    tickets = tickets.where('created_at >= ?', from.beginning_of_day) if from.present?
-    tickets = tickets.where('created_at <= ?', to.end_of_day) if to.present?
+  def self.export(event_id, from: nil, to: nil, ticket_type_id: nil)
+    new(event_id, from: from, to: to, ticket_type_id: ticket_type_id).export
+  end
 
-    # Create exports directory if it doesn't exist
+  def initialize(event_id, from:, to:, ticket_type_id:)
+    @event = Event.find(event_id)
+    @from = from
+    @to = to
+    @ticket_type_id = ticket_type_id
+  end
+
+  def export
+    tickets = scoped_tickets.to_a
+    label_keys, label_display = label_schema(tickets)
+
+    package = Axlsx::Package.new(author: 'EventzFlow')
+    define_styles(package)
+
+    build_flat_sheet(package, tickets, label_keys, label_display)
+    # Rescans only exist for events that allow them - showing the timeline
+    # otherwise would just repeat the single check-in already on each ticket row.
+    build_scan_history_sheet(package, tickets) if @event.multiple_scans?
+    build_detail_sheets(package, tickets)
+    build_summary_sheet(package, tickets)
+
+    # Tickets must stay physical sheet 0 (#import blindly reads sheet(0)), but
+    # Summary is what a human should see first - so open the file on it via
+    # the workbook's "active tab" rather than reordering sheets.
+    summary_index = package.workbook.worksheets.index { |ws| ws.name == 'Summary' }
+    package.workbook.views << Axlsx::WorkbookView.new(active_tab: summary_index)
+
     exports_dir = Rails.root.join('storage', 'exports')
     FileUtils.mkdir_p(exports_dir)
-
-    # Generate filename with timestamp
     timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-    filename = "tickets-#{event_id}-#{timestamp}.xlsx"
-    file_path = exports_dir.join(filename)
+    file_path = exports_dir.join("tickets-#{@event.id}-#{timestamp}.xlsx")
+    package.serialize(file_path.to_s)
 
-    # Get label keys from event.labels_data (these will become columns)
-    # Prefer sequential "Label N" keys when present
-    label_keys = self.preferred_label_keys(event.labels_data)
+    export_log = ExportLog.create!(event_id: @event.id, type: 'ticket-list', sheet_path: file_path.to_s)
 
-    # Also collect any extra custom field keys injected directly into tickets
-    # (e.g. from registration forms) that are not in event.labels_data
+    { file_path: file_path.to_s, export_log: export_log }
+  end
+
+  private
+
+  def scoped_tickets
+    tickets = @event.tickets.includes(:ticket_type, :event, :ticket_application, :scanned_by)
+    tickets = tickets.where('created_at >= ?', @from.beginning_of_day) if @from.present?
+    tickets = tickets.where('created_at <= ?', @to.end_of_day) if @to.present?
+    tickets = tickets.where(ticket_type_id: @ticket_type_id) if @ticket_type_id.present?
+    tickets
+  end
+
+  # Label keys from event.labels_data (preferring sequential "Label N" keys),
+  # plus any extra custom field keys injected directly into tickets that
+  # aren't part of that schema (e.g. from registration forms).
+  def label_schema(tickets)
+    label_keys = self.class.preferred_label_keys(@event.labels_data)
     extra_keys = tickets.flat_map { |t| (t.custom_fields_data || {}).keys }
                         .uniq
                         .reject { |k| label_keys.include?(k) }
+    all_keys = label_keys + extra_keys
 
-    all_label_keys = label_keys + extra_keys
-
-    # Build a display name map: keys from labels_data use their configured name,
-    # injected keys are prettified (ic_no -> "Ic No", t_shirt_size -> "T Shirt Size")
-    label_display = (event.labels_data || {}).dup
+    label_display = (@event.labels_data || {}).dup
     extra_keys.each do |key|
       label_display[key] = key.to_s.gsub('_', ' ').gsub(/\b\w/) { |c| c.upcase }
     end
 
-    # Create Excel workbook
-    package = Axlsx::Package.new
-    workbook = package.workbook
+    [all_keys, label_display]
+  end
 
-    workbook.add_worksheet(name: "Tickets") do |sheet|
-      # Build header row: fixed columns + dynamic label columns
-      header_row = [
-        'Attendee Name',
-        'Attendee Email',
-        'Attendee Phone',
-        'Event Title',
-        'Ticket Type',
-        'Role',
-        'Public ID',
-        'QR Code',
-        'Payment Status',
-        'Checked In',
-        'Created At',
-        'Review Status'
-      ]
-      # Add label columns (using display names)
-      all_label_keys.each do |key|
-        header_row << label_display[key]
-      end
-      sheet.add_row header_row
+  def define_styles(package)
+    s = package.workbook.styles
+    @styles = {
+      title: s.add_style(sz: 16, b: true, fg_color: WHITE, bg_color: BRAND_NAVY,
+                          alignment: { vertical: :center, horizontal: :left, indent: 1 }),
+      subtitle: s.add_style(sz: 10, i: true, fg_color: TEXT_MUTED),
+      section_header: s.add_style(sz: 12, b: true, fg_color: BRAND_NAVY,
+                                   border: { style: :medium, color: BRAND_NAVY, edges: [:bottom] }),
+      stat_label: s.add_style(sz: 9, fg_color: TEXT_MUTED, b: true,
+                               bg_color: LIGHT_GRAY, border: cell_border),
+      stat_value: s.add_style(sz: 13, b: true, fg_color: TEXT_DARK, border: cell_border),
+      table_header: s.add_style(sz: 10, b: true, fg_color: WHITE, bg_color: BRAND_BLUE,
+                                 alignment: { vertical: :center, horizontal: :center, wrap_text: true },
+                                 border: cell_border),
+      cell: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border),
+      cell_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border),
+      text: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border, format_code: '@'),
+      text_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border,
+                             format_code: '@'),
+      date_cell: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border, format_code: 'yyyy-mm-dd hh:mm'),
+      date_cell_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border,
+                                  format_code: 'yyyy-mm-dd hh:mm')
+    }
+  end
 
-      # Add data rows
-      tickets.each do |ticket|
+  def cell_border
+    { style: :thin, color: BORDER_GRAY, edges: %i[top bottom left right] }
+  end
+
+  def merge_row_across(sheet, column_count)
+    row = sheet.rows.last
+    sheet.merge_cells(row.cells[0..(column_count - 1)])
+  end
+
+  # Unique, Excel-legal (<=31 chars, no : \ / ? * [ ]) sheet name.
+  def safe_sheet_name(name, used_names)
+    base = name.to_s.strip.presence || 'Ticket Type'
+    base = base.gsub(/[:\\\/\?\*\[\]]/, '-')[0, 31]
+
+    candidate = base
+    suffix = 2
+    while used_names.include?(candidate)
+      candidate = "#{base[0, 31 - suffix.to_s.length - 1]}-#{suffix}"
+      suffix += 1
+    end
+    used_names << candidate
+    candidate
+  end
+
+  # --- Sheet 1: Tickets (flat, reimportable - structure never changes) ---
+
+  def build_flat_sheet(package, tickets, label_keys, label_display)
+    package.workbook.add_worksheet(name: 'Tickets') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      headers = FLAT_HEADERS + label_keys.map { |key| label_display[key] }
+      sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
+      sheet.column_widths(*([26, 30, 18, 22, 16, 12, 22, 10, 16, 12, 20, 16] + Array.new(label_keys.size, 20)))
+
+      tickets.each_with_index do |ticket, index|
+        style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+        text_style = index.even? ? @styles[:text] : @styles[:text_alt]
+        date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+
         row_data = [
-          ticket.attendee_name,
-          ticket.attendee_email,
-          ticket.attendee_phone,
-          event.title,
-          ticket.ticket_type&.name,
-          ticket.role,
-          ticket.public_id,
-          '', # QR Code column - will be filled with formula below
-          ticket.payment_status,
-          ticket.checked_in,
+          ticket.attendee_name, ticket.attendee_email, ticket.attendee_phone, @event.title,
+          ticket.ticket_type&.name, ticket.role, ticket.public_id, '',
+          ticket.payment_status, ticket.checked_in,
           ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S'),
           ticket.ticket_application&.review_status&.titleize || ''
         ]
+        label_keys.each { |key| row_data << ((ticket.custom_fields_data || {})[key] || '') }
 
-        # Add values from ticket.custom_fields_data for each label key
-        all_label_keys.each do |key|
-          row_data << ((ticket.custom_fields_data || {})[key] || '')
+        row_styles = [style, style, text_style, style, style, style, text_style, style,
+                      style, style, date_style, style] + Array.new(label_keys.size, style)
+        sheet.add_row(row_data, style: row_styles)
+
+        row_number = index + 2
+        sheet.rows[index + 1].cells[7].value =
+          "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(G#{row_number}))"
+      end
+
+      sheet.sheet_view.pane do |pane|
+        pane.top_left_cell = 'A2'
+        pane.state = :frozen
+        pane.y_split = 1
+      end
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+    end
+  end
+
+  # --- Per ticket-type detail tabs (report-only: check-in data, never reimported) ---
+
+  def build_detail_sheets(package, tickets)
+    used_names = ['Tickets']
+    tickets.group_by { |t| t.ticket_type&.name || 'Unassigned' }.each do |type_name, type_tickets|
+      package.workbook.add_worksheet(name: safe_sheet_name(type_name, used_names)) do |sheet|
+        sheet.sheet_pr.tab_color = BRAND_BLUE
+        sheet.add_row DETAIL_HEADERS, style: Array.new(DETAIL_HEADERS.size, @styles[:table_header]), height: 18
+        sheet.column_widths 26, 30, 18, 14, 22, 16, 12, 20, 22, 22, 20, 16
+
+        type_tickets.each_with_index do |ticket, index|
+          style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+          text_style = index.even? ? @styles[:text] : @styles[:text_alt]
+          date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+
+          sheet.add_row(
+            [
+              ticket.attendee_name, ticket.attendee_email, ticket.attendee_phone, ticket.role,
+              ticket.public_id, ticket.payment_status.to_s.titleize, ticket.checked_in ? 'Yes' : 'No',
+              ticket.check_in_at, check_in_location_for(ticket), ticket.scanned_by&.full_name,
+              ticket.created_at, ticket.ticket_application&.review_status&.titleize || ''
+            ],
+            style: [style, style, text_style, style, text_style, style, style,
+                    date_style, style, style, date_style, style]
+          )
         end
 
-        sheet.add_row row_data
-      end
-
-      # Add QR code formula for each ticket row (starting from row 2)
-      tickets.each_with_index do |ticket, index|
-        row_number = index + 2 # +2 because Excel is 1-indexed and row 1 is headers
-        # Formula: =IMAGE("https://quickchart.io/qr?text=" & ENCODEURL(G2))
-        # G column is now the public_id column (7th column)
-        cell = sheet.rows[index + 1].cells[7] # 0-indexed, so index+1 for data rows, column 8 for QR
-        cell.value = "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(G#{row_number}))"
+        sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
+        sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
       end
     end
+  end
 
-    # Save the file
-    package.serialize(file_path.to_s)
+  def check_in_location_for(ticket)
+    first_scan_locations[ticket.id]
+  end
 
-    # Create export log
-    export_log = ExportLog.create!(
-      event_id: event_id,
-      type: 'ticket-list',
-      sheet_path: file_path.to_s
-    )
+  # First scan's location per ticket, computed once for the whole export.
+  def first_scan_locations
+    @first_scan_locations ||= ScanLog.where(scannable_type: 'Ticket', event_id: @event.id)
+                                      .includes(:event_location)
+                                      .order(:scanned_at)
+                                      .each_with_object({}) { |log, h| h[log.scannable_id] ||= log.event_location&.name }
+  end
 
-    {
-      file_path: file_path.to_s,
-      export_log: export_log
-    }
+  # --- Summary ---
+
+  def build_summary_sheet(package, tickets)
+    package.workbook.add_worksheet(name: 'Summary') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      sheet.sheet_view.tab_selected = true
+      sheet.column_widths 28, 22, 22, 22, 22, 22
+      sheet.merge_cells('A1:F1')
+      sheet.add_row [@event.title], style: @styles[:title], height: 28
+      sheet.add_row ["Ticket Report  •  Generated #{Time.current.strftime('%d %b %Y, %I:%M %p')}"],
+                    style: @styles[:subtitle]
+      sheet.add_row []
+
+      sheet.add_row ['Overview'], style: @styles[:section_header]
+      merge_row_across(sheet, 6)
+
+      checked_in_count = tickets.count(&:checked_in)
+      paid_count = tickets.count { |t| t.payment_status == 'paid' }
+
+      sheet.add_row ['Total Tickets', 'Checked In', 'Not Checked In', 'Paid', 'Pending/Other', 'Ticket Types'],
+                    style: Array.new(6, @styles[:stat_label])
+      sheet.add_row [
+        tickets.size, checked_in_count, tickets.size - checked_in_count, paid_count,
+        tickets.size - paid_count, tickets.map { |t| t.ticket_type&.name }.uniq.compact.size
+      ], style: Array.new(6, @styles[:stat_value]), height: 20
+
+      sheet.add_row []
+      sheet.add_row ['By Ticket Type'], style: @styles[:section_header]
+      merge_row_across(sheet, 6)
+      tickets.group_by { |t| t.ticket_type&.name || 'Unassigned' }.each do |type_name, type_tickets|
+        sheet.add_row [type_name, type_tickets.size, type_tickets.count(&:checked_in)],
+                      style: [@styles[:cell], @styles[:cell], @styles[:cell]]
+      end
+
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+      sheet.print_options.set(horizontal_centered: true)
+    end
+  end
+
+  # --- Entry Timeline (every scan event; only when include_rescans is true) ---
+
+  def build_scan_history_sheet(package, tickets)
+    ticket_ids = tickets.map(&:id)
+    headers = ['Attendee Name', 'Ticket Type', 'Scanned At', 'Source', 'Location', 'Scanned By']
+    source_labels = { 'staff_scan' => 'Staff scan', 'self_check_in' => 'Self check-in', 'kiosk' => 'Public Check-in Page' }
+
+    logs = ScanLog.where(scannable_type: 'Ticket', scannable_id: ticket_ids)
+                  .includes(:event_location, :scanned_by, scannable: :ticket_type)
+                  .order(:scanned_at)
+
+    package.workbook.add_worksheet(name: 'Entry Timeline') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
+      sheet.column_widths 26, 18, 20, 20, 22, 22
+
+      logs.each_with_index do |log, index|
+        style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+        date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+        ticket = log.scannable
+
+        sheet.add_row(
+          [
+            ticket&.attendee_name, ticket&.ticket_type&.name, log.scanned_at,
+            source_labels[log.source] || log.source.to_s.titleize,
+            log.event_location&.name, log.scanned_by&.full_name
+          ],
+          style: [style, style, date_style, style, style, style]
+        )
+      end
+
+      sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+    end
   end
 
   # Import tickets from Excel file
