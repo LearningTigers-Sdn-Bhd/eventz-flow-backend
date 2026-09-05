@@ -196,7 +196,7 @@ module V1
     def serialize_recent_scan(log)
       ticket = log.scannable
       {
-        id: ticket&.public_id,
+        id: log.id.to_s,
         ticketHolder: ticket&.attendee_name,
         email: ticket&.attendee_email,
         location: log.event_location&.name || 'General Access',
