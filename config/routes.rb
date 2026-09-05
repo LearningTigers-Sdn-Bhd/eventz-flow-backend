@@ -603,6 +603,7 @@ Rails.application.routes.draw do
           get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
           get 'time_series',              to: 'event_analytics#time_series'
           get 'hourly_breakdown_by_day',  to: 'event_analytics#hourly_breakdown_by_day'
+          get 'recent_scans',             to: 'event_analytics#recent_scans'
         end
       end
     end
