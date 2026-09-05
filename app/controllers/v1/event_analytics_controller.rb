@@ -8,7 +8,8 @@ module V1
       render json: {
         totalTickets: eligible_tickets.count,
         paidTickets: paid_tickets.count,
-        pendingTickets: pending_tickets.count
+        pendingTickets: pending_tickets.count,
+        totalVisitors: visitor_tickets.count
       }, status: :ok
     end
 
@@ -72,6 +73,18 @@ module V1
     def exhibitor_analytics
       payload = @event.use_exhibitor_kit? ? exhibitor_analytics_payload : vendor_analytics_payload
       render json: payload, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/recent_scans?limit=5
+    # Last N ticket check-ins, ordered by scan time — queries ScanLog directly
+    # instead of pulling every ticket for the event and sorting client-side.
+    def recent_scans
+      logs = ScanLog.where(event: @event, scannable_type: 'Ticket')
+                     .includes(:scanned_by, :event_location, :scannable)
+                     .order(scanned_at: :desc)
+                     .limit(recent_scans_limit)
+
+      render json: { recentScans: logs.map { |log| serialize_recent_scan(log) } }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/mall_live_feed
@@ -168,6 +181,29 @@ module V1
 
     def pending_tickets
       eligible_tickets.where(payment_status: :pending)
+    end
+
+    # Mirrors Ticket#exhibitor_ticket_type? — name-based match, no dedicated
+    # category column on ticket_types yet.
+    def visitor_tickets
+      eligible_tickets.joins(:ticket_type).where('ticket_types.name ILIKE ?', '%visitor%')
+    end
+
+    def recent_scans_limit
+      (params[:limit] || 5).to_i.clamp(1, 50)
+    end
+
+    def serialize_recent_scan(log)
+      ticket = log.scannable
+      {
+        id: log.id.to_s,
+        ticketHolder: ticket&.attendee_name,
+        email: ticket&.attendee_email,
+        location: log.event_location&.name || 'General Access',
+        scannedBy: log.scanned_by&.full_name || 'Auto Check-in',
+        timestamp: log.scanned_at&.iso8601,
+        status: 'scanned'
+      }
     end
 
     def exhibitor_kits_for_analytics
