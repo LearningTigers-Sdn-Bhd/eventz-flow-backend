@@ -219,6 +219,74 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
     end
 
+    describe 'GET index — search/filter/sort/pagination for the Manage Tickets table' do
+      let!(:other_type_ticket) do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                        attendee_name: 'Aaron Zed', attendee_email: 'aaron@example.com')
+      end
+
+      it 'searches by attendee name/email/phone/ticket type' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { q: 'aaron' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([other_type_ticket.id])
+      end
+
+      it 'filters by scanned status' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { status: 'scanned' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([checked_in_ticket.id])
+      end
+
+      it 'filters by ticket type name' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { ticket_type_name: 'VIP' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([other_type_ticket.id])
+      end
+
+      it 'sorts by name descending' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'name', sort_dir: 'desc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['attendee_name'] }).to eq(
+          ['Scanned Attendee', 'Purchased Attendee', 'Aaron Zed']
+        )
+      end
+
+      it 'paginates and reports totals via response headers' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { page: 1, per_page: 2 },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.length).to eq(2)
+        expect(response.headers['X-Total-Count']).to eq('3')
+        expect(response.headers['X-Total-Pages']).to eq('2')
+      end
+
+      it 'filters by payment_status (default factory tickets are pending)' do
+        paid_purchased_ticket # force creation
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { payment_status: 'paid' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([paid_purchased_ticket.id])
+      end
+    end
+
     # --- POST - Create ---
     post 'Creates a new ticket (Staff Manual Entry)' do
       tags 'Tickets'

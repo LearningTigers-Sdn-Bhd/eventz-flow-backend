@@ -14,18 +14,31 @@ module V1
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
 
+    SORTABLE_COLUMNS = {
+      'name' => 'tickets.attendee_name',
+      'email' => 'tickets.attendee_email',
+      'status' => 'tickets.checked_in',
+      'createdAt' => 'tickets.created_at'
+    }.freeze
+
     # GET /v1/events/:event_id/tickets
     # Query params:
     #   - archived=true: Show only archived (soft-deleted) tickets
     #   - full=true: Show all tickets including archived ones
     #   - updated_since: ISO8601 timestamp. Returns only tickets updated at or
     #     after the given time. Use for incremental sync.
+    #   - q: Search attendee name/email/phone and ticket type name (case-insensitive substring).
+    #   - status: 'scanned' or 'not_scanned', matches the checked_in flag.
+    #   - ticket_type_name: Exact match on the ticket's type name.
+    #   - payment_status: 'pending', 'paid', 'failed', or 'refunded_payment'.
+    #   - sort_by / sort_dir: One of name/email/status/createdAt, 'asc' or 'desc'
+    #     (default createdAt/id order when omitted or unrecognized).
     #   - page / per_page: Paginate results. When either is present, the response
     #     is sliced and pagination metadata is returned via response headers
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
     #     remains a bare array for backwards compatibility.
     def index
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, :ticket_payment, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
 
       if params[:archived] == 'true'
         @tickets = @tickets.only_deleted
@@ -47,6 +60,11 @@ module V1
         @tickets = @tickets.where('tickets.updated_at >= ?', since)
       end
 
+      @tickets = search_tickets(@tickets, params[:q]) if params[:q].present?
+      @tickets = filter_by_status(@tickets, params[:status]) if params[:status].present?
+      @tickets = filter_by_ticket_type_name(@tickets, params[:ticket_type_name]) if params[:ticket_type_name].present?
+      @tickets = @tickets.where(payment_status: params[:payment_status]) if params[:payment_status].present?
+
       json_options = {
         methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
         include: {
@@ -59,8 +77,9 @@ module V1
         }
       }
 
+      ordered_scope = @tickets.reorder(sort_order)
+
       if params[:page].present? || params[:per_page].present?
-        ordered_scope = @tickets.reorder(id: :asc)
         pagy_obj, paginated = pagy(ordered_scope, limit: pagination_params[:per_page])
 
         response.headers['X-Total-Count'] = pagy_obj.count.to_s
@@ -70,7 +89,7 @@ module V1
 
         render json: paginated.as_json(json_options), status: :ok
       else
-        render json: @tickets.as_json(json_options), status: :ok
+        render json: ordered_scope.as_json(json_options), status: :ok
       end
     end
 
@@ -588,6 +607,33 @@ module V1
          authorize @event, :show?
       end
 
+    end
+
+    def search_tickets(scope, query)
+      pattern = "%#{query.strip.downcase}%"
+      scope.joins(:ticket_type).where(
+        'LOWER(tickets.attendee_name) LIKE :p OR LOWER(tickets.attendee_email) LIKE :p ' \
+        'OR LOWER(tickets.attendee_phone) LIKE :p OR LOWER(ticket_types.name) LIKE :p',
+        p: pattern
+      )
+    end
+
+    def filter_by_status(scope, status)
+      case status
+      when 'scanned' then scope.where(checked_in: true)
+      when 'not_scanned' then scope.where(checked_in: false)
+      else scope
+      end
+    end
+
+    def filter_by_ticket_type_name(scope, name)
+      scope.joins(:ticket_type).where(ticket_types: { name: name })
+    end
+
+    def sort_order
+      column = SORTABLE_COLUMNS[params[:sort_by]] || 'tickets.id'
+      direction = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
+      Arel.sql("#{column} #{direction}")
     end
 
     def set_ticket

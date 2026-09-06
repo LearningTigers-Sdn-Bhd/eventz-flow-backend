@@ -171,7 +171,7 @@ class TicketExcelService
           ticket.attendee_name, ticket.attendee_email, ticket.attendee_phone, @event.title,
           ticket.ticket_type&.name, ticket.role, ticket.public_id, '',
           ticket.payment_status, ticket.checked_in,
-          ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S'),
+          ticket.created_at,
           ticket.ticket_application&.review_status&.titleize || ''
         ]
         label_keys.each { |key| row_data << ((ticket.custom_fields_data || {})[key] || '') }

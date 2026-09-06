@@ -25,7 +25,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   end
   let!(:scanned_tickets) do
     create_list(:ticket, 3, :paid, event: event, ticket_type: ticket_type,
-                                 status: :scanned, checked_in: true, created_at: ticket_created_at)
+                                 status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                                 created_at: ticket_created_at)
   end
   let!(:pending_ticket) do
     create(:ticket, :pending_payment, event: event, ticket_type: ticket_type, checked_in: true,
@@ -141,6 +142,55 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           expect(data['totalUnscannedTickets']).to eq(5)
         end
       end
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/total_tickets — totalVisitors' do
+    let(:visitor_ticket_type) { create(:ticket_type, event: event, name: 'Visitor', price: 0) }
+    let!(:scanned_visitor_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: visitor_ticket_type,
+                      status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                      created_at: ticket_created_at)
+    end
+    let!(:unscanned_visitor_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: visitor_ticket_type,
+                      status: :purchased, checked_in: false, created_at: ticket_created_at)
+    end
+
+    before do
+      # 3 scan events total for the one scanned ticket: its original check-in
+      # plus 2 re-entries.
+      create_list(:scan_log, 3, event: event, scannable: scanned_visitor_ticket,
+                                 scanned_at: ticket_created_at + 1.hour)
+    end
+
+    it 'counts registered visitor tickets (scanned and unscanned) by default' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(2)
+    end
+
+    it 'counts unscanned tickets plus every re-entry scan when include_multi_scans is true' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { include_multi_scans: true },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      # 1 unscanned ticket (never generates a ScanLog) + 3 scan events for the
+      # other ticket = 4. Must NOT be 3 (dropping the unscanned ticket) or 2
+      # (ignoring re-entries).
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(4)
+    end
+
+    it 'excludes tickets registered outside the requested date range' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { start_date: (ticket_created_at + 1.day).to_date.to_s,
+                    end_date: (ticket_created_at + 2.days).to_date.to_s },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      data = JSON.parse(response.body)
+      expect(data['totalTickets']).to eq(0)
+      expect(data['totalVisitors']).to eq(0)
     end
   end
 
