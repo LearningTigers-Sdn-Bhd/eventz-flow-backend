@@ -203,11 +203,13 @@ module V1
     end
 
     # Registered visitor tickets by default; with include_multi_scans, every
-    # re-entry scan of a visitor ticket instead — so the count actually moves
-    # when a visitor is scanned back in multiple times.
+    # visitor counts regardless of scan status, PLUS every re-entry scan -
+    # i.e. unscanned tickets (never scanned, so no ScanLog to count them) plus
+    # every scan event (a scanned ticket's first entry and any re-entries).
     def total_visitors_count(range)
       if include_multi_scans?
-        scan_logs_for(visitor_tickets).where(scanned_at: range).count
+        visitor_tickets.unscanned.where(created_at: range).count +
+          scan_logs_for(visitor_tickets).where(scanned_at: range).count
       else
         visitor_tickets.where(created_at: range).count
       end
