@@ -25,7 +25,7 @@ module V1
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
     #     remains a bare array for backwards compatibility.
     def index
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, :ticket_payment, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
 
       if params[:archived] == 'true'
         @tickets = @tickets.only_deleted
