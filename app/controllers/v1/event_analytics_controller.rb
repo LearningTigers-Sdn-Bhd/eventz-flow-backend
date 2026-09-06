@@ -4,12 +4,17 @@ module V1
     before_action :set_event_and_authorize
 
     # GET /v1/events/:event_id/metrics/total_tickets
+    # Respects date_mode/start_date/end_date (registration-time filter) so the
+    # summary cards can match whatever range the Analytics Trends chart is showing.
+    # Pass include_multi_scans=true to count every re-entry scan (ScanLog rows)
+    # for totalVisitors instead of unique visitor tickets registered.
     def total_tickets
+      range = build_date_range
       render json: {
-        totalTickets: eligible_tickets.count,
-        paidTickets: paid_tickets.count,
-        pendingTickets: pending_tickets.count,
-        totalVisitors: visitor_tickets.count
+        totalTickets: eligible_tickets.where(created_at: range).count,
+        paidTickets: paid_tickets.where(created_at: range).count,
+        pendingTickets: pending_tickets.where(created_at: range).count,
+        totalVisitors: total_visitors_count(range)
       }, status: :ok
     end
 
@@ -18,13 +23,18 @@ module V1
     # instead of unique checked-in tickets — only meaningful for events with
     # multiple_scans enabled.
     def total_scanned_tickets
-      count = include_multi_scans? ? scan_logs_for(paid_tickets).count : paid_tickets.checked_in.count
+      range = build_date_range
+      count = if include_multi_scans?
+                scan_logs_for(paid_tickets).where(scanned_at: range).count
+              else
+                paid_tickets.checked_in.where(check_in_at: range).count
+              end
       render json: { totalScannedTickets: count }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_unscanned_tickets
     def total_unscanned_tickets
-      count = paid_tickets.unscanned.count
+      count = paid_tickets.unscanned.where(created_at: build_date_range).count
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
@@ -47,9 +57,12 @@ module V1
     end
 
     # GET /v1/events/:event_id/metrics/total_amount_price
+    # Ticket revenue respects date_mode/start_date/end_date; exhibitor revenue
+    # is always all-time (no registration-date filter applies to it here).
     def total_amount_price
-      paid_ticket_cents = paid_tickets.total_revenue_cents.to_i
-      pending_ticket_cents = pending_tickets.total_revenue_cents.to_i
+      range = build_date_range
+      paid_ticket_cents = paid_tickets.where(created_at: range).total_revenue_cents.to_i
+      pending_ticket_cents = pending_tickets.where(created_at: range).total_revenue_cents.to_i
       paid_exhibitor_cents = ExhibitorRegistrationPayment
         .paid
         .joins(exhibitor_kit: :event_vendor)
@@ -187,6 +200,17 @@ module V1
     # category column on ticket_types yet.
     def visitor_tickets
       eligible_tickets.joins(:ticket_type).where('ticket_types.name ILIKE ?', '%visitor%')
+    end
+
+    # Registered visitor tickets by default; with include_multi_scans, every
+    # re-entry scan of a visitor ticket instead — so the count actually moves
+    # when a visitor is scanned back in multiple times.
+    def total_visitors_count(range)
+      if include_multi_scans?
+        scan_logs_for(visitor_tickets).where(scanned_at: range).count
+      else
+        visitor_tickets.where(created_at: range).count
+      end
     end
 
     def recent_scans_limit

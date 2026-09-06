@@ -25,7 +25,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   end
   let!(:scanned_tickets) do
     create_list(:ticket, 3, :paid, event: event, ticket_type: ticket_type,
-                                 status: :scanned, checked_in: true, created_at: ticket_created_at)
+                                 status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                                 created_at: ticket_created_at)
   end
   let!(:pending_ticket) do
     create(:ticket, :pending_payment, event: event, ticket_type: ticket_type, checked_in: true,
@@ -141,6 +142,48 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           expect(data['totalUnscannedTickets']).to eq(5)
         end
       end
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/total_tickets — totalVisitors' do
+    let(:visitor_ticket_type) { create(:ticket_type, event: event, name: 'Visitor', price: 0) }
+    let!(:visitor_tickets) do
+      create_list(:ticket, 2, :paid, event: event, ticket_type: visitor_ticket_type,
+                               status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                               created_at: ticket_created_at)
+    end
+
+    before do
+      # Re-entry scans for one of the visitor tickets, so include_multi_scans has
+      # something to count beyond the single check-in each ticket already has.
+      create_list(:scan_log, 2, event: event, scannable: visitor_tickets.first,
+                                 scanned_at: ticket_created_at + 1.hour)
+    end
+
+    it 'counts registered visitor tickets by default' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(2)
+    end
+
+    it 'counts every re-entry scan when include_multi_scans is true' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { include_multi_scans: true },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(2)
+    end
+
+    it 'excludes tickets registered outside the requested date range' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { start_date: (ticket_created_at + 1.day).to_date.to_s,
+                    end_date: (ticket_created_at + 2.days).to_date.to_s },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      data = JSON.parse(response.body)
+      expect(data['totalTickets']).to eq(0)
+      expect(data['totalVisitors']).to eq(0)
     end
   end
 
