@@ -239,35 +239,54 @@ class TicketExcelService
                                       .each_with_object({}) { |log, h| h[log.scannable_id] ||= log.event_location&.name }
   end
 
+  # Every scan event (including re-entries) for the tickets in this export -
+  # same rows the Entry Timeline sheet lists. Only meaningful when the event
+  # allows multiple scans; a single-scan event has at most one row per ticket.
+  def scan_logs_for_tickets(tickets)
+    ScanLog.where(scannable_type: 'Ticket', scannable_id: tickets.map(&:id))
+  end
+
+  # "Checked In" counts unique tickets; on a multiple_scans event that undercounts
+  # actual foot traffic since one ticket can be scanned (and counted) many times.
+  # Total Participant auto-detects that setting and reports the real scan volume -
+  # i.e. the same number of rows as the Entry Timeline sheet - falling back to the
+  # unique checked-in count on events where re-entry scanning isn't enabled.
+  def total_participant_count(tickets, checked_in_count)
+    return checked_in_count unless @event.multiple_scans?
+    scan_logs_for_tickets(tickets).count
+  end
+
   # --- Summary ---
 
   def build_summary_sheet(package, tickets)
     package.workbook.add_worksheet(name: 'Summary') do |sheet|
       sheet.sheet_pr.tab_color = BRAND_BLUE
       sheet.sheet_view.tab_selected = true
-      sheet.column_widths 28, 22, 22, 22, 22, 22
-      sheet.merge_cells('A1:F1')
+      sheet.column_widths 28, 22, 22, 22, 22, 22, 22
+      sheet.merge_cells('A1:G1')
       sheet.add_row [@event.title], style: @styles[:title], height: 28
       sheet.add_row ["Ticket Report  •  Generated #{Time.current.strftime('%d %b %Y, %I:%M %p')}"],
                     style: @styles[:subtitle]
       sheet.add_row []
 
       sheet.add_row ['Overview'], style: @styles[:section_header]
-      merge_row_across(sheet, 6)
+      merge_row_across(sheet, 7)
 
       checked_in_count = tickets.count(&:checked_in)
       paid_count = tickets.count { |t| t.payment_status == 'paid' }
+      total_participant = total_participant_count(tickets, checked_in_count)
 
-      sheet.add_row ['Total Tickets', 'Checked In', 'Not Checked In', 'Paid', 'Pending/Other', 'Ticket Types'],
-                    style: Array.new(6, @styles[:stat_label])
+      sheet.add_row ['Total Tickets', 'Checked In', 'Not Checked In', 'Paid', 'Pending/Other', 'Ticket Types', 'Total Participant'],
+                    style: Array.new(7, @styles[:stat_label])
       sheet.add_row [
         tickets.size, checked_in_count, tickets.size - checked_in_count, paid_count,
-        tickets.size - paid_count, tickets.map { |t| t.ticket_type&.name }.uniq.compact.size
-      ], style: Array.new(6, @styles[:stat_value]), height: 20
+        tickets.size - paid_count, tickets.map { |t| t.ticket_type&.name }.uniq.compact.size,
+        total_participant
+      ], style: Array.new(7, @styles[:stat_value]), height: 20
 
       sheet.add_row []
       sheet.add_row ['By Ticket Type'], style: @styles[:section_header]
-      merge_row_across(sheet, 6)
+      merge_row_across(sheet, 7)
       tickets.group_by { |t| t.ticket_type&.name || 'Unassigned' }.each do |type_name, type_tickets|
         sheet.add_row [type_name, type_tickets.size, type_tickets.count(&:checked_in)],
                       style: [@styles[:cell], @styles[:cell], @styles[:cell]]
@@ -281,11 +300,10 @@ class TicketExcelService
   # --- Entry Timeline (every scan event; only when include_rescans is true) ---
 
   def build_scan_history_sheet(package, tickets)
-    ticket_ids = tickets.map(&:id)
     headers = ['Attendee Name', 'Ticket Type', 'Scanned At', 'Source', 'Location', 'Scanned By']
     source_labels = { 'staff_scan' => 'Staff scan', 'self_check_in' => 'Self check-in', 'kiosk' => 'Public Check-in Page' }
 
-    logs = ScanLog.where(scannable_type: 'Ticket', scannable_id: ticket_ids)
+    logs = scan_logs_for_tickets(tickets)
                   .includes(:event_location, :scanned_by, scannable: :ticket_type)
                   .order(:scanned_at)
 
