@@ -479,6 +479,7 @@ DEPENDENCIES
   rqrcode (~> 2.0)
   rspec-rails (~> 6.0)
   rswag
+  rubyzip
   shoulda-matchers
   sidekiq
   sidekiq-cron (~> 2.3)
