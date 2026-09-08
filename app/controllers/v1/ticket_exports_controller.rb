@@ -1,6 +1,6 @@
 module V1
   class TicketExportsController < ApplicationController
-    # GET /v1/tickets/exports?event_id=1
+    # GET /v1/tickets/exports?event_id=1&type=ticket-list|selfie-zip
     def index
       unless params[:event_id].present?
         return render json: { error: 'event_id parameter is required' }, status: :unprocessable_content
@@ -10,8 +10,9 @@ module V1
         event = Event.find(params[:event_id])
         authorize event, :show?
 
-        exports = ExportLog.where(event_id: event.id, type: 'ticket-list')
-                          .order(created_at: :desc)
+        exports = ExportLog.where(event_id: event.id)
+        exports = exports.where(type: params[:type]) if params[:type].present?
+        exports = exports.order(created_at: :desc)
 
         render json: exports.as_json(
           only: [:id, :type, :created_at, :updated_at],
@@ -44,7 +45,7 @@ module V1
         send_file(
           export_log.sheet_path,
           filename: File.basename(export_log.sheet_path),
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          type: content_type_for(export_log.sheet_path),
           disposition: 'attachment'
         )
       rescue ActiveRecord::RecordNotFound
@@ -55,6 +56,7 @@ module V1
     end
 
     # POST /v1/tickets/exports
+    # Body/query: type ("ticket-list", default, or "selfie-zip")
     def create
       unless params[:event_id].present?
         return render json: { error: 'event_id parameter is required' }, status: :unprocessable_content
@@ -66,7 +68,8 @@ module V1
         # Authorization: User must have access to this event
         authorize event, :show?
 
-        result = TicketExcelService.export(
+        service = params[:type] == 'selfie-zip' ? SelfieZipService : TicketExcelService
+        result = service.export(
           params[:event_id],
           from: params[:from].present? ? Date.parse(params[:from]) : nil,
           to: params[:to].present? ? Date.parse(params[:to]) : nil,
@@ -98,5 +101,10 @@ module V1
       end
     end
 
+    private
+
+    def content_type_for(path)
+      File.extname(path) == '.zip' ? 'application/zip' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    end
   end
 end

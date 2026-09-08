@@ -611,9 +611,16 @@ module V1
 
     def search_tickets(scope, query)
       pattern = "%#{query.strip.downcase}%"
+      # custom_fields_data holds registration-form fields (car_registration_number,
+      # membership_no, ic_passport_no, ...) that never get their own column —
+      # cast-to-text LIKE searches every key/value in there without needing to
+      # know the field name. ponytail: no index behind this cast, so it's a
+      # sequential scan per search; fine at per-event ticket counts, revisit
+      # with a GIN index on custom_fields_data if this ever gets slow.
       scope.joins(:ticket_type).where(
         'LOWER(tickets.attendee_name) LIKE :p OR LOWER(tickets.attendee_email) LIKE :p ' \
-        'OR LOWER(tickets.attendee_phone) LIKE :p OR LOWER(ticket_types.name) LIKE :p',
+        'OR LOWER(tickets.attendee_phone) LIKE :p OR LOWER(ticket_types.name) LIKE :p ' \
+        'OR LOWER(tickets.custom_fields_data::text) LIKE :p',
         p: pattern
       )
     end

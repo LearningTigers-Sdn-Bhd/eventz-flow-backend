@@ -235,6 +235,20 @@ RSpec.describe 'V1::Tickets', type: :request do
         expect(json.map { |t| t['id'] }).to eq([other_type_ticket.id])
       end
 
+      it 'searches by a custom registration field (e.g. car_registration_number)' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        custom_field_ticket = create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                                              attendee_name: 'Someone Else', attendee_email: 'else@example.com',
+                                              custom_fields_data: { 'car_registration_number' => 'SAA1234' })
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { q: 'saa1234' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([custom_field_ticket.id])
+      end
+
       it 'filters by scanned status' do
         get "/v1/events/#{organizer_event.id}/tickets",
             params: { status: 'scanned' },
