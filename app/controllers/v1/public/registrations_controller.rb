@@ -537,6 +537,7 @@ module V1
             price: tt.current_price,
             original_price: tt.price,
             current_tier: tt.active_tier&.label,
+            tier_ends_at: tt.active_tier&.ends_at,
             available: tt.available_for_purchase?,
             remaining_slots: tt.remaining_quantity,
             custom_fields_data: tt.custom_fields_data,
