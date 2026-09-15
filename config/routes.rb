@@ -154,6 +154,7 @@ Rails.application.routes.draw do
       member do
         delete :force_delete
         patch :restore
+        get :sidebar_context
       end
       resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
