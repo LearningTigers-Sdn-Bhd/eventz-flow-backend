@@ -67,10 +67,13 @@ class TicketType < ApplicationRecord
     end
   end
 
-  # Counts tickets that actually hold a seat (paid, not canceled/refunded) —
-  # matches what the public ticket_types listing already shows as "sold".
+  # Counts tickets that hold a seat: paid, or pending payment (reserved while
+  # checkout completes) — not canceled/refunded. Pending counts too so the
+  # quantity cap is first-come-first-served at submission, not at payment;
+  # ponytail: stale pending tickets aren't auto-expired, admin deletes them
+  # manually (Tickets > destroy/force_delete) to free the slot if needed.
   def held_ticket_count
-    tickets.where(payment_status: :paid).where.not(status: %i[canceled refunded]).count
+    tickets.where(payment_status: %i[pending paid]).where.not(status: %i[canceled refunded]).count
   end
 
   def remaining_quantity
