@@ -58,7 +58,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
     context 'when quantity is limited' do
       before { ticket_type.update!(quantity: 2) }
 
-      it 'calculates remaining_slots using paid tickets only' do
+      it 'calculates remaining_slots using paid and pending tickets' do
         create(
           :ticket,
           event: event,
@@ -81,7 +81,33 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
 
         expect(response).to have_http_status(:ok)
         json = JSON.parse(response.body)
-        expect(json['data'].first['remaining_slots']).to eq(1)
+        expect(json['data'].first['remaining_slots']).to eq(0)
+      end
+
+      it 'excludes canceled and refunded tickets from the count' do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'canceled@example.com',
+          status: :canceled,
+          payment_status: :paid
+        )
+
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'refunded@example.com',
+          status: :refunded,
+          payment_status: :paid
+        )
+
+        get "/v1/public/events/#{event.slug}/ticket_types"
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json['data'].first['remaining_slots']).to eq(2)
       end
     end
   end
