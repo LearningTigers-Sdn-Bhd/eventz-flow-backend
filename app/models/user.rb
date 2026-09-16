@@ -128,20 +128,25 @@ class User < ApplicationRecord
 
   # --- Event-Specific Role Helper Methods ---
 
+  # Memoized per user instance so repeated role checks against the same event
+  # (policy show? chain, sidebar_permissions, etc.) share one query instead of
+  # each hitting event_assignments separately.
+  def event_assignment_roles_for(event)
+    return [] unless event.present?
+    @event_assignment_roles_by_event ||= {}
+    @event_assignment_roles_by_event[event.id] ||= event_assignments.where(event_id: event.id).pluck(:role)
+  end
+
   def is_event_admin?(event)
-    return false unless event.present?
-    # Use enum value from EventAssignment class directly for robustness
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_admin])
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:event_admin])
   end
 
   def is_event_team_member?(event)
-    return false unless event.present?
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_team_member])
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:event_team_member])
   end
 
   def is_business_matching_admin?(event)
-    return false unless event.present?
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_matching_admin])
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:business_matching_admin])
   end
 
   # Event ids where this user holds the business_matching_admin role.
@@ -197,7 +202,7 @@ class User < ApplicationRecord
   def is_business_host?(event)
     return false unless event.present?
     exhibitor? ||
-      event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_host]) ||
+      event_assignment_roles_for(event).include?(EventAssignment.roles[:business_host]) ||
       business_host_assignments.exists?(event_id: event.id)
   end
 

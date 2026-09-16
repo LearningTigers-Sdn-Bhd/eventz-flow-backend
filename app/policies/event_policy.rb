@@ -35,6 +35,10 @@ class EventPolicy < ApplicationPolicy
     )
   end
 
+  def sidebar_context?
+    show?
+  end
+
   # Can update if:
   # - Org owner or Organizer (Org-level permission)
   # - User is Event Admin or Team Member (Event-level staff permission)
