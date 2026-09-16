@@ -299,6 +299,47 @@ RSpec.describe 'V1::Tickets', type: :request do
         json = JSON.parse(response.body)
         expect(json.map { |t| t['id'] }).to eq([paid_purchased_ticket.id])
       end
+
+      it 'filters by an array of payment_status values (IN filter, used by Pending Tickets)' do
+        paid_purchased_ticket # force creation, should be excluded
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { payment_status: %w[pending failed] },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).not_to include(paid_purchased_ticket.id)
+      end
+
+      it 'filters by review_status' do
+        form = create(:registration_form, event: organizer_event)
+        approved_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                                          attendee_name: 'Approved App', attendee_email: 'approved@example.com')
+        create(:ticket_application, ticket: approved_ticket, registration_form: form, review_status: :approved)
+        create(:ticket_application, ticket: other_type_ticket, registration_form: form, review_status: :pending_review)
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { review_status: 'approved' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([approved_ticket.id])
+      end
+
+      it 'filters by rsvp_status' do
+        form = create(:registration_form, event: organizer_event)
+        confirmed_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                                           attendee_name: 'Confirmed RSVP', attendee_email: 'confirmed@example.com')
+        create(:ticket_application, ticket: confirmed_ticket, registration_form: form, rsvp_status: :confirmed)
+        create(:ticket_application, ticket: other_type_ticket, registration_form: form, rsvp_status: :not_sent)
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { rsvp_status: 'confirmed' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([confirmed_ticket.id])
+      end
     end
 
     # --- POST - Create ---

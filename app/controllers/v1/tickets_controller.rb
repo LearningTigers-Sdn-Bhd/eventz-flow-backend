@@ -31,6 +31,12 @@ module V1
     #   - status: 'scanned' or 'not_scanned', matches the checked_in flag.
     #   - ticket_type_name: Exact match on the ticket's type name.
     #   - payment_status: 'pending', 'paid', 'failed', or 'refunded_payment'.
+    #     Accepts an array (payment_status[]=a&payment_status[]=b) for an IN filter.
+    #   - review_status: 'pending_review', 'approved', or 'rejected'. Matches
+    #     tickets with a ticket_application at that review status (inner join —
+    #     tickets without an application are excluded).
+    #   - rsvp_status: 'not_sent', 'sent', 'confirmed', 'declined', or 'expired'.
+    #     Same join behavior as review_status.
     #   - sort_by / sort_dir: One of name/email/status/createdAt, 'asc' or 'desc'
     #     (default createdAt/id order when omitted or unrecognized).
     #   - page / per_page: Paginate results. When either is present, the response
@@ -64,6 +70,8 @@ module V1
       @tickets = filter_by_status(@tickets, params[:status]) if params[:status].present?
       @tickets = filter_by_ticket_type_name(@tickets, params[:ticket_type_name]) if params[:ticket_type_name].present?
       @tickets = @tickets.where(payment_status: params[:payment_status]) if params[:payment_status].present?
+      @tickets = filter_by_review_status(@tickets, params[:review_status]) if params[:review_status].present?
+      @tickets = filter_by_rsvp_status(@tickets, params[:rsvp_status]) if params[:rsvp_status].present?
 
       json_options = {
         methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
@@ -635,6 +643,14 @@ module V1
 
     def filter_by_ticket_type_name(scope, name)
       scope.joins(:ticket_type).where(ticket_types: { name: name })
+    end
+
+    def filter_by_review_status(scope, status)
+      scope.joins(:ticket_application).where(ticket_applications: { review_status: status })
+    end
+
+    def filter_by_rsvp_status(scope, status)
+      scope.joins(:ticket_application).where(ticket_applications: { rsvp_status: status })
     end
 
     def sort_order

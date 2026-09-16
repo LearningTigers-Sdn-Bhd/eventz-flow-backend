@@ -1,5 +1,12 @@
 module V1
   class EventsController < ApplicationController
+    SIDEBAR_EVENT_FIELDS = %w[
+      id title slug status start_date end_date use_ticket use_exhibitor_kit
+      use_seat_ticketing use_voucher use_certificate use_business_matching
+      use_wedding use_api_access use_event_leads use_sponsorship
+      allow_contractor_printing_services
+    ].freeze
+
     # Skip default authentication for the public `show` action, but try to authenticate if a token is present.
     skip_default_authentication only: [:show]
     prepend_before_action :authenticate_user_if_token_present, only: [:show]
@@ -42,6 +49,20 @@ module V1
     def show
       # @event is set and authorized by before_actions
       render json: @event, status: :ok
+    end
+
+    # GET /v1/events/:id/sidebar_context
+    def sidebar_context
+      events = policy_scope(Event)
+               .select(*SIDEBAR_EVENT_FIELDS)
+               .order(start_date: :desc)
+               .map { |event| sidebar_event_payload(event) }
+
+      render json: {
+        currentEvent: sidebar_event_payload(@event),
+        events: events,
+        permissions: sidebar_permissions
+      }, status: :ok
     end
 
     # POST /v1/events
@@ -181,6 +202,61 @@ module V1
     end
 
     private
+
+    def sidebar_event_payload(event)
+      event.attributes.slice(*SIDEBAR_EVENT_FIELDS)
+    end
+
+    def sidebar_permissions
+      assignment_role = current_user.event_assignment_roles_for(@event).first
+      is_org_owner = current_user.org_owner?
+      is_organizer = current_user.organizer?
+      is_member = current_user.member?
+      is_vendor = current_user.vendor?
+      is_exhibition_contractor = current_user.exhibition_contractor?
+      is_event_admin = assignment_role == 'event_admin'
+      is_event_team_member = assignment_role == 'event_team_member'
+      is_business_host = assignment_role == 'business_host' ||
+                         current_user.business_host_assignments.exists?(event_id: @event.id)
+      is_business_matching_admin = assignment_role == 'business_matching_admin'
+      is_event_vendor = current_user.event_vendor_assignments.exists?(event_id: @event.id)
+      is_event_staff = assignment_role.present? && !is_vendor
+      can_manage_event = is_org_owner || is_event_admin
+      can_manage_event_staff = is_org_owner || is_organizer
+      can_manage_event_vendors = is_org_owner || is_event_admin
+      can_scan_tickets = is_org_owner || is_event_admin || is_event_team_member
+      can_scan_visitor_stamps = is_org_owner || is_event_admin || is_event_vendor
+
+      {
+        isLoading: false,
+        isOrgOwner: is_org_owner,
+        isOrganizer: is_organizer,
+        isMember: is_member,
+        isVendor: is_vendor,
+        isExhibitionContractor: is_exhibition_contractor,
+        isEventAdmin: is_event_admin,
+        isEventTeamMember: is_event_team_member,
+        isEventStaff: is_event_staff,
+        isEventVendor: is_event_vendor,
+        isBusinessHost: is_business_host,
+        isBusinessMatchingAdmin: is_business_matching_admin,
+        canManageEvent: can_manage_event,
+        canManageEventStaff: can_manage_event_staff,
+        canManageEventVendors: can_manage_event_vendors,
+        canViewAnalytics: can_manage_event,
+        canManageTickets: can_manage_event,
+        canScanTickets: can_scan_tickets,
+        canViewVisitors: can_scan_tickets,
+        canScanVisitorStamps: can_scan_visitor_stamps,
+        canEditVendorProfile: is_event_vendor,
+        canViewLeadAnalytics: is_event_vendor,
+        canManageBusinessMatching: is_org_owner || is_organizer || is_event_admin ||
+          is_event_team_member || is_business_matching_admin,
+        canViewVendorsTab: can_manage_event_vendors || is_event_vendor,
+        canViewVisitorsTab: !@event.use_ticket? && can_scan_tickets,
+        canViewLeadScannerTab: !@event.use_ticket? && can_scan_visitor_stamps
+      }
+    end
 
     # DRY principle: Find the event and handle 404
     def set_event
