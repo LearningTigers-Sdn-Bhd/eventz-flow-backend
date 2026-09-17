@@ -189,6 +189,11 @@ Rails.application.routes.draw do
           post :resend_confirmation_email
           patch :accept_waiting_list
         end
+        collection do
+          patch :bulk_update_ticket_type
+          patch :bulk_archive
+          delete :bulk_delete
+        end
       end
 
       # E-Certificates

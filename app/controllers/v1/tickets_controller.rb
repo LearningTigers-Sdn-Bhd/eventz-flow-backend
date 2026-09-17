@@ -288,6 +288,97 @@ module V1
       end
     end
 
+    # PATCH /v1/events/:event_id/tickets/bulk_archive
+    # Soft-deletes a batch of tickets. Restricted to org_owner/organizer —
+    # stricter than the per-ticket destroy? policy (which also allows
+    # event_admin) because bulk archiving affects many attendees at once.
+    def bulk_archive
+      unless current_user.is_org_owner_or_organizer?
+        return render json: { error: 'Not authorized' }, status: :forbidden
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.where(public_id: public_ids)
+      archived = []
+      errors = []
+
+      tickets.each do |ticket|
+        if ticket.archive
+          archived << ticket.public_id
+        else
+          errors << { public_id: ticket.public_id, errors: ticket.errors.full_messages }
+        end
+      end
+
+      render json: { archived: archived, errors: errors }, status: :ok
+    end
+
+    # DELETE /v1/events/:event_id/tickets/bulk_delete
+    # Permanently deletes a batch of tickets (including already-archived
+    # ones). Restricted to org_owner only.
+    def bulk_delete
+      unless current_user.is_org_owner?
+        return render json: { error: 'Not authorized' }, status: :forbidden
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.with_deleted.where(public_id: public_ids)
+      deleted = []
+      errors = []
+
+      tickets.each do |ticket|
+        ticket.delete
+        deleted << ticket.public_id
+      rescue StandardError => e
+        errors << { public_id: ticket.public_id, errors: [e.message] }
+      end
+
+      render json: { deleted: deleted, errors: errors }, status: :ok
+    end
+
+    # PATCH /v1/events/:event_id/tickets/bulk_update_ticket_type
+    # Changes ticket_type_id for a batch of tickets in one call. Skips (and
+    # reports) any ticket the current user isn't authorized to update or that
+    # fails validation, instead of aborting the whole batch.
+    def bulk_update_ticket_type
+      ticket_type = @event.ticket_types.find_by(id: params[:ticket_type_id])
+      unless ticket_type
+        return render json: { error: 'Ticket type not found for this event' }, status: :unprocessable_content
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.where(public_id: public_ids)
+      updated = []
+      errors = []
+
+      tickets.each do |ticket|
+        unless TicketPolicy.new(pundit_user, ticket).update?
+          errors << { public_id: ticket.public_id, errors: ['Not authorized'] }
+          next
+        end
+
+        if ticket.update(ticket_type_id: ticket_type.id)
+          updated << ticket.public_id
+        else
+          errors << { public_id: ticket.public_id, errors: ticket.errors.full_messages }
+        end
+      end
+
+      render json: { updated: updated, errors: errors }, status: :ok
+    end
+
     # POST /v1/events/:event_id/tickets/:id/resend_confirmation_email
     # Org owner only - resend ticket confirmation email with QR
     def resend_confirmation_email
