@@ -161,8 +161,12 @@ module V1
       authorize @event, :business_matching_events?
 
       begin
-        service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id,
-                                                                                force_refresh: params[:force_refresh] == 'true')
+        service_result = BusinessMatchingService.new(current_user).fetch_events(
+          @event.id,
+          force_refresh: params[:force_refresh] == 'true',
+          archived_only: params[:archived] == 'true',
+          include_archived: params[:include_archived] == 'true'
+        )
 
         if service_result.success?
           data = service_result.data

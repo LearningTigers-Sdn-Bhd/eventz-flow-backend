@@ -34,6 +34,7 @@ class User < ApplicationRecord
   # Session Management
   has_many :user_sessions, dependent: :destroy
   has_many :active_sessions, -> { active }, class_name: 'UserSession'
+  has_many :user_activities, dependent: :destroy
 
   # 0. USER CREATION TRACKING
   belongs_to :created_by, class_name: 'User', optional: true

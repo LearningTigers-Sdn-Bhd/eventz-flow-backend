@@ -21,6 +21,15 @@ class BusinessMatchingSessionPolicy < ApplicationPolicy
     create?
   end
 
+  def archive?
+    create?
+  end
+
+  def unarchive?
+    create?
+  end
+
+
   private
 
   def assigned_host?

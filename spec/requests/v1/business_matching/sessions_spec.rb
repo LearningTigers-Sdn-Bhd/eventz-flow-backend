@@ -250,17 +250,133 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
   end
 
   describe "GET /v1/events/:id/business_matching_events" do
-    it "includes each session's start_time and end_time so the edit dialog can prefill correctly" do
+    let!(:active_session) do
       BusinessMatchingSession.create!(
-        event: event, title: "Session", slot_duration: 30, start_time: "11:00", end_time: "13:00",
+        event: event, title: "Active Session", slot_duration: 30, start_time: "11:00", end_time: "13:00",
         start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
       )
+    end
+    let!(:archived_session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "Archived Session", slot_duration: 30, start_time: "14:00", end_time: "16:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1),
+        archived_at: Time.current
+      )
+    end
 
+    it "includes each session's start_time and end_time so the edit dialog can prefill correctly" do
       get "/v1/events/#{event.id}/business_matching_events", headers: auth_headers(organizer_user)
 
       expect(response).to have_http_status(:ok)
-      expect(json_response.first['start_time']).to eq("11:00")
-      expect(json_response.first['end_time']).to eq("13:00")
+      first = json_response.find { |s| s['id'] == active_session.id.to_s }
+      expect(first['start_time']).to eq("11:00")
+      expect(first['end_time']).to eq("13:00")
+    end
+
+    it "automatically hides archived sessions by default" do
+      get "/v1/events/#{event.id}/business_matching_events", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      ids = json_response.map { |s| s['id'] }
+      expect(ids).to include(active_session.id.to_s)
+      expect(ids).not_to include(archived_session.id.to_s)
+    end
+
+    it "returns only archived sessions when archived=true" do
+      get "/v1/events/#{event.id}/business_matching_events?archived=true", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      ids = json_response.map { |s| s['id'] }
+      expect(ids).to include(archived_session.id.to_s)
+      expect(ids).not_to include(active_session.id.to_s)
+    end
+  end
+
+  describe "PATCH /v1/business_matching/sessions/:id/archive" do
+    let(:session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "Archive Me", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1)
+      )
+    end
+
+    it "archives the session when no bookings and no host attached" do
+      patch "/v1/business_matching/sessions/#{session.id}/archive", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_archived']).to be true
+      expect(json_response['archived_at']).to be_present
+      expect(session.reload.archived?).to be true
+    end
+
+    it "rejects archiving when a host is attached" do
+      host = create(:user)
+      BusinessHostAssignment.create!(user: host, event: event, business_matching_event_id: session.id.to_s)
+
+      patch "/v1/business_matching/sessions/#{session.id}/archive", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_response['error']).to include("Cannot archive session with an assigned host")
+      expect(session.reload.archived?).to be false
+    end
+
+    it "rejects archiving when active bookings exist" do
+      BusinessMatchingBooking.create!(
+        business_matching_session: session,
+        name: "John Doe",
+        email: "john@example.com",
+        phone: "12345678",
+        booking_date: Date.new(2026, 9, 1),
+        booking_time: "09:00",
+        duration: 30,
+        status: "Approved",
+        payment_status: "Pending"
+      )
+
+      patch "/v1/business_matching/sessions/#{session.id}/archive", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_response['error']).to include("Cannot archive session with active bookings")
+      expect(session.reload.archived?).to be false
+    end
+
+    it "allows archiving when only cancelled bookings exist" do
+      BusinessMatchingBooking.create!(
+        business_matching_session: session,
+        name: "John Doe",
+        email: "john@example.com",
+        phone: "12345678",
+        booking_date: Date.new(2026, 9, 1),
+        booking_time: "09:00",
+        duration: 30,
+        status: "Cancelled",
+        payment_status: "Pending"
+      )
+
+      patch "/v1/business_matching/sessions/#{session.id}/archive", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(session.reload.archived?).to be true
+    end
+  end
+
+  describe "PATCH /v1/business_matching/sessions/:id/unarchive" do
+    let(:archived_session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "Unarchive Me", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.new(2026, 9, 1), end_date: Date.new(2026, 9, 1),
+        archived_at: Time.current
+      )
+    end
+
+    it "unarchives an archived session" do
+      patch "/v1/business_matching/sessions/#{archived_session.id}/unarchive", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_archived']).to be false
+      expect(json_response['archived_at']).to be_nil
+      expect(archived_session.reload.archived?).to be false
     end
   end
 end
+

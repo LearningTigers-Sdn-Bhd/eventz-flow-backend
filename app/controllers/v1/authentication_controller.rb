@@ -81,6 +81,7 @@ module V1
       # Check if user exists, is active, and credentials are valid
       if authenticated
         tokens = JwtService.generate_tokens(user, request)
+        UserActivityRecorder.record(user, request)
 
         # Set cookie for browser-based access (optional - frontend will also handle)
         set_refresh_token_cookie(tokens[:refresh_token], tokens[:expires_at])
