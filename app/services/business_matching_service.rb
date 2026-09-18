@@ -1,9 +1,17 @@
 # frozen_string_literal: true
 
 class BusinessMatchingService < BaseService
-  def fetch_events(event_id, force_refresh: false)
+  def fetch_events(event_id, force_refresh: false, archived_only: false, include_archived: false)
     event = Event.find_by(id: event_id)
     sessions = BusinessMatchingSession.where(event_id: event_id, is_active: true)
+    sessions = if archived_only
+                 sessions.archived
+               elsif include_archived
+                 sessions
+               else
+                 sessions.unarchived
+               end
+
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
     host_lookup = host_assignments.each_with_object({}) do |assignment, memo|
@@ -57,6 +65,8 @@ class BusinessMatchingService < BaseService
         interest_tags: interest_tags,
         created_at: session.created_at.iso8601,
         updated_at: session.updated_at.iso8601,
+        archived_at: session.archived_at&.iso8601,
+        is_archived: session.archived?,
         bookings_count: booking_counts[session.id] || 0,
         host: host_user ? {
           id: host_user.id.to_s,
@@ -82,7 +92,7 @@ class BusinessMatchingService < BaseService
   end
 
   def fetch_availability(bm_event_id, event_id, force_refresh: false)
-    session = BusinessMatchingSession.find_by(id: bm_event_id)
+    session = BusinessMatchingSession.unarchived.find_by(id: bm_event_id)
     return BaseService::ServiceResult.new(success: false, errors: "Session not found", status: :not_found) unless session
 
     assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)

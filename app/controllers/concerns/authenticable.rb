@@ -72,6 +72,7 @@ module Authenticable
           if session && session.active?
              @current_user = session.user
              session.touch!
+             UserActivityRecorder.record(@current_user, request)
              return if @current_user.present?
           else
              return render_unauthorized(CustomError::Unauthorized.new('Session invalid or expired'))

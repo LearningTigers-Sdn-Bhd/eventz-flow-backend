@@ -13,6 +13,7 @@ class Event < ApplicationRecord
   has_many :staff, through: :event_assignments, source: :user
 
   has_many :business_host_assignments, dependent: :destroy # Added association
+  has_many :business_matching_sessions, dependent: :destroy
 
   # Core Event Resources
   has_many :event_locations, dependent: :destroy, inverse_of: :event

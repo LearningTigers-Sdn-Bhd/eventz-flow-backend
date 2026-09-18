@@ -10,6 +10,9 @@ class CleanupExpiredSessionsJob < ApplicationJob
     # (keeping them for 30 days allows for security auditing/investigation)
     revoked_count = UserSession.where(revoked: true).where('updated_at < ?', 30.days.ago).delete_all
 
-    Rails.logger.info "CleanupExpiredSessionsJob: Deleted #{expired_count} expired and #{revoked_count} old revoked sessions."
+    # 3. Delete user activities older than 3 days (keeps DB lightweight while retaining 3-day audit trail)
+    activity_count = UserActivity.cleanup_old_activities!(3)
+
+    Rails.logger.info "CleanupExpiredSessionsJob: Deleted #{expired_count} expired, #{revoked_count} old revoked sessions, and #{activity_count} user activities older than 3 days."
   end
 end

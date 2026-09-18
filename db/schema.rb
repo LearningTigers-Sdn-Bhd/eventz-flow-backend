@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_04_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_18_124500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -166,6 +166,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_04_000001) do
     t.date "end_date", null: false
     t.boolean "tags_editable", default: true, null: false
     t.boolean "hours_editable"
+    t.datetime "archived_at"
+    t.index ["archived_at"], name: "index_business_matching_sessions_on_archived_at"
     t.index ["event_id"], name: "index_business_matching_sessions_on_event_id"
   end
 
@@ -431,7 +433,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_04_000001) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -1666,6 +1668,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_04_000001) do
     t.index ["waiting_list"], name: "index_tickets_on_waiting_list"
   end
 
+  create_table "user_activities", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "category", default: "general", null: false
+    t.string "action_name", null: false
+    t.string "http_method", null: false
+    t.string "path", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "created_at", null: false
+    t.index ["category"], name: "index_user_activities_on_category"
+    t.index ["created_at"], name: "index_user_activities_on_created_at"
+    t.index ["user_id", "created_at"], name: "index_user_activities_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_user_activities_on_user_id"
+  end
+
   create_table "user_sessions", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "jti", null: false
@@ -2019,6 +2037,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_04_000001) do
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
   add_foreign_key "tickets", "vehicle_registrations"
+  add_foreign_key "user_activities", "users"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vehicle_registrations", "events"

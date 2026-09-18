@@ -18,8 +18,15 @@ class BusinessMatchingBooking < ApplicationRecord
   # Custom validation to ensure host is not double-booked for active bookings
   validate :host_not_double_booked, if: -> { status != 'Cancelled' && host_user_id.present? }
   validate :receiver_not_double_booked, if: -> { status != 'Cancelled' && receiver_participant_id.present? }
+  validate :session_not_archived, on: :create
 
   private
+
+  def session_not_archived
+    return unless business_matching_session&.archived?
+
+    errors.add(:business_matching_session, 'cannot book an archived session')
+  end
 
   def host_not_double_booked
     overlapping_bookings = BusinessMatchingBooking
