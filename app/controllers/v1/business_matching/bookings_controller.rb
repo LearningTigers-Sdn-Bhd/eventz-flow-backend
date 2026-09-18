@@ -171,6 +171,7 @@ module V1
           bm_event_id: session&.id.to_s,
           session_title: session&.title || 'Matchmaking Session',
           host_user_id: booking.host_user_id.to_s,
+          host_name: booking.host_user&.full_name,
           slot_duration: session&.slot_duration
         }, status: :ok
       end
@@ -208,9 +209,23 @@ module V1
 
         parsed_date = Date.parse(new_date)
 
+        target_session = if params[:bm_event_id].present? || params[:business_matching_event_id].present?
+                           BusinessMatchingSession.find_by(id: params[:bm_event_id] || params[:business_matching_event_id])
+                         else
+                           booking.business_matching_session
+                         end
+
+        target_host_id = params[:host_user_id].presence
+        if target_host_id.blank? && target_session.present?
+          assignment = BusinessHostAssignment.find_by(event_id: target_session.event_id, business_matching_event_id: target_session.id.to_s)
+          target_host_id = assignment&.user_id || booking.host_user_id
+        else
+          target_host_id ||= booking.host_user_id
+        end
+
         # Check slot is not already taken
         conflict = BusinessMatchingBooking
-                     .where(host_user_id: booking.host_user_id, booking_date: parsed_date, booking_time: new_time)
+                     .where(host_user_id: target_host_id, booking_date: parsed_date, booking_time: new_time)
                      .where.not(id: booking.id)
                      .where.not(status: 'Cancelled')
                      .exists?
@@ -219,15 +234,26 @@ module V1
 
         old_date = booking.booking_date
         old_time = booking.booking_time
+        old_host = booking.host_user
 
-        if booking.update(booking_date: parsed_date, booking_time: new_time)
+        update_attrs = {
+          booking_date: parsed_date,
+          booking_time: new_time,
+          host_user_id: target_host_id
+        }
+        update_attrs[:business_matching_session_id] = target_session.id if target_session.present?
+
+        if booking.update(update_attrs)
           session = booking.business_matching_session
           ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_rescheduled' })
-          BusinessMatchingService.new(current_user).notify_booking_rescheduled(booking, old_date, old_time)
+          BusinessMatchingService.new(current_user).notify_booking_rescheduled(booking, old_date, old_time, old_host: old_host)
           render json: {
             message: 'Booking rescheduled successfully',
             booking_date: booking.booking_date.strftime('%-d %B %Y'),
-            booking_time: booking.booking_time
+            booking_time: booking.booking_time,
+            host_user_id: booking.host_user_id.to_s,
+            bm_event_id: session&.id.to_s,
+            session_title: session&.title
           }, status: :ok
         else
           render json: { errors: booking.errors.full_messages }, status: :unprocessable_entity

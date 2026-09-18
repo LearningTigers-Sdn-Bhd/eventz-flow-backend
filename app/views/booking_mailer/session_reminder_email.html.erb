@@ -24,9 +24,23 @@
         <% end %>
       </div>
 
-      <a href="<%= @dashboard_url %>" class="button">View Booking</a>
+      <div style="margin-top: 20px;">
+        <a href="<%= @dashboard_url %>" class="button">View Booking</a>
+      </div>
 
-      <p>See you soon!</p>
+      <% if @reschedule_url.present? || @cancel_url.present? %>
+        <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: #666;">Need to change or cancel this meeting?</p>
+          <% if @reschedule_url.present? %>
+            <a href="<%= @reschedule_url %>" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 14px; font-weight: 600; margin-right: 8px;">Change or Reschedule</a>
+          <% end %>
+          <% if @cancel_url.present? %>
+            <a href="<%= @cancel_url %>" style="display: inline-block; background-color: #ffffff; color: #dc3545; border: 1px solid #dc3545; padding: 9px 18px; text-decoration: none; border-radius: 5px; font-size: 14px; font-weight: 600;">Cancel</a>
+          <% end %>
+        </div>
+      <% end %>
+
+      <p style="margin-top: 20px;">See you soon!</p>
     </div>
     <div class="footer">
       <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>

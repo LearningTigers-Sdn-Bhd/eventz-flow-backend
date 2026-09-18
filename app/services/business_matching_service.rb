@@ -22,7 +22,10 @@ class BusinessMatchingService < BaseService
       memo[p.registerable_id] = p
     end
 
-    booking_counts = BusinessMatchingBooking.where(business_matching_session_id: sessions.pluck(:id))
+    # For public viewers (user is nil), hide sessions without an assigned host
+    sessions = sessions.select { |s| host_lookup[s.id.to_s].present? } if user.nil?
+
+    booking_counts = BusinessMatchingBooking.where(business_matching_session_id: sessions.map(&:id))
                                              .where.not(status: 'Cancelled')
                                              .group(:business_matching_session_id)
                                              .count
@@ -413,16 +416,29 @@ class BusinessMatchingService < BaseService
   # Sends the "your booking was rescheduled" pair after a controller-level
   # update to booking_date/booking_time (reschedule doesn't go through
   # create_booking, so it needs its own entry point).
-  def notify_booking_rescheduled(booking, old_date, old_time)
+  def notify_booking_rescheduled(booking, old_date, old_time, old_host: nil)
     session = booking.business_matching_session
     transformed = _transform_local_bookings([booking], session).first.with_indifferent_access
 
     _deliver_booking_email('reschedule_email', [transformed, session.title, session.event_id, old_date, old_time], booking)
 
-    host = booking.host_user
-    return unless host
-
-    _deliver_booking_email('host_reschedule_email', [transformed, session.title, session.event_id, host, old_date, old_time], booking)
+    if old_host && old_host.id.to_s != booking.host_user_id.to_s
+      # If host changed, notify old host of cancellation with their original slot details, and new host of new booking
+      old_transformed = transformed.merge(
+        'booking_date' => old_date.to_s,
+        'date' => old_date.to_s,
+        'booking_time' => old_time,
+        'time' => old_time
+      )
+      _deliver_booking_email('host_cancellation_email', [old_transformed, session.title, session.event_id, old_host], booking)
+      new_host = booking.host_user
+      _deliver_booking_email('host_confirmation_email', [transformed, session.title, session.event_id, new_host], booking) if new_host
+    else
+      host = booking.host_user
+      if host
+        _deliver_booking_email('host_reschedule_email', [transformed, session.title, session.event_id, host, old_date, old_time], booking)
+      end
+    end
   end
 
   # Sends the "your booking was cancelled" pair after a controller-level
