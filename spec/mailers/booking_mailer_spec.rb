@@ -19,29 +19,34 @@ RSpec.describe BookingMailer, type: :mailer do
   describe '#confirmation_email' do
     let(:mail) { described_class.confirmation_email(booking_data, session.title, event.id) }
 
-    it 'sends to the participant with a clear subject' do
+    it 'sends to the participant with a clear subject and reschedule/cancel buttons' do
       expect(mail.to).to eq(['alice@example.com'])
       expect(mail.subject).to eq("Booking Confirmation for #{session.title}")
+      expect(mail.body.encoded).to include('Change or Reschedule')
+      expect(mail.body.encoded).to include('Cancel')
     end
   end
 
   describe '#pending_approval_email' do
     let(:mail) { described_class.pending_approval_email(booking_data, session.title, event.id) }
 
-    it 'tells the participant the booking is not confirmed yet' do
+    it 'tells the participant the booking is not confirmed yet and includes cancel link' do
       expect(mail.to).to eq(['alice@example.com'])
       expect(mail.subject).to include('Awaiting Approval')
       expect(mail.body.encoded).to include('awaiting approval')
+      expect(mail.body.encoded).to include('Cancel Request')
     end
   end
 
   describe '#approval_email' do
     let(:mail) { described_class.approval_email(booking_data, session.title, event.id) }
 
-    it 'tells the participant the booking is now confirmed' do
+    it 'tells the participant the booking is now confirmed and includes reschedule/cancel buttons' do
       expect(mail.to).to eq(['alice@example.com'])
       expect(mail.subject).to include('Is Confirmed')
       expect(mail.body.encoded).to include('10:00 AM')
+      expect(mail.body.encoded).to include('Change or Reschedule')
+      expect(mail.body.encoded).to include('Cancel')
     end
   end
 

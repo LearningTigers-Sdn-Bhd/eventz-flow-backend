@@ -34,7 +34,14 @@
         you need to do in the meantime.
       </p>
 
-      <p>Best regards,<br>The Organizing Team</p>
+      <% if @cancel_url.present? %>
+        <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: #666;">Need to withdraw this request?</p>
+          <a href="<%= @cancel_url %>" style="display: inline-block; background-color: #ffffff; color: #dc3545; border: 1px solid #dc3545; padding: 9px 18px; text-decoration: none; border-radius: 5px; font-size: 14px; font-weight: 600;">Cancel Request</a>
+        </div>
+      <% end %>
+
+      <p style="margin-top: 20px;">Best regards,<br>The Organizing Team</p>
     </div>
     <div class="footer">
       <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>

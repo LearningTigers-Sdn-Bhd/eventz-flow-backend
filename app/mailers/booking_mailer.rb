@@ -6,6 +6,7 @@ class BookingMailer < ApplicationMailer
     @booking = booking_data
     @event_title = event_title
     _assign_booking_datetime
+    _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
     Rails.logger.info "Sending confirmation email for event_id #{event_id}. Date: #{@booking_date}, Time: #{@booking_time}"
@@ -19,6 +20,7 @@ class BookingMailer < ApplicationMailer
     @booking = booking_data
     @event_title = event_title
     _assign_booking_datetime
+    _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
     mail(to: @booking['email'], subject: "Booking Request Received for #{@event_title} — Awaiting Approval")
@@ -29,6 +31,7 @@ class BookingMailer < ApplicationMailer
     @booking = booking_data
     @event_title = event_title
     _assign_booking_datetime
+    _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
     mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Is Confirmed")
@@ -56,6 +59,7 @@ class BookingMailer < ApplicationMailer
     @old_date = old_date
     @old_time = old_time
     _assign_booking_datetime
+    _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
     mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Has Been Rescheduled")
@@ -96,6 +100,7 @@ class BookingMailer < ApplicationMailer
     @booking = booking_data
     @event_title = event_title
     _assign_booking_datetime
+    _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
     mail(to: @booking['email'], subject: "Reminder: Your session for #{@event_title} starts in 1 hour")
@@ -125,8 +130,19 @@ class BookingMailer < ApplicationMailer
     @booking_time = @booking['booking_time'] || @booking['time']
   end
 
+  def _frontend_base_url
+    ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
+  end
+
   def _dashboard_url(event_id)
-    base_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
-    "#{base_url}/event/#{event_id}/business-matching"
+    "#{_frontend_base_url}/event/#{event_id}/business-matching"
+  end
+
+  def _assign_booking_links(event_id)
+    booking_id = @booking['id']
+    resched_path = @booking['reschedule_link'].presence || "/event/#{event_id}/booking/#{booking_id}/reschedule"
+    cancel_path = @booking['cancel_link'].presence || "/event/#{event_id}/booking/#{booking_id}/cancel"
+    @reschedule_url = "#{_frontend_base_url}#{resched_path}"
+    @cancel_url = "#{_frontend_base_url}#{cancel_path}"
   end
 end
