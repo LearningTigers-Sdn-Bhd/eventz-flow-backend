@@ -440,6 +440,10 @@ Rails.application.routes.draw do
 
       # Session and Availability CRUD
       resources :sessions, only: [:create, :update, :destroy] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
         resources :availabilities, only: [:index, :create]
       end
 
@@ -714,5 +718,9 @@ Rails.application.routes.draw do
       post :assign, on: :member
     end
     resources :exhibitor_zones, only: %i[update destroy]
+
+    namespace :superadmin do
+      get 'system_activity', to: 'system_activity#index'
+    end
   end
 end

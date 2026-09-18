@@ -17,21 +17,7 @@ module V1
           ensure_default_availabilities(session)
 
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })
-          render json: {
-            id: session.id.to_s,
-            event_id: event.id.to_s,
-            title: session.title,
-            duration: session.slot_duration,
-            location: session.location,
-            admin_email: session.admin_email,
-            admin_wa_number: session.admin_wa_number,
-            start_time: session.start_time,
-            end_time: session.end_time,
-            start_date: session.start_date,
-            end_date: session.end_date,
-            tags_editable: session.tags_editable,
-            hours_editable: session.hours_editable
-          }, status: :created
+          render json: session_payload(session), status: :created
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
         end
@@ -54,23 +40,41 @@ module V1
           ensure_default_availabilities(session)
 
           ActionCable.server.broadcast("business_matching_event_#{session.event_id}", { action: "sessions_updated" })
-          render json: {
-            id: session.id.to_s,
-            event_id: session.event_id.to_s,
-            title: session.title,
-            duration: session.slot_duration,
-            location: session.location,
-            admin_email: session.admin_email,
-            admin_wa_number: session.admin_wa_number,
-            start_time: session.start_time,
-            end_time: session.end_time,
-            start_date: session.start_date,
-            end_date: session.end_date,
-            tags_editable: session.tags_editable,
-            hours_editable: session.hours_editable
-          }, status: :ok
+          render json: session_payload(session), status: :ok
         else
           render json: { errors: session.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
+      # PATCH /v1/business_matching/sessions/:id/archive
+      def archive
+        session = BusinessMatchingSession.find_by(id: params[:id])
+        return render json: { error: 'Session not found' }, status: :not_found unless session
+
+        authorize session, :archive?
+
+        if session.archive!
+          Rails.cache.delete("business_matching_events_#{session.event_id}")
+          ActionCable.server.broadcast("business_matching_event_#{session.event_id}", { action: "sessions_updated" })
+          render json: session_payload(session), status: :ok
+        else
+          render json: { error: session.errors.full_messages.join(', ') }, status: :unprocessable_entity
+        end
+      end
+
+      # PATCH /v1/business_matching/sessions/:id/unarchive
+      def unarchive
+        session = BusinessMatchingSession.find_by(id: params[:id])
+        return render json: { error: 'Session not found' }, status: :not_found unless session
+
+        authorize session, :unarchive?
+
+        if session.unarchive!
+          Rails.cache.delete("business_matching_events_#{session.event_id}")
+          ActionCable.server.broadcast("business_matching_event_#{session.event_id}", { action: "sessions_updated" })
+          render json: session_payload(session), status: :ok
+        else
+          render json: { error: session.errors.full_messages.join(', ') }, status: :unprocessable_entity
         end
       end
 
@@ -83,6 +87,7 @@ module V1
         authorize event, :manage_business_matching_sessions?
 
         if session.destroy
+          Rails.cache.delete("business_matching_events_#{event.id}")
           ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "sessions_updated" })
           render json: { message: 'Session deleted successfully' }, status: :ok
         else
@@ -91,6 +96,27 @@ module V1
       end
 
       private
+
+      def session_payload(session)
+        {
+          id: session.id.to_s,
+          event_id: session.event_id.to_s,
+          title: session.title,
+          duration: session.slot_duration,
+          location: session.location,
+          admin_email: session.admin_email,
+          admin_wa_number: session.admin_wa_number,
+          start_time: session.start_time,
+          end_time: session.end_time,
+          start_date: session.start_date,
+          end_date: session.end_date,
+          tags_editable: session.tags_editable,
+          hours_editable: session.hours_editable,
+          archived_at: session.archived_at&.iso8601,
+          is_archived: session.archived?
+        }
+      end
+
 
       # Backfills a default availability row for every day in the session's
       # date range that doesn't already have one — additive only, existing

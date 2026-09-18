@@ -6,6 +6,9 @@ class BusinessMatchingSession < ApplicationRecord
   has_many :business_matching_bookings, dependent: :destroy
   has_many :business_host_assignments, class_name: 'BusinessHostAssignment', foreign_key: :business_matching_event_id, primary_key: :id, dependent: :destroy
 
+  scope :unarchived, -> { where(archived_at: nil) }
+  scope :archived, -> { where.not(archived_at: nil) }
+
   before_destroy :ensure_no_bookings, prepend: true
   before_validation :default_date_range
 
@@ -16,6 +19,33 @@ class BusinessMatchingSession < ApplicationRecord
   validates :start_date, presence: true
   validates :end_date, presence: true
   validate :end_date_not_before_start_date
+
+  def archived?
+    archived_at.present?
+  end
+
+  def can_be_archived?
+    business_host_assignments.none? && business_matching_bookings.where.not(status: 'Cancelled').none?
+  end
+
+  def archive!
+    if business_host_assignments.exists?
+      errors.add(:base, 'Cannot archive session with an assigned host. Please detach the host first.')
+      return false
+    end
+
+    if business_matching_bookings.where.not(status: 'Cancelled').exists?
+      errors.add(:base, 'Cannot archive session with active bookings. Please cancel or remove all bookings first.')
+      return false
+    end
+
+    update(archived_at: Time.current)
+  end
+
+  def unarchive!
+    update(archived_at: nil)
+  end
+
 
   # The single "effective" availability bucket for this session: the
   # assigned host's own (host_user_id-specific) rows if they have any,
