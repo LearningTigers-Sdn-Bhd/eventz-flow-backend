@@ -174,6 +174,27 @@ RSpec.describe 'V1::Superadmin::SystemActivity', type: :request do
         expect(records[user_activity.id]['unusual']).to eq(false)
       end
 
+      it 'filters audit logs by result and exposes the error message' do
+        UserActivity.create!(
+          user: normal_user,
+          category: 'ticketing',
+          action_name: 'Updated Attendee Ticket Details',
+          http_method: 'PATCH',
+          path: '/v1/tickets/1',
+          result: 'failed',
+          error_message: 'Ticket not found',
+          created_at: 2.minutes.ago
+        )
+
+        get '/v1/superadmin/system_activity', params: { result: 'failed' }, headers: auth_header(superadmin)
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        records = json['audit_logs']['records']
+        expect(records.all? { |r| r['result'] == 'failed' }).to eq(true)
+        expect(records.first['error_message']).to eq('Ticket not found')
+      end
+
       it 'includes superadmin actions and active users when include_superadmin=true' do
         UserActivity.create!(
           user: superadmin,

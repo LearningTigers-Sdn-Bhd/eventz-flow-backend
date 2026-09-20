@@ -126,6 +126,7 @@ module V1
         activities_scope = apply_date_range(activities_scope)
         activities_scope = activities_scope.for_user(params[:user_id]) if params[:user_id].present?
         activities_scope = activities_scope.for_category(params[:category]) if params[:category].present?
+        activities_scope = activities_scope.where(result: params[:result]) if %w[success failed].include?(params[:result])
         if params[:q].present?
           term = "%#{params[:q].strip}%"
           activities_scope = activities_scope.joins(:user)
@@ -154,6 +155,8 @@ module V1
             },
             category: act.category,
             action_name: act.action_name,
+            result: act.result,
+            error_message: act.error_message,
             http_method: act.http_method,
             path: act.path,
             details: act.details,
