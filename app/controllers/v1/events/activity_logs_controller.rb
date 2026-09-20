@@ -30,6 +30,8 @@ module V1
         activities = scope.offset((page - 1) * per_page).limit(per_page).to_a
         ticket_attendees = ticket_attendees_for(activities)
 
+        burst_ids = flagged_burst_ids(activities)
+
         records = activities.map do |act|
           {
             id: act.id,
@@ -44,7 +46,8 @@ module V1
             result: act.result,
             error_message: act.error_message,
             details: details_with_ticket_attendee(act.details, ticket_attendees),
-            created_at: act.created_at
+            created_at: act.created_at,
+            unusual: burst_ids.include?(act.id)
           }
         end
 
@@ -65,12 +68,44 @@ module V1
       def destroy_all
         authorize @event, :clear_activity_log?
 
+        deleted_count = UserActivity.where(event_id: @event.id).count
         UserActivity.where(event_id: @event.id).delete_all
+
+        UserActivity.create!(
+          user: @current_user,
+          event_id: @event.id,
+          category: 'events',
+          action_name: 'Cleared Activity Log',
+          http_method: 'DELETE',
+          path: request.path,
+          details: { 'deleted_count' => deleted_count },
+          ip_address: request.remote_ip
+        )
 
         render json: { success: true }
       end
 
       private
+
+      # Flags entries where the same user repeated the same action at least
+      # BURST_THRESHOLD times within BURST_WINDOW_SECONDS of each other —
+      # a signal worth a second look (bug, bulk mistake, or misuse), not an
+      # error on its own.
+      BURST_THRESHOLD = 10
+      BURST_WINDOW_SECONDS = 60
+
+      def flagged_burst_ids(activities)
+        flagged = Set.new
+        activities.group_by { |a| [a.user_id, a.action_name] }.each_value do |group|
+          sorted = group.sort_by(&:created_at)
+          sorted.each_with_index do |act, i|
+            window_end = act.created_at + BURST_WINDOW_SECONDS
+            burst = sorted[i..].take_while { |other| other.created_at <= window_end }
+            flagged.merge(burst.map(&:id)) if burst.size >= BURST_THRESHOLD
+          end
+        end
+        flagged
+      end
 
       def set_event
         @event = Event.friendly.find(params[:event_id])

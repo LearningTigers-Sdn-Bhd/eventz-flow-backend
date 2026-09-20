@@ -153,6 +153,27 @@ RSpec.describe 'V1::Superadmin::SystemActivity', type: :request do
         expect(records.map { |r| r['action_name'] }).to eq(['Rescheduled Matchmaking Appointment'])
       end
 
+      it 'flags a burst of repeated same-user, same-action entries as unusual' do
+        base = Time.current
+        burst_ids = Array.new(10) do |i|
+          UserActivity.create!(
+            user: normal_user,
+            category: 'ticketing',
+            action_name: 'Archived Ticket',
+            http_method: 'DELETE',
+            path: '/v1/tickets/1',
+            created_at: base + i.seconds
+          ).id
+        end
+
+        get '/v1/superadmin/system_activity', headers: auth_header(superadmin)
+
+        expect(response).to have_http_status(:ok)
+        records = JSON.parse(response.body)['audit_logs']['records'].index_by { |r| r['id'] }
+        burst_ids.each { |id| expect(records[id]['unusual']).to eq(true) }
+        expect(records[user_activity.id]['unusual']).to eq(false)
+      end
+
       it 'includes superadmin actions and active users when include_superadmin=true' do
         UserActivity.create!(
           user: superadmin,

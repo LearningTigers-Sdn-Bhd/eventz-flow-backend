@@ -140,7 +140,8 @@ module V1
         page = (params[:page] || 1).to_i
         per_page = (params[:per_page] || 30).to_i
         total_activities = activities_scope.count
-        activities = activities_scope.offset((page - 1) * per_page).limit(per_page)
+        activities = activities_scope.offset((page - 1) * per_page).limit(per_page).to_a
+        burst_ids = flagged_burst_ids(activities)
 
         activities_data = activities.map do |act|
           {
@@ -157,7 +158,8 @@ module V1
             path: act.path,
             details: act.details,
             ip_address: act.ip_address,
-            created_at: act.created_at
+            created_at: act.created_at,
+            unusual: burst_ids.include?(act.id)
           }
         end
 
@@ -210,6 +212,26 @@ module V1
         Date.parse(date_string)
       rescue ArgumentError
         nil
+      end
+
+      # Flags entries where the same user repeated the same action at least
+      # BURST_THRESHOLD times within BURST_WINDOW_SECONDS of each other —
+      # a signal worth a second look (bug, bulk mistake, or misuse), not an
+      # error on its own.
+      BURST_THRESHOLD = 10
+      BURST_WINDOW_SECONDS = 60
+
+      def flagged_burst_ids(activities)
+        flagged = Set.new
+        activities.group_by { |a| [a.user_id, a.action_name] }.each_value do |group|
+          sorted = group.sort_by(&:created_at)
+          sorted.each_with_index do |act, i|
+            window_end = act.created_at + BURST_WINDOW_SECONDS
+            burst = sorted[i..].take_while { |other| other.created_at <= window_end }
+            flagged.merge(burst.map(&:id)) if burst.size >= BURST_THRESHOLD
+          end
+        end
+        flagged
       end
     end
   end

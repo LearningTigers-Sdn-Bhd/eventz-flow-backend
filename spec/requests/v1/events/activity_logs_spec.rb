@@ -173,17 +173,34 @@ RSpec.describe 'Event activity logs', type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  it 'flags a burst of repeated same-user, same-action entries as unusual' do
+    base = Time.current
+    burst = Array.new(10) { |i| activity(user: staff, event_id: event.id, created_at: base + i.seconds) }
+    normal = activity(user: staff, event_id: event.id, created_at: base + 10.minutes)
+
+    get path, headers: headers_for(staff)
+
+    expect(response).to have_http_status(:ok)
+    records = response.parsed_body.dig('audit_logs', 'records').index_by { |r| r['id'] }
+    burst.each { |act| expect(records[act.id]['unusual']).to eq(true) }
+    expect(records[normal.id]['unusual']).to eq(false)
+  end
+
   describe 'DELETE /v1/events/:event_id/activity_logs/clear' do
     let(:clear_path) { "/v1/events/#{event.id}/activity_logs/clear" }
 
-    it 'lets the org owner permanently clear the event activity log' do
+    it 'lets the org owner permanently clear the event activity log, leaving a record of the clear itself' do
       activity(user: staff, event_id: event.id)
       activity(user: staff, event_id: other_event.id)
 
       delete clear_path, headers: headers_for(owner)
 
       expect(response).to have_http_status(:ok)
-      expect(UserActivity.where(event_id: event.id).count).to eq(0)
+      remaining = UserActivity.where(event_id: event.id)
+      expect(remaining.count).to eq(1)
+      expect(remaining.first.action_name).to eq('Cleared Activity Log')
+      expect(remaining.first.user_id).to eq(owner.id)
+      expect(remaining.first.details['deleted_count']).to eq(1)
       expect(UserActivity.where(event_id: other_event.id).count).to eq(1)
     end
 
