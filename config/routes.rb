@@ -558,6 +558,14 @@ Rails.application.routes.draw do
       get :me, on: :collection
     end
 
+    resources :ai_integrations, only: %i[index create update destroy] do
+      get :available_models, on: :member
+      resources :ai_models, only: %i[create update destroy] do
+        post :import, on: :collection
+        patch :set_default, on: :member
+      end
+    end
+
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
 

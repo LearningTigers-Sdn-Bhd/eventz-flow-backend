@@ -77,6 +77,8 @@ class User < ApplicationRecord
   has_many :printing_services, dependent: :destroy
   has_many :exhibitor_kit_admin_notes, dependent: :destroy
   has_one :payment_detail, dependent: :destroy
+  has_many :ai_integrations, dependent: :destroy
+  belongs_to :default_ai_model, class_name: 'AiModel', optional: true
 
 
   # 5. VOUCHER REDEMPTIONS
