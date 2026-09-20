@@ -151,7 +151,11 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
-      resources :activity_logs, only: :index, controller: 'events/activity_logs'
+      resources :activity_logs, only: :index, controller: 'events/activity_logs' do
+        collection do
+          delete :clear, action: :destroy_all
+        end
+      end
       member do
         delete :force_delete
         patch :restore

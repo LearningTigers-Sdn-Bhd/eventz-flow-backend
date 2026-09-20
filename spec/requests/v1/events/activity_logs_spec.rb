@@ -29,7 +29,7 @@ RSpec.describe 'Event activity logs', type: :request do
     visible = activity(user: staff, event_id: event.id)
     activity(user: owner, event_id: event.id)
     activity(user: staff, event_id: other_event.id)
-    activity(user: staff, event_id: event.id, created_at: 4.days.ago)
+    activity(user: staff, event_id: event.id, created_at: 91.days.ago)
 
     get path, headers: headers_for(staff)
 
@@ -151,6 +151,50 @@ RSpec.describe 'Event activity logs', type: :request do
     logged = UserActivity.where(user_id: staff.id, event_id: event.id).order(:created_at).last
     expect(logged.result).to eq('failed')
     expect(logged.error_message).to be_present
+  end
+
+  it 'filters by an explicit date range, overriding the default 90-day window' do
+    in_range = activity(user: staff, event_id: event.id, created_at: 10.days.ago)
+    activity(user: staff, event_id: event.id, created_at: 40.days.ago)
+
+    get path,
+        params: { from_date: 15.days.ago.to_date.to_s, to_date: 5.days.ago.to_date.to_s },
+        headers: headers_for(staff)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig('audit_logs', 'records').map { |row| row['id'] }).to eq([in_range.id])
+  end
+
+  it 'ignores an unparsable date filter instead of erroring' do
+    activity(user: staff, event_id: event.id)
+
+    get path, params: { from_date: 'not-a-date' }, headers: headers_for(staff)
+
+    expect(response).to have_http_status(:ok)
+  end
+
+  describe 'DELETE /v1/events/:event_id/activity_logs/clear' do
+    let(:clear_path) { "/v1/events/#{event.id}/activity_logs/clear" }
+
+    it 'lets the org owner permanently clear the event activity log' do
+      activity(user: staff, event_id: event.id)
+      activity(user: staff, event_id: other_event.id)
+
+      delete clear_path, headers: headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(UserActivity.where(event_id: event.id).count).to eq(0)
+      expect(UserActivity.where(event_id: other_event.id).count).to eq(1)
+    end
+
+    it 'forbids non-owner staff from clearing the log' do
+      activity(user: staff, event_id: event.id)
+
+      delete clear_path, headers: headers_for(staff)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(UserActivity.where(event_id: event.id).count).to eq(1)
+    end
   end
 
   it 'keeps owner actions visible in the existing superadmin view' do

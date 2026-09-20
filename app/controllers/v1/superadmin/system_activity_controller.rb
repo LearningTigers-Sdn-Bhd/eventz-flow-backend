@@ -121,10 +121,16 @@ module V1
                               }
                             end
 
-        # 2. Activity Logs (Past 3 Days)
-        activities_scope = UserActivity.within_days(3).includes(:user).recent
+        # 2. Activity Logs (Past 90 Days)
+        activities_scope = UserActivity.includes(:user).recent
+        activities_scope = apply_date_range(activities_scope)
         activities_scope = activities_scope.for_user(params[:user_id]) if params[:user_id].present?
         activities_scope = activities_scope.for_category(params[:category]) if params[:category].present?
+        if params[:q].present?
+          term = "%#{params[:q].strip}%"
+          activities_scope = activities_scope.joins(:user)
+                                              .where('user_activities.action_name ILIKE :term OR users.full_name ILIKE :term OR users.email ILIKE :term', term: term)
+        end
 
         # Exclude superadmin actions by default unless explicitly chosen
         unless include_superadmin
@@ -187,7 +193,24 @@ module V1
         }, status: :forbidden
       end
 
+      # Retention only keeps 90 days of rows, so an explicit range narrows
+      # within that window rather than extending past it.
+      def apply_date_range(scope)
+        from_date = parse_date(params[:from_date])
+        to_date = parse_date(params[:to_date])
+        return scope.within_days(90) if from_date.blank? && to_date.blank?
 
+        scope = scope.where('user_activities.created_at >= ?', from_date.beginning_of_day) if from_date
+        scope = scope.where('user_activities.created_at <= ?', to_date.end_of_day) if to_date
+        scope
+      end
+
+      def parse_date(date_string)
+        return nil if date_string.blank?
+        Date.parse(date_string)
+      rescue ArgumentError
+        nil
+      end
     end
   end
 end

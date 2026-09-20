@@ -46,6 +46,12 @@ class EventPolicy < ApplicationPolicy
     EventAssignment.exists?(event_id: record.id, user_id: user.id)
   end
 
+  # Only Org Owner may permanently clear the activity log
+  def clear_activity_log?
+    return false if user.blank? || record.blank?
+    user.is_org_owner?
+  end
+
   # Can update if:
   # - Org owner or Organizer (Org-level permission)
   # - User is Event Admin or Team Member (Event-level staff permission)

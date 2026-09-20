@@ -8,7 +8,8 @@ module V1
       def index
         authorize @event, :view_activity_log?
 
-        scope = UserActivity.where(event_id: @event.id).within_days(3).includes(:user).recent
+        scope = UserActivity.where(event_id: @event.id).includes(:user).recent
+        scope = apply_date_range(scope)
         scope = scope.where.not(http_method: 'GET')
         scope = scope.for_category(params[:category]) if params[:category].present?
         scope = scope.where.not(category: %w[groups users api_keys payment_details auth])
@@ -61,10 +62,37 @@ module V1
         }
       end
 
+      def destroy_all
+        authorize @event, :clear_activity_log?
+
+        UserActivity.where(event_id: @event.id).delete_all
+
+        render json: { success: true }
+      end
+
       private
 
       def set_event
         @event = Event.friendly.find(params[:event_id])
+      end
+
+      # Retention only keeps 90 days of rows, so an explicit range narrows
+      # within that window rather than extending past it.
+      def apply_date_range(scope)
+        from_date = parse_date(params[:from_date])
+        to_date = parse_date(params[:to_date])
+        return scope.within_days(90) if from_date.blank? && to_date.blank?
+
+        scope = scope.where('user_activities.created_at >= ?', from_date.beginning_of_day) if from_date
+        scope = scope.where('user_activities.created_at <= ?', to_date.end_of_day) if to_date
+        scope
+      end
+
+      def parse_date(date_string)
+        return nil if date_string.blank?
+        Date.parse(date_string)
+      rescue ArgumentError
+        nil
       end
 
       def ticket_attendees_for(activities)
