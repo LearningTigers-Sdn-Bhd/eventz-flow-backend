@@ -25,7 +25,9 @@ module V1
         dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
         full = ActiveModel::Type::Boolean.new.cast(params[:full])
         no_label = ActiveModel::Type::Boolean.new.cast(params[:no_label])
-        results = service_class.import(params[:file], dry_run: dry_run, full: full, no_label: no_label)
+        overwrite_blank = ActiveModel::Type::Boolean.new.cast(params[:overwrite_blank_custom_fields])
+        results = service_class.import(params[:file], dry_run: dry_run, full: full, no_label: no_label,
+                                       overwrite_blank_custom_fields: overwrite_blank)
 
         total = results[:created][:count] + (results[:updated][:count] || 0) + results[:skipped][:count]
 
@@ -58,6 +60,10 @@ module V1
             data: results[:duplicates_in_file][:data]
           }
         end
+
+        # Per-event breakdown (existing vs to-be-created) for the preview's event
+        # summary panel — always include when the file targeted any event.
+        response_data[:events] = results[:events] if results[:events].present?
 
         success_response(
           data: response_data,
