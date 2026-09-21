@@ -56,18 +56,17 @@ module AiIntegrations
 
     def fetch_models
       uri = models_uri
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.ipaddr = @resolved_ip # pin the socket to the address we already vetted, closing the resolve-then-connect DNS-rebind gap
+      http.use_ssl = uri.scheme == 'https'
+      http.open_timeout = 10
+      http.read_timeout = 10
 
-      Net::HTTP.start(
-        uri.host,
-        uri.port,
-        use_ssl: uri.scheme == 'https',
-        open_timeout: 10,
-        read_timeout: 10
-      ) do |http|
+      http.start do |connection|
         request = Net::HTTP::Get.new(uri.request_uri)
         request['Authorization'] = "Bearer #{@integration.api_key}"
         request['Accept'] = 'application/json'
-        http.request(request)
+        connection.request(request)
       end
     end
 
@@ -76,11 +75,7 @@ module AiIntegrations
       raise Error, 'Provider URL must use HTTPS' unless uri.scheme == 'https'
       raise Error, 'Provider URL must include a host' if uri.host.blank?
 
-      addresses = Resolv.getaddresses(uri.host)
-      raise Error, 'Provider URL could not be resolved' if addresses.empty?
-      if addresses.any? { |address| blocked_address?(address) }
-        raise Error, 'Provider URL must not target a private or local network'
-      end
+      @resolved_ip = pick_safe_address(uri.host)
 
       uri.path = "#{uri.path.to_s.chomp('/')}/models"
       uri.query = nil
@@ -88,6 +83,16 @@ module AiIntegrations
       uri
     rescue Resolv::ResolvError
       raise Error, 'Provider URL could not be resolved'
+    end
+
+    def pick_safe_address(host)
+      addresses = Resolv.getaddresses(host)
+      raise Error, 'Provider URL could not be resolved' if addresses.empty?
+      if addresses.any? { |address| blocked_address?(address) }
+        raise Error, 'Provider URL must not target a private or local network'
+      end
+
+      addresses.first
     end
 
     def blocked_address?(address)

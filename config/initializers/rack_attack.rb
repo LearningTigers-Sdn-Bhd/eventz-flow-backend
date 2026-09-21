@@ -140,6 +140,13 @@ class Rack::Attack
     end
   end
 
+  # 13. AI Integration Probing (authenticated SSRF-shaped surface: fetches a
+  # user-supplied URL server-side). Caps abuse independent of the general
+  # req/ip throttle above.
+  throttle('ai_available_models/ip', limit: 20, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{/v1/ai_integrations/\d+/available_models}) && req.get?
+  end
+
   # Response for throttled requests
   self.throttled_responder = lambda do |req|
     match_data = (req.respond_to?(:env) ? req.env['rack.attack.match_data'] : nil) ||
