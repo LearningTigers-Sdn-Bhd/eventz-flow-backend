@@ -210,6 +210,10 @@ module V1
       payment_proof_file = attrs.delete(:payment_proof)
       return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
 
+      if (reassign_error = reassign_vehicle_if_plate_changed!)
+        return render json: { errors: [reassign_error] }, status: :unprocessable_content
+      end
+
       if @ticket.update(attrs)
         attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
         mark_batch_siblings_paid!(primary: @ticket, siblings: siblings) if siblings.exists?
@@ -824,6 +828,34 @@ module V1
       return permitted_params.merge(status: :pending_payment) if @ticket&.paid? && @ticket.purchased? && !going_paid
 
       permitted_params
+    end
+
+    # car_registration_number is reserved on Ticket#custom_fields_data (it's
+    # derived from vehicle_registration_id), so a plain ticket update can no
+    # longer drift it out of sync with the ticket's actual vehicle link. A
+    # panel-submitted plate change is instead routed through
+    # VehicleRegistrationAssignment, which updates both the FK and the field
+    # together and re-checks capacity/role for the target vehicle. Returns
+    # an error message string, or nil when there was no plate change to make.
+    def reassign_vehicle_if_plate_changed!
+      raw_custom_fields = params.dig(:ticket, :custom_fields_data)
+      return nil unless raw_custom_fields.respond_to?(:[])
+
+      new_plate = raw_custom_fields[:car_registration_number] || raw_custom_fields['car_registration_number']
+      return nil if new_plate.blank?
+
+      current_vehicle = @ticket.vehicle_registration
+      return nil if current_vehicle && VehicleRegistration.normalize_plate(new_plate) == current_vehicle.normalized_plate
+
+      form = current_vehicle&.registration_form
+      return 'Cannot change car plate: ticket has no registration form to validate against' unless form
+
+      begin
+        VehicleRegistrationAssignment.new(event: @event, form: form, ticket: @ticket, plate: new_plate).save
+        nil
+      rescue VehicleRegistrationAssignment::Error => e
+        e.message
+      end
     end
 
     # Renders an error and returns false when the uploaded payment proof
