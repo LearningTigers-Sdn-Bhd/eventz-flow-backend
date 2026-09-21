@@ -1246,5 +1246,25 @@ RSpec.describe 'V1::Tickets', type: :request do
       expect(ticket.check_in_at).to be_nil
       expect(ticket.status).to eq('purchased')
     end
+
+    it 'unscans an imported checked-in ticket that has no scan log' do
+      # Import sets checked_in without ever writing a ScanLog.
+      ticket.update!(checked_in: true, check_in_at: 1.hour.ago, status: :scanned)
+      expect(ScanLog.for_scannable(ticket)).to be_empty
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      ticket.reload
+      expect(ticket.checked_in).to be false
+      expect(ticket.check_in_at).to be_nil
+      expect(ticket.scanned_by_id).to be_nil
+      expect(ticket.status).to eq('purchased')
+    end
+
+    it 'still returns 422 for a ticket that was never checked in' do
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:unprocessable_content)
+    end
   end
 end

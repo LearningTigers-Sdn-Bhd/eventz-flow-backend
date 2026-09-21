@@ -37,10 +37,23 @@ class ScanGate
 
   # Removes the most recent scan and recomputes the denormalised columns.
   # Returns true if a row was removed, false if there were none.
+  #
+  # Tickets imported with Checked In = true carry checked_in/check_in_at but no
+  # ScanLog (the import never writes one). For those, fall back to the
+  # denormalised columns: reset the flags directly instead of reporting "not
+  # checked in", which would leave an imported scanned ticket un-unscannable.
   def self.undo!(scannable)
     scannable.with_lock do
       last = ScanLog.for_scannable(scannable).order(:scanned_at).last
-      next false if last.nil?
+
+      if last.nil?
+        next false unless scannable.checked_in?
+
+        attrs = { checked_in: false, check_in_at: nil, scanned_by_id: nil }
+        attrs[:status] = :purchased if scannable.is_a?(Ticket)
+        persist!(scannable, attrs)
+        next true
+      end
 
       last.destroy!
       survivor = ScanLog.for_scannable(scannable).order(:scanned_at).first
