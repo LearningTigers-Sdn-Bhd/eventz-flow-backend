@@ -72,7 +72,7 @@ module Authenticable
           if session && session.active?
              @current_user = session.user
              session.touch!
-             UserActivityRecorder.record(@current_user, request)
+             @current_user_activity = UserActivityRecorder.record(@current_user, request)
              return if @current_user.present?
           else
              return render_unauthorized(CustomError::Unauthorized.new('Session invalid or expired'))
@@ -166,34 +166,7 @@ module Authenticable
     # Best-effort extraction of an event identifier from a request. Returns
     # the integer event_id when one can be resolved, otherwise nil.
     def api_key_request_event_id
-      direct = params[:event_id] ||
-               params[:business_matching_event_id] ||
-               params.dig(:voucher, :event_id)
-      return direct.to_i if direct.present? && direct.to_s.match?(/\A\d+\z/)
-
-      # /v1/events/:id — when the events controller is the target, params[:id]
-      # is the event id itself.
-      if controller_path == 'v1/events' && params[:id].present? && params[:id].to_s.match?(/\A\d+\z/)
-        return params[:id].to_i
-      end
-
-      slug = params[:event_slug] || params[:slug]
-      if slug.present?
-        event = Event.with_deleted.friendly.find_by(slug: slug) ||
-                (slug.to_s.match?(/\A\d+\z/) ? Event.with_deleted.find_by(id: slug) : nil)
-        return event&.id
-      end
-
-      # /v1/scan/:public_id/check_in — resolve the event via the scanned record
-      # so kiosks/scanners using an event-scoped API key still work for the
-      # event they're scoped to.
-      if params[:public_id].present?
-        record = Ticket.find_by(public_id: params[:public_id]) ||
-                 Visitor.find_by(public_id: params[:public_id])
-        return record&.event_id
-      end
-
-      nil
+      EventIdResolver.resolve(params)
     end
 
     def current_user
