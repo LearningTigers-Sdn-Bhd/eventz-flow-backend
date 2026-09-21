@@ -243,6 +243,36 @@ RSpec.describe 'V1::Imports - Visitors', type: :request do
       expect(visitor.custom_fields_data['company']).to eq('Tech Corp')
     end
 
+    it 'keeps a stored custom field when the reimported cell is blank by default' do
+      organizer_event.update!(labels_data: { 'company' => 'Company' })
+      visitor = organizer_event.visitors.create!(full_name: 'Blank Keep Visitor', custom_fields_data: { 'company' => 'Tech Corp' })
+
+      file = build_visitor_excel(
+        [['Blank Keep Visitor', 'blankkeep@example.com', '', 'male', 25, organizer_event.title, '']],
+        custom_columns: ['Company']
+      )
+
+      post '/v1/imports/visitors', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      expect(visitor.reload.custom_fields_data['company']).to eq('Tech Corp')
+    end
+
+    it 'clears a stored custom field on blank when overwrite_blank_custom_fields=true' do
+      organizer_event.update!(labels_data: { 'company' => 'Company' })
+      visitor = organizer_event.visitors.create!(full_name: 'Blank Clear Visitor', custom_fields_data: { 'company' => 'Tech Corp' })
+
+      file = build_visitor_excel(
+        [['Blank Clear Visitor', 'blankclear@example.com', '', 'male', 25, organizer_event.title, '']],
+        custom_columns: ['Company']
+      )
+
+      post '/v1/imports/visitors', params: { file: file, dry_run: false, overwrite_blank_custom_fields: true }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      expect(visitor.reload.custom_fields_data['company']).to eq('')
+    end
+
     it 'creates custom fields with Label N keys when no_label=true' do
       file = build_visitor_excel(
         [['Label N Visitor', 'labeln@example.com', '', 'male', 25, organizer_event.title, 'Tech Corp']],

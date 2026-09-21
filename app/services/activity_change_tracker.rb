@@ -82,8 +82,22 @@ class ActivityChangeTracker
       accepted << record.public_send("#{attr}_#{field.cast}").to_s if field.cast
       next if accepted.include?(submitted.to_s)
 
+      if attr == :ticket_type_id
+        changes[field.label] = { from: ticket_type_label(current), to: ticket_type_label(submitted) }
+        next
+      end
+
       changes[field.label] = { from: current.to_s, to: humanize_value(record.class, attr, submitted) }
     end
+  end
+
+  # A bare ticket_type_id ("165 -> 154") is meaningless to whoever reads the
+  # activity log — show the type's name alongside its id instead.
+  def self.ticket_type_label(id)
+    return id.to_s if id.blank?
+
+    name = TicketType.find_by(id: id)&.name
+    name ? "#{name} (##{id})" : "##{id}"
   end
 
   # Organizer-defined custom fields are stored as one jsonb blob with
