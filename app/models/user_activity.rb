@@ -12,8 +12,8 @@ class UserActivity < ApplicationRecord
   scope :for_category, ->(category) { where(category: category) if category.present? }
   scope :for_user, ->(user_id) { where(user_id: user_id) if user_id.present? }
 
-  # Purge logs older than 3 days
-  def self.cleanup_old_activities!(days = 3)
+  # Purge logs older than 90 days
+  def self.cleanup_old_activities!(days = 90)
     where('created_at < ?', days.days.ago).delete_all
   end
 end

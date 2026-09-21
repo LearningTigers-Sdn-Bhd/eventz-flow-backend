@@ -17,6 +17,21 @@ RSpec.describe UserActivity, type: :model do
       expect(activity).to be_valid
     end
 
+    it 'allows an optional event_id' do
+      activity = described_class.new(
+        user: user,
+        category: 'ticketing',
+        action_name: 'Checked in Attendee / Scanned Ticket',
+        http_method: 'PATCH',
+        path: '/v1/scan/T123/check_in',
+        event_id: 123
+      )
+
+      activity.save!
+      expect(activity.reload.event_id).to eq(123)
+      expect(described_class.new(user: user).event_id).to be_nil
+    end
+
     it 'validates presence of action_name' do
       activity = described_class.new(user: user, http_method: 'POST', path: '/test')
       expect(activity).not_to be_valid

@@ -151,6 +151,11 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
+      resources :activity_logs, only: :index, controller: 'events/activity_logs' do
+        collection do
+          delete :clear, action: :destroy_all
+        end
+      end
       member do
         delete :force_delete
         patch :restore
@@ -553,6 +558,14 @@ Rails.application.routes.draw do
       get :me, on: :collection
     end
 
+    resources :ai_integrations, only: %i[index create update destroy] do
+      get :available_models, on: :member
+      resources :ai_models, only: %i[create update destroy] do
+        post :import, on: :collection
+        patch :set_default, on: :member
+      end
+    end
+
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
 
@@ -721,6 +734,7 @@ Rails.application.routes.draw do
 
     namespace :superadmin do
       get 'system_activity', to: 'system_activity#index'
+      post 'system_activity/:id/analyze', to: 'system_activity#analyze'
     end
   end
 end
