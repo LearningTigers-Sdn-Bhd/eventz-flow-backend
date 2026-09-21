@@ -5,6 +5,7 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
   let(:other_owner) { create(:user, :org_owner) }
   let(:organizer) { create(:user, :organizer) }
   let(:headers) { { 'Authorization' => "Bearer #{jwt_token(owner)}" } }
+  let(:other_owner_headers) { { 'Authorization' => "Bearer #{jwt_token(other_owner)}" } }
   let(:secret) { 'super-secret-api-key' }
   let(:provider_attributes) do
     {
@@ -14,9 +15,8 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
     }
   end
 
-  def create_integration(user: owner, name: 'OpenRouter')
+  def create_integration(name: 'OpenRouter')
     AiIntegration.create!(
-      user: user,
       provider: name,
       api_url: "https://example.com/#{name.downcase}/v1",
       api_key: secret
@@ -68,7 +68,7 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
   end
 
   describe 'POST /v1/ai_integrations' do
-    it 'creates multiple providers for the same owner without exposing API keys' do
+    it 'creates multiple system-wide providers without exposing API keys' do
       post '/v1/ai_integrations', params: { ai_integration: provider_attributes }, headers: headers, as: :json
 
       expect(response).to have_http_status(:created)
@@ -79,7 +79,7 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
       }, headers: headers, as: :json
 
       expect(response).to have_http_status(:created)
-      expect(owner.ai_integrations.count).to eq(2)
+      expect(AiIntegration.count).to eq(2)
       expect_masked_credentials
     end
 
@@ -116,14 +116,15 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
       expect_masked_credentials
     end
 
-    it 'does not allow another owner to update the provider' do
-      integration = create_integration(user: other_owner)
+    it 'allows any org owner to update the shared provider' do
+      integration = create_integration
 
       patch "/v1/ai_integrations/#{integration.id}", params: {
-        ai_integration: { provider: 'Stolen' }
-      }, headers: headers, as: :json
+        ai_integration: { provider: 'Updated By Other Owner' }
+      }, headers: other_owner_headers, as: :json
 
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:ok)
+      expect(integration.reload.provider).to eq('Updated By Other Owner')
     end
   end
 
@@ -204,34 +205,35 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
       patch "/v1/ai_integrations/#{integration.id}/ai_models/#{first_model.id}/set_default",
             headers: headers
       expect(response).to have_http_status(:ok)
-      expect(owner.reload.default_ai_model).to eq(first_model)
+      expect(first_model.reload.is_default).to be(true)
       expect(parsed_body['is_default']).to be(true)
 
       patch "/v1/ai_integrations/#{second_provider.id}/ai_models/#{second_model.id}/set_default",
             headers: headers
       expect(response).to have_http_status(:ok)
-      expect(owner.reload.default_ai_model).to eq(second_model)
-      expect(first_model.reload).not_to be_default_for(owner)
+      expect(second_model.reload.is_default).to be(true)
+      expect(first_model.reload.is_default).to be(false)
     end
 
     it 'clears the default when its model is deleted' do
       model = integration.ai_models.create!(model_id: 'cx/gpt-5.6', display_name: 'GPT 5.6')
-      owner.update!(default_ai_model: model)
+      model.make_default!
 
       delete "/v1/ai_integrations/#{integration.id}/ai_models/#{model.id}", headers: headers
 
       expect(response).to have_http_status(:no_content)
-      expect(owner.reload.default_ai_model).to be_nil
+      expect(AiModel.where(is_default: true)).to be_empty
     end
 
-    it 'does not allow an owner to manage another owner model' do
-      foreign_provider = create_integration(user: other_owner, name: 'Foreign')
-      model = foreign_provider.ai_models.create!(model_id: 'foreign/model', display_name: 'Foreign Model')
+    it 'allows any org owner to manage a shared provider model' do
+      other_provider = create_integration(name: 'OtherProvider')
+      model = other_provider.ai_models.create!(model_id: 'shared/model', display_name: 'Shared Model')
 
-      patch "/v1/ai_integrations/#{foreign_provider.id}/ai_models/#{model.id}/set_default",
-            headers: headers
+      patch "/v1/ai_integrations/#{other_provider.id}/ai_models/#{model.id}/set_default",
+            headers: other_owner_headers
 
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:ok)
+      expect(model.reload.is_default).to be(true)
     end
 
     it 'imports selected models in one request and chooses the first model by default' do
@@ -250,7 +252,7 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
         'gcli/grok-4.6', 'gcli/grok-4.6-high'
       )
       expect(parsed_body.find { |model| model['model_id'] == 'gcli/grok-4.6' }['is_default']).to be(true)
-      expect(owner.reload.default_ai_model.model_id).to eq('gcli/grok-4.6')
+      expect(AiModel.find_by(model_id: 'gcli/grok-4.6').is_default).to be(true)
     end
 
     it 'does not duplicate existing models during import' do
@@ -270,14 +272,14 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
       expect(existing.reload.display_name).to eq('Custom Name')
     end
 
-    it 'does not allow another owner to import models' do
-      foreign_provider = create_integration(user: other_owner, name: 'Foreign')
-
-      post "/v1/ai_integrations/#{foreign_provider.id}/ai_models/import", params: {
+    it 'forbids a non-owner from importing models' do
+      post "/v1/ai_integrations/#{integration.id}/ai_models/import", params: {
         ai_models: { models: [{ model_id: 'foreign/model', model_name: '' }] }
-      }, headers: headers, as: :json
+      }, headers: {
+        'Authorization' => "Bearer #{jwt_token(organizer)}"
+      }, as: :json
 
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:forbidden)
     end
   end
 
@@ -322,12 +324,12 @@ RSpec.describe 'V1::AiIntegrations', type: :request do
       expect(response.body).not_to include(secret)
     end
 
-    it 'does not expose another owner provider models' do
-      foreign_provider = create_integration(user: other_owner, name: 'Foreign')
+    it 'forbids a non-owner from viewing provider models' do
+      get "/v1/ai_integrations/#{integration.id}/available_models", headers: {
+        'Authorization' => "Bearer #{jwt_token(organizer)}"
+      }
 
-      get "/v1/ai_integrations/#{foreign_provider.id}/available_models", headers: headers
-
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:forbidden)
     end
   end
 end

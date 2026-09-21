@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_21_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -43,14 +43,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
   end
 
   create_table "ai_integrations", force: :cascade do |t|
-    t.bigint "user_id", null: false
     t.string "provider", null: false
     t.string "api_url", null: false
     t.text "api_key", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["user_id", "provider"], name: "index_ai_integrations_on_user_id_and_provider", unique: true
-    t.index ["user_id"], name: "index_ai_integrations_on_user_id"
+    t.index ["provider"], name: "index_ai_integrations_on_provider", unique: true
   end
 
   create_table "ai_models", force: :cascade do |t|
@@ -59,6 +57,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
     t.string "display_name", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "is_default", default: false, null: false
     t.index ["ai_integration_id", "model_id"], name: "index_ai_models_on_ai_integration_id_and_model_id", unique: true
     t.index ["ai_integration_id"], name: "index_ai_models_on_ai_integration_id"
   end
@@ -1650,6 +1649,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
     t.bigint "event_id"
     t.string "result", default: "success", null: false
     t.string "error_message"
+    t.jsonb "ai_diagnosis"
+    t.datetime "ai_diagnosed_at"
     t.index ["category"], name: "index_user_activities_on_category"
     t.index ["created_at"], name: "index_user_activities_on_created_at"
     t.index ["event_id", "category"], name: "index_user_activities_on_event_id_and_category"
@@ -1690,9 +1691,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
     t.string "jti", null: false
     t.datetime "email_verified_at"
     t.bigint "created_by_id"
-    t.bigint "default_ai_model_id"
     t.index ["created_by_id"], name: "index_users_on_created_by_id"
-    t.index ["default_ai_model_id"], name: "index_users_on_default_ai_model_id"
     t.index ["email"], name: "index_users_on_email"
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["status"], name: "index_users_on_status"
@@ -1827,7 +1826,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
-  add_foreign_key "ai_integrations", "users"
   add_foreign_key "ai_models", "ai_integrations"
   add_foreign_key "api_keys", "events"
   add_foreign_key "api_keys", "users"
@@ -2010,7 +2008,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_20_200000) do
   add_foreign_key "tickets", "vehicle_registrations"
   add_foreign_key "user_activities", "users"
   add_foreign_key "user_sessions", "users"
-  add_foreign_key "users", "ai_models", column: "default_ai_model_id", on_delete: :nullify
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vehicle_registrations", "events"
   add_foreign_key "vehicle_registrations", "registration_forms"

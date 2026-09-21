@@ -734,6 +734,7 @@ Rails.application.routes.draw do
 
     namespace :superadmin do
       get 'system_activity', to: 'system_activity#index'
+      post 'system_activity/:id/analyze', to: 'system_activity#analyze'
     end
   end
 end

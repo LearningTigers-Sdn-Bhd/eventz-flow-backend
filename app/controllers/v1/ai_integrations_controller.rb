@@ -5,12 +5,12 @@ module V1
 
     def index
       authorize AiIntegration
-      integrations = current_user.ai_integrations.includes(:ai_models).order(id: :desc)
+      integrations = AiIntegration.includes(:ai_models).order(id: :desc)
       render json: integrations.map { |integration| integration_response(integration) }, status: :ok
     end
 
     def create
-      integration = current_user.ai_integrations.build(ai_integration_params)
+      integration = AiIntegration.new(ai_integration_params)
       authorize integration
 
       if integration.save
@@ -48,7 +48,7 @@ module V1
     private
 
     def set_ai_integration
-      @ai_integration = current_user.ai_integrations.find(params[:id])
+      @ai_integration = AiIntegration.find(params[:id])
     end
 
     def ai_integration_params
@@ -60,7 +60,6 @@ module V1
     def integration_response(integration)
       {
         id: integration.id,
-        user_id: integration.user_id,
         provider: integration.provider,
         api_url: integration.api_url,
         has_api_key: integration.api_key.present?,
@@ -76,7 +75,7 @@ module V1
         ai_integration_id: model.ai_integration_id,
         model_id: model.model_id,
         model_name: model.display_name,
-        is_default: model.default_for?(current_user),
+        is_default: model.is_default,
         created_at: model.created_at,
         updated_at: model.updated_at
       }

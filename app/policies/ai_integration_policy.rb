@@ -8,24 +8,18 @@ class AiIntegrationPolicy < ApplicationPolicy
   end
 
   def available_models?
-    own_record?
+    user.is_org_owner?
   end
 
   def import_models?
-    own_record?
+    user.is_org_owner?
   end
 
   def update?
-    own_record?
+    user.is_org_owner?
   end
 
   def destroy?
-    own_record?
-  end
-
-  private
-
-  def own_record?
-    user.is_org_owner? && record.user_id == user.id
+    user.is_org_owner?
   end
 end

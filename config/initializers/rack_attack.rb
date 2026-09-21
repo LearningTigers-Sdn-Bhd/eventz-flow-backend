@@ -147,6 +147,10 @@ class Rack::Attack
     req.ip if req.path.match?(%r{/v1/ai_integrations/\d+/available_models}) && req.get?
   end
 
+  throttle('ai_error_analysis/ip', limit: 20, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{/v1/superadmin/system_activity/\d+/analyze}) && req.post?
+  end
+
   # Response for throttled requests
   self.throttled_responder = lambda do |req|
     match_data = (req.respond_to?(:env) ? req.env['rack.attack.match_data'] : nil) ||

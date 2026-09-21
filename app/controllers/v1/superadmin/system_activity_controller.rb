@@ -162,7 +162,9 @@ module V1
             details: act.details,
             ip_address: act.ip_address,
             created_at: act.created_at,
-            unusual: burst_ids.include?(act.id)
+            unusual: burst_ids.include?(act.id),
+            ai_diagnosis: act.ai_diagnosis,
+            ai_diagnosed_at: act.ai_diagnosed_at
           }
         end
 
@@ -185,6 +187,18 @@ module V1
             }
           }
         }
+      end
+
+      # POST /v1/superadmin/system_activity/:id/analyze
+      def analyze
+        activity = UserActivity.find(params[:id])
+        diagnosis = AiIntegrations::ErrorAnalyzer.call(activity, model_id: params[:ai_model_id])
+
+        render json: { success: true, ai_diagnosis: diagnosis, ai_diagnosed_at: activity.ai_diagnosed_at }
+      rescue ActiveRecord::RecordNotFound
+        render json: { success: false, error: 'Activity log not found' }, status: :not_found
+      rescue AiIntegrations::ErrorAnalyzer::Error => e
+        render json: { success: false, error: e.message }, status: :unprocessable_content
       end
 
       private

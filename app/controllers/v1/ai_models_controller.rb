@@ -73,14 +73,14 @@ module V1
 
     def set_default
       authorize @ai_model
-      current_user.update!(default_ai_model: @ai_model)
+      @ai_model.make_default!
       render json: model_response(@ai_model), status: :ok
     end
 
     private
 
     def set_ai_integration
-      @ai_integration = current_user.ai_integrations.find(params[:ai_integration_id])
+      @ai_integration = AiIntegration.find(params[:ai_integration_id])
     end
 
     def set_ai_model
@@ -100,9 +100,9 @@ module V1
     end
 
     def set_default_if_missing(model)
-      return if model.blank? || current_user.default_ai_model_id.present?
+      return if model.blank? || AiModel.where(is_default: true).exists?
 
-      current_user.update!(default_ai_model: model)
+      model.make_default!
     end
 
     def model_response(model)
@@ -111,7 +111,7 @@ module V1
         ai_integration_id: model.ai_integration_id,
         model_id: model.model_id,
         model_name: model.display_name,
-        is_default: model.default_for?(current_user),
+        is_default: model.is_default,
         created_at: model.created_at,
         updated_at: model.updated_at
       }

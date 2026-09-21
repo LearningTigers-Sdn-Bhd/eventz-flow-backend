@@ -3,7 +3,10 @@ class AiModel < ApplicationRecord
 
   validates :model_id, presence: true, uniqueness: { scope: :ai_integration_id }
 
-  def default_for?(user)
-    user.default_ai_model_id == id
+  def make_default!
+    transaction do
+      AiModel.where(is_default: true).where.not(id: id).update_all(is_default: false)
+      update!(is_default: true)
+    end
   end
 end
