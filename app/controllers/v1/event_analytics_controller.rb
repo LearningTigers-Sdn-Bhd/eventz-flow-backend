@@ -226,6 +226,44 @@ module V1
       end
     end
 
+    # PUT /v1/events/:event_id/metrics/custom_field_quota
+    # Upserts the registration quota for one field_key/value pair (e.g. an
+    # agency's allotted headcount). Informational only — never blocks registration.
+    def set_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+      quota = params[:quota]
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+
+      record = @event.custom_field_quotas.find_or_initialize_by(field_key: field_key, value: value)
+      record.quota = quota
+
+      if record.save
+        render json: { fieldKey: field_key, value: value, quota: record.quota }, status: :ok
+      else
+        render json: { error: record.errors.full_messages.join(', ') }, status: :unprocessable_entity
+      end
+    end
+
+    # DELETE /v1/events/:event_id/metrics/custom_field_quota
+    # Clears a previously set quota for one field_key/value pair, reverting
+    # that row back to a plain count in the breakdown.
+    def destroy_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+
+      @event.custom_field_quotas.where(field_key: field_key, value: value).destroy_all
+      render json: { fieldKey: field_key, value: value }, status: :ok
+    end
+
     private
 
     def valid_field_key?(key)
@@ -236,22 +274,40 @@ module V1
       ActiveRecord::Base.sanitize_sql_array(['custom_fields_data ->> ?', key])
     end
 
+    def quotas_for(field_key)
+      @event.custom_field_quotas.where(field_key: field_key).pluck(:value, :quota).to_h
+    end
+
+    def with_quota(row, quotas)
+      quota = quotas[row[:value]]
+      return row unless quota
+
+      registered = row[:count]
+      row.merge(
+        quota: quota,
+        registered: registered,
+        remaining: [quota - registered, 0].max
+      )
+    end
+
     def fetch_custom_field_breakdown(field_key)
+      quotas = quotas_for(field_key)
       eligible_tickets
         .group(Arel.sql(jsonb_field_sql(field_key)))
         .order('count_all DESC')
         .count
-        .map { |value, count| { value: value.presence || 'Unspecified', count: count } }
+        .map { |value, count| with_quota({ value: value.presence || 'Unspecified', count: count }, quotas) }
     end
 
     def fetch_nested_custom_field_breakdown(field_key, group_by)
+      quotas = quotas_for(field_key)
       raw_counts = eligible_tickets
                    .group(Arel.sql(jsonb_field_sql(group_by)), Arel.sql(jsonb_field_sql(field_key)))
                    .count
 
       grouped = raw_counts.each_with_object({}) do |((group_value, field_value), count), acc|
         key = group_value.presence || 'Unspecified'
-        (acc[key] ||= []) << { value: field_value.presence || 'Unspecified', count: count }
+        (acc[key] ||= []) << with_quota({ value: field_value.presence || 'Unspecified', count: count }, quotas)
       end
 
       grouped.map do |group_value, rows|

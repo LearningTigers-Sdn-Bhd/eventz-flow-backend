@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_21_010000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_22_074408) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -226,6 +226,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_21_010000) do
     t.integer "seating_plan_duration"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
+  end
+
+  create_table "custom_field_quotas", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "field_key", null: false
+    t.string "value", null: false
+    t.integer "quota", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "field_key", "value"], name: "index_custom_field_quotas_on_event_field_value", unique: true
+    t.index ["event_id"], name: "index_custom_field_quotas_on_event_id"
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -1845,6 +1856,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_21_010000) do
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
+  add_foreign_key "custom_field_quotas", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"
