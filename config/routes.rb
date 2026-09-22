@@ -627,6 +627,11 @@ Rails.application.routes.draw do
           get 'time_series',              to: 'event_analytics#time_series'
           get 'hourly_breakdown_by_day',  to: 'event_analytics#hourly_breakdown_by_day'
           get 'recent_scans',             to: 'event_analytics#recent_scans'
+          get 'custom_field_keys',        to: 'event_analytics#custom_field_keys'
+          get 'custom_field_breakdown',   to: 'event_analytics#custom_field_breakdown'
+          put 'custom_field_quota',       to: 'event_analytics#set_custom_field_quota'
+          delete 'custom_field_quota',    to: 'event_analytics#destroy_custom_field_quota'
+          get 'ticket_type_breakdown',    to: 'event_analytics#ticket_type_breakdown'
         end
       end
     end

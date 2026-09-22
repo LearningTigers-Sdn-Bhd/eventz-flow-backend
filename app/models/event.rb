@@ -44,6 +44,7 @@ class Event < ApplicationRecord
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
+  has_many :custom_field_quotas, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
   has_one :certificate_template, dependent: :destroy

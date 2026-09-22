@@ -59,7 +59,7 @@ RSpec.describe TicketExcelService do
       with_rescans = described_class.export(multi_scan_event.id)
       xlsx = Roo::Spreadsheet.open(with_rescans[:file_path])
       expect(sheet_names(with_rescans[:file_path])).to include('Entry Timeline')
-      expect(xlsx.sheet('Entry Timeline').row(2)[0]).to eq(ticket.attendee_name)
+      expect(xlsx.sheet('Entry Timeline').row(2)[1]).to eq(ticket.attendee_name)
     end
   end
 end

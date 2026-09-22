@@ -164,7 +164,161 @@ module V1
       }, status: :ok
     end
 
+    # GET /v1/events/:event_id/metrics/ticket_type_breakdown
+    # Count-only breakdown of tickets grouped by ticket type name.
+    def ticket_type_breakdown
+      data = eligible_tickets
+             .joins(:ticket_type)
+             .group('ticket_types.name')
+             .order('count_all DESC')
+             .count
+             .map { |name, count| { value: name, count: count } }
+
+      render json: { data: data }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/custom_field_keys
+    # Auto-detects the distinct custom_fields_data jsonb keys actually used by
+    # this event's tickets, so the panel can offer a dropdown instead of
+    # requiring the organizer to type a key from memory.
+    def custom_field_keys
+      excluded = Ticket::RESERVED_CUSTOM_FIELD_KEYS + Ticket::DOCUMENT_KEYS
+      keys = eligible_tickets
+             .pluck(Arel.sql('DISTINCT jsonb_object_keys(custom_fields_data)'))
+             .reject { |key| excluded.include?(key) }
+             .sort
+
+      render json: { keys: keys }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/custom_field_breakdown
+    # Count-only breakdown of tickets grouped by a `custom_fields_data` jsonb key.
+    # Works for any event/custom field — no hardcoded field names.
+    #
+    # Query params:
+    #   field_key: jsonb key inside custom_fields_data (required, e.g. "nama_agensi")
+    #   group_by: optional second jsonb key to nest field_key's counts under
+    #             (e.g. "kategori" — mirrors the Kementerian/Jabatan-under-category
+    #             layout of the reference PDF report), each with its own subtotal.
+    def custom_field_breakdown
+      field_key = params[:field_key].to_s
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      group_by = params[:group_by].to_s.presence
+      if group_by && !valid_field_key?(group_by)
+        return render json: { error: 'group_by must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      if group_by
+        render json: {
+          fieldKey: field_key,
+          groupBy: group_by,
+          groups: fetch_nested_custom_field_breakdown(field_key, group_by)
+        }, status: :ok
+      else
+        render json: {
+          fieldKey: field_key,
+          data: fetch_custom_field_breakdown(field_key)
+        }, status: :ok
+      end
+    end
+
+    # PUT /v1/events/:event_id/metrics/custom_field_quota
+    # Upserts the registration quota for one field_key/value pair (e.g. an
+    # agency's allotted headcount). Informational only — never blocks registration.
+    def set_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+      quota = params[:quota]
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+
+      record = @event.custom_field_quotas.find_or_initialize_by(field_key: field_key, value: value)
+      record.quota = quota
+
+      if record.save
+        render json: { fieldKey: field_key, value: value, quota: record.quota }, status: :ok
+      else
+        render json: { error: record.errors.full_messages.join(', ') }, status: :unprocessable_entity
+      end
+    end
+
+    # DELETE /v1/events/:event_id/metrics/custom_field_quota
+    # Clears a previously set quota for one field_key/value pair, reverting
+    # that row back to a plain count in the breakdown.
+    def destroy_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+
+      @event.custom_field_quotas.where(field_key: field_key, value: value).destroy_all
+      render json: { fieldKey: field_key, value: value }, status: :ok
+    end
+
     private
+
+    def valid_field_key?(key)
+      key.match?(/\A[a-z0-9_]+\z/i)
+    end
+
+    def jsonb_field_sql(key)
+      ActiveRecord::Base.sanitize_sql_array(['custom_fields_data ->> ?', key])
+    end
+
+    def quotas_for(field_key)
+      @event.custom_field_quotas.where(field_key: field_key).pluck(:value, :quota).to_h
+    end
+
+    def with_quota(row, quotas)
+      quota = quotas[row[:value]]
+      return row unless quota
+
+      registered = row[:count]
+      row.merge(
+        quota: quota,
+        registered: registered,
+        remaining: [quota - registered, 0].max
+      )
+    end
+
+    def fetch_custom_field_breakdown(field_key)
+      quotas = quotas_for(field_key)
+      eligible_tickets
+        .group(Arel.sql(jsonb_field_sql(field_key)))
+        .order('count_all DESC')
+        .count
+        .map { |value, count| with_quota({ value: value.presence || 'Unspecified', count: count }, quotas) }
+    end
+
+    def fetch_nested_custom_field_breakdown(field_key, group_by)
+      quotas = quotas_for(field_key)
+      raw_counts = eligible_tickets
+                   .group(Arel.sql(jsonb_field_sql(group_by)), Arel.sql(jsonb_field_sql(field_key)))
+                   .count
+
+      grouped = raw_counts.each_with_object({}) do |((group_value, field_value), count), acc|
+        key = group_value.presence || 'Unspecified'
+        (acc[key] ||= []) << with_quota({ value: field_value.presence || 'Unspecified', count: count }, quotas)
+      end
+
+      grouped.map do |group_value, rows|
+        rows.sort_by! { |row| -row[:count] }
+        {
+          group: group_value,
+          rows: rows,
+          total: rows.sum { |row| row[:count] }
+        }
+      end.sort_by { |g| -g[:total] }
+    end
 
     def set_event_and_authorize
       @event = Event.find(params[:event_id])

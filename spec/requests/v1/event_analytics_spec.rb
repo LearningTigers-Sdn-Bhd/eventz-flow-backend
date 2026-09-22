@@ -799,6 +799,143 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       end
     end
   end
+
+  describe 'GET /v1/events/:event_id/metrics/ticket_type_breakdown' do
+    it 'returns count-only breakdown grouped by ticket type name' do
+      get "/v1/events/#{event.id}/metrics/ticket_type_breakdown",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      row = data['data'].find { |r| r['value'] == ticket_type.name }
+      expect(row['count']).to eq(10)
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/ticket_type_breakdown",
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/custom_field_keys' do
+    let!(:agensi_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN PERTAHANAN',
+                                                    'kategori' => 'Kerajaan Negeri Sabah',
+                                                    'car_registration_number' => 'ABC1234' })
+    end
+
+    it 'auto-detects distinct keys, excluding server-reserved keys' do
+      get "/v1/events/#{event.id}/metrics/custom_field_keys",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      expect(data['keys']).to include('nama_agensi', 'kategori')
+      expect(data['keys']).not_to include('car_registration_number')
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/custom_field_keys",
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/custom_field_breakdown' do
+    let!(:agensi_ticket_a) do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN PERTAHANAN' })
+    end
+    let!(:agensi_ticket_b) do
+      create_list(:ticket, 2, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                                    created_at: ticket_created_at,
+                                    custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN KESIHATAN' })
+    end
+
+    it 'returns count-only breakdown grouped by the given jsonb key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      expect(data['fieldKey']).to eq('nama_agensi')
+      counts = data['data'].index_by { |row| row['value'] }
+      expect(counts['KEMENTERIAN PERTAHANAN']['count']).to eq(1)
+      expect(counts['KEMENTERIAN KESIHATAN']['count']).to eq(2)
+    end
+
+    it 'rejects a missing field_key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    context 'with group_by' do
+      let!(:kementerian_ticket) do
+        create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                               created_at: ticket_created_at,
+                               custom_fields_data: { 'kategori' => 'Kementerian',
+                                                      'nama_agensi' => 'Kementerian Kewangan' })
+      end
+      let!(:jabatan_tickets) do
+        create_list(:ticket, 2, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                                      created_at: ticket_created_at,
+                                      custom_fields_data: { 'kategori' => 'Jabatan',
+                                                             'nama_agensi' => 'Jabatan Pertanian' })
+      end
+
+      it 'nests field_key counts under group_by, each with a subtotal' do
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: 'kategori' },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['groupBy']).to eq('kategori')
+        groups = data['groups'].index_by { |g| g['group'] }
+
+        jabatan = groups['Jabatan']
+        expect(jabatan['total']).to eq(2)
+        expect(jabatan['rows'].first).to eq('value' => 'Jabatan Pertanian', 'count' => 2)
+
+        kementerian = groups['Kementerian']
+        expect(kementerian['total']).to eq(1)
+        expect(kementerian['rows'].first).to eq('value' => 'Kementerian Kewangan', 'count' => 1)
+      end
+
+      it 'rejects a group_by with unsafe characters' do
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: "kategori'; DROP TABLE tickets;--" },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    it 'rejects a field_key with unsafe characters' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: "nama'; DROP TABLE tickets;--" },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
 
 RSpec.describe 'Exhibitor analytics catalog transparency', type: :request do
