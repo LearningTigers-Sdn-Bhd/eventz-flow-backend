@@ -300,7 +300,7 @@ class TicketExcelService
   # --- Entry Timeline (every scan event; only when include_rescans is true) ---
 
   def build_scan_history_sheet(package, tickets)
-    headers = ['Attendee Name', 'Ticket Type', 'Scanned At', 'Source', 'Location', 'Scanned By']
+    headers = ['Scan ID', 'Attendee Name', 'Ticket Type', 'Scanned At', 'Source', 'Location', 'Scanned By']
     source_labels = { 'staff_scan' => 'Staff scan', 'self_check_in' => 'Self check-in', 'kiosk' => 'Public Check-in Page' }
 
     logs = scan_logs_for_tickets(tickets)
@@ -310,7 +310,7 @@ class TicketExcelService
     package.workbook.add_worksheet(name: 'Entry Timeline') do |sheet|
       sheet.sheet_pr.tab_color = BRAND_BLUE
       sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
-      sheet.column_widths 26, 18, 20, 20, 22, 22
+      sheet.column_widths 12, 26, 18, 20, 20, 22, 22
 
       logs.each_with_index do |log, index|
         style = index.even? ? @styles[:cell] : @styles[:cell_alt]
@@ -319,11 +319,11 @@ class TicketExcelService
 
         sheet.add_row(
           [
-            ticket&.attendee_name, ticket&.ticket_type&.name, log.scanned_at,
+            log.id, ticket&.attendee_name, ticket&.ticket_type&.name, log.scanned_at,
             source_labels[log.source] || log.source.to_s.titleize,
             log.event_location&.name, log.scanned_by&.full_name
           ],
-          style: [style, style, date_style, style, style, style]
+          style: [style, style, style, date_style, style, style, style]
         )
       end
 
