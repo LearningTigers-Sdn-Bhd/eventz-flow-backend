@@ -21,6 +21,51 @@ module V1
       save_feedback_form(form, :ok)
     end
 
+    # Multi-choice answers are stored as JSON arrays; strip brackets/quotes so
+    # a search for `"` or `[` doesn't match every multi-choice response.
+    SEARCHABLE_ANSWER_SQL = <<~SQL.squish.freeze
+      CASE WHEN feedback_answers.answer_text LIKE '[%'
+      THEN REGEXP_REPLACE(feedback_answers.answer_text, '[\\[\\]"]', '', 'g')
+      ELSE feedback_answers.answer_text END
+    SQL
+
+    def summary
+      form = @event.feedback_form
+      return success_response unless form
+
+      success_response(data: FeedbackFormSummary.call(form))
+    end
+
+    def responses
+      form = @event.feedback_form
+      scope = form ? form.feedback_responses : FeedbackResponse.none
+      if params[:ticket_type_id].present?
+        scope = scope.where(
+          ticket_id: Ticket.where(ticket_type_id: params[:ticket_type_id]).select(:id)
+        )
+      end
+
+      if params[:q].present?
+        query = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].strip)}%"
+        scope = scope.left_joins({ ticket: :ticket_type }, :feedback_answers)
+                     .where(
+                       "tickets.attendee_name ILIKE :query OR tickets.attendee_email ILIKE :query OR tickets.public_id::text ILIKE :query " \
+                       "OR ticket_types.name ILIKE :query OR #{SEARCHABLE_ANSWER_SQL} ILIKE :query",
+                       query: query
+                     )
+                     .distinct
+      end
+
+      scope = scope.includes(ticket: :ticket_type, feedback_answers: :feedback_question)
+                   .order(submitted_at: :desc, id: :desc)
+      pagy, records = pagy(scope, limit: pagination_params[:per_page] || 25)
+
+      render json: {
+        data: records.map { |record| FeedbackOrganizerResponseSerializer.serialize(record) },
+        pagination: pagy_metadata(pagy)
+      }, status: :ok
+    end
+
     private
 
     def set_event

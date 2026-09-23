@@ -221,7 +221,10 @@ Rails.application.routes.draw do
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
-      resource :feedback_form, only: %i[show create update], controller: 'feedback_forms'
+      resource :feedback_form, only: %i[show create update], controller: 'feedback_forms' do
+        get :summary
+        get :responses
+      end
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_packages, only: %i[index create]
       resources :exhibitor_vouchers, only: %i[index create]
