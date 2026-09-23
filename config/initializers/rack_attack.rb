@@ -84,6 +84,11 @@ class Rack::Attack
     end
   end
 
+  # 9b. Public feedback submissions (no auth; anonymous responses allowed)
+  throttle('public_feedback/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path == '/v1/public/feedback_responses' && req.post?
+  end
+
   # 10. Public Registration Document Uploads (storage flooding)
   # 5 documents per registration × a few retries
   throttle('public_upload/ip', limit: 20, period: 1.hour) do |req|

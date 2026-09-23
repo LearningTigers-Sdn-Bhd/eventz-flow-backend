@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_22_074408) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_23_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1042,6 +1042,49 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_22_074408) do
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
   end
 
+  create_table "feedback_answers", force: :cascade do |t|
+    t.bigint "feedback_response_id", null: false
+    t.bigint "feedback_question_id", null: false
+    t.text "answer_text"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_question_id"], name: "index_feedback_answers_on_feedback_question_id"
+    t.index ["feedback_response_id"], name: "index_feedback_answers_on_feedback_response_id"
+  end
+
+  create_table "feedback_forms", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_feedback_forms_on_event_id", unique: true
+  end
+
+  create_table "feedback_questions", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.string "question_text", null: false
+    t.integer "question_type", null: false
+    t.jsonb "options"
+    t.boolean "required", default: false, null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_form_id"], name: "index_feedback_questions_on_feedback_form_id"
+  end
+
+  create_table "feedback_responses", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.bigint "ticket_id"
+    t.datetime "submitted_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_form_id", "ticket_id"], name: "index_feedback_responses_on_feedback_form_id_and_ticket_id", unique: true
+    t.index ["feedback_form_id"], name: "index_feedback_responses_on_feedback_form_id"
+    t.index ["ticket_id"], name: "index_feedback_responses_on_ticket_id"
+  end
+
   create_table "gift_winners", force: :cascade do |t|
     t.bigint "gift_id", null: false
     t.bigint "ticket_id"
@@ -1949,6 +1992,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_22_074408) do
   add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "feedback_answers", "feedback_questions"
+  add_foreign_key "feedback_answers", "feedback_responses"
+  add_foreign_key "feedback_forms", "events"
+  add_foreign_key "feedback_questions", "feedback_forms"
+  add_foreign_key "feedback_responses", "feedback_forms"
+  add_foreign_key "feedback_responses", "tickets", on_delete: :nullify
   add_foreign_key "gift_winners", "gifts"
   add_foreign_key "gift_winners", "tickets", on_delete: :cascade
   add_foreign_key "gift_winners", "visitors", on_delete: :cascade
