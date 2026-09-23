@@ -2,7 +2,7 @@ class CompleteEndedEventsJob < ApplicationJob
   queue_as :default
 
   def perform
-    ended_events = Event.published.where(end_date: ...Time.current)
+    ended_events = Event.published.ended_before(Time.current)
     count = ended_events.count
 
     if count.zero?

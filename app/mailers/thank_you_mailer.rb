@@ -1,4 +1,10 @@
 class ThankYouMailer < ApplicationMailer
+  # Only link when the organizer opted in AND there's an active, non-empty form to land on.
+  def self.feedback_link_available?(event)
+    form = event.feedback_form
+    !!(event.event_email_setting&.thank_you_include_feedback && form&.is_active? && form.feedback_questions.exists?)
+  end
+
   def thank_you_email(ticket)
     @ticket = ticket
     @event = ticket.event
@@ -19,10 +25,8 @@ class ThankYouMailer < ApplicationMailer
     @event.event_email_setting
   end
 
-  # Only link when the organizer opted in AND there's an active, non-empty form to land on.
   def feedback_url
-    form = @event.feedback_form
-    return unless email_setting&.thank_you_include_feedback && form&.is_active? && form.feedback_questions.exists?
+    return unless self.class.feedback_link_available?(@event)
 
     base_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
     "#{base_url}/events/#{@event.slug.presence || @event.id}/feedback?ticket=#{@ticket.public_id}"

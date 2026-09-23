@@ -9,7 +9,7 @@ module V1
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it
-    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email, :accept_waiting_list]
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email, :resend_feedback_email, :accept_waiting_list]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
@@ -444,6 +444,38 @@ module V1
 
       render json: {
         message: 'Ticket confirmation email has been queued for resend',
+        email_delivery_id: delivery.id
+      }, status: :accepted
+    end
+
+    # Manual resend of the post-event thank-you + feedback link for one ticket.
+    # Uses this ticket's own public_id in the link, so it also covers extra
+    # tickets that shared an email and were skipped by the automatic send.
+    # Unlike the automatic send, check-in is not required: it's the fallback
+    # for attendees whose scan got missed (the panel warns before sending).
+    def resend_feedback_email
+      authorize @ticket, :resend_confirmation_email?
+
+      error = if @ticket.waiting_list? then 'Ticket is on the waiting list'
+              elsif @ticket.attendee_email.blank? then 'Ticket does not have an attendee email'
+              elsif !@event.ended? then 'Event has not ended yet'
+              elsif @event.event_email_setting&.email_enabled?('ThankYouMailer', 'thank_you_email') == false
+                'Thank you email is turned off for this event'
+              elsif !ThankYouMailer.feedback_link_available?(@event)
+                'Feedback link is off, or the feedback form is inactive or has no questions'
+              end
+      return render json: { errors: [error] }, status: :unprocessable_content if error
+
+      delivery = EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'ThankYouMailer',
+        mailer_action: 'thank_you_email',
+        args: [@ticket],
+        related: @ticket,
+        metadata: { source: 'ticket_actions_menu_manual_resend', event_id: @event.id }
+      )
+
+      render json: {
+        message: 'Feedback email has been queued for resend',
         email_delivery_id: delivery.id
       }, status: :accepted
     end

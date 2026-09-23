@@ -47,3 +47,20 @@ RSpec.describe ThankYouMailer, type: :mailer do
     expect(body).to include('Share Your Feedback', "feedback?ticket=#{ticket.public_id}")
   end
 end
+
+RSpec.describe Event, '.ended_before' do
+  it 'treats a midnight end date as the end of that day' do
+    midnight = create(:event, start_date: Time.zone.today.beginning_of_day, end_date: Time.zone.today.beginning_of_day)
+    timed = create(:event, start_date: 3.hours.ago, end_date: 1.hour.ago)
+
+    ids = described_class.ended_before(Time.current).pluck(:id)
+    expect(ids).to include(timed.id)
+    expect(ids).not_to include(midnight.id)
+    expect(midnight.ended?).to be(false)
+
+    travel_to(Time.zone.tomorrow.beginning_of_day + 1.minute) do
+      expect(described_class.ended_before(Time.current).pluck(:id)).to include(midnight.id)
+      expect(midnight.ended?).to be(true)
+    end
+  end
+end

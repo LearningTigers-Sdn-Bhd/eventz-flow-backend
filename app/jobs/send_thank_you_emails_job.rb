@@ -9,7 +9,7 @@ class SendThankYouEmailsJob < ApplicationJob
 
   def perform
     Event.where(status: %i[published completed], thank_you_sent_at: nil)
-         .where(end_date: (Time.current - LOOKBACK)..(Time.current - SEND_DELAY))
+         .ended_between(Time.current - LOOKBACK, Time.current - SEND_DELAY)
          .find_each { |event| send_for(event) }
   end
 
