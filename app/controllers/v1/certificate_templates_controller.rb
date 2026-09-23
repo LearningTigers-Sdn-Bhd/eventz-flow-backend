@@ -80,6 +80,7 @@ module V1
     def template_params
       params.require(:certificate_template).permit(
         :status,
+        :require_feedback,
         :orientation,
         :canvas_width,
         :canvas_height,

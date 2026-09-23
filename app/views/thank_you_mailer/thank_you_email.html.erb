@@ -42,7 +42,11 @@
         <% if @feedback_url %>
         <div class="feedback">
           <h3>We'd love to hear from you</h3>
+          <% if @certificate_for_feedback %>
+          <p>Share your feedback and your e-certificate will be emailed to you right after. It only takes a minute.</p>
+          <% else %>
           <p>Your thoughts help us make the next one even better. It only takes a minute.</p>
+          <% end %>
           <a class="button" href="<%= @feedback_url %>">Share Your Feedback</a>
         </div>
         <% end %>

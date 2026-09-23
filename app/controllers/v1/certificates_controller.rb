@@ -85,9 +85,10 @@ module V1
 
       tickets = @event.tickets.where.not(attendee_email: [nil, '']).order(:attendee_name)
       latest = latest_certificate_deliveries_by_ticket_id
+      feedback_ids = SendEventCertificatesJob.feedback_ticket_ids(@event).pluck(:ticket_id).to_set
 
       render json: {
-        data: tickets.map { |ticket| participant_row(ticket, latest[ticket.id]) }
+        data: tickets.map { |ticket| participant_row(ticket, latest[ticket.id], feedback_ids.include?(ticket.id)) }
       }, status: :ok
     end
 
@@ -154,13 +155,14 @@ module V1
         end
     end
 
-    def participant_row(ticket, delivery)
+    def participant_row(ticket, delivery, feedback_submitted)
       {
         public_id: ticket.public_id,
         attendee_name: ticket.attendee_name,
         attendee_email: ticket.attendee_email,
         ticket_type: ticket.ticket_type&.name,
         checked_in: ticket.checked_in,
+        feedback_submitted: feedback_submitted,
         certificate_status: delivery&.status,
         certificate_sent_at: delivery&.sent_at,
         last_delivery_id: delivery&.id

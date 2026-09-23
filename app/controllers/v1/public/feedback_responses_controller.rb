@@ -56,8 +56,11 @@ module V1
           end
         end
 
+        certificate = ticket && SendEventCertificatesJob.deliver_after_feedback(ticket)
+        certificate_queued = certificate.present? && certificate.status != 'skipped'
+
         success_response(
-          data: FeedbackResponseSerializer.serialize(response),
+          data: FeedbackResponseSerializer.serialize(response).merge(certificate_queued:),
           status: :created
         )
       rescue ActiveRecord::RecordNotFound

@@ -11,6 +11,8 @@ class ThankYouMailer < ApplicationMailer
     @sender_name = email_setting&.sender_name.presence || @event.title
     @contact_email = email_setting&.contact_email.presence
     @feedback_url = feedback_url
+    template = @event.certificate_template
+    @certificate_for_feedback = @feedback_url.present? && template&.ready? && template.require_feedback
 
     mail(
       to: ticket.attendee_email,
