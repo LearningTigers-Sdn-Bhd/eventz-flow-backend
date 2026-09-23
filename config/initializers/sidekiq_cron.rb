@@ -7,6 +7,12 @@ Rails.application.config.after_initialize do
     )
 
     Sidekiq::Cron::Job.create(
+      name: 'Send post-event thank you emails - every hour',
+      cron: '15 * * * *',
+      class: 'SendThankYouEmailsJob'
+    )
+
+    Sidekiq::Cron::Job.create(
       name: 'Cleanup expired sessions - daily at 3am',
       cron: '0 3 * * *',
       class: 'CleanupExpiredSessionsJob'

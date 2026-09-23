@@ -45,6 +45,7 @@ class Event < ApplicationRecord
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
   has_many :custom_field_quotas, dependent: :destroy
+  has_one :feedback_form, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
   has_one :certificate_template, dependent: :destroy
@@ -107,6 +108,29 @@ class Event < ApplicationRecord
   default_scope { where(deleted_at: nil) }
   scope :with_deleted, -> { unscope(where: :deleted_at) }
   scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
+
+  # Organizers often leave the end time at the date picker's 00:00 default,
+  # which would mark the event over as soon as its last day starts. A
+  # midnight end (app time zone) therefore means "end of that day".
+  EFFECTIVE_END_SQL = <<~SQL.squish.freeze
+    CASE WHEN (events.end_date AT TIME ZONE 'UTC' AT TIME ZONE '#{Time.find_zone!(Rails.application.config.time_zone).tzinfo.identifier}')::time = '00:00'
+    THEN events.end_date + INTERVAL '1 day' ELSE events.end_date END
+  SQL
+
+  scope :ended_between, lambda { |from, to|
+    where("#{EFFECTIVE_END_SQL} >= :from AND #{EFFECTIVE_END_SQL} <= :to", from:, to:)
+  }
+  scope :ended_before, ->(time) { where("#{EFFECTIVE_END_SQL} < ?", time) }
+
+  def effective_end_date
+    return if end_date.nil?
+
+    end_date == end_date.beginning_of_day ? end_date + 1.day : end_date
+  end
+
+  def ended?
+    effective_end_date.present? && effective_end_date < Time.current
+  end
 
   # --- Scopes for specific event staff roles ---
 
@@ -199,7 +223,8 @@ class Event < ApplicationRecord
       'poster_url' => poster_url,
       'payment_receipt_email' => event_email_setting&.payment_receipt_email,
       'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at]),
-      'wish_wall_setting' => wish_wall_setting_payload
+      'wish_wall_setting' => wish_wall_setting_payload,
+      'ended' => ended?
     )
   end
 
