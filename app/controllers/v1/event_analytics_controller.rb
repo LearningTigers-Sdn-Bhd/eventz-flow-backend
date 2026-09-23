@@ -212,16 +212,21 @@ module V1
         return render json: { error: 'group_by must be alphanumeric/underscore only' }, status: :bad_request
       end
 
+      excluded_ticket_type_ids = Array(params[:exclude_ticket_type_ids])
+                                 .filter_map { |id| Integer(id, exception: false) }
+                                 .select(&:positive?)
+                                 .uniq
+
       if group_by
         render json: {
           fieldKey: field_key,
           groupBy: group_by,
-          groups: fetch_nested_custom_field_breakdown(field_key, group_by)
+          groups: fetch_nested_custom_field_breakdown(field_key, group_by, excluded_ticket_type_ids)
         }, status: :ok
       else
         render json: {
           fieldKey: field_key,
-          data: fetch_custom_field_breakdown(field_key)
+          data: fetch_custom_field_breakdown(field_key, excluded_ticket_type_ids)
         }, status: :ok
       end
     end
@@ -290,18 +295,18 @@ module V1
       )
     end
 
-    def fetch_custom_field_breakdown(field_key)
+    def fetch_custom_field_breakdown(field_key, excluded_ticket_type_ids)
       quotas = quotas_for(field_key)
-      eligible_tickets
+      tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
         .group(Arel.sql(jsonb_field_sql(field_key)))
         .order('count_all DESC')
         .count
         .map { |value, count| with_quota({ value: value.presence || 'Unspecified', count: count }, quotas) }
     end
 
-    def fetch_nested_custom_field_breakdown(field_key, group_by)
+    def fetch_nested_custom_field_breakdown(field_key, group_by, excluded_ticket_type_ids)
       quotas = quotas_for(field_key)
-      raw_counts = eligible_tickets
+      raw_counts = tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
                    .group(Arel.sql(jsonb_field_sql(group_by)), Arel.sql(jsonb_field_sql(field_key)))
                    .count
 
@@ -318,6 +323,13 @@ module V1
           total: rows.sum { |row| row[:count] }
         }
       end.sort_by { |g| -g[:total] }
+    end
+
+    def tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+      tickets = eligible_tickets
+      return tickets if excluded_ticket_type_ids.empty?
+
+      tickets.where.not(ticket_type_id: excluded_ticket_type_ids)
     end
 
     def set_event_and_authorize
