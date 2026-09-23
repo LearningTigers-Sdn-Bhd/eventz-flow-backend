@@ -220,6 +220,14 @@ module V1
       # Apply attrs first so the plate is validated against the new ticket
       # type/role in the same request; one transaction so a rejected plate
       # doesn't leave the other edits half-saved.
+      # custom_fields_data replaces the whole hash, and ticket_params strips
+      # reserved keys — carry the stored ones over or every edit erases them.
+      if attrs.key?(:custom_fields_data)
+        attrs[:custom_fields_data] = attrs[:custom_fields_data].to_h.merge(
+          @ticket.custom_fields_data.to_h.slice(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
+        )
+      end
+
       plate_error = nil
       saved = ActiveRecord::Base.transaction do
         @ticket.assign_attributes(attrs)
@@ -868,7 +876,11 @@ module V1
       return 'Car plate number must contain letters or digits' if normalized.blank?
 
       current_vehicle = ticket.vehicle_registration
-      return nil if current_vehicle && normalized == current_vehicle.normalized_plate
+      if current_vehicle && normalized == current_vehicle.normalized_plate
+        # Heal tickets whose field was wiped by earlier edits; caller saves.
+        ticket.custom_fields_data = ticket.custom_fields_data.to_h.merge('car_registration_number' => current_vehicle.plate)
+        return nil
+      end
 
       form = vehicle_form_for(ticket, normalized)
       unless form
