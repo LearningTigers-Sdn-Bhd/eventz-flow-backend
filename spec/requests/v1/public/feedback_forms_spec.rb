@@ -28,6 +28,22 @@ RSpec.describe 'V1::Public::FeedbackForms', type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
+    it 'flags when the given ticket has already responded' do
+      form = FeedbackForm.create!(event:, title: 'After the event')
+      ticket = create(:ticket, event:, ticket_type: create(:ticket_type, event:))
+      other_ticket = create(:ticket, event:, ticket_type: ticket.ticket_type)
+      form.feedback_responses.create!(ticket:, submitted_at: Time.current)
+
+      get "/v1/public/events/#{event.slug}/feedback_form", params: { ticket: ticket.public_id }
+      expect(JSON.parse(response.body).dig('data', 'already_submitted')).to be(true)
+
+      get "/v1/public/events/#{event.slug}/feedback_form", params: { ticket: other_ticket.public_id }
+      expect(JSON.parse(response.body).dig('data', 'already_submitted')).to be(false)
+
+      get "/v1/public/events/#{event.slug}/feedback_form"
+      expect(JSON.parse(response.body).dig('data', 'already_submitted')).to be(false)
+    end
+
     it 'returns not found when the event has no form' do
       get "/v1/public/events/#{event.slug}/feedback_form"
 

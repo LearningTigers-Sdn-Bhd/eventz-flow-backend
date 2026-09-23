@@ -9,7 +9,10 @@ module V1
         form = event.feedback_form
         raise ActiveRecord::RecordNotFound unless form&.is_active?
 
-        success_response(data: FeedbackFormSerializer.serialize(form))
+        already_submitted = params[:ticket].present? &&
+                            form.feedback_responses.joins(:ticket).exists?(tickets: { public_id: params[:ticket] })
+
+        success_response(data: FeedbackFormSerializer.serialize(form).merge(already_submitted:))
       rescue ActiveRecord::RecordNotFound
         error_response(message: 'Feedback form not found', status: :not_found)
       end
