@@ -457,6 +457,7 @@ module V1
       authorize @ticket, :resend_confirmation_email?
 
       error = if @ticket.waiting_list? then 'Ticket is on the waiting list'
+              elsif !@ticket.paid? then 'Ticket is still pending'
               elsif @ticket.attendee_email.blank? then 'Ticket does not have an attendee email'
               elsif !@event.ended? then 'Event has not ended yet'
               elsif @event.event_email_setting&.email_enabled?('ThankYouMailer', 'thank_you_email') == false

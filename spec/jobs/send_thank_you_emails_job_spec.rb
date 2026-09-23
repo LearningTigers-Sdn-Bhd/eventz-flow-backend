@@ -6,10 +6,11 @@ RSpec.describe SendThankYouEmailsJob, type: :job do
   end
 
   before do
-    create(:ticket, :checked_in, event: event, attendee_email: 'a@example.com')
-    create(:ticket, :checked_in, event: event, attendee_email: 'A@example.com') # same person
-    create(:ticket, :checked_in, event: event, attendee_email: 'b@example.com')
+    create(:ticket, :checked_in, :paid, event: event, attendee_email: 'a@example.com')
+    create(:ticket, :checked_in, :paid, event: event, attendee_email: 'A@example.com') # same person
+    create(:ticket, :checked_in, :paid, event: event, attendee_email: 'b@example.com')
     create(:ticket, event: event, attendee_email: 'noshow@example.com')
+    create(:ticket, :checked_in, event: event, attendee_email: 'pending@example.com', payment_status: :pending)
   end
 
   it 'sends one email per checked-in address, once' do
@@ -33,7 +34,7 @@ end
 
 RSpec.describe ThankYouMailer, type: :mailer do
   let(:event) { create(:event) }
-  let(:ticket) { create(:ticket, :checked_in, event: event, attendee_email: 'a@example.com') }
+  let(:ticket) { create(:ticket, :checked_in, :paid, event: event, attendee_email: 'a@example.com') }
 
   it 'omits the feedback link by default and includes it when opted in with an active form' do
     expect(described_class.thank_you_email(ticket).html_part.body.to_s).not_to include('Share Your Feedback')

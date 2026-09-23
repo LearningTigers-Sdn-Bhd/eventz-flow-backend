@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe 'V1::Tickets resend feedback email', type: :request do
   let(:org_owner) { create(:user, :org_owner) }
   let(:event) { create(:event, payment_status: :paid, start_date: 2.days.ago, end_date: 1.day.ago) }
-  let(:ticket) { create(:ticket, :checked_in, event: event, attendee_email: 'a@example.com') }
+  let(:ticket) { create(:ticket, :checked_in, :paid, event: event, attendee_email: 'a@example.com') }
   let(:url) { "/v1/events/#{event.id}/tickets/#{ticket.public_id}/resend_feedback_email" }
 
   before do
@@ -20,6 +20,12 @@ RSpec.describe 'V1::Tickets resend feedback email', type: :request do
   it 'allows a ticket whose scan was missed' do
     ticket.update_columns(checked_in: false)
     expect { post url, headers: auth_headers(org_owner) }.to have_enqueued_job(EmailDeliveryJob)
+  end
+
+  it 'rejects a pending ticket' do
+    ticket.update_columns(payment_status: Ticket.payment_statuses[:pending])
+    post url, headers: auth_headers(org_owner)
+    expect(response).to have_http_status(:unprocessable_content)
   end
 
   it 'rejects a waiting list ticket' do

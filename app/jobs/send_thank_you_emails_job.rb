@@ -17,7 +17,7 @@ class SendThankYouEmailsJob < ApplicationJob
   # get a single thank-you (first ticket wins, its public_id goes in the link).
   def self.recipient_scope(event)
     event.tickets
-         .where(checked_in: true, waiting_list: false)
+         .where(checked_in: true, waiting_list: false, payment_status: :paid)
          .where.not(attendee_email: [nil, ''])
          .select('DISTINCT ON (LOWER(tickets.attendee_email)) tickets.*')
          .order(Arel.sql('LOWER(tickets.attendee_email), tickets.id'))
