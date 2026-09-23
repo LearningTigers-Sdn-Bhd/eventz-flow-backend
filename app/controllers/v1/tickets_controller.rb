@@ -136,6 +136,7 @@ module V1
       @ticket.event_id = @event.id
 
       extra_tickets = []
+      plate_error = nil
 
       saved = ActiveRecord::Base.transaction do
         # Bulk-add: same attendee info repeated across N tickets, tied by
@@ -145,6 +146,7 @@ module V1
         # instead once the whole batch is confirmed paid.
         @ticket.suppress_confirmation_email = true if quantity > 1
         raise ActiveRecord::Rollback unless @ticket.save
+        raise ActiveRecord::Rollback if (plate_error = assign_vehicle_plate!(@ticket))
 
         @ticket.update_column(:registration_batch_id, @ticket.public_id) if quantity > 1
 
@@ -153,11 +155,16 @@ module V1
           extra.registration_batch_id = @ticket.registration_batch_id
           extra.suppress_confirmation_email = true
           raise ActiveRecord::Rollback unless extra.save
+          raise ActiveRecord::Rollback if (plate_error = assign_vehicle_plate!(extra))
 
           extra_tickets << extra
         end
 
         true
+      end
+
+      if plate_error
+        return render json: { errors: [plate_error] }, status: :unprocessable_content
       end
 
       if saved
@@ -210,11 +217,25 @@ module V1
       payment_proof_file = attrs.delete(:payment_proof)
       return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
 
-      if (reassign_error = reassign_vehicle_if_plate_changed!)
-        return render json: { errors: [reassign_error] }, status: :unprocessable_content
+      # Apply attrs first so the plate is validated against the new ticket
+      # type/role in the same request; one transaction so a rejected plate
+      # doesn't leave the other edits half-saved.
+      plate_error = nil
+      saved = ActiveRecord::Base.transaction do
+        @ticket.assign_attributes(attrs)
+        plate_error = assign_vehicle_plate!(@ticket)
+        raise ActiveRecord::Rollback if plate_error
+        raise ActiveRecord::Rollback unless @ticket.save
+
+        true
       end
 
-      if @ticket.update(attrs)
+      if plate_error
+        @ticket.reload
+        return render json: { errors: [plate_error] }, status: :unprocessable_content
+      end
+
+      if saved
         attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
         mark_batch_siblings_paid!(primary: @ticket, siblings: siblings) if siblings.exists?
         render json: ticket_response(@ticket), status: :ok
@@ -831,31 +852,45 @@ module V1
     end
 
     # car_registration_number is reserved on Ticket#custom_fields_data (it's
-    # derived from vehicle_registration_id), so a plain ticket update can no
-    # longer drift it out of sync with the ticket's actual vehicle link. A
-    # panel-submitted plate change is instead routed through
-    # VehicleRegistrationAssignment, which updates both the FK and the field
-    # together and re-checks capacity/role for the target vehicle. Returns
-    # an error message string, or nil when there was no plate change to make.
-    def reassign_vehicle_if_plate_changed!
+    # derived from vehicle_registration_id), so ticket_params strips it. A
+    # panel-submitted plate is instead routed through
+    # VehicleRegistrationAssignment, which sets the FK and the field together
+    # and re-checks capacity/role for the target vehicle. Saves the ticket
+    # when there is a plate change. Returns an error string, or nil.
+    def assign_vehicle_plate!(ticket)
       raw_custom_fields = params.dig(:ticket, :custom_fields_data)
       return nil unless raw_custom_fields.respond_to?(:[])
 
       new_plate = raw_custom_fields[:car_registration_number] || raw_custom_fields['car_registration_number']
       return nil if new_plate.blank?
 
-      current_vehicle = @ticket.vehicle_registration
-      return nil if current_vehicle && VehicleRegistration.normalize_plate(new_plate) == current_vehicle.normalized_plate
+      normalized = VehicleRegistration.normalize_plate(new_plate)
+      return 'Car plate number must contain letters or digits' if normalized.blank?
 
-      form = current_vehicle&.registration_form
-      return 'Cannot change car plate: ticket has no registration form to validate against' unless form
+      current_vehicle = ticket.vehicle_registration
+      return nil if current_vehicle && normalized == current_vehicle.normalized_plate
 
-      begin
-        VehicleRegistrationAssignment.new(event: @event, form: form, ticket: @ticket, plate: new_plate).save
-        nil
-      rescue VehicleRegistrationAssignment::Error => e
-        e.message
+      form = vehicle_form_for(ticket, normalized)
+      unless form
+        return "Cannot set car plate: ticket type \"#{ticket.ticket_type&.name}\" is not part of any vehicle registration form"
       end
+
+      return nil if VehicleRegistrationAssignment.new(event: @event, form: form, ticket: ticket, plate: new_plate).save
+
+      ticket.errors.full_messages.to_sentence.presence || 'Could not save car plate'
+    rescue VehicleRegistrationAssignment::Error, VehicleRegistrationRules::UnsupportedForm => e
+      e.message
+    end
+
+    # Joining an existing car uses that car's form; a new car keeps the
+    # ticket's current vehicle form, else the vehicle form offering its type.
+    def vehicle_form_for(ticket, normalized_plate)
+      existing = VehicleRegistration.find_by(event: @event, normalized_plate: normalized_plate) ||
+                 VehicleRegistrationLegacyAdopter.call(event: @event, normalized_plate: normalized_plate)
+      return existing.registration_form if existing
+      return ticket.vehicle_registration.registration_form if ticket.vehicle_registration
+
+      ticket.ticket_type&.registration_forms&.where(event: @event)&.find { |f| VehicleRegistrationRules.supported?(f) }
     end
 
     # Renders an error and returns false when the uploaded payment proof
