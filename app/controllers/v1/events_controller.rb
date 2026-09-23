@@ -331,7 +331,7 @@ module V1
         booth_types: [], # Allows JSONB array updates
         event_email_setting_attributes: [
           :sender_name, :sender_address, :contact_email, :payment_receipt_email,
-          :emails_enabled, { disabled_categories: [], business_matching_ticket_type_ids: [] }
+          :emails_enabled, :thank_you_include_feedback, { disabled_categories: [], business_matching_ticket_type_ids: [] }
         ],
         wish_wall_setting_attributes: %i[
           display_mode

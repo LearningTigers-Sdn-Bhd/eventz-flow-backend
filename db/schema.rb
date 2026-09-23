@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_23_000002) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_23_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -317,6 +317,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_23_000002) do
     t.boolean "emails_enabled", default: true, null: false
     t.jsonb "disabled_categories", default: [], null: false
     t.jsonb "business_matching_ticket_type_ids", default: [], null: false
+    t.boolean "thank_you_include_feedback", default: false, null: false
     t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
 
@@ -753,6 +754,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_23_000002) do
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
+    t.datetime "thank_you_sent_at"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
