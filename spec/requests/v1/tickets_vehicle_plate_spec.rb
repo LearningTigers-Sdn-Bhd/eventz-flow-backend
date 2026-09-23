@@ -61,6 +61,30 @@ RSpec.describe 'V1::Tickets car plate', type: :request do
     expect(Ticket.count).to eq(0)
   end
 
+  it 'keeps reserved fields when an edit omits them' do
+    create_ticket(type: competition_member, plate: 'SAA8466H')
+    ticket = Ticket.last
+    ticket.update_column(:custom_fields_data, ticket.custom_fields_data.merge('_indemnity' => { 'ok' => true }))
+
+    put "/v1/events/#{event.id}/tickets/#{ticket.public_id}", headers: headers,
+        params: { ticket: { custom_fields_data: { remarks: 'hi' } } }, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(ticket.reload.custom_fields_data).to include('car_registration_number' => 'SAA8466H',
+                                                        '_indemnity' => { 'ok' => true }, 'remarks' => 'hi')
+  end
+
+  it 'refills a wiped plate field when the same plate is re-entered' do
+    create_ticket(type: competition_member, plate: 'SAA8466H')
+    ticket = Ticket.last
+    ticket.update_column(:custom_fields_data, {})
+
+    put "/v1/events/#{event.id}/tickets/#{ticket.public_id}", headers: headers,
+        params: { ticket: { custom_fields_data: { car_registration_number: 'SAA8466H' } } }, as: :json
+
+    expect(ticket.reload.custom_fields_data['car_registration_number']).to eq('SAA8466H')
+  end
+
   it 'rolls back other edits when the plate is rejected' do
     create_ticket(type: competition_member, plate: 'SAA8466H')
     ticket = create(:ticket, event: event, ticket_type: competition_member, role: 'Driver', attendee_name: 'Old')
