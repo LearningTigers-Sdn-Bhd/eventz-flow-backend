@@ -37,6 +37,7 @@ Rails.application.routes.draw do
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
+      post 'feedback_responses', to: 'feedback_responses#create'
       # Public seating plans
       resources :plans, only: %i[show]
       # Public booking details
@@ -65,6 +66,7 @@ Rails.application.routes.draw do
         post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'
         delete 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#destroy'
         get 'registration_forms', to: 'registrations#registration_forms'
+        get 'feedback_form', to: 'feedback_forms#show'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
         get 'registration_lookup', to: 'registrations#registration_lookup'
@@ -192,6 +194,7 @@ Rails.application.routes.draw do
           patch :cancel_ticket
           patch :restore
           post :resend_confirmation_email
+          post :resend_feedback_email
           patch :accept_waiting_list
         end
         collection do
@@ -218,6 +221,10 @@ Rails.application.routes.draw do
       resources :booth_plans, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
+      end
+      resource :feedback_form, only: %i[show create update], controller: 'feedback_forms' do
+        get :summary
+        get :responses
       end
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_packages, only: %i[index create]

@@ -1,0 +1,24 @@
+Thank You for Coming!
+
+Dear <%= @ticket.attendee_name.presence || 'friend' %>,
+
+Thank you for being with us at <%= @event.title %>. An event is only as special as the people who show up, and having you there made all the difference.
+
+We hope you went home with something to remember, whether that's a new idea, a new friend, or just a good day well spent.
+<% if @feedback_url %>
+
+<% if @certificate_for_feedback %>We'd love to hear from you. Share your feedback and your e-certificate will be emailed to you right after:<% else %>We'd love to hear from you. Your thoughts help us make the next one even better:<% end %>
+<%= @feedback_url %>
+<% end %>
+
+<% if @contact_email.present? %>
+If there's anything you'd like to tell us, reach out anytime at <%= @contact_email %>.
+
+<% end %>
+Until we meet again, take care, and we hope to see you soon.
+
+With gratitude,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

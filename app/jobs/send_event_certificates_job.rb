@@ -1,7 +1,7 @@
 class SendEventCertificatesJob < ApplicationJob
   queue_as :mailers
 
-  AUDIENCES = %w[all checked_in unsent].freeze
+  AUDIENCES = %w[all checked_in unsent feedback_submitted].freeze
 
   # Statuses that mean a certificate is already on its way / delivered, so the
   # ticket should be skipped by the "unsent" audience.
@@ -38,9 +38,11 @@ class SendEventCertificatesJob < ApplicationJob
   #   all        -> every ticket with an email
   #   checked_in -> only checked-in tickets with an email
   #   unsent     -> tickets with an email that have no in-flight/delivered cert
+  #   feedback_submitted -> tickets that answered the event's feedback form
   def self.recipient_scope(event, audience, excluded_public_ids = [])
     scope = event.tickets.where.not(attendee_email: [nil, '']).where(waiting_list: false)
     scope = scope.where(checked_in: true) if audience.to_s == 'checked_in'
+    scope = scope.where(id: feedback_ticket_ids(event)) if audience.to_s == 'feedback_submitted'
     scope = scope.where.not(public_id: excluded_public_ids) if excluded_public_ids.present?
     scope = scope.where.not(id: already_sent_ticket_ids(event)) if audience.to_s == 'unsent'
     scope
@@ -54,6 +56,26 @@ class SendEventCertificatesJob < ApplicationJob
       .where(related_id: event.tickets.select(:id))
       .distinct
       .pluck(:related_id)
+  end
+
+  def self.feedback_ticket_ids(event)
+    FeedbackResponse.joins(:feedback_form).where(feedback_forms: { event_id: event.id }).select(:ticket_id)
+  end
+
+  # Feedback-gated certificates: fired right after an attendee submits the
+  # form, when the organizer switched on "require feedback".
+  def self.deliver_after_feedback(ticket)
+    template = ticket.event.certificate_template
+    return unless template&.ready? && template.require_feedback && ticket.attendee_email.present?
+
+    EmailDelivery::AuditedDelivery.deliver_later(
+      mailer_name: 'CertificateMailer',
+      mailer_action: 'certificate_email',
+      args: [ticket],
+      related: ticket,
+      dedupe: true,
+      metadata: { source: 'certificate_after_feedback', event_id: ticket.event_id }
+    )
   end
 
   private
