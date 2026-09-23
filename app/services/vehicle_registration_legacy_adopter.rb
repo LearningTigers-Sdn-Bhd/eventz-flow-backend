@@ -23,7 +23,12 @@ class VehicleRegistrationLegacyAdopter
     return unless base_ticket
 
     form_slug = VehicleRegistrationRules.form_slug_for_base_ticket(base_ticket.ticket_type.name)
-    form = event.registration_forms.active.find_by(slug: form_slug)
+    # Expedition is split into sub-forms (expedition-a-tags-on..h), so match on
+    # the shared rule slug and the ticket type rather than an exact slug.
+    form = event.registration_forms.active
+                .joins(:registration_form_ticket_types)
+                .where(registration_form_ticket_types: { ticket_type_id: base_ticket.ticket_type_id })
+                .find { |f| VehicleRegistrationRules.rule_slug(f.slug) == form_slug }
     return unless form
 
     vehicle = VehicleRegistration.create_or_find_by!(
