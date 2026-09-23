@@ -9,9 +9,11 @@ module V1
         form = FeedbackForm.find(attributes.fetch(:form_id))
         raise ActiveRecord::RecordNotFound unless form.is_active?
 
-        if attributes[:ticket_id].present? && attributes[:ticket_public_id].blank?
+        # ponytail: responses must come from a ticket link; a bare form link is
+        # preview-only. Add an allow_anonymous form setting here when needed.
+        if attributes[:ticket_public_id].blank?
           return error_response(
-            message: 'ticket_public_id is required when ticket_id is provided',
+            message: 'This link is a preview only. Use your personal feedback link to respond.',
             status: :unprocessable_content
           )
         end
@@ -79,8 +81,6 @@ module V1
       end
 
       def find_ticket(form, attributes)
-        return if attributes[:ticket_id].blank? && attributes[:ticket_public_id].blank?
-
         if attributes[:ticket_id].present?
           form.event.tickets.find_by!(id: attributes[:ticket_id], public_id: attributes[:ticket_public_id])
         else

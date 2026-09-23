@@ -64,12 +64,25 @@ RSpec.describe 'V1::Public::FeedbackForms', type: :request do
       form
       required_question
 
+      ticket = create(:ticket, event:, ticket_type: create(:ticket_type, event:))
+
       expect do
-        post '/v1/public/feedback_responses', params: { form_id: form.id, answers: [] }
+        post '/v1/public/feedback_responses',
+             params: { form_id: form.id, ticket_public_id: ticket.public_id, answers: [] }
       end.not_to change(FeedbackResponse, :count)
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)['errors'].join).to include('Rate it')
+    end
+
+    it 'rejects a submission from the preview link (no ticket)' do
+      expect do
+        post '/v1/public/feedback_responses',
+             params: { form_id: form.id, answers: [{ question_id: required_question.id, answer_text: '5' }] }
+      end.not_to change(FeedbackResponse, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['message']).to include('preview only')
     end
 
     it 'stores the response and answers when required questions are answered' do
