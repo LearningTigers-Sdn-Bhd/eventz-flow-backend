@@ -244,6 +244,7 @@ module V1
         return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
       end
       return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+      return render json: { error: 'quota parameter is required' }, status: :bad_request if quota.blank?
 
       record = @event.custom_field_quotas.find_or_initialize_by(field_key: field_key, value: value)
       record.quota = quota
@@ -265,8 +266,52 @@ module V1
       return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
       return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
 
-      @event.custom_field_quotas.where(field_key: field_key, value: value).destroy_all
+      # Master-list rows (positioned) stay so the agency keeps its slot; only the quota is cleared.
+      rows = @event.custom_field_quotas.where(field_key: field_key, value: value)
+      rows.where.not(position: nil).update_all(quota: nil)
+      rows.where(position: nil).destroy_all
       render json: { fieldKey: field_key, value: value }, status: :ok
+    end
+
+    # PUT /v1/events/:event_id/metrics/custom_field_list
+    # Replaces the ordered master list (e.g. a client's agency list) for one
+    # group_by value. Listed values get position 1..n; agencies with no tickets
+    # then show as zero-count rows in the breakdown. Values dropped from the
+    # list lose their slot but keep any quota.
+    #
+    # Body: { field_key, group_value, items: [{ value, quota? }] }
+    def set_custom_field_list
+      field_key = params[:field_key].to_s
+      group_value = params[:group_value].to_s.strip
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+      return render json: { error: 'group_value parameter is required' }, status: :bad_request if group_value.blank?
+
+      items = params.permit(items: %i[value quota]).fetch(:items, []).map do |item|
+        # quota key absent = keep the current quota; present but null = clear it.
+        parsed = { value: item[:value].to_s.strip }
+        parsed[:quota] = item[:quota].presence&.then { |q| Integer(q, exception: false) || q } if item.key?(:quota)
+        parsed
+      end.reject { |item| item[:value].blank? }.uniq { |item| item[:value] }
+
+      scope = @event.custom_field_quotas.where(field_key: field_key)
+      CustomFieldQuota.transaction do
+        scope.where(group_value: group_value).where.not(value: items.pluck(:value))
+             .update_all(position: nil, group_value: nil)
+        scope.where(position: nil, quota: nil).delete_all
+
+        items.each.with_index(1) do |item, position|
+          record = scope.find_or_initialize_by(value: item[:value])
+          record.assign_attributes(position: position, group_value: group_value)
+          record.quota = item[:quota] if item.key?(:quota)
+          record.save!
+        end
+      end
+
+      render json: { fieldKey: field_key, groupValue: group_value, count: items.size }, status: :ok
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
     end
 
     private
@@ -280,11 +325,11 @@ module V1
     end
 
     def quotas_for(field_key)
-      @event.custom_field_quotas.where(field_key: field_key).pluck(:value, :quota).to_h
+      @event.custom_field_quotas.where(field_key: field_key).index_by(&:value)
     end
 
     def with_quota(row, quotas)
-      quota = quotas[row[:value]]
+      quota = quotas[row[:value]]&.quota
       return row unless quota
 
       registered = row[:count]
@@ -299,9 +344,26 @@ module V1
       quotas = quotas_for(field_key)
       tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
         .group(Arel.sql(jsonb_field_sql(field_key)))
-        .order('count_all DESC')
         .count
         .map { |value, count| with_quota({ value: value.presence || 'Unspecified', count: count }, quotas) }
+        .then { |rows| sort_by_position(with_unregistered(rows, quotas.values), quotas) }
+    end
+
+    # Master-list agencies (positioned rows) with no tickets yet still get a
+    # zero-count row, so organizers can see who hasn't registered.
+    def with_unregistered(rows, master_rows)
+      seen = rows.to_set { |row| row[:value] }
+      missing = master_rows.select { |m| m.position && seen.exclude?(m.value) }
+      rows + missing.map { |m| with_quota({ value: m.value, count: 0 }, { m.value => m }) }
+    end
+
+    # Rows with an organizer-set position (the client's own agency list order)
+    # come first in that order; the rest follow by count, highest first.
+    def sort_by_position(rows, quotas)
+      rows.sort_by do |row|
+        position = quotas[row[:value]]&.position
+        position ? [0, position, 0] : [1, 0, -row[:count]]
+      end
     end
 
     def fetch_nested_custom_field_breakdown(field_key, group_by, excluded_ticket_type_ids)
@@ -315,8 +377,13 @@ module V1
         (acc[key] ||= []) << with_quota({ value: field_value.presence || 'Unspecified', count: count }, quotas)
       end
 
+      quotas.each_value do |m|
+        grouped[m.group_value] ||= [] if m.position && m.group_value.present?
+      end
+
       grouped.map do |group_value, rows|
-        rows.sort_by! { |row| -row[:count] }
+        master_rows = quotas.values.select { |m| m.group_value == group_value }
+        rows = sort_by_position(with_unregistered(rows, master_rows), quotas)
         {
           group: group_value,
           rows: rows,

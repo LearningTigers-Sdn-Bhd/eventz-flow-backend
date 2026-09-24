@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_24_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_24_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -233,9 +233,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_24_000001) do
     t.bigint "event_id", null: false
     t.string "field_key", null: false
     t.string "value", null: false
-    t.integer "quota", null: false
+    t.integer "quota"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "position"
+    t.string "group_value"
     t.index ["event_id", "field_key", "value"], name: "index_custom_field_quotas_on_event_field_value", unique: true
     t.index ["event_id"], name: "index_custom_field_quotas_on_event_id"
   end
