@@ -638,6 +638,7 @@ Rails.application.routes.draw do
           get 'custom_field_breakdown',   to: 'event_analytics#custom_field_breakdown'
           put 'custom_field_quota',       to: 'event_analytics#set_custom_field_quota'
           delete 'custom_field_quota',    to: 'event_analytics#destroy_custom_field_quota'
+          put 'custom_field_list',        to: 'event_analytics#set_custom_field_list'
           get 'ticket_type_breakdown',    to: 'event_analytics#ticket_type_breakdown'
         end
       end

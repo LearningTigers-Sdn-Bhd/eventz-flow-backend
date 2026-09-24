@@ -871,6 +871,98 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       expect(counts['KEMENTERIAN KESIHATAN']['count']).to eq(2)
     end
 
+    it 'orders positioned rows first by position, then the rest by count' do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN AIR' })
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN AIR', quota: 5, position: 2)
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'KEMENTERIAN PERTAHANAN',
+                               quota: 5, position: 1)
+
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      values = JSON.parse(response.body)['data'].map { |row| row['value'] }
+      expect(values.first(2)).to eq(['KEMENTERIAN PERTAHANAN', 'JABATAN AIR'])
+    end
+
+    it 'lists master-list agencies with no tickets as zero-count rows' do
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN KOSONG', quota: 3, position: 1)
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'TANPA KUOTA', position: 2)
+
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      rows = JSON.parse(response.body)['data']
+      expect(rows.first(2)).to eq([
+                                    { 'value' => 'JABATAN KOSONG', 'count' => 0, 'quota' => 3,
+                                      'registered' => 0, 'remaining' => 3 },
+                                    { 'value' => 'TANPA KUOTA', 'count' => 0 }
+                                  ])
+    end
+
+    describe 'PUT custom_field_list' do
+      def put_list(items, group_value: 'KERAJAAN NEGERI SABAH')
+        put "/v1/events/#{event.id}/metrics/custom_field_list",
+            params: { field_key: 'nama_agensi', group_value: group_value, items: items },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      end
+
+      it 'stores the list in order with quotas, keeping quotas it does not override' do
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN B', quota: 7)
+
+        put_list([{ value: 'JABATAN A', quota: 10 }, { value: 'JABATAN B' }, { value: ' JABATAN A ' }])
+
+        expect(response).to have_http_status(:ok)
+        rows = CustomFieldQuota.where(event: event).order(:position).pluck(:value, :quota, :position, :group_value)
+        expect(rows).to eq([['JABATAN A', 10, 1, 'KERAJAAN NEGERI SABAH'],
+                            ['JABATAN B', 7, 2, 'KERAJAAN NEGERI SABAH']])
+      end
+
+      it 'drops values missing from a re-import, keeping only their quota' do
+        put_list([{ value: 'JABATAN A', quota: 10 }, { value: 'JABATAN B' }])
+        put_list([{ value: 'JABATAN C' }])
+
+        expect(CustomFieldQuota.where(event: event).pluck(:value, :position, :quota))
+          .to contain_exactly(['JABATAN A', nil, 10], ['JABATAN C', 1, nil])
+      end
+
+      it 'clears a quota sent as null' do
+        put_list([{ value: 'JABATAN A', quota: 10 }])
+        put "/v1/events/#{event.id}/metrics/custom_field_list",
+            params: { field_key: 'nama_agensi', group_value: 'KERAJAAN NEGERI SABAH',
+                      items: [{ value: 'JABATAN A', quota: nil }] }.to_json,
+            headers: { 'Authorization' => "Bearer #{organizer_token}", 'Content-Type' => 'application/json' }
+
+        expect(CustomFieldQuota.find_by(value: 'JABATAN A').quota).to be_nil
+      end
+
+      it 'rejects an invalid quota without saving anything' do
+        put_list([{ value: 'JABATAN A', quota: 5 }, { value: 'JABATAN B', quota: 'abc' }])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(CustomFieldQuota.where(event: event)).to be_empty
+      end
+
+      it 'requires group_value' do
+        put_list([{ value: 'JABATAN A' }], group_value: '')
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    it 'keeps a master-list row when its quota is cleared' do
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN KOSONG', quota: 3, position: 1)
+
+      delete "/v1/events/#{event.id}/metrics/custom_field_quota",
+             params: { field_key: 'nama_agensi', value: 'JABATAN KOSONG' },
+             headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(CustomFieldQuota.find_by(value: 'JABATAN KOSONG').quota).to be_nil
+    end
+
     it 'rejects a missing field_key' do
       get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
           headers: { 'Authorization' => "Bearer #{organizer_token}" }
@@ -909,6 +1001,23 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
         kementerian = groups['Kementerian']
         expect(kementerian['total']).to eq(1)
         expect(kementerian['rows'].first).to eq('value' => 'Kementerian Kewangan', 'count' => 1)
+      end
+
+      it 'adds unregistered master-list agencies under their group, even a group with no tickets' do
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'Jabatan Air',
+                                 group_value: 'Jabatan', position: 1)
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'PBT Kosong',
+                                 group_value: 'PBT', position: 2)
+
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: 'kategori' },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        groups = JSON.parse(response.body)['groups'].index_by { |g| g['group'] }
+        expect(groups['Jabatan']['rows'].map { |r| r['value'] }).to eq(['Jabatan Air', 'Jabatan Pertanian'])
+        expect(groups['Jabatan']['total']).to eq(2)
+        expect(groups['PBT']).to eq('group' => 'PBT', 'rows' => [{ 'value' => 'PBT Kosong', 'count' => 0 }],
+                                    'total' => 0)
       end
 
       it 'rejects a group_by with unsafe characters' do

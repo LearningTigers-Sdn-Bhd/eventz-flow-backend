@@ -9,6 +9,6 @@ class CustomFieldQuota < ApplicationRecord
   belongs_to :event
 
   validates :field_key, :value, presence: true
-  validates :quota, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :quota, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validates :value, uniqueness: { scope: %i[event_id field_key] }
 end
