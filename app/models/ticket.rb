@@ -4,7 +4,7 @@ class Ticket < ApplicationRecord
   # Custom-field keys that must be unique per event (backed by partial unique
   # indexes idx_tickets_unique_* — the validation is the readable message, the
   # index is the race-proof backstop).
-  UNIQUE_CUSTOM_FIELD_KEYS = %w[membership_no ic_passport_no].freeze
+  UNIQUE_CUSTOM_FIELD_KEYS = %w[membership_no ic_passport_no no_ic].freeze
 
   # Allowed document slots for public registration uploads.
   DOCUMENT_KEYS = %w[passport_copy photo_1 photo_2 indemnity_form signature].freeze

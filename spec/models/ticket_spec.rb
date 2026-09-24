@@ -285,6 +285,11 @@ RSpec.describe Ticket, type: :model do
       expect(ticket.errors[:base].first).to include('already registered')
     end
 
+    it 'rejects a duplicate no_ic' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'no_ic' => '890811-12-5155' })
+      expect(build_with({ 'no_ic' => '890811-12-5155' })).not_to be_valid
+    end
+
     it 'rejects a duplicate ic_passport_no' do
       create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'ic_passport_no' => 'H12345678' })
       expect(build_with({ 'ic_passport_no' => 'H12345678' })).not_to be_valid
