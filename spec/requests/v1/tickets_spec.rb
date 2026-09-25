@@ -278,6 +278,61 @@ RSpec.describe 'V1::Tickets', type: :request do
         )
       end
 
+      it 'sorts by a custom field (e.g. car_registration_number)' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        %w[SA1088R EGLA7788 SS3030E].each do |plate|
+          create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                          attendee_name: "Driver #{plate}", attendee_email: "#{plate.downcase}@example.com",
+                          custom_fields_data: { 'car_registration_number' => plate })
+        end
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_car_registration_number', sort_dir: 'asc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        # Tickets with a plate come first in ascending plate order (proving the
+        # order is driven by the plate value, not insertion/id order — they were
+        # created as SA1088R, EGLA7788, SS3030E).
+        plates = json.filter_map { |t| t.dig('custom_fields_data', 'car_registration_number') }
+        expect(plates).to eq(%w[EGLA7788 SA1088R SS3030E])
+        expect(json.first(3).map { |t| t['attendee_name'] }).to eq(
+          ['Driver Egla7788', 'Driver Sa1088r', 'Driver Ss3030e']
+        )
+      end
+
+      it 'sorts by participation_category' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        {
+          'Expedition' => 'Exp Driver',
+          'Competition' => 'Comp Driver'
+        }.each do |category, name|
+          create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                          attendee_name: name, attendee_email: "#{name.parameterize}@example.com",
+                          custom_fields_data: { 'participation_category' => category })
+        end
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_participation_category', sort_dir: 'asc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        # ASC puts categorized tickets first (NULLs last), ordered by category.
+        # They were created Expedition-then-Competition, so ascending category
+        # order also proves the sort is value-driven rather than id-driven.
+        json = JSON.parse(response.body)
+        expect(json.first(2).map { |t| t['attendee_name'] }).to eq(['Comp Driver', 'Exp Driver'])
+      end
+
+      it 'falls back to id order for an unrecognized custom sort key' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_not_a_real_field' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq(json.map { |t| t['id'] }.sort)
+      end
+
       it 'paginates and reports totals via response headers' do
         get "/v1/events/#{organizer_event.id}/tickets",
             params: { page: 1, per_page: 2 },
