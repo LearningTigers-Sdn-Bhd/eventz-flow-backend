@@ -96,4 +96,68 @@ RSpec.describe 'V1::Tickets car plate', type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(ticket.reload.attendee_name).to eq('Old')
   end
+
+  describe 'changing expedition group' do
+    let(:exp_a) { create(:registration_form, event: event, slug: 'expedition-a-tags-on', name: 'Expedition A') }
+    let(:exp_b) { create(:registration_form, event: event, slug: 'expedition-b-tags-on', name: 'Expedition B') }
+    # One "Expedition - Member" type shared across sub-forms, as locally.
+    let!(:expedition_member) do
+      ticket_type('Expedition - Member', exp_a).tap do |tt|
+        create(:registration_form_ticket_type, registration_form: exp_b, ticket_type: tt)
+      end
+    end
+
+    def update_ticket(ticket, attrs)
+      put "/v1/events/#{event.id}/tickets/#{ticket.public_id}", headers: headers, params: { ticket: attrs }, as: :json
+    end
+
+    it 'moves a co-driver to a new car in the chosen group' do
+      create_ticket(type: competition_member, plate: 'GTK1')
+      create_ticket(type: competition_included, plate: 'GTK1', role: 'Co-Driver')
+      co_driver = Ticket.last
+
+      update_ticket(co_driver, ticket_type_id: expedition_member.id, role: 'Driver',
+                               vehicle_registration_form_id: exp_b.id,
+                               custom_fields_data: { car_registration_number: 'SA1088R' })
+
+      expect(response).to have_http_status(:ok)
+      expect(co_driver.reload.vehicle_registration.registration_form).to eq(exp_b)
+      expect(co_driver.vehicle_registration.plate).to eq('SA1088R')
+      expect(VehicleRegistration.find_by(normalized_plate: 'GTK1').active_tickets.count).to eq(1)
+    end
+
+    it 'moves a solo car to the chosen group without a new plate' do
+      create_ticket(type: competition_member, plate: 'GTK2')
+      driver = Ticket.last
+
+      update_ticket(driver, ticket_type_id: expedition_member.id, vehicle_registration_form_id: exp_b.id)
+
+      expect(response).to have_http_status(:ok)
+      expect(driver.reload.vehicle_registration.registration_form).to eq(exp_b)
+      expect(driver.vehicle_registration.plate).to eq('GTK2')
+    end
+
+    it 'refuses to move a car that still has crew' do
+      create_ticket(type: competition_member, plate: 'GTK3')
+      driver = Ticket.last
+      create_ticket(type: competition_included, plate: 'GTK3', role: 'Co-Driver')
+
+      update_ticket(driver, ticket_type_id: expedition_member.id, vehicle_registration_form_id: exp_b.id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors'].first).to include('other crew')
+      expect(driver.reload.vehicle_registration.registration_form).to eq(form)
+    end
+
+    it 'asks for the group instead of silently keeping the old one' do
+      create_ticket(type: competition_member, plate: 'GTK4')
+      driver = Ticket.last
+
+      update_ticket(driver, ticket_type_id: expedition_member.id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors'].first).to include('choose the expedition group')
+      expect(driver.reload.ticket_type).to eq(competition_member)
+    end
+  end
 end

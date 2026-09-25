@@ -928,34 +928,65 @@ module V1
     # panel-submitted plate is instead routed through
     # VehicleRegistrationAssignment, which sets the FK and the field together
     # and re-checks capacity/role for the target vehicle. Saves the ticket
-    # when there is a plate change. Returns an error string, or nil.
+    # when there is a plate change. An optional ticket[vehicle_registration_form_id]
+    # picks the group (e.g. Expedition B) for a new plate, or moves the ticket's
+    # current car there. Returns an error string, or nil.
     def assign_vehicle_plate!(ticket)
-      raw_custom_fields = params.dig(:ticket, :custom_fields_data)
-      return nil unless raw_custom_fields.respond_to?(:[])
-
-      new_plate = raw_custom_fields[:car_registration_number] || raw_custom_fields['car_registration_number']
-      return nil if new_plate.blank?
-
-      normalized = VehicleRegistration.normalize_plate(new_plate)
-      return 'Car plate number must contain letters or digits' if normalized.blank?
-
+      target_form = requested_vehicle_form
       current_vehicle = ticket.vehicle_registration
-      if current_vehicle && normalized == current_vehicle.normalized_plate
-        # Heal tickets whose field was wiped by earlier edits; caller saves.
-        ticket.custom_fields_data = ticket.custom_fields_data.to_h.merge('car_registration_number' => current_vehicle.plate)
-        return nil
+      raw_custom_fields = params.dig(:ticket, :custom_fields_data)
+      if raw_custom_fields.respond_to?(:[])
+        new_plate = raw_custom_fields[:car_registration_number] || raw_custom_fields['car_registration_number']
       end
 
-      form = vehicle_form_for(ticket, normalized)
-      unless form
-        return "Cannot set car plate: ticket type \"#{ticket.ticket_type&.name}\" is not part of any vehicle registration form"
+      if new_plate.present?
+        normalized = VehicleRegistration.normalize_plate(new_plate)
+        return 'Car plate number must contain letters or digits' if normalized.blank?
+
+        if current_vehicle && normalized == current_vehicle.normalized_plate
+          # Heal tickets whose field was wiped by earlier edits; caller saves.
+          ticket.custom_fields_data = ticket.custom_fields_data.to_h.merge('car_registration_number' => current_vehicle.plate)
+        else
+          form = target_form || vehicle_form_for(ticket, normalized)
+          unless form
+            return "Cannot set car plate: ticket type \"#{ticket.ticket_type&.name}\" is not part of any vehicle registration form"
+          end
+
+          return nil if VehicleRegistrationAssignment.new(event: @event, form: form, ticket: ticket, plate: new_plate).save
+
+          return ticket.errors.full_messages.to_sentence.presence || 'Could not save car plate'
+        end
       end
 
-      return nil if VehicleRegistrationAssignment.new(event: @event, form: form, ticket: ticket, plate: new_plate).save
+      return nil unless target_form && current_vehicle && current_vehicle.registration_form_id != target_form.id
 
-      ticket.errors.full_messages.to_sentence.presence || 'Could not save car plate'
+      move_vehicle_group!(ticket, current_vehicle, target_form)
     rescue VehicleRegistrationAssignment::Error, VehicleRegistrationRules::UnsupportedForm => e
       e.message
+    end
+
+    def requested_vehicle_form
+      form_id = params.dig(:ticket, :vehicle_registration_form_id).presence
+      return nil unless form_id
+
+      form = @event.registration_forms.find_by(id: form_id)
+      raise VehicleRegistrationAssignment::Error, 'Choose a valid vehicle group' unless VehicleRegistrationRules.supported?(form)
+
+      form
+    end
+
+    # Moves the whole car to another group. Only a car with no other crew —
+    # otherwise they'd change group silently; a new plate moves just this person.
+    def move_vehicle_group!(ticket, vehicle, form)
+      if vehicle.active_tickets.where.not(id: ticket.id).exists?
+        return "#{vehicle.plate} has other crew in #{vehicle.registration_form.name} — enter a new car plate to move only this person"
+      end
+      unless VehicleRegistrationRules.new(form).allowed_ticket_types(nil).exists?(id: ticket.ticket_type_id)
+        return "Choose a main vehicle ticket type of #{form.name} to move this car"
+      end
+
+      vehicle.update!(registration_form: form, base_ticket_type: ticket.ticket_type)
+      nil
     end
 
     # Joining an existing car uses that car's form; a new car keeps the
