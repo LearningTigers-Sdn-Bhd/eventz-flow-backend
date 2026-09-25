@@ -37,8 +37,10 @@ module V1
     #     tickets without an application are excluded).
     #   - rsvp_status: 'not_sent', 'sent', 'confirmed', 'declined', or 'expired'.
     #     Same join behavior as review_status.
-    #   - sort_by / sort_dir: One of name/email/status/createdAt, 'asc' or 'desc'
-    #     (default createdAt/id order when omitted or unrecognized).
+    #   - sort_by / sort_dir: One of name/email/status/createdAt, or
+    #     custom_<labels_data key> (e.g. custom_car_registration_number) to sort
+    #     by a custom field; 'asc' or 'desc' (default tickets.id order when
+    #     omitted or unrecognized).
     #   - page / per_page: Paginate results. When either is present, the response
     #     is sliced and pagination metadata is returned via response headers
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
@@ -811,9 +813,38 @@ module V1
     end
 
     def sort_order
-      column = SORTABLE_COLUMNS[params[:sort_by]] || 'tickets.id'
+      column = sortable_column(params[:sort_by])
       direction = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
       Arel.sql("#{column} #{direction}")
+    end
+
+    # Maps the frontend column id to an ORDER BY expression. Fixed columns go
+    # through SORTABLE_COLUMNS; custom-field columns arrive as "custom_<key>"
+    # (e.g. custom_car_registration_number) and sort on the JSONB value as
+    # text. The key is validated against the custom-field keys the event
+    # actually uses (labels_data plus keys present on its tickets, minus
+    # reserved "_"-prefixed ones) so arbitrary keys can't reach the SQL.
+    def sortable_column(sort_by)
+      return SORTABLE_COLUMNS[sort_by] if SORTABLE_COLUMNS.key?(sort_by)
+      return 'tickets.id' unless sort_by.to_s.start_with?('custom_')
+
+      key = sort_by.to_s.delete_prefix('custom_')
+      return 'tickets.id' unless custom_field_sort_keys.include?(key)
+
+      quoted_key = ActiveRecord::Base.connection.quote(key)
+      "tickets.custom_fields_data ->> #{quoted_key}"
+    end
+
+    # Custom-field keys shown as sortable columns in the panel: the event's
+    # labels_data keys merged with any key found on its tickets (same merge as
+    # the frontend table), excluding server-reserved "_"-prefixed fields.
+    def custom_field_sort_keys
+      @custom_field_sort_keys ||= begin
+        keys = @event.labels_data.to_h.keys
+        ticket_keys = @event.tickets.where.not(custom_fields_data: {})
+                            .distinct.pluck(Arel.sql("jsonb_object_keys(custom_fields_data)"))
+        (keys + ticket_keys).uniq.reject { |k| k.to_s.start_with?('_') }
+      end
     end
 
     def set_ticket
