@@ -53,7 +53,9 @@ class VehicleRegistrationAssignment
   private
 
   def find_or_create_vehicle!
-    existing = VehicleRegistration.find_by(event: @event, normalized_plate: @plate)
+    # Archived rows keep their plate but no longer claim it — only live
+    # vehicles match, so re-registering an archived plate creates a fresh row.
+    existing = VehicleRegistration.active.find_by(event: @event, normalized_plate: @plate)
     existing ||= VehicleRegistrationLegacyAdopter.call(event: @event, normalized_plate: @plate)
     return existing if existing
 

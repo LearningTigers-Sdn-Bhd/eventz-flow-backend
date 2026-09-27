@@ -19,6 +19,7 @@ class Event < ApplicationRecord
   has_many :event_locations, dependent: :destroy, inverse_of: :event
   has_many :ticket_types, dependent: :destroy
   has_many :registration_forms, dependent: :destroy
+  has_many :vehicle_registrations, dependent: :destroy
   has_many :pass_bundles, dependent: :destroy
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy

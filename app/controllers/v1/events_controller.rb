@@ -4,7 +4,7 @@ module V1
       id title slug status start_date end_date use_ticket use_exhibitor_kit
       use_seat_ticketing use_voucher use_certificate use_business_matching
       use_wedding use_api_access use_event_leads use_sponsorship
-      allow_contractor_printing_services
+      allow_contractor_printing_services vehicles_enabled
     ].freeze
 
     # Skip default authentication for the public `show` action, but try to authenticate if a token is present.
@@ -315,6 +315,7 @@ module V1
         :use_event_leads,
         :use_certificate,
         :use_api_access,
+        :vehicles_enabled,
         :reminders_enabled,
         :reminder_7_day,
         :reminder_1_day,

@@ -225,6 +225,7 @@ module V1
         custom_labels_data: form.custom_labels_data || [],
         status: RegistrationForm.statuses[form.status],
         position: form.position,
+        vehicle: VehicleRegistrationRules.supported?(form),
         registration_form_rsvp_setting: rsvp_setting&.as_json(
           only: %i[
             id

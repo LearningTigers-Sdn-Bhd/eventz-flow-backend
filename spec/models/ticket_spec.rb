@@ -40,6 +40,22 @@ RSpec.describe Ticket, type: :model do
 
       expect { ticket.destroy! }.to change(EventReminderLog, :count).by(-1)
     end
+
+    it 'destroys the vehicle registration only when its last ticket is hard-deleted' do
+      form = create(:registration_form, event: event)
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: ticket_type)
+      car = VehicleRegistration.create!(event: event, registration_form: form, base_ticket_type: ticket_type,
+                                        plate: 'SAA4000', normalized_plate: 'SAA4000')
+      driver = create(:ticket, event: event, ticket_type: ticket_type, vehicle_registration: car)
+      co_driver = create(:ticket, event: event, ticket_type: ticket_type, vehicle_registration: car,
+                                  deleted_at: Time.current)
+
+      driver.destroy!
+      expect(VehicleRegistration.exists?(car.id)).to be(true)
+
+      co_driver.destroy!
+      expect(VehicleRegistration.exists?(car.id)).to be(false)
+    end
   end
 
   # --- VALIDATIONS ---

@@ -222,6 +222,14 @@ Rails.application.routes.draw do
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
+      resources :vehicle_registrations, only: %i[index update destroy] do
+        member do
+          patch :move_group
+          patch :sync_base
+          patch :archive
+          patch :restore
+        end
+      end
       resource :feedback_form, only: %i[show create update], controller: 'feedback_forms' do
         get :summary
         get :responses

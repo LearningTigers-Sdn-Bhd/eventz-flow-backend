@@ -18,6 +18,7 @@ class Ticket < ApplicationRecord
   before_validation :normalize_attendee_fields
   before_validation :mirror_event_multi_ticket_flag
   after_update :sync_vehicle_registration_category, if: :saved_change_to_ticket_type_id?
+  after_destroy :destroy_orphaned_vehicle_registration, if: :vehicle_registration_id?
 
   # --- Associations ---
   # In modern Rails, belongs_to implies presence validation by default.
@@ -172,6 +173,15 @@ class Ticket < ApplicationRecord
 
   def sync_vehicle_registration_category
     VehicleRegistrationTicketTypeSync.call(self)
+  end
+
+  # Hard-deleting the last ticket on a car would strand its row and keep the
+  # plate blocked. Unscoped: a soft-deleted ticket still owns the car. A car
+  # can be shared (driver + co-driver), so only the last reference cleans up.
+  def destroy_orphaned_vehicle_registration
+    return if Ticket.unscoped.where(vehicle_registration_id: vehicle_registration_id).exists?
+
+    VehicleRegistration.where(id: vehicle_registration_id).destroy_all
   end
 
   def set_public_id

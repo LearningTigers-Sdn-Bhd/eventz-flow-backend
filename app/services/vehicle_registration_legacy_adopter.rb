@@ -31,14 +31,17 @@ class VehicleRegistrationLegacyAdopter
                 .find { |f| VehicleRegistrationRules.rule_slug(f.slug) == form_slug }
     return unless form
 
-    vehicle = VehicleRegistration.create_or_find_by!(
+    # Only adopt a live vehicle. An archived row with the same plate must not
+    # be resurrected — the plate is considered free again, so build a fresh
+    # registration for these legacy tickets instead.
+    vehicle = VehicleRegistration.active.find_by(event: event, normalized_plate: normalized_plate)
+    vehicle ||= VehicleRegistration.create!(
       event: event,
-      normalized_plate: normalized_plate
-    ) do |record|
-      record.registration_form = form
-      record.base_ticket_type = base_ticket.ticket_type
-      record.plate = normalized_plate
-    end
+      normalized_plate: normalized_plate,
+      registration_form: form,
+      base_ticket_type: base_ticket.ticket_type,
+      plate: normalized_plate
+    )
     Ticket.where(id: tickets.map(&:id)).update_all(vehicle_registration_id: vehicle.id, updated_at: Time.current)
     vehicle
   end
