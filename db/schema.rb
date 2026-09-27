@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_24_000003) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -758,6 +758,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_24_000003) do
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
     t.datetime "thank_you_sent_at"
+    t.boolean "vehicles_enabled", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1765,8 +1766,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_24_000003) do
     t.string "normalized_plate", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
     t.index ["base_ticket_type_id"], name: "index_vehicle_registrations_on_base_ticket_type_id"
-    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true
+    t.index ["deleted_at"], name: "index_vehicle_registrations_on_deleted_at"
+    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true, where: "(deleted_at IS NULL)"
     t.index ["event_id"], name: "index_vehicle_registrations_on_event_id"
     t.index ["registration_form_id"], name: "index_vehicle_registrations_on_registration_form_id"
   end

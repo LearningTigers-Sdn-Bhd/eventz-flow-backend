@@ -5,8 +5,19 @@ class VehicleRegistration < ApplicationRecord
   has_many :tickets, dependent: :nullify
 
   validates :plate, :normalized_plate, presence: true
-  validates :normalized_plate, uniqueness: { scope: :event_id }
+  # Mirrors the partial unique index — an archived vehicle's plate is free to
+  # be re-registered, so uniqueness only applies among live vehicles.
+  validates :normalized_plate,
+            uniqueness: { scope: :event_id,
+                          conditions: -> { where(deleted_at: nil) } }
   validate :associations_belong_to_event
+
+  scope :active, -> { where(deleted_at: nil) }
+  scope :archived, -> { where.not(deleted_at: nil) }
+
+  def archived?
+    deleted_at.present?
+  end
 
   def self.normalize_plate(value)
     value.to_s.upcase.gsub(/[^A-Z0-9]/, '')

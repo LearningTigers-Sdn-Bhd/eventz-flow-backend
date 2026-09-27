@@ -128,7 +128,10 @@ class VehicleRegistrationRules
       return 'The included second person must use the free included ticket'
     end
 
-    'This ticket is not available for the next person in this vehicle'
+    allowed = allowed_ticket_names(vehicle_registration)
+    return 'This vehicle is full' if allowed.empty?
+
+    "This ticket is not available for the next person in this vehicle — use #{allowed.join(' or ')}"
   end
 
   private
