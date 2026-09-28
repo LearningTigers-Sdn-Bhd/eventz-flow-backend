@@ -7,14 +7,22 @@ class ScanGate
   end
 
   # Records a scan if the gate allows it.
-  # Returns [:ok, scan_log], [:unpaid, nil], or [:blocked, blocking_scan_log].
-  def self.record!(scannable, by: nil, source: :staff_scan, location: nil, at: Time.current)
+  # Returns [:ok, scan_log, first_check_in], [:unpaid, nil, false], or
+  # [:blocked, blocking_scan_log, false].
+  #
+  # `first_check_in` is true only for the call that flipped the record's own
+  # `checked_in` flag, so callers can tell "this call checked the guest in"
+  # from "the guest was already in" — an imported ticket carries checked_in
+  # without any ScanLog, and counting logs would call that a first check-in.
+  # Callers that only need the old shape can ignore the third element.
+  def self.record!(scannable, by: nil, source: :staff_scan, location: nil, at: Time.current,
+                   operation_id: nil)
     scannable.with_lock do
       decision = call(scannable, at: at, location: location)
-      next [:unpaid, nil] if decision == :unpaid
-      next [:blocked, decision] unless decision == :allowed
+      next [:unpaid, nil, false] if decision == :unpaid
+      next [:blocked, decision, false] unless decision == :allowed
 
-      first_scan = ScanLog.for_scannable(scannable).none?
+      first_scan = !scannable.checked_in?
 
       log = ScanLog.create!(
         event: scannable.event,
@@ -22,7 +30,8 @@ class ScanGate
         event_location: location,
         scanned_by_id: by&.id,
         scanned_at: at,
-        source: source
+        source: source,
+        operation_id: operation_id
       )
 
       if first_scan
@@ -31,7 +40,7 @@ class ScanGate
         scannable.update!(attrs)
       end
 
-      [:ok, log]
+      [:ok, log, first_scan]
     end
   end
 

@@ -327,6 +327,12 @@ class Ticket < ApplicationRecord
       if event_type == 'ticket.scanned'
         payload[:ticket][:checked_in] = checked_in
         payload[:ticket][:check_in_at] = check_in_at&.iso8601
+        # Which app checked the guest in (`rfid_desk` for RfiDex). Read from
+        # the persisted scan, because a thread-local set in the controller is
+        # long gone by the time this after_commit callback runs. An import can
+        # set checked_in without any scan, and then there is no source to name.
+        source = scan_logs.order(:scanned_at, :id).first&.source
+        payload[:scan_source] = source if source.present?
       end
     end
 

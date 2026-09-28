@@ -265,6 +265,52 @@ RSpec.describe Ticket, type: :model do
     end
   end
 
+  describe 'scan_source on the ticket.scanned webhook' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/print') }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+
+    def scanned_payloads
+      ActiveJob::Base.queue_adapter.enqueued_jobs
+                          .select { |job| job[:job] == WebhookSenderJob }
+                          .map { |job| job[:args][1].deep_symbolize_keys }
+                          .select { |payload| payload[:event_type] == 'ticket.scanned' }
+    end
+
+    before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
+
+    it 'names the app that made the first check-in' do
+      ScanGate.record!(ticket, source: :rfid_desk, at: Time.zone.parse('2026-09-26T09:14:03Z'),
+                               operation_id: SecureRandom.uuid)
+
+      expect(scanned_payloads.length).to eq(1)
+      expect(scanned_payloads[0][:scan_source]).to eq('rfid_desk')
+      expect(scanned_payloads[0][:ticket][:checked_in]).to be(true)
+    end
+
+    it 'keeps the ordinary source for a staff scan' do
+      ScanGate.record!(ticket, source: :staff_scan, by: create(:user))
+
+      expect(scanned_payloads[0][:scan_source]).to eq('staff_scan')
+    end
+
+    it 'never relabels a historic first scan, and never sends a second one' do
+      ScanGate.record!(ticket, source: :rfid_desk, operation_id: SecureRandom.uuid)
+
+      ticket.update!(attendee_name: 'Renamed Guest')
+
+      expect(scanned_payloads.length).to eq(1)
+      expect(scanned_payloads[0][:scan_source]).to eq('rfid_desk')
+    end
+
+    it 'omits the source when an import set checked_in without a scan' do
+      imported = create(:ticket, :paid, :checked_in, event: event)
+
+      ScanGate.record!(imported, source: :rfid_desk)
+
+      expect(scanned_payloads).to be_empty
+    end
+  end
+
   describe 'unique custom fields within event' do
     let(:event) { create(:event) }
     let(:ticket_type) { create(:ticket_type, event: event) }

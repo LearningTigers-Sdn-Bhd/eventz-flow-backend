@@ -269,6 +269,91 @@ Sidekiq::Cron::Job.all
 
 ---
 
+## 🛰️ RfiDex device API (RFID)
+
+The RfiDex desk and gate apps talk to this backend with an **event-scoped `rfid`
+API key**. The wire format is `rfidex-core::contract`; answers are unwrapped
+JSON, errors are `{error, message, holder, binding}` with `message` carrying the
+human text. Nothing in a device reply contains an email or a phone number.
+
+### Issuing and revoking a key
+
+```bash
+# org owner only; event must have API access enabled
+curl -X POST "$HOST/v1/events/$EVENT_ID/api_keys" \
+  -H "Authorization: Bearer $OWNER_JWT" -H 'Content-Type: application/json' \
+  -d '{"name":"Desk A","scope":"rfid"}'
+# → 201 { "raw_key": "rfd_<16 hex>_<64 hex>", ... }   save it once, it is not shown again
+```
+
+The key is recognised by its indexed `rfd_` prefix and verified with bcrypt.
+Revoke it the same way as any other key (`DELETE
+/v1/events/:event_id/api_keys/:id`); revocation takes effect on the next
+request. An `rfid` key can reach **only** the seven device routes below, and
+only for its own event — never the panel API and never the staff RFID routes.
+
+### Device routes (key only)
+
+| Route | Purpose |
+|---|---|
+| `POST /v1/rfid/stations/heartbeat` | Registers the station, returns the event settings |
+| `GET /v1/rfid/cache` | Full offline snapshot (always full; `since` is ignored on purpose) |
+| `GET /v1/rfid/tickets/search?by=name\|email\|phone&q=…` | Fallback search, paid tickets only, hints masked |
+| `POST /v1/rfid/desk_scans` | Check a guest in; idempotent per `operation_id` |
+| `POST /v1/rfid/bindings` | Link a sticker; first committed binding wins |
+| `GET /v1/rfid/bindings/lookup?uid_raw_hex=…` | Who holds this sticker right now |
+| `POST /v1/rfid/observations` | Up to 50 gate readings per batch |
+
+Every route needs the `X-RfiDex-Station` header (1–128 printable ASCII
+characters; production sends the station UUID, the shared contract tests send
+`desk-contract`). Observations additionally require that station to have sent a
+heartbeat, because each stored reading cites the station row.
+
+### Staff routes (signed-in users only)
+
+Under `/v1/events/:event_id/rfid`: `GET summary`, `GET stations`,
+`PATCH stations/:id`, `GET bindings`, `GET visits`, `GET anomalies`,
+`GET visits.csv`, `PATCH settings`, `POST visits/:id/manual_exit`. Reads need
+`EventPolicy#analytics?`, settings and corrections need `#update?`. **API keys
+are refused on every one of them**, whatever their scope.
+
+Manual exits need a reason and a time not before the visit's entry; a repeated
+manual exit is refused and never writes a second correction. A station's role or
+UID rule can only move through `PATCH stations/:id` with `reason` and
+`confirm: true` — a heartbeat can never change them. Use `observation_ids` to
+name readings from this station for a historical role correction; the visit
+projection uses the corrected role without rewriting raw observation fields.
+An unspecified reading keeps its captured role.
+
+### The print workflow
+
+`ticket.scanned` webhooks now carry `scan_source` (the `ScanLog.source` of the
+first check-in: `rfid_desk` for RfiDex, `staff_scan`, `kiosk`, …). **Keep the
+SalesCatalyst badge-print workflow OFF by default for RfiDex events**: RfiDex
+prints on the desk PC through event-printing, and a second workflow would print
+two badges. When the workflow owner adds the condition `scan_source !=
+rfid_desk`, it can stay on permanently as a backup for guests checked in on the
+EventzFlow page.
+
+### Event settings
+
+`PATCH /v1/events/:event_id/rfid/settings` accepts `rfid_mode` (`bind` or
+`write`) and `require_check_in` (boolean). It changes nothing else on the event.
+Setting `write` only records the mode — RfiDex still refuses physical writes
+until the P4 hardware acceptance passes.
+
+### Evidence and limits
+
+- Raw readings are immutable evidence. A late binding, a late check-in or a
+  staff correction updates the *current* outcome/anomalies and the visit
+  projection; the reply a station was first given is replayed unchanged.
+- `RFID_ROUTES`/`RFID_KEY_RE` live in `app/models/api_key.rb`; the wire shapes
+  in `app/services/rfid/wire.rb`; the rules in `app/services/rfid/`.
+- Contact hints reveal at most two email characters and four phone digits by
+  design. Outside loopback the device API must stay on TLS.
+
+---
+
 ## 📂 Project Structure
 
 ```
