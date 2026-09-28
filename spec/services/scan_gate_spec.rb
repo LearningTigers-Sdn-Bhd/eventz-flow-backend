@@ -154,6 +154,57 @@ RSpec.describe ScanGate do
       expect(log.source).to eq('self_check_in')
       expect(ticket.reload.scanned_by_id).to be_nil
     end
+
+    context 'when the caller asks for the first-check-in flag' do
+      it 'reports true only for the call that flipped checked_in' do
+        _, _, first = described_class.record!(ticket, source: :rfid_desk,
+                                                     operation_id: SecureRandom.uuid)
+        expect(first).to be(true)
+
+        status, log, second = described_class.record!(ticket, source: :rfid_desk)
+        expect(status).to eq(:blocked)
+        expect(log).to be_present
+        expect(second).to be(false)
+      end
+
+      it 'stores the operation id on the log' do
+        operation_id = SecureRandom.uuid
+        _, log, = described_class.record!(ticket, source: :rfid_desk, operation_id: operation_id)
+
+        expect(log.operation_id).to eq(operation_id)
+        expect(ScanLog.create!(event: event, scannable: create(:ticket, :paid, event: event),
+                               scanned_at: Time.current, source: :staff_scan).operation_id).to be_nil
+      end
+
+      # The old `ScanLog.none?` rule would have re-stamped check_in_at here and
+      # fired a second `ticket.scanned` webhook for a guest the import already
+      # had checked in.
+      it 'never re-stamps a checked_in flag that was set outside the gate' do
+        imported = create(:ticket, :paid, :checked_in, event: event, check_in_at: 2.days.ago)
+        imported_at = imported.check_in_at
+
+        status, log, first = described_class.record!(imported, source: :rfid_desk)
+
+        expect(status).to eq(:ok)
+        expect(log).to be_persisted
+        expect(first).to be(false)
+        expect(imported.reload.check_in_at).to eq(imported_at)
+        expect(imported.checked_in).to be(true)
+
+        blocked_status, = described_class.record!(imported, source: :rfid_desk)
+        expect(blocked_status).to eq(:blocked)
+      end
+
+      it 'reports false with nothing written when the ticket is unpaid' do
+        pending_ticket = create(:ticket, event: event, payment_status: :pending)
+
+        status, log, first = described_class.record!(pending_ticket, source: :rfid_desk)
+
+        expect(status).to eq(:unpaid)
+        expect(log).to be_nil
+        expect(first).to be(false)
+      end
+    end
   end
 
   describe '.undo!' do

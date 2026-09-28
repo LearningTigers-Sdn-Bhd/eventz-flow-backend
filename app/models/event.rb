@@ -62,6 +62,15 @@ class Event < ApplicationRecord
   has_many :event_seating_groups, dependent: :destroy
   has_many :api_keys, dependent: :nullify
 
+  # RFID history. No `dependent:` here on purpose: the foreign keys cascade in
+  # PostgreSQL, so Event#delete stays one delete instead of a destroy chain
+  # whose order could trip over the observation references.
+  has_many :rfid_stations, class_name: 'Rfid::Station'
+  has_many :rfid_bindings, class_name: 'Rfid::Binding'
+  has_many :rfid_observations, class_name: 'Rfid::Observation'
+  has_many :rfid_visits, class_name: 'Rfid::Visit'
+  has_many :rfid_corrections, class_name: 'Rfid::Correction'
+
   # --- Reminders ---
   has_many :event_reminder_logs, dependent: :destroy
 
@@ -104,6 +113,12 @@ class Event < ApplicationRecord
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
   enum :multiple_scan_mode, { unlimited: 0, per_location: 1, per_day: 2 }, prefix: :scan_mode
+
+  # --- RFID ---
+  # `write` only changes the event's mode: RfiDex refuses physical writes until
+  # the P4 hardware acceptance passes, so this cannot make a desk write a tag.
+  RFID_MODES = %w[bind write].freeze
+  validates :rfid_mode, inclusion: { in: RFID_MODES }
 
   # --- Soft Delete Scopes ---
   default_scope { where(deleted_at: nil) }

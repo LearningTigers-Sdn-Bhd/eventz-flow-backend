@@ -21,6 +21,36 @@ Rails.application.routes.draw do
   # API Namespace V1
   # ====================================================================
   namespace :v1 do
+    # --- RfiDex device API -------------------------------------------------
+    # The event for every one of these comes from the event-scoped `rfid` API
+    # key, never from the URL, so no path carries an event id. Answers are the
+    # unwrapped shapes `rfidex-core` defines.
+    namespace :rfid do
+      post 'stations/heartbeat', to: 'stations#heartbeat'
+      get 'cache', to: 'cache#show'
+      get 'tickets/search', to: 'tickets#search'
+      post 'desk_scans', to: 'desk_scans#create'
+      post 'bindings', to: 'bindings#create'
+      get 'bindings/lookup', to: 'bindings#lookup'
+      post 'observations', to: 'observations#create'
+    end
+
+    # --- RfiDex staff API ---------------------------------------------------
+    # Signed-in users only (never API keys), same event path the panel uses.
+    # `visits.csv` is declared before `visits` so the file name is not read as
+    # a format; both sit under the literal `/v1/events/:event_id/rfid` prefix.
+    scope 'events/:event_id/rfid', controller: 'rfid_management', as: 'event_rfid' do
+      get 'summary', action: :summary
+      get 'stations', action: :stations
+      patch 'stations/:id', action: :update_station
+      get 'bindings', action: :bindings
+      get 'visits.csv', action: :visits_csv
+      get 'visits', action: :visits
+      post 'visits/:id/manual_exit', action: :manual_exit
+      get 'anomalies', action: :anomalies
+      patch 'settings', action: :update_settings
+    end
+
     # Public endpoints (No authentication required)
     namespace :public do
       post 'resend/webhook', to: 'resend_webhooks#create'

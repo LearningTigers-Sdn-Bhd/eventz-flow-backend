@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_28_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -72,8 +72,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
     t.datetime "updated_at", null: false
     t.bigint "event_id"
     t.string "scope", default: "read_only", null: false
+    t.string "key_prefix"
     t.index ["event_id"], name: "index_api_keys_on_event_id"
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
+    t.index ["key_prefix"], name: "idx_api_keys_key_prefix", unique: true, where: "(key_prefix IS NOT NULL)"
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["scope"], name: "index_api_keys_on_scope"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
@@ -759,6 +761,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
     t.integer "multiple_scan_mode", default: 0, null: false
     t.datetime "thank_you_sent_at"
     t.boolean "vehicles_enabled", default: false, null: false
+    t.string "rfid_mode", default: "bind", null: false
+    t.boolean "rfid_require_check_in", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1469,6 +1473,139 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
     t.index ["user_id"], name: "index_resources_on_user_id"
   end
 
+  create_table "rfid_binding_operations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.uuid "operation_id", null: false
+    t.string "request_digest", null: false
+    t.jsonb "original_response", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "operation_id"], name: "idx_rfid_binding_ops_event_op", unique: true
+    t.index ["event_id"], name: "index_rfid_binding_operations_on_event_id"
+  end
+
+  create_table "rfid_bindings", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "ticket_public_id", null: false
+    t.string "ticket_name"
+    t.string "protocol", null: false
+    t.string "uid_raw_hex", null: false
+    t.string "tag_key", null: false
+    t.string "mode", null: false
+    t.integer "payload_version"
+    t.datetime "captured_at", null: false
+    t.datetime "recorded_at", null: false
+    t.datetime "revoked_at"
+    t.string "revocation_reason"
+    t.uuid "operation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "tag_key", "captured_at"], name: "idx_rfid_bindings_event_tag_capture"
+    t.index ["event_id", "tag_key"], name: "idx_rfid_active_tag", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["event_id", "ticket_id"], name: "idx_rfid_active_ticket", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["event_id"], name: "index_rfid_bindings_on_event_id"
+    t.index ["ticket_id"], name: "index_rfid_bindings_on_ticket_id"
+  end
+
+  create_table "rfid_corrections", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "actor_id"
+    t.bigint "entry_observation_id"
+    t.string "kind", null: false
+    t.datetime "exit_at"
+    t.string "reason", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "station_id"
+    t.jsonb "details", default: {}, null: false
+    t.index ["actor_id"], name: "index_rfid_corrections_on_actor_id"
+    t.index ["entry_observation_id"], name: "index_rfid_corrections_on_entry_observation_id"
+    t.index ["event_id", "actor_id"], name: "idx_rfid_corrections_event_actor"
+    t.index ["event_id", "entry_observation_id"], name: "idx_rfid_corrections_event_entry"
+    t.index ["event_id"], name: "index_rfid_corrections_on_event_id"
+    t.index ["station_id"], name: "index_rfid_corrections_on_station_id"
+  end
+
+  create_table "rfid_desk_operations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.uuid "operation_id", null: false
+    t.string "request_digest", null: false
+    t.jsonb "original_response", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "operation_id"], name: "idx_rfid_desk_ops_event_op", unique: true
+    t.index ["event_id"], name: "index_rfid_desk_operations_on_event_id"
+  end
+
+  create_table "rfid_observations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "station_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "delivery_id", null: false
+    t.decimal "device_record_seq", precision: 20
+    t.string "role", null: false
+    t.string "protocol", null: false
+    t.string "uid_raw_hex", null: false
+    t.string "tag_key", null: false
+    t.string "payload_hex"
+    t.uuid "payload_public_id"
+    t.datetime "captured_at", null: false
+    t.datetime "recorded_at", null: false
+    t.jsonb "device_metadata", default: {}, null: false
+    t.string "outcome", null: false
+    t.jsonb "anomalies", default: [], null: false
+    t.jsonb "original_response", null: false
+    t.string "request_digest", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "outcome"], name: "idx_rfid_obs_event_outcome"
+    t.index ["event_id", "tag_key", "captured_at"], name: "idx_rfid_obs_event_tag_capture"
+    t.index ["event_id"], name: "index_rfid_observations_on_event_id"
+    t.index ["station_id", "delivery_id"], name: "idx_rfid_obs_station_delivery", unique: true
+    t.index ["station_id", "device_record_seq"], name: "idx_rfid_obs_station_seq"
+    t.index ["station_id"], name: "index_rfid_observations_on_station_id"
+    t.index ["ticket_id"], name: "index_rfid_observations_on_ticket_id"
+  end
+
+  create_table "rfid_stations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "station_key", null: false
+    t.string "name"
+    t.string "kind", null: false
+    t.string "role"
+    t.string "uid_rule", default: "as_is", null: false
+    t.string "hw_model"
+    t.string "firmware"
+    t.string "app_version"
+    t.datetime "last_heartbeat_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "station_key"], name: "idx_rfid_stations_event_key", unique: true
+    t.index ["event_id"], name: "index_rfid_stations_on_event_id"
+  end
+
+  create_table "rfid_visits", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "ticket_public_id", null: false
+    t.string "ticket_name"
+    t.bigint "entry_observation_id", null: false
+    t.bigint "exit_observation_id"
+    t.datetime "entry_at", null: false
+    t.datetime "exit_at"
+    t.boolean "manual", default: false, null: false
+    t.jsonb "anomalies", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["entry_observation_id"], name: "idx_rfid_visits_entry_observation", unique: true
+    t.index ["entry_observation_id"], name: "index_rfid_visits_on_entry_observation_id"
+    t.index ["event_id", "ticket_id", "entry_at"], name: "idx_rfid_visits_event_ticket_entry"
+    t.index ["event_id"], name: "index_rfid_visits_on_event_id"
+    t.index ["exit_observation_id"], name: "index_rfid_visits_on_exit_observation_id"
+    t.index ["ticket_id"], name: "index_rfid_visits_on_ticket_id"
+  end
+
   create_table "roulette_assigns", force: :cascade do |t|
     t.bigint "roulette_session_id", null: false
     t.bigint "user_id", null: false
@@ -1533,9 +1670,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
     t.integer "source", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "operation_id"
     t.index ["event_id", "scanned_at"], name: "index_scan_logs_on_event_id_and_scanned_at"
     t.index ["event_id"], name: "index_scan_logs_on_event_id"
     t.index ["event_location_id"], name: "index_scan_logs_on_event_location_id"
+    t.index ["operation_id"], name: "idx_scan_logs_operation_id", unique: true, where: "(operation_id IS NOT NULL)"
     t.index ["scannable_type", "scannable_id", "scanned_at"], name: "idx_scan_logs_on_scannable"
   end
 
@@ -2046,6 +2185,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_27_000001) do
   add_foreign_key "resources", "resource_media_types"
   add_foreign_key "resources", "resource_topics"
   add_foreign_key "resources", "users"
+  add_foreign_key "rfid_binding_operations", "events", on_delete: :cascade
+  add_foreign_key "rfid_bindings", "events", on_delete: :cascade
+  add_foreign_key "rfid_bindings", "tickets", on_delete: :nullify
+  add_foreign_key "rfid_corrections", "events", on_delete: :cascade
+  add_foreign_key "rfid_corrections", "rfid_observations", column: "entry_observation_id"
+  add_foreign_key "rfid_corrections", "rfid_stations", column: "station_id", on_delete: :nullify
+  add_foreign_key "rfid_corrections", "users", column: "actor_id", on_delete: :nullify
+  add_foreign_key "rfid_desk_operations", "events", on_delete: :cascade
+  add_foreign_key "rfid_observations", "events", on_delete: :cascade
+  add_foreign_key "rfid_observations", "rfid_stations", column: "station_id"
+  add_foreign_key "rfid_observations", "tickets", on_delete: :nullify
+  add_foreign_key "rfid_stations", "events", on_delete: :cascade
+  add_foreign_key "rfid_visits", "events", on_delete: :cascade
+  add_foreign_key "rfid_visits", "rfid_observations", column: "entry_observation_id"
+  add_foreign_key "rfid_visits", "rfid_observations", column: "exit_observation_id"
+  add_foreign_key "rfid_visits", "tickets", on_delete: :nullify
   add_foreign_key "roulette_assigns", "roulette_sessions"
   add_foreign_key "roulette_assigns", "users"
   add_foreign_key "roulette_prizes", "roulette_sessions"

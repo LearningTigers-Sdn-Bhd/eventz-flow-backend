@@ -6,7 +6,11 @@ class ScanLog < ApplicationRecord
   belongs_to :event_location, optional: true
   belongs_to :scanned_by, class_name: 'User', optional: true
 
-  enum :source, { staff_scan: 0, self_check_in: 1, kiosk: 2, reprint: 3 }
+  # `rfid_desk` is appended so the stored integers for every existing source
+  # keep their meaning. `operation_id` is the RfiDex operation that produced
+  # the row (nullable: staff/kiosk scans have none) and is how a webhook can
+  # still name the app that checked a guest in, after the commit.
+  enum :source, { staff_scan: 0, self_check_in: 1, kiosk: 2, reprint: 3, rfid_desk: 4 }
 
   validates :scanned_at, presence: true
 
