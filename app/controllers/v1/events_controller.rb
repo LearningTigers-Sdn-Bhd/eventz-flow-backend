@@ -41,6 +41,7 @@ module V1
         @events = @events.with_deleted
       end
       # Default: only non-archived events (handled by default_scope)
+      @events = @events.order(start_date: :desc)
 
       render json: @events, status: :ok
     end
