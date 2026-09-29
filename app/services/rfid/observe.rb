@@ -51,12 +51,11 @@ module Rfid
             next
           end
 
-          effective = Item.new(**item.to_h.merge(role: station.role || item.role))
-          outcome, anomalies, display, ticket_id = evaluate(effective, raw_role: item.role)
+          outcome, anomalies, display, ticket_id = evaluate(item)
           observation = Observation.create!(
             event: event, station: station, ticket_id: ticket_id,
             delivery_id: item.delivery_id, device_record_seq: item.device_record_seq,
-            role: station.role || item.role, protocol: item.protocol, uid_raw_hex: item.uid_raw_hex,
+            role: item.role, protocol: item.protocol, uid_raw_hex: item.uid_raw_hex,
             tag_key: item.tag_key, payload_hex: item.payload_hex,
             payload_public_id: item.payload_public_id, captured_at: item.captured_at,
             recorded_at: Time.current, device_metadata: item.device_metadata,
@@ -83,7 +82,7 @@ module Rfid
 
     attr_reader :event, :station, :items
 
-    def evaluate(item, raw_role:)
+    def evaluate(item)
       # A repeat of a device sequence is a duplicate *delivery*: it keeps its
       # own saved reply and never becomes a second passage.
       if duplicate_sequence?(item)
@@ -91,7 +90,6 @@ module Rfid
       end
 
       result = Adjudicate.call(event: event, observation: item)
-      result.anomalies << 'role_mismatch' if raw_role != item.role && !result.anomalies.include?('role_mismatch')
       [result.outcome, result.anomalies, result.display, result.ticket_id]
     end
 

@@ -99,15 +99,6 @@ RSpec.describe 'V1::Rfid API', type: :request do
 
         run_test!
       end
-
-      response '409', 'the station tried to change its configured role' do
-        before { create(:rfid_station, event: event, station_key: 'desk-contract', kind: 'gate', role: 'entry') }
-
-        let(:heartbeat) { { name: 'Gate', kind: 'gate', role: 'exit', app_version: '0.3.0' } }
-        schema ERROR_SCHEMA
-
-        run_test!
-      end
     end
   end
 
