@@ -176,31 +176,17 @@ class EventPolicy < ApplicationPolicy
       # Org Owner: See ALL events regardless of status and visibility
       return scope.all if actual_user.is_org_owner?
 
-      # For vendors: See only events they are assigned to (as event_vendor)
-      if actual_user.vendor?
-        vendor_event_ids = actual_user.event_vendor_assignments.pluck(:event_id)
-        return scope.where(id: vendor_event_ids, visibility: true).distinct
+      # For all other users: gather all events they are assigned to across any role
+      assigned_event_ids = []
+      assigned_event_ids += actual_user.event_assignments.pluck(:event_id)
+      assigned_event_ids += actual_user.event_vendor_assignments.pluck(:event_id)
+      assigned_event_ids += actual_user.business_host_assignments.pluck(:event_id)
+      if actual_user.exhibition_contractor_profile.present?
+        assigned_event_ids += actual_user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
       end
+      assigned_event_ids.uniq!
 
-      # For exhibitors: See events they are business hosts for
-      if actual_user.exhibitor?
-        host_event_ids = actual_user.business_host_assignments.pluck(:event_id)
-        return scope.where(id: host_event_ids, visibility: true).distinct
-      end
-
-      # For exhibition contractors: See only events they are assigned to
-      if actual_user.exhibition_contractor?
-        return scope.none unless actual_user.exhibition_contractor_profile.present?
-
-        assigned_event_ids = actual_user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
-        return scope.where(id: assigned_event_ids, visibility: true).distinct
-      end
-
-      # Organizer/Member: See only events they are assigned to
-      assigned_event_ids = actual_user.event_assignments.pluck(:event_id)
-
-      scope.where(id: assigned_event_ids, visibility: true)
-           .distinct
+      scope.where(id: assigned_event_ids).distinct
     end
   end
 end

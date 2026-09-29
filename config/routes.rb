@@ -524,6 +524,7 @@ Rails.application.routes.draw do
           patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
           post 'invite_link', to: 'hosts#invite_link', on: :collection
+          post 'send_invite_email', to: 'hosts#send_invite_email', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
           post 'link_exhibitor', to: 'hosts#link_exhibitor', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection
