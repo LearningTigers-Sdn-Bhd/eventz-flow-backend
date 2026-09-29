@@ -6,10 +6,19 @@ class Rack::Attack
     '127.0.0.1' == req.ip || '::1' == req.ip
   end
 
+  RFID_PATH = '/v1/rfid'
+
   # 2. General IP Limit (Prevent DoS)
   # Limit all requests to 300 per minute per IP
   throttle('req/ip', limit: 300, period: 1.minute) do |req|
-    req.ip unless req.path.start_with?('/assets', '/active_storage')
+    req.ip unless req.path.start_with?('/assets', '/active_storage', RFID_PATH)
+  end
+
+  # RfiDex stations (desks and gates) share the venue's public IP with staff
+  # and phones, so they must not compete for the general limit above. Every
+  # request still needs a valid API key; this only caps a flood per IP.
+  throttle('rfid/ip', limit: 2000, period: 1.minute) do |req|
+    req.ip if req.path.start_with?(RFID_PATH)
   end
 
   # 3. Login Protection (Brute Force)
