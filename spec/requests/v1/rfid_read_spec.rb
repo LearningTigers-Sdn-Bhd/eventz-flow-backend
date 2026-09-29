@@ -67,17 +67,15 @@ RSpec.describe 'V1::Rfid reads', type: :request do
         .to have_attributes(name: 'Desk 1', app_version: '0.4.0')
     end
 
-    it 'refuses a changed role with a typed 409 and leaves the stored role alone' do
+    it 'accepts a changed role so a gate can switch between entry and exit' do
       post '/v1/rfid/stations/heartbeat',
            params: heartbeat.merge(kind: 'gate', role: 'entry'), headers: headers, as: :json
 
       post '/v1/rfid/stations/heartbeat',
            params: heartbeat.merge(kind: 'gate', role: 'exit'), headers: headers, as: :json
 
-      expect(response).to have_http_status(:conflict)
-      expect(body).to eq('error' => 'malformed', 'message' => body['message'],
-                         'holder' => nil, 'binding' => nil)
-      expect(Rfid::Station.find_by(station_key: station).role).to eq('entry')
+      expect(response).to have_http_status(:ok)
+      expect(Rfid::Station.find_by(station_key: station).role).to eq('exit')
     end
 
     it 'accepts the same role again' do

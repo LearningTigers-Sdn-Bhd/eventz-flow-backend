@@ -188,14 +188,15 @@ RSpec.describe 'V1::Rfid observations', type: :request do
       expect(results[0]['display']['name']).to eq('Ahmad Bin Ali')
     end
 
-    it 'uses configured gate role when reported role disagrees' do
-      Rfid::Station.find_by!(event: event, station_key: station_key).update!(role: 'entry')
+    it 'records each passage with the role it was captured under' do
+      Rfid::Station.find_by!(event: event, station_key: station_key).update!(role: 'exit')
       bind(tag)
 
-      observe([item(role: 'exit')])
+      observe([item(role: 'entry')])
 
       expect(results[0]['outcome']).to eq('accepted')
-      expect(results[0]['anomalies']).to include('role_mismatch')
+      expect(results[0]['anomalies']).not_to include('role_mismatch')
+      expect(Rfid::Observation.last.role).to eq('entry')
       expect(event.rfid_visits.open.count).to eq(1)
     end
 

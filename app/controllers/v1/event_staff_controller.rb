@@ -10,7 +10,7 @@ module V1
       staff_assignments = @event.event_assignments.includes(:user)
 
       render json: staff_assignments.as_json(
-        only: [:id, :event_id, :user_id, :role],
+        only: [:id, :event_id, :user_id, :role, :created_at, :updated_at],
         include: {
           user: {
             only: [:id, :email, :full_name, :phone, :role, :status]
