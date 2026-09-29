@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_28_000004) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_30_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -763,6 +763,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_28_000004) do
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
+    t.boolean "require_unique_membership_numbers", default: true, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1816,8 +1817,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_28_000004) do
     t.boolean "waiting_list", default: false, null: false
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.uuid "registration_batch_id"
+    t.boolean "require_unique_membership_numbers", default: true, null: false
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
-    t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
+    t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL) AND (require_unique_membership_numbers = true))"
     t.index "event_id, lower((custom_fields_data ->> 'no_ic'::text))", name: "idx_tickets_unique_no_ic", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'no_ic'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"

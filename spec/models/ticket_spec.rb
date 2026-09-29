@@ -368,8 +368,8 @@ RSpec.describe Ticket, type: :model do
       end.not_to raise_error
     end
 
-    it 'accepts duplicate membership_no when multiple tickets per email are allowed' do
-      event.update!(allow_multiple_tickets_per_email: true)
+    it 'accepts duplicate membership_no only when membership uniqueness is disabled' do
+      event.update!(require_unique_membership_numbers: false)
       create(:ticket, event: event, ticket_type: ticket_type,
                       custom_fields_data: { 'membership_no' => 'M-1234' })
 

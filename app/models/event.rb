@@ -75,6 +75,7 @@ class Event < ApplicationRecord
   has_many :event_reminder_logs, dependent: :destroy
 
   # --- Callbacks ---
+  after_update :sync_membership_uniqueness, if: :saved_change_to_require_unique_membership_numbers?
   after_commit :send_webhook_notification, on: %i[create update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
   after_update :sync_custom_labels_to_exhibitor_kits, if: :saved_change_to_exhibitor_labels_data?
@@ -93,6 +94,7 @@ class Event < ApplicationRecord
             format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: 'must be a valid URL' },
             allow_blank: true
   validate :end_date_must_be_after_start_date
+  validate :memberships_unique_before_enabling
 
   def normalized_public_registration_url
     public_registration_url.to_s.strip.chomp('/')
@@ -335,6 +337,20 @@ class Event < ApplicationRecord
   end
 
   private
+
+  def memberships_unique_before_enabling
+    return unless require_unique_membership_numbers? && will_save_change_to_require_unique_membership_numbers?
+
+    duplicates = tickets.where.not(status: :canceled)
+                        .where("NULLIF(custom_fields_data->>'membership_no', '') IS NOT NULL")
+                        .group(Arel.sql("lower(custom_fields_data->>'membership_no')"))
+                        .having('COUNT(*) > 1').limit(1).count
+    errors.add(:base, 'Resolve duplicate membership numbers before requiring unique memberships') if duplicates.any?
+  end
+
+  def sync_membership_uniqueness
+    Ticket.unscoped.where(event_id: id).update_all(require_unique_membership_numbers: require_unique_membership_numbers?)
+  end
 
   # Update custom_fields_data keys based on the mapping
   def update_custom_fields_keys(record, key_mapping)
