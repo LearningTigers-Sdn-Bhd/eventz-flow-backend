@@ -122,6 +122,18 @@ class BookingMailer < ApplicationMailer
     mail(to: @host.email, subject: "You have #{@session_count} #{session_word} today (#{date.strftime('%A, %B %d')})")
   end
 
+  def host_invitation_email(recipient_email, event_title, session_title, invite_url, inviter_name)
+    @event_title = event_title
+    @session_title = session_title
+    @invite_url = invite_url
+    @inviter_name = inviter_name
+
+    mail(
+      to: recipient_email,
+      subject: "You've been invited as a Business Host for #{@event_title}"
+    )
+  end
+
   private
 
   def _assign_booking_datetime

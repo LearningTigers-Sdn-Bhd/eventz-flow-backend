@@ -3,7 +3,7 @@ module V1
   module BusinessMatching
     class HostsController < ApplicationController
       skip_before_action :authenticate_user!, only: [:index, :show_availability]
-      skip_before_action :require_verified_email!, only: [:index, :show_availability]
+      skip_before_action :require_verified_email!, only: [:index, :show_availability, :accept_invite]
 
       # GET /v1/events/:event_id/business_matching/hosts
       def index
@@ -158,6 +158,43 @@ module V1
 
         token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_event_id)
         render json: { token: token }, status: :ok
+      end
+
+      # POST /v1/business_matching/events/:event_id/hosts/send_invite_email
+      def send_invite_email
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_hosts?
+
+        bm_event_id = params[:business_matching_event_id]
+        return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        email = params[:email]&.strip&.downcase
+        return render json: { error: 'Recipient email is required' }, status: :bad_request if email.blank?
+
+        session = event.business_matching_sessions.find_by(id: bm_event_id)
+        session_title = session&.title || 'Business Matching Session'
+
+        token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_event_id)
+        frontend_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
+        invite_url = "#{frontend_url}/invite/host?token=#{CGI.escape(token)}"
+
+        # Deliver host invitation email via BookingMailer with AuditedDelivery
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'BookingMailer',
+          mailer_action: 'host_invitation_email',
+          args: [email, event.title, session_title, invite_url, current_user.full_name],
+          event: event
+        )
+
+        render json: {
+          message: "Invitation email sent to #{email}",
+          invite_url: invite_url,
+          token: token
+        }, status: :ok
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
       end
 
       # POST /v1/business_matching/host_invites/accept
@@ -389,6 +426,13 @@ module V1
       private
 
       def perform_join(event, bm_event_id)
+        existing_assignment = EventAssignment.find_by(user_id: current_user.id, event_id: event.id)
+        if existing_assignment && !existing_assignment.business_host?
+          return render json: {
+            error: "You already have the #{existing_assignment.role.humanize} role for this event and cannot also join as a business host."
+          }, status: :unprocessable_entity
+        end
+
         ActiveRecord::Base.transaction do
           # 1. Ensure general event access via EventAssignment
           EventAssignment.find_or_create_by!(
