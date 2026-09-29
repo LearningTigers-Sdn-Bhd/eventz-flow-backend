@@ -425,5 +425,52 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
 
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "rejects when the user already has a different staff role for this event" do
+      create(:event_assignment, event: event, user: invitee, role: :event_admin)
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      post "/v1/business_matching/host_invites/accept",
+           params: { token: token },
+           headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_response['error']).to include("cannot also join as a business host")
+    end
+  end
+
+  describe "POST /v1/business_matching/events/:event_id/hosts/send_invite_email" do
+    let(:admin) { create(:user, role: :organizer) }
+    let(:session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "S", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current
+      )
+    end
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it "queues an invitation email to the specified recipient" do
+      expect {
+        post "/v1/business_matching/events/#{event.id}/hosts/send_invite_email",
+             params: { business_matching_event_id: session.id.to_s, email: "host.recipient@example.com" },
+             headers: auth_headers(admin)
+      }.to have_enqueued_job(EmailDeliveryJob)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['message']).to include("host.recipient@example.com")
+      expect(json_response['invite_url']).to be_present
+    end
+
+    it "rejects when recipient email is missing" do
+      post "/v1/business_matching/events/#{event.id}/hosts/send_invite_email",
+           params: { business_matching_event_id: session.id.to_s, email: "" },
+           headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:bad_request)
+    end
   end
 end
+
