@@ -47,6 +47,13 @@ class EventPolicy < ApplicationPolicy
   end
 
   # Only Org Owner may permanently clear the activity log
+  # RFID destructive actions (delete stations/bindings/readings, edit a
+  # binding, dismiss anomalies): org owner only.
+  def rfid_admin?
+    return false if user.blank? || record.blank?
+    user.is_org_owner?
+  end
+
   def clear_activity_log?
     return false if user.blank? || record.blank?
     user.is_org_owner?
