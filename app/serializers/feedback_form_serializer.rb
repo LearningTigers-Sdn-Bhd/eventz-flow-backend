@@ -10,6 +10,8 @@ class FeedbackFormSerializer
       is_active: form.is_active,
       display_mode: form.display_mode,
       pages_metadata: form.pages_metadata || [],
+      thank_you_title: form.thank_you_title,
+      thank_you_message: form.thank_you_message,
       questions: form.feedback_questions.map do |question|
         {
           id: question.id,

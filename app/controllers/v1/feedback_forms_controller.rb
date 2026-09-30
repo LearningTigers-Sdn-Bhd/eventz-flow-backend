@@ -85,6 +85,8 @@ module V1
         :description,
         :is_active,
         :display_mode,
+        :thank_you_title,
+        :thank_you_message,
         pages_metadata: [:page_number, :title, :description],
         feedback_questions_attributes: [
           :id,

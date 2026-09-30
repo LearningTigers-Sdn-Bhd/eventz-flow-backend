@@ -433,6 +433,8 @@ RSpec.describe 'V1::FeedbackForms', type: :request do
                title: 'Multi-Page Survey',
                display_mode: 'continuous',
                pages_metadata: pages,
+               thank_you_title: 'Custom Thanks!',
+               thank_you_message: 'See you next year!',
                feedback_questions_attributes: [
                  {
                    question_text: 'Did you attend workshops?',
@@ -455,6 +457,8 @@ RSpec.describe 'V1::FeedbackForms', type: :request do
       data = JSON.parse(response.body).fetch('data')
       expect(data['display_mode']).to eq('continuous')
       expect(data['pages_metadata']).to eq(pages)
+      expect(data['thank_you_title']).to eq('Custom Thanks!')
+      expect(data['thank_you_message']).to eq('See you next year!')
       expect(data['questions'].first['page_number']).to eq(1)
       expect(data['questions'].first['routing_rules']).to eq(rules)
       expect(data['questions'].last['page_number']).to eq(2)
