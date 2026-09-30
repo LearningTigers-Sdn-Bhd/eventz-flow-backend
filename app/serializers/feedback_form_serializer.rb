@@ -8,6 +8,8 @@ class FeedbackFormSerializer
       title: form.title,
       description: form.description,
       is_active: form.is_active,
+      display_mode: form.display_mode,
+      pages_metadata: form.pages_metadata || [],
       questions: form.feedback_questions.map do |question|
         {
           id: question.id,
@@ -17,7 +19,9 @@ class FeedbackFormSerializer
           required: question.required,
           position: question.position,
           placeholder: question.placeholder,
-          hint_text: question.hint_text
+          hint_text: question.hint_text,
+          page_number: question.page_number || 1,
+          routing_rules: question.routing_rules || []
         }
       end
     }

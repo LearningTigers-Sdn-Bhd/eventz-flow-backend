@@ -190,5 +190,46 @@ RSpec.describe 'V1::Public::FeedbackForms', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
     end
+
+    it 'allows skipping required questions on pages bypassed by routing rules' do
+      branching_event = create(:event, status: :published)
+      branching_form = FeedbackForm.create!(event: branching_event, title: 'Branching Survey')
+      q1 = branching_form.feedback_questions.create!(
+        question_text: 'Did you attend workshop?',
+        question_type: :single_choice,
+        options: %w[Yes No],
+        page_number: 1,
+        routing_rules: [{ 'answer' => 'No', 'action' => 'jump_to_page', 'target_page' => 3 }]
+      )
+      # Q2 is on page 2 and required, but page 2 was skipped because attendee said "No"
+      branching_form.feedback_questions.create!(
+        question_text: 'Workshop feedback (Required)',
+        question_type: :text,
+        page_number: 2,
+        required: true
+      )
+      q3 = branching_form.feedback_questions.create!(
+        question_text: 'Overall thoughts',
+        question_type: :text,
+        page_number: 3,
+        required: true
+      )
+
+      ticket_type = create(:ticket_type, event: branching_event)
+      ticket = create(:ticket, event: branching_event, ticket_type:)
+
+      post '/v1/public/feedback_responses',
+           params: {
+             form_id: branching_form.id,
+             ticket_id: ticket.id,
+             ticket_public_id: ticket.public_id,
+             answers: [
+               { question_id: q1.id, answer_text: 'No' },
+               { question_id: q3.id, answer_text: 'Great event overall' }
+             ]
+           }
+
+      expect(response).to have_http_status(:created)
+    end
   end
 end

@@ -15,7 +15,9 @@ class FeedbackQuestion < ApplicationRecord
   }, validate: true
 
   validates :question_text, presence: true
+  validates :page_number, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
   validate :validate_options
+  validate :validate_routing_rules
 
   def choice_type?
     CHOICE_TYPES.include?(question_type)
@@ -36,6 +38,14 @@ class FeedbackQuestion < ApplicationRecord
       end
     elsif !options.nil?
       errors.add(:options, 'are only allowed for choice or rating questions')
+    end
+  end
+
+  def validate_routing_rules
+    return if routing_rules.blank?
+
+    unless routing_rules.is_a?(Array)
+      errors.add(:routing_rules, 'must be an array of rule configurations')
     end
   end
 end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module V1
   class FeedbackFormsController < ApplicationController
     before_action :authenticate_user!
@@ -82,6 +84,8 @@ module V1
         :title,
         :description,
         :is_active,
+        :display_mode,
+        pages_metadata: [:page_number, :title, :description],
         feedback_questions_attributes: [
           :id,
           :question_text,
@@ -90,7 +94,9 @@ module V1
           :position,
           :placeholder,
           :hint_text,
-          { options: [] }
+          :page_number,
+          { options: [] },
+          { routing_rules: [:answer, :action, :target_page] }
         ]
       )
       question_set_provided = payload.key?(:feedback_questions_attributes)
@@ -98,18 +104,19 @@ module V1
 
       FeedbackForm.transaction do
         form.assign_attributes(attributes)
+        if form.pages_metadata.is_a?(Array)
+          form.pages_metadata = form.pages_metadata.map do |meta|
+            h = meta.to_h.stringify_keys
+            h['page_number'] = h['page_number'].to_i if h['page_number'].present?
+            h
+          end
+        end
         form.save!
         replace_questions!(form, question_attributes || []) if question_set_provided
       end
 
       success_response(data: FeedbackFormSerializer.serialize(form.reload), status: status)
-    rescue ActiveRecord::RecordInvalid => e
-      error_response(
-        message: 'Feedback form is invalid',
-        errors: e.record.errors.full_messages,
-        status: :unprocessable_content
-      )
-    rescue ActiveRecord::RecordNotDestroyed => e
+    rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotDestroyed => e
       error_response(
         message: 'Feedback form is invalid',
         errors: e.record.errors.full_messages,
@@ -129,6 +136,13 @@ module V1
         id = question_attributes.delete(:id)
         question = id.present? ? form.feedback_questions.find(id) : form.feedback_questions.build
         question.assign_attributes(question_attributes)
+        if question.routing_rules.is_a?(Array)
+          question.routing_rules = question.routing_rules.map do |rule|
+            r = rule.to_h.stringify_keys
+            r['target_page'] = r['target_page'].to_i if r['target_page'].present?
+            r
+          end
+        end
         if question.rating?
           question.options = question.options.is_a?(Array) && question.options.any?(&:present?) ? question.options : nil
         elsif !question.choice_type?

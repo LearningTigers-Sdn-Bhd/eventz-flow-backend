@@ -417,5 +417,48 @@ RSpec.describe 'V1::FeedbackForms', type: :request do
       expect(form.reload.title).to eq('Before')
       expect(question.reload.question_text).to eq('Existing')
     end
+
+    it 'persists and serializes display_mode, pages_metadata, page_number and routing_rules' do
+      pages = [
+        { 'page_number' => 1, 'title' => 'General Experience', 'description' => 'Give us your overview' },
+        { 'page_number' => 2, 'title' => 'Deep Dive', 'description' => 'Specific track questions' }
+      ]
+      rules = [
+        { 'answer' => 'Yes', 'action' => 'jump_to_page', 'target_page' => 2 }
+      ]
+
+      post "/v1/events/#{event.id}/feedback_form",
+           params: {
+             feedback_form: {
+               title: 'Multi-Page Survey',
+               display_mode: 'continuous',
+               pages_metadata: pages,
+               feedback_questions_attributes: [
+                 {
+                   question_text: 'Did you attend workshops?',
+                   question_type: 'single_choice',
+                   options: %w[Yes No],
+                   page_number: 1,
+                   routing_rules: rules
+                 },
+                 {
+                   question_text: 'Which workshop did you like?',
+                   question_type: 'text',
+                   page_number: 2
+                 }
+               ]
+             }
+           },
+           headers: organizer_headers
+
+      expect(response).to have_http_status(:created)
+      data = JSON.parse(response.body).fetch('data')
+      expect(data['display_mode']).to eq('continuous')
+      expect(data['pages_metadata']).to eq(pages)
+      expect(data['questions'].first['page_number']).to eq(1)
+      expect(data['questions'].first['routing_rules']).to eq(rules)
+      expect(data['questions'].last['page_number']).to eq(2)
+      expect(data['questions'].last['routing_rules']).to eq([])
+    end
   end
 end

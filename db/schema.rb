@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_30_000002) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_30_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1123,6 +1123,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_000002) do
     t.boolean "is_active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "display_mode", default: 0, null: false
+    t.jsonb "pages_metadata", default: [], null: false
     t.index ["event_id"], name: "index_feedback_forms_on_event_id", unique: true
   end
 
@@ -1137,6 +1139,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_000002) do
     t.datetime "updated_at", null: false
     t.string "placeholder"
     t.string "hint_text"
+    t.integer "page_number", default: 1, null: false
+    t.jsonb "routing_rules", default: [], null: false
     t.index ["feedback_form_id"], name: "index_feedback_questions_on_feedback_form_id"
   end
 
