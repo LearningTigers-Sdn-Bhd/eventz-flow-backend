@@ -680,6 +680,7 @@ Rails.application.routes.draw do
           get 'recent_scans',             to: 'event_analytics#recent_scans'
           get 'custom_field_keys',        to: 'event_analytics#custom_field_keys'
           get 'custom_field_breakdown',   to: 'event_analytics#custom_field_breakdown'
+          get 'custom_field_names',       to: 'event_analytics#custom_field_names'
           put 'custom_field_quota',       to: 'event_analytics#set_custom_field_quota'
           delete 'custom_field_quota',    to: 'event_analytics#destroy_custom_field_quota'
           put 'custom_field_list',        to: 'event_analytics#set_custom_field_list'

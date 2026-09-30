@@ -231,6 +231,42 @@ module V1
       end
     end
 
+    # GET /v1/events/:event_id/metrics/custom_field_names
+    # Attendee names behind a custom_field_breakdown row, for name-list PDFs.
+    # Same ticket scope as the breakdown, so the lists always add up to its counts.
+    #
+    # Query params:
+    #   field_key: jsonb key to list under (required, e.g. "nama_agensi")
+    #   value: only tickets with this field_key value (one agency); omit for all
+    #   group_by / group_value: only tickets whose group_by key equals group_value
+    #   exclude_ticket_type_ids[]: same as custom_field_breakdown
+    def custom_field_names
+      field_key = params[:field_key].to_s
+      group_by = params[:group_by].to_s.presence
+      unless valid_field_key?(field_key) && (group_by.nil? || valid_field_key?(group_by))
+        return render json: { error: 'field_key/group_by must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      excluded_ticket_type_ids = Array(params[:exclude_ticket_type_ids])
+                                 .filter_map { |id| Integer(id, exception: false) }
+                                 .select(&:positive?)
+                                 .uniq
+      tickets = tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+      tickets = tickets.where("#{jsonb_field_sql(field_key)} = ?", params[:value].to_s) if params[:value].present?
+      if group_by && params[:group_value].present?
+        tickets = tickets.where("#{jsonb_field_sql(group_by)} = ?", params[:group_value].to_s)
+      end
+
+      rows = tickets.order(:attendee_name).pluck(
+        Arel.sql(jsonb_field_sql(field_key)), :attendee_name, :attendee_email, :attendee_phone
+      )
+      data = rows.group_by(&:first).transform_keys { |v| v.presence || 'Unspecified' }.transform_values do |list|
+        list.map { |(_, name, email, phone)| { name: name, email: email, phone: phone } }
+      end
+
+      render json: { data: data }, status: :ok
+    end
+
     # PUT /v1/events/:event_id/metrics/custom_field_quota
     # Upserts the registration quota for one field_key/value pair (e.g. an
     # agency's allotted headcount). Informational only — never blocks registration.

@@ -846,6 +846,40 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/metrics/custom_field_names' do
+    before do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Ali',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN A', 'kategori' => 'K1' })
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Abu',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN A', 'kategori' => 'K1' })
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Siti',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN B', 'kategori' => 'K2' })
+    end
+
+    def names_for(params)
+      get "/v1/events/#{event.id}/metrics/custom_field_names",
+          params: params, headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      JSON.parse(response.body)['data'].transform_values { |list| list.pluck('name') }
+    end
+
+    it 'lists attendee names grouped by the field value, sorted by name' do
+      expect(names_for(field_key: 'nama_agensi', group_by: 'kategori', group_value: 'K1')).to eq('JABATAN A' => %w[Abu Ali])
+      expect(names_for(field_key: 'nama_agensi').slice('JABATAN A', 'JABATAN B'))
+        .to eq('JABATAN A' => %w[Abu Ali], 'JABATAN B' => %w[Siti])
+    end
+
+    it 'narrows to one value and one group_by value' do
+      expect(names_for(field_key: 'nama_agensi', value: 'JABATAN B')).to eq('JABATAN B' => %w[Siti])
+      expect(names_for(field_key: 'nama_agensi', group_by: 'kategori', group_value: 'K1').keys).to eq(['JABATAN A'])
+    end
+
+    it 'rejects an unsafe field_key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_names",
+          params: { field_key: "x'; drop" }, headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
   describe 'GET /v1/events/:event_id/metrics/custom_field_breakdown' do
     let!(:agensi_ticket_a) do
       create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
