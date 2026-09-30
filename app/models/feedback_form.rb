@@ -3,6 +3,7 @@
 class FeedbackForm < ApplicationRecord
   belongs_to :event
   has_many :feedback_responses, dependent: :destroy
+  has_many :feedback_ai_summaries, dependent: :destroy
   has_many :feedback_questions, -> { order(:page_number, :position) }, dependent: :destroy
 
   enum :display_mode, {

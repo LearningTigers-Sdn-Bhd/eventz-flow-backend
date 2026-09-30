@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_30_000004) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_30_000005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1104,6 +1104,27 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_000004) do
     t.bigint "event_id", null: false
     t.index ["event_id"], name: "index_export_logs_on_event_id"
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
+  end
+
+  create_table "feedback_ai_summaries", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.bigint "ai_model_id"
+    t.bigint "generated_by_id"
+    t.string "status", default: "queued", null: false
+    t.string "model_name_used"
+    t.jsonb "filters", default: {}, null: false
+    t.jsonb "content"
+    t.text "error"
+    t.integer "responses_count", default: 0, null: false
+    t.integer "comments_count", default: 0, null: false
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_model_id"], name: "index_feedback_ai_summaries_on_ai_model_id"
+    t.index ["feedback_form_id", "created_at"], name: "index_feedback_ai_summaries_on_feedback_form_id_and_created_at"
+    t.index ["feedback_form_id"], name: "index_feedback_ai_summaries_on_feedback_form_id"
+    t.index ["generated_by_id"], name: "index_feedback_ai_summaries_on_generated_by_id"
   end
 
   create_table "feedback_answers", force: :cascade do |t|
@@ -2210,6 +2231,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_000004) do
   add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "feedback_ai_summaries", "ai_models", on_delete: :nullify
+  add_foreign_key "feedback_ai_summaries", "feedback_forms"
+  add_foreign_key "feedback_ai_summaries", "users", column: "generated_by_id", on_delete: :nullify
   add_foreign_key "feedback_answers", "feedback_questions"
   add_foreign_key "feedback_answers", "feedback_responses"
   add_foreign_key "feedback_forms", "events"

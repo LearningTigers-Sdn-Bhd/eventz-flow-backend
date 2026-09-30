@@ -7,7 +7,7 @@ module V1
       def create
         attributes = response_params
         form = FeedbackForm.find(attributes.fetch(:form_id))
-        raise ActiveRecord::RecordNotFound unless form.is_active?
+        raise ActiveRecord::RecordNotFound unless form.is_active? || FeedbackSession.valid?(attributes[:session_token], form)
 
         # ponytail: responses must come from a ticket link; a bare form link is
         # preview-only. Add an allow_anonymous form setting here when needed.
@@ -32,7 +32,8 @@ module V1
         end
 
         answers_by_id = answers.index_by { |answer| answer[:question_id].to_s }
-        reachable_questions = find_reachable_questions(form, answers_by_id)
+        reachable_questions = FeedbackRouting.new(form.feedback_questions.to_a, continuous: form.continuous?)
+                                             .reachable_questions(answers_by_id.transform_values { |answer| answer[:answer_text] })
         missing_questions = reachable_questions.select do |question|
           answer = answers_by_id[question.id.to_s]
           question.required? && (answer.nil? || answer[:answer_text].to_s.strip.blank?)
@@ -45,6 +46,10 @@ module V1
             status: :unprocessable_content
           )
         end
+
+        # Drop answers to questions the attendee couldn't have seen (e.g. after changing a branch).
+        reachable_ids = reachable_questions.map { |question| question.id.to_s }
+        answers = answers.select { |answer| reachable_ids.include?(answer[:question_id].to_s) }
 
         response = nil
         FeedbackResponse.transaction do
@@ -79,7 +84,7 @@ module V1
       private
 
       def response_params
-        params.permit(:form_id, :ticket_id, :ticket_public_id, answers: %i[question_id answer_text]).tap do |permitted|
+        params.permit(:form_id, :ticket_id, :ticket_public_id, :session_token, answers: %i[question_id answer_text]).tap do |permitted|
           permitted[:form_id] = params.require(:form_id)
         end
       end
@@ -90,52 +95,6 @@ module V1
         else
           form.event.tickets.find_by!(public_id: attributes[:ticket_public_id])
         end
-      end
-
-      def find_reachable_questions(form, answers_by_id)
-        questions = form.feedback_questions.to_a
-        return questions if questions.empty?
-
-        pages = questions.map(&:page_number).uniq.sort
-        return questions if pages.empty?
-
-        reachable = []
-        current_page = pages.first
-
-        loop do
-          page_questions = questions.select { |q| q.page_number == current_page }
-          reachable.concat(page_questions)
-
-          next_page = current_page + 1
-          jumped = false
-          page_questions.each do |q|
-            next unless q.routing_rules.is_a?(Array)
-
-            answer = answers_by_id[q.id.to_s]
-            next if answer.nil? || answer[:answer_text].blank?
-
-            rule = q.routing_rules.find do |r|
-              r['answer'].to_s.strip.downcase == answer[:answer_text].to_s.strip.downcase
-            end
-            next unless rule.present?
-
-            if rule['action'] == 'submit' || rule['target_page'].to_s == 'submit'
-              return reachable
-            elsif rule['target_page'].present?
-              target = rule['target_page'].to_i
-              if target > current_page
-                next_page = target
-                jumped = true
-                break
-              end
-            end
-          end
-
-          current_page = next_page
-          break if current_page > pages.last || (!jumped && !pages.include?(current_page))
-        end
-
-        reachable
       end
     end
   end

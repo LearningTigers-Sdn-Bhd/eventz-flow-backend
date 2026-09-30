@@ -31,6 +31,8 @@ class FeedbackQuestion < ApplicationRecord
         errors.add(:options, "can't be blank")
       elsif !options.is_a?(Array) || options.any? { |option| !option.is_a?(String) || option.blank? }
         errors.add(:options, 'must be an array of non-blank strings')
+      elsif options.map { |option| option.strip.downcase }.uniq.length != options.length
+        errors.add(:options, 'must be unique (ignoring upper/lower case)')
       end
     elsif rating?
       if !options.nil? && (!options.is_a?(Array) || options.any? { |option| !option.is_a?(String) })
