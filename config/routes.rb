@@ -43,11 +43,16 @@ Rails.application.routes.draw do
       get 'summary', action: :summary
       get 'stations', action: :stations
       patch 'stations/:id', action: :update_station
+      delete 'stations/:id', action: :destroy_station
       get 'bindings', action: :bindings
+      patch 'bindings/:id', action: :update_binding
+      delete 'bindings/:id', action: :destroy_binding
       get 'visits.csv', action: :visits_csv
       get 'visits', action: :visits
       post 'visits/:id/manual_exit', action: :manual_exit
       get 'anomalies', action: :anomalies
+      post 'anomalies/dismiss', action: :dismiss_anomalies
+      delete 'anomalies', action: :destroy_anomalies
       patch 'settings', action: :update_settings
     end
 
@@ -681,6 +686,7 @@ Rails.application.routes.draw do
           get 'recent_scans',             to: 'event_analytics#recent_scans'
           get 'custom_field_keys',        to: 'event_analytics#custom_field_keys'
           get 'custom_field_breakdown',   to: 'event_analytics#custom_field_breakdown'
+          get 'custom_field_names',       to: 'event_analytics#custom_field_names'
           put 'custom_field_quota',       to: 'event_analytics#set_custom_field_quota'
           delete 'custom_field_quota',    to: 'event_analytics#destroy_custom_field_quota'
           put 'custom_field_list',        to: 'event_analytics#set_custom_field_list'

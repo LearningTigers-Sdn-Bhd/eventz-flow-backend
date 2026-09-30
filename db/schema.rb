@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_30_000005) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1642,6 +1642,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_000005) do
     t.string "request_digest", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "dismissed_at"
     t.index ["event_id", "outcome"], name: "idx_rfid_obs_event_outcome"
     t.index ["event_id", "tag_key", "captured_at"], name: "idx_rfid_obs_event_tag_capture"
     t.index ["event_id"], name: "index_rfid_observations_on_event_id"

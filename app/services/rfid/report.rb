@@ -77,12 +77,15 @@ module Rfid
     # anything with an anomaly now, and anything whose meaning changed since the
     # reply the gate was first given. A duplicate delivery is not an anomaly —
     # it is the same fact delivered twice.
-    def anomaly_observations
-      event.rfid_observations.includes(:station, :ticket)
-           .where.not(outcome: %w[accepted possible_duplicate])
-           .or(event.rfid_observations.where("jsonb_array_length(anomalies) > 0"))
-           .or(event.rfid_observations.where("original_response ->> 'outcome' <> outcome"))
-           .order(captured_at: :desc, station_id: :asc, delivery_id: :asc)
+    #
+    # A dismissed reading is hidden from the list and the count, never deleted.
+    def anomaly_observations(include_dismissed: false)
+      scope = event.rfid_observations.includes(:station, :ticket)
+                   .where.not(outcome: %w[accepted possible_duplicate])
+                   .or(event.rfid_observations.where("jsonb_array_length(anomalies) > 0"))
+                   .or(event.rfid_observations.where("original_response ->> 'outcome' <> outcome"))
+      scope = scope.where(dismissed_at: nil) unless include_dismissed
+      scope.order(captured_at: :desc, station_id: :asc, delivery_id: :asc)
     end
 
     def anomaly_observation_row(observation)

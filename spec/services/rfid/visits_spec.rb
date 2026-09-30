@@ -166,4 +166,12 @@ RSpec.describe Rfid::Visits do
     expect(visits.sole.entry_at).to eq(base)
     expect(visits.sole.exit_at).to be_nil
   end
+
+  it 'does not re-adjudicate every accepted reading on a rebuild' do
+    deliver([reading('entry', base)])
+
+    expect(Rfid::Adjudicate).not_to receive(:call)
+
+    described_class.rebuild!(event: event)
+  end
 end

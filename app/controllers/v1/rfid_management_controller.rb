@@ -8,6 +8,12 @@ module V1
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies]
     before_action :authorize_update!, only: %i[update_settings update_station manual_exit]
+    before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
+                                              dismiss_anomalies destroy_anomalies]
+
+    rescue_from ::Rfid::Admin::Error do |error|
+      render json: { success: false, message: error.message, errors: [] }, status: error.status
+    end
 
     def summary
       render json: report.summary, status: :ok
@@ -160,7 +166,72 @@ module V1
       render json: { visit: report.visit_row(visit.reload) }, status: :ok
     end
 
+    # --- Org-owner clean-up (see ::Rfid::Admin) ---------------------------------
+
+    def destroy_station
+      station = @event.rfid_stations.find_by(id: params[:id])
+      return render json: { error: 'Station not found' }, status: :not_found if station.nil?
+
+      admin.delete_station!(station)
+      render json: { deleted: true }, status: :ok
+    end
+
+    def update_binding
+      binding = @event.rfid_bindings.find_by(id: params[:id])
+      return render json: { error: 'Binding not found' }, status: :not_found if binding.nil?
+
+      if params[:ticket_public_id].blank? && params[:tag_key].blank?
+        return unprocessable('ticket_public_id or tag_key is required')
+      end
+
+      admin.update_binding!(binding, ticket_public_id: params[:ticket_public_id].to_s.presence,
+                                     tag_key: params[:tag_key].to_s.presence)
+      render json: { binding: report.bindings.find { |row| row[:id] == binding.id } }, status: :ok
+    end
+
+    def destroy_binding
+      binding = @event.rfid_bindings.find_by(id: params[:id])
+      return render json: { error: 'Binding not found' }, status: :not_found if binding.nil?
+
+      admin.delete_binding!(binding)
+      render json: { deleted: true }, status: :ok
+    end
+
+    # `ids` = only those readings; `all: true` = every current anomaly.
+    def dismiss_anomalies
+      return unprocessable('ids or all is required') unless anomaly_selection?
+
+      render json: { affected: admin.dismiss_anomalies!(ids: anomaly_ids) }, status: :ok
+    end
+
+    def destroy_anomalies
+      return unprocessable('ids or all is required') unless anomaly_selection?
+
+      render json: { affected: admin.delete_anomalies!(ids: anomaly_ids) }, status: :ok
+    end
+
     private
+
+    def anomaly_all?
+      params[:all].to_s == 'true'
+    end
+
+    def anomaly_selection?
+      anomaly_all? || (params[:ids].is_a?(Array) && params[:ids].any?)
+    end
+
+    # nil means every anomaly.
+    def anomaly_ids
+      anomaly_all? ? nil : params[:ids]
+    end
+
+    def admin
+      ::Rfid::Admin.new(@event)
+    end
+
+    def authorize_admin!
+      authorize @event, :rfid_admin?
+    end
 
     def require_staff_session!
       return if current_user.present? && !authenticated_via_api_key
