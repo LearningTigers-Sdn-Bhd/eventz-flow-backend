@@ -217,7 +217,8 @@ RSpec.describe 'V1::Rfid admin actions', type: :request do
     end
 
     it 'refuses ids that are not anomalies, and a call with no selection' do
-      good = fresh.rfid_observations.find_by(outcome: 'accepted').id
+      good = fresh.rfid_observations.where(outcome: 'accepted')
+                   .find_by('jsonb_array_length(anomalies) = 0').id
 
       delete "#{root}/anomalies", params: { ids: [good] }, headers: headers, as: :json
       expect(response).to have_http_status(:unprocessable_content)
