@@ -88,6 +88,8 @@ module V1
           :question_type,
           :required,
           :position,
+          :placeholder,
+          :hint_text,
           { options: [] }
         ]
       )
@@ -127,7 +129,11 @@ module V1
         id = question_attributes.delete(:id)
         question = id.present? ? form.feedback_questions.find(id) : form.feedback_questions.build
         question.assign_attributes(question_attributes)
-        question.options = nil unless question.choice_type?
+        if question.rating?
+          question.options = question.options.is_a?(Array) && question.options.any?(&:present?) ? question.options : nil
+        elsif !question.choice_type?
+          question.options = nil
+        end
         question.save!
       end
     end

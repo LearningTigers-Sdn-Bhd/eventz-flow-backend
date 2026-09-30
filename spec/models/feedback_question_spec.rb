@@ -64,5 +64,27 @@ RSpec.describe FeedbackQuestion, type: :model do
 
       expect(question).to be_valid
     end
+
+    it 'accepts custom labels for rating questions' do
+      question = FeedbackQuestion.new(
+        feedback_form: form,
+        question_text: 'Rate your experience',
+        question_type: :rating,
+        options: ['Terrible', 'Bad', 'Average', 'Good', 'Excellent']
+      )
+
+      expect(question).to be_valid
+    end
+
+    it 'accepts rating questions with nil or empty options' do
+      question = FeedbackQuestion.new(
+        feedback_form: form,
+        question_text: 'Rate your experience',
+        question_type: :rating,
+        options: nil
+      )
+
+      expect(question).to be_valid
+    end
   end
 end

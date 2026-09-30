@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class FeedbackFormSerializer
   def self.serialize(form)
     {
@@ -11,11 +13,14 @@ class FeedbackFormSerializer
           id: question.id,
           question_text: question.question_text,
           question_type: question.question_type,
-          options: question.choice_type? ? Array(question.options) : nil,
+          options: (question.choice_type? || question.rating?) ? question.options : nil,
           required: question.required,
-          position: question.position
+          position: question.position,
+          placeholder: question.placeholder,
+          hint_text: question.hint_text
         }
       end
     }
   end
 end
+

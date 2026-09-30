@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class FeedbackQuestion < ApplicationRecord
   CHOICE_TYPES = %w[single_choice multi_choice].freeze
 
@@ -28,9 +30,12 @@ class FeedbackQuestion < ApplicationRecord
       elsif !options.is_a?(Array) || options.any? { |option| !option.is_a?(String) || option.blank? }
         errors.add(:options, 'must be an array of non-blank strings')
       end
+    elsif rating?
+      if !options.nil? && (!options.is_a?(Array) || options.any? { |option| !option.is_a?(String) })
+        errors.add(:options, 'must be an array of strings')
+      end
     elsif !options.nil?
-      errors.add(:options, 'are only allowed for choice questions')
+      errors.add(:options, 'are only allowed for choice or rating questions')
     end
   end
-
 end
