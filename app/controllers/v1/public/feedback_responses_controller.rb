@@ -7,7 +7,7 @@ module V1
       def create
         attributes = response_params
         form = FeedbackForm.find(attributes.fetch(:form_id))
-        raise ActiveRecord::RecordNotFound unless form.is_active?
+        raise ActiveRecord::RecordNotFound unless form.is_active? || FeedbackSession.valid?(attributes[:session_token], form)
 
         # ponytail: responses must come from a ticket link; a bare form link is
         # preview-only. Add an allow_anonymous form setting here when needed.
@@ -32,7 +32,9 @@ module V1
         end
 
         answers_by_id = answers.index_by { |answer| answer[:question_id].to_s }
-        missing_questions = form.feedback_questions.select do |question|
+        reachable_questions = FeedbackRouting.new(form.feedback_questions.to_a, continuous: form.continuous?)
+                                             .reachable_questions(answers_by_id.transform_values { |answer| answer[:answer_text] })
+        missing_questions = reachable_questions.select do |question|
           answer = answers_by_id[question.id.to_s]
           question.required? && (answer.nil? || answer[:answer_text].to_s.strip.blank?)
         end
@@ -44,6 +46,10 @@ module V1
             status: :unprocessable_content
           )
         end
+
+        # Drop answers to questions the attendee couldn't have seen (e.g. after changing a branch).
+        reachable_ids = reachable_questions.map { |question| question.id.to_s }
+        answers = answers.select { |answer| reachable_ids.include?(answer[:question_id].to_s) }
 
         response = nil
         FeedbackResponse.transaction do
@@ -78,7 +84,7 @@ module V1
       private
 
       def response_params
-        params.permit(:form_id, :ticket_id, :ticket_public_id, answers: %i[question_id answer_text]).tap do |permitted|
+        params.permit(:form_id, :ticket_id, :ticket_public_id, :session_token, answers: %i[question_id answer_text]).tap do |permitted|
           permitted[:form_id] = params.require(:form_id)
         end
       end

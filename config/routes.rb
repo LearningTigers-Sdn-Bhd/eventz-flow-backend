@@ -269,6 +269,12 @@ Rails.application.routes.draw do
         get :summary
         get :responses
       end
+      get 'feedback_form/comments', to: 'feedback_reports#comments'
+      get 'feedback_form/non_responders', to: 'feedback_reports#non_responders'
+      post 'feedback_form/remind', to: 'feedback_reports#remind'
+      get 'feedback_form/export_data', to: 'feedback_reports#export_data'
+      get 'feedback_form/ai_summary', to: 'feedback_reports#ai_summary'
+      post 'feedback_form/ai_summary', to: 'feedback_reports#create_ai_summary'
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_packages, only: %i[index create]
       resources :exhibitor_vouchers, only: %i[index create]

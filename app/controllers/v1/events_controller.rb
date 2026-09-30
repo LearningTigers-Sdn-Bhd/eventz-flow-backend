@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 module V1
   class EventsController < ApplicationController
     SIDEBAR_EVENT_FIELDS = %w[
       id title slug status start_date end_date use_ticket use_exhibitor_kit
-      use_seat_ticketing use_voucher use_certificate use_business_matching
+      use_seat_ticketing use_voucher use_certificate use_feedback use_business_matching
       use_wedding use_api_access use_event_leads use_sponsorship
       allow_contractor_printing_services vehicles_enabled
     ].freeze
@@ -321,6 +323,7 @@ module V1
         :use_sponsorship,
         :use_event_leads,
         :use_certificate,
+        :use_feedback,
         :use_api_access,
         :vehicles_enabled,
         :reminders_enabled,

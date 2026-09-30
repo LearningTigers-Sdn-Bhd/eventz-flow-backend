@@ -1,10 +1,13 @@
 class FeedbackFormSummary
-  def self.call(form)
-    new(form).call
+  # filters: { ticket_type_id:, from:, to: } (see FeedbackResponseScope)
+  def self.call(form, filters = {})
+    new(form, filters).call
   end
 
-  def initialize(form)
+  def initialize(form, filters = {})
     @form = form
+    @filters = filters
+    @responses = FeedbackResponseScope.call(form, filters)
     @answers_by_question = Hash.new { |hash, key| hash[key] = Hash.new(0) }
   end
 
@@ -13,21 +16,109 @@ class FeedbackFormSummary
       @answers_by_question[question_id][answer_text] = count
     end
 
+    questions = @form.feedback_questions.map { |question| serialize_question(question) }
+
     {
-      total_responses: @form.feedback_responses.count,
-      last_submitted_at: @form.feedback_responses.maximum(:submitted_at),
-      questions: @form.feedback_questions.map { |question| serialize_question(question) }
+      total_responses: total_responses,
+      last_submitted_at: @responses.maximum(:submitted_at),
+      response_rate: response_rate,
+      overall_average: overall_average(questions),
+      overall_satisfied_percent: overall_satisfied_percent(questions),
+      timeline: timeline,
+      questions: questions
     }
   end
 
   private
 
+  def total_responses
+    @total_responses ||= @responses.count
+  end
+
+  def response_ids
+    @response_ids ||= @responses.pluck(:id)
+  end
+
   def grouped_answers
-    FeedbackAnswer.joins(:feedback_response)
-                  .where(feedback_responses: { feedback_form_id: @form.id })
+    FeedbackAnswer.where(feedback_response_id: response_ids)
                   .where("BTRIM(feedback_answers.answer_text) <> ''")
                   .group(:feedback_question_id, :answer_text)
                   .count
+  end
+
+  # Responses from checked-in, still-valid tickets, out of all such tickets.
+  def response_rate
+    eligible = FeedbackResponseScope.eligible_tickets(@form.event, ticket_type_id: @filters[:ticket_type_id])
+    eligible_count = eligible.count
+    responded = eligible.where(id: @responses.select(:ticket_id)).count
+    {
+      eligible: eligible_count,
+      responded: responded,
+      percent: eligible_count.zero? ? nil : (responded * 100.0 / eligible_count).round(1)
+    }
+  end
+
+  def timeline
+    # sort_by, not SQL "ORDER BY 1": in a grouped count the first column is the count.
+    @responses.group('DATE(feedback_responses.submitted_at)').count
+              .sort_by { |date, _| date }
+              .map { |date, count| { date: date.to_s, count: } }
+  end
+
+  def overall_average(questions)
+    ratings = questions.select { |q| q[:question_type] == 'rating' }
+    answered = ratings.sum { |q| q[:answered_count] }
+    return nil if answered.zero?
+
+    (ratings.sum { |q| q[:average] * q[:answered_count] } / answered).round(1)
+  end
+
+  def overall_satisfied_percent(questions)
+    ratings = questions.select { |q| q[:question_type] == 'rating' }
+    answered = ratings.sum { |q| q[:answered_count] }
+    return nil if answered.zero?
+
+    (ratings.sum { |q| q[:satisfied_count] } * 100.0 / answered).round(1)
+  end
+
+  # How many responses could actually see each question, following branching.
+  def seen_counts
+    @seen_counts ||= begin
+      questions = @form.feedback_questions.to_a
+      routing = FeedbackRouting.new(questions, continuous: @form.continuous?)
+      if routing.branching_form?
+        answers = FeedbackAnswer.where(feedback_response_id: response_ids)
+                                .pluck(:feedback_response_id, :feedback_question_id, :answer_text)
+                                .group_by(&:first)
+        response_ids.each_with_object(Hash.new(0)) do |id, counts|
+          given = (answers[id] || []).to_h { |_, question_id, text| [question_id, text] }
+          routing.reachable_ids(given).each { |question_id| counts[question_id] += 1 }
+        end
+      else
+        questions.to_h { |question| [question.id, total_responses] }
+      end
+    end
+  end
+
+  # Average rating per ticket type, for each rating question. Only useful when
+  # more than one ticket type has responses.
+  def rating_by_ticket_type
+    @rating_by_ticket_type ||= begin
+      rating_ids = @form.feedback_questions.select(&:rating?).map(&:id)
+      rows = FeedbackAnswer.joins(feedback_response: :ticket)
+                           .where(feedback_response_id: response_ids, feedback_question_id: rating_ids)
+                           .where("feedback_answers.answer_text ~ '^[1-5]$'")
+                           .group('feedback_answers.feedback_question_id', 'tickets.ticket_type_id')
+                           .pluck('feedback_answers.feedback_question_id', 'tickets.ticket_type_id',
+                                  Arel.sql('AVG(CAST(feedback_answers.answer_text AS integer))'),
+                                  Arel.sql('COUNT(*)'))
+      names = TicketType.where(id: rows.map { |row| row[1] }.uniq).pluck(:id, :name).to_h
+      rows.group_by(&:first).transform_values do |list|
+        list.map do |_, type_id, average, count|
+          { ticket_type_id: type_id, ticket_type_name: names[type_id], average: average.to_f.round(1), count: }
+        end
+      end
+    end
   end
 
   def serialize_question(question)
@@ -37,7 +128,8 @@ class FeedbackFormSummary
       question_text: question.question_text,
       question_type: question.question_type,
       required: question.required,
-      answered_count: answer_counts.values.sum
+      answered_count: answer_counts.values.sum,
+      seen_count: seen_counts[question.id] || 0
     }.merge(question_statistics(question, answer_counts))
   end
 
@@ -48,7 +140,15 @@ class FeedbackFormSummary
       answered_count = distribution.values.sum
       average = answered_count.zero? ? 0.0 :
         (distribution.sum { |rating, count| rating * count }.to_f / answered_count).round(1)
-      { average:, distribution: distribution.transform_keys(&:to_s) }
+      satisfied_count = distribution[4] + distribution[5]
+      ticket_types = rating_by_ticket_type[question.id] || []
+      {
+        average:,
+        distribution: distribution.transform_keys(&:to_s),
+        satisfied_count:,
+        satisfied_percent: answered_count.zero? ? nil : (satisfied_count * 100.0 / answered_count).round(1),
+        by_ticket_type: ticket_types.length > 1 ? ticket_types : []
+      }
     when 'text'
       { latest: latest_text_answers.fetch(question.id, []) }
     when 'yes_no'
@@ -89,7 +189,7 @@ class FeedbackFormSummary
   def latest_text_answers
     @latest_text_answers ||= begin
       ranked = FeedbackAnswer.joins(:feedback_response, :feedback_question)
-                             .where(feedback_responses: { feedback_form_id: @form.id })
+                             .where(feedback_responses: { id: response_ids })
                              .where(feedback_questions: { question_type: :text })
                              .where("BTRIM(feedback_answers.answer_text) <> ''")
                              .select(

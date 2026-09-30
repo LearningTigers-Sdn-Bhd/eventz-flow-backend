@@ -332,6 +332,55 @@ RSpec.describe 'V1::FeedbackForms', type: :request do
       expect(question.options).to be_nil
     end
 
+    it 'persists and returns custom labels for rating questions' do
+      form = FeedbackForm.create!(event:, title: 'After the event')
+
+      patch "/v1/events/#{event.id}/feedback_form",
+            params: {
+              feedback_form: {
+                feedback_questions_attributes: [
+                  {
+                    question_text: 'How satisfied were you?',
+                    question_type: 'rating',
+                    options: ['Very Unsatisfied', 'Unsatisfied', 'Neutral', 'Satisfied', 'Very Satisfied']
+                  }
+                ]
+              }
+            },
+            headers: organizer_headers
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body).fetch('data')
+      question_data = data['questions'].first
+      expect(question_data['question_type']).to eq('rating')
+      expect(question_data['options']).to eq(['Very Unsatisfied', 'Unsatisfied', 'Neutral', 'Satisfied', 'Very Satisfied'])
+    end
+
+    it 'persists and returns placeholder and hint_text for questions' do
+      form = FeedbackForm.create!(event:, title: 'After the event')
+
+      patch "/v1/events/#{event.id}/feedback_form",
+            params: {
+              feedback_form: {
+                feedback_questions_attributes: [
+                  {
+                    question_text: 'What did you think of the venue?',
+                    question_type: 'text',
+                    placeholder: 'Share your thoughts on acoustics, layout...',
+                    hint_text: 'Optional, but helps us choose next year\'s venue.'
+                  }
+                ]
+              }
+            },
+            headers: organizer_headers
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body).fetch('data')
+      question_data = data['questions'].first
+      expect(question_data['placeholder']).to eq('Share your thoughts on acoustics, layout...')
+      expect(question_data['hint_text']).to eq('Optional, but helps us choose next year\'s venue.')
+    end
+
     it 'preserves answered questions and their answers when replacement omits them' do
       form = FeedbackForm.create!(event:, title: 'After the event')
       question = form.feedback_questions.create!(question_text: 'Rate it', question_type: :rating)
@@ -367,6 +416,53 @@ RSpec.describe 'V1::FeedbackForms', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(form.reload.title).to eq('Before')
       expect(question.reload.question_text).to eq('Existing')
+    end
+
+    it 'persists and serializes display_mode, pages_metadata, page_number and routing_rules' do
+      pages = [
+        { 'page_number' => 1, 'title' => 'General Experience', 'description' => 'Give us your overview' },
+        { 'page_number' => 2, 'title' => 'Deep Dive', 'description' => 'Specific track questions' }
+      ]
+      rules = [
+        { 'answer' => 'Yes', 'action' => 'jump_to_page', 'target_page' => 2 }
+      ]
+
+      post "/v1/events/#{event.id}/feedback_form",
+           params: {
+             feedback_form: {
+               title: 'Multi-Page Survey',
+               display_mode: 'continuous',
+               pages_metadata: pages,
+               thank_you_title: 'Custom Thanks!',
+               thank_you_message: 'See you next year!',
+               feedback_questions_attributes: [
+                 {
+                   question_text: 'Did you attend workshops?',
+                   question_type: 'single_choice',
+                   options: %w[Yes No],
+                   page_number: 1,
+                   routing_rules: rules
+                 },
+                 {
+                   question_text: 'Which workshop did you like?',
+                   question_type: 'text',
+                   page_number: 2
+                 }
+               ]
+             }
+           },
+           headers: organizer_headers
+
+      expect(response).to have_http_status(:created)
+      data = JSON.parse(response.body).fetch('data')
+      expect(data['display_mode']).to eq('continuous')
+      expect(data['pages_metadata']).to eq(pages)
+      expect(data['thank_you_title']).to eq('Custom Thanks!')
+      expect(data['thank_you_message']).to eq('See you next year!')
+      expect(data['questions'].first['page_number']).to eq(1)
+      expect(data['questions'].first['routing_rules']).to eq(rules)
+      expect(data['questions'].last['page_number']).to eq(2)
+      expect(data['questions'].last['routing_rules']).to eq([])
     end
   end
 end

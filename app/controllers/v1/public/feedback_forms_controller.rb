@@ -12,7 +12,10 @@ module V1
         already_submitted = params[:ticket].present? &&
                             form.feedback_responses.joins(:ticket).exists?(tickets: { public_id: params[:ticket] })
 
-        success_response(data: FeedbackFormSerializer.serialize(form).merge(already_submitted:))
+        # Lets someone who opened the form finish it even if it's closed meanwhile.
+        session_token = FeedbackSession.issue(form)
+
+        success_response(data: FeedbackFormSerializer.serialize(form).merge(already_submitted:, session_token:))
       rescue ActiveRecord::RecordNotFound
         error_response(message: 'Feedback form not found', status: :not_found)
       end
