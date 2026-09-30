@@ -141,6 +141,14 @@ RSpec.describe 'V1::Public::Registrations documents and dedupe', type: :request 
   end
 
   describe 'field dedupe on register' do
+    it 'creates a second registration with a shared membership when uniqueness is disabled' do
+      event.update!(require_unique_membership_numbers: false)
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })
+      register(custom_fields_data: { membership_no: 'a-1234' }, attendee_email: 'second@example.com')
+      expect(response).to have_http_status(:created)
+      expect(event.tickets.count).to eq(2)
+    end
+
     it 'returns 422 and creates no ticket for a duplicate membership_no' do
       create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })
 
@@ -168,6 +176,14 @@ RSpec.describe 'V1::Public::Registrations documents and dedupe', type: :request 
 
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['data']['available']).to be false
+    end
+
+    it 'reports shared memberships as available when uniqueness is disabled' do
+      event.update!(require_unique_membership_numbers: false)
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'membership_no' => 'A-1234' })
+      get "/v1/public/events/#{event.slug}/field_availability",
+          params: { key: 'membership_no', value: 'a-1234' }
+      expect(JSON.parse(response.body)['data']['available']).to be true
     end
 
     it 'reports a free value as available' do

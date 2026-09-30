@@ -16,6 +16,8 @@ class Ticket < ApplicationRecord
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
   before_validation :normalize_attendee_fields
+  before_validation :lock_event_membership_uniqueness
+  before_save :lock_event_membership_uniqueness
   before_validation :mirror_event_multi_ticket_flag
   after_update :sync_vehicle_registration_category, if: :saved_change_to_ticket_type_id?
   after_destroy :destroy_orphaned_vehicle_registration, if: :vehicle_registration_id?
@@ -195,11 +197,20 @@ class Ticket < ApplicationRecord
     self.allow_multiple_tickets_per_email = event.allow_multiple_tickets_per_email?
   end
 
+  # Hold a shared event-row lock through the save so a concurrent toggle cannot
+  # leave this ticket with an outdated flag outside the unique index.
+  def lock_event_membership_uniqueness
+    return if event_id.blank?
+
+    self.require_unique_membership_numbers = Event.unscoped.where(id: event_id)
+                                                  .lock('FOR SHARE')
+                                                  .pick(:require_unique_membership_numbers)
+  end
+
   def unique_custom_fields_within_event
     return if event_id.blank?
-    return if allow_multiple_tickets_per_email?
-
     UNIQUE_CUSTOM_FIELD_KEYS.each do |key|
+      next if key == 'membership_no' ? !require_unique_membership_numbers? : allow_multiple_tickets_per_email?
       value = custom_fields_data.to_h[key].to_s.strip
       next if value.blank?
 

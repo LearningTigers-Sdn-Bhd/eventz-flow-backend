@@ -202,7 +202,8 @@ module V1
           return render json: { success: false, message: 'Value is required' }, status: :unprocessable_content
         end
 
-        taken = event.tickets
+        enforce_uniqueness = key != 'membership_no' || event.require_unique_membership_numbers?
+        taken = enforce_uniqueness && event.tickets
                      .where.not(status: :canceled)
                      .where('lower(custom_fields_data->>?) = ?', key, value.downcase)
                      .exists?

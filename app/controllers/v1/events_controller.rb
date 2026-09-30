@@ -125,6 +125,11 @@ module V1
       else
         render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
       end
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.cause&.message&.include?('idx_tickets_unique_membership_no')
+
+      render json: { errors: ['Resolve duplicate membership numbers before requiring unique memberships'] },
+             status: :unprocessable_content
     end
 
     # DELETE /v1/events/:id
@@ -290,6 +295,7 @@ module V1
         :multiple_scans,
         :multiple_scan_mode,
         :allow_multiple_tickets_per_email,
+        :require_unique_membership_numbers,
         :start_date,
         :end_date,
         :venue_name,
