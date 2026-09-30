@@ -8,8 +8,6 @@ module AiIntegrations
   class ErrorAnalyzer
     class Error < StandardError; end
 
-    BLOCKED_NETWORKS = AvailableModelsFetcher::BLOCKED_NETWORKS
-
     SYSTEM_PROMPT = <<~PROMPT.freeze
       You are diagnosing a backend API error for an events platform. Given the request
       path, HTTP method, error message and sanitized request details, respond with ONLY
@@ -103,20 +101,9 @@ module AiIntegrations
     end
 
     def pick_safe_address(host)
-      addresses = Resolv.getaddresses(host)
-      raise Error, 'Provider URL could not be resolved' if addresses.empty?
-      if addresses.any? { |address| blocked_address?(address) }
-        raise Error, 'Provider URL must not target a private or local network'
-      end
-
-      addresses.first
-    end
-
-    def blocked_address?(address)
-      ip_address = IPAddr.new(address)
-      BLOCKED_NETWORKS.any? { |network| network.include?(ip_address) }
-    rescue IPAddr::InvalidAddressError
-      true
+      NetworkGuard.pick_safe_address(host)
+    rescue NetworkGuard::Blocked => e
+      raise Error, e.message
     end
 
     def parse_diagnosis(payload)

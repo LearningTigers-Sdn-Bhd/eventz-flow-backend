@@ -12597,6 +12597,301 @@ paths:
                   message:
                     type: string
                     example: Resource not found
+  "/v1/events/{event_id}/feedback_form/ai_summary":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: read the latest AI summary
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: The latest stored AI summary plus `can_generate` (true only for
+        an org_owner) and whether an AI provider is configured. Provider details are
+        only returned to an org_owner.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    post:
+      summary: generate an AI summary
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Org owner only. Queues a background job that summarizes the written
+        comments with the organization's default AI model. Only comment text is sent
+        (no names or emails). One run at a time per form, 60 second cooldown, 10 per
+        form per day.
+      parameters:
+      - name: ticket_type_id
+        in: query
+        required: false
+        description: Only this ticket type
+        schema:
+          type: integer
+      - name: from
+        in: query
+        required: false
+        description: Submitted on or after (YYYY-MM-DD)
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: false
+        description: Submitted on or before (YYYY-MM-DD)
+        schema:
+          type: string
+      responses:
+        '202':
+          description: accepted
+        '422':
+          description: AI is not set up, or there are no comments
+        '403':
+          description: only an org_owner can generate a summary
+  "/v1/events/{event_id}/feedback_form/comments":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      description: Only this ticket type
+      schema:
+        type: integer
+    - name: from
+      in: query
+      required: false
+      description: Submitted on or after (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      description: Submitted on or before (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: q
+      in: query
+      required: false
+      description: Search comment text or attendee
+      schema:
+        type: string
+    - name: question_id
+      in: query
+      required: false
+      description: Only this text question
+      schema:
+        type: integer
+    - name: max_rating
+      in: query
+      required: false
+      description: Only responses whose average rating is at or below this (find unhappy
+        attendees)
+      schema:
+        type: number
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list comments
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Written answers, newest first, each with the attendee and that
+        response's average rating.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/export_data":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      description: Only this ticket type
+      schema:
+        type: integer
+    - name: from
+      in: query
+      required: false
+      description: Submitted on or after (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      description: Submitted on or before (YYYY-MM-DD)
+      schema:
+        type: string
+    get:
+      summary: export feedback data
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: 'Everything needed to build CSV, Excel and PDF files: form, summary,
+        questions, responses and comments. Limited to 10,000 responses (422 above
+        that; narrow the filters).'
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/non_responders":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: q
+      in: query
+      required: false
+      description: Search name or email
+      schema:
+        type: string
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list attendees who have not responded
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Checked-in, still-valid tickets (not cancelled, refunded or waitlisted)
+        with no response yet.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/remind":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: remind attendees to give feedback
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Re-sends the thank-you email (with the feedback link) to non-responders.
+        Anyone emailed in the last 24 hours is skipped. Only after the event has ended.
+      parameters: []
+      responses:
+        '202':
+          description: accepted
+        '422':
+          description: event has not ended or the feedback email is off
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Ticket public IDs
+                all:
+                  type: boolean
+                  description: Remind every non-responder (up to 500)
+        required: true
+  "/v1/events/{event_id}/feedback_form/responses":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list feedback responses
+      tags:
+      - Feedback Forms
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/summary":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: summarize feedback responses
+      tags:
+      - Feedback Forms
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
 components:
   securitySchemes:
     bearerAuth:

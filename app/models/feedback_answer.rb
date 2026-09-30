@@ -5,6 +5,9 @@ class FeedbackAnswer < ApplicationRecord
   belongs_to :feedback_response
   belongs_to :feedback_question
 
+  MAX_ANSWER_LENGTH = 5000
+
+  validates :answer_text, length: { maximum: MAX_ANSWER_LENGTH }
   validate :answer_matches_question_type
 
   private

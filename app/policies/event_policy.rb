@@ -59,6 +59,12 @@ class EventPolicy < ApplicationPolicy
     user.is_org_owner?
   end
 
+  # AI summaries of feedback comments send attendee text to a third-party
+  # provider and cost money, so only the org owner can trigger one.
+  def summarize_feedback?
+    user.present? && user.is_org_owner?
+  end
+
   # Can update if:
   # - Org owner or Organizer (Org-level permission)
   # - User is Event Admin or Team Member (Event-level staff permission)

@@ -227,8 +227,60 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.bigint "active_plan_id"
     t.string "seating_announcement_template"
     t.integer "seating_plan_duration"
+    t.jsonb "elevenlabs_settings", default: {}
+    t.jsonb "voice_rules", default: []
+    t.string "script_tone"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
+  end
+
+  create_table "cloned_voices", force: :cascade do |t|
+    t.bigint "event_id"
+    t.bigint "creator_id", null: false
+    t.string "elevenlabs_id"
+    t.string "name", null: false
+    t.integer "status", default: 0, null: false
+    t.jsonb "settings", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["creator_id"], name: "index_cloned_voices_on_creator_id"
+    t.index ["elevenlabs_id"], name: "index_cloned_voices_on_elevenlabs_id", unique: true
+    t.index ["event_id"], name: "index_cloned_voices_on_event_id"
+    t.index ["owner_id"], name: "index_cloned_voices_on_owner_id"
+  end
+
+  create_table "credit_deductions", force: :cascade do |t|
+    t.bigint "event_id"
+    t.string "channel", null: false
+    t.integer "credits", null: false
+    t.string "recipient"
+    t.integer "status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["event_id"], name: "index_credit_deductions_on_event_id"
+    t.index ["owner_id"], name: "index_credit_deductions_on_owner_id"
+  end
+
+  create_table "credit_transactions", force: :cascade do |t|
+    t.bigint "credit_wallet_id", null: false
+    t.integer "transaction_type", null: false
+    t.integer "amount", null: false
+    t.integer "balance_after", null: false
+    t.string "description"
+    t.jsonb "metadata", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["credit_wallet_id"], name: "index_credit_transactions_on_credit_wallet_id"
+  end
+
+  create_table "credit_wallets", force: :cascade do |t|
+    t.integer "balance", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["owner_id"], name: "index_credit_wallets_on_owner_id", unique: true
   end
 
   create_table "custom_field_quotas", force: :cascade do |t|
@@ -418,7 +470,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -727,15 +779,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
-    t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
-    t.boolean "use_event_leads", default: false, null: false
     t.boolean "auto_approve_wishes", default: false, null: false
+    t.boolean "use_event_leads", default: false, null: false
     t.boolean "enable_exhibitor_management", default: false, null: false
     t.string "public_registration_url"
     t.string "venue_name"
@@ -754,8 +806,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.boolean "business_matching_public_booking_enabled", default: true, null: false
     t.date "business_matching_public_booking_cutoff_date"
     t.jsonb "exhibitor_labels_data", default: {}
-    t.string "registration_path_template"
     t.boolean "business_matching_auto_approve_bookings", default: false, null: false
+    t.string "registration_path_template"
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
@@ -764,6 +816,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
     t.boolean "require_unique_membership_numbers", default: true, null: false
+    t.boolean "use_feedback", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1053,6 +1106,27 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
   end
 
+  create_table "feedback_ai_summaries", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.bigint "ai_model_id"
+    t.bigint "generated_by_id"
+    t.string "status", default: "queued", null: false
+    t.string "model_name_used"
+    t.jsonb "filters", default: {}, null: false
+    t.jsonb "content"
+    t.text "error"
+    t.integer "responses_count", default: 0, null: false
+    t.integer "comments_count", default: 0, null: false
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_model_id"], name: "index_feedback_ai_summaries_on_ai_model_id"
+    t.index ["feedback_form_id", "created_at"], name: "index_feedback_ai_summaries_on_feedback_form_id_and_created_at"
+    t.index ["feedback_form_id"], name: "index_feedback_ai_summaries_on_feedback_form_id"
+    t.index ["generated_by_id"], name: "index_feedback_ai_summaries_on_generated_by_id"
+  end
+
   create_table "feedback_answers", force: :cascade do |t|
     t.bigint "feedback_response_id", null: false
     t.bigint "feedback_question_id", null: false
@@ -1070,6 +1144,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.boolean "is_active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "display_mode", default: 0, null: false
+    t.jsonb "pages_metadata", default: [], null: false
+    t.string "thank_you_title"
+    t.text "thank_you_message"
     t.index ["event_id"], name: "index_feedback_forms_on_event_id", unique: true
   end
 
@@ -1082,6 +1160,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.integer "position", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "placeholder"
+    t.string "hint_text"
+    t.integer "page_number", default: 1, null: false
+    t.jsonb "routing_rules", default: [], null: false
     t.index ["feedback_form_id"], name: "index_feedback_questions_on_feedback_form_id"
   end
 
@@ -1400,6 +1482,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
+    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -1411,7 +1494,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -1814,8 +1896,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.string "role"
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
-    t.bigint "vehicle_registration_id"
     t.boolean "waiting_list", default: false, null: false
+    t.bigint "vehicle_registration_id"
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.uuid "registration_batch_id"
     t.boolean "require_unique_membership_numbers", default: true, null: false
@@ -2050,6 +2132,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
+  add_foreign_key "cloned_voices", "events"
+  add_foreign_key "cloned_voices", "users", column: "creator_id"
+  add_foreign_key "cloned_voices", "users", column: "owner_id"
+  add_foreign_key "credit_deductions", "events"
+  add_foreign_key "credit_deductions", "users", column: "owner_id"
+  add_foreign_key "credit_transactions", "credit_wallets"
+  add_foreign_key "credit_wallets", "users", column: "owner_id"
   add_foreign_key "custom_field_quotas", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
@@ -2143,6 +2232,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
   add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "feedback_ai_summaries", "ai_models", on_delete: :nullify
+  add_foreign_key "feedback_ai_summaries", "feedback_forms"
+  add_foreign_key "feedback_ai_summaries", "users", column: "generated_by_id", on_delete: :nullify
   add_foreign_key "feedback_answers", "feedback_questions"
   add_foreign_key "feedback_answers", "feedback_responses"
   add_foreign_key "feedback_forms", "events"
