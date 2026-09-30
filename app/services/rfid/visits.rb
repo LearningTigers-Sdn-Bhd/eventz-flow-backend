@@ -52,11 +52,12 @@ module Rfid
                                  ticket_id: result.ticket_id)
     end
 
+    # Rebuilds from readings as currently adjudicated. It does not re-measure
+    # them (one Adjudicate per reading, under the event lock, on every batch):
+    # whoever changes what readings mean calls refresh_* first.
     def self.rebuild!(event:)
       readings = event.rfid_observations.where(outcome: 'accepted')
                       .order(:captured_at, :station_id, :delivery_id).to_a
-      readings.each { |reading| refresh(reading, event) }
-      readings.select! { |reading| reading.outcome == 'accepted' }
       role_overrides = event.rfid_corrections.where(kind: 'station_change').order(:id)
                             .each_with_object({}) do |correction, roles|
         next unless correction.details['role'].present?
