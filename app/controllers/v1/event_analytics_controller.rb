@@ -523,12 +523,20 @@ module V1
         paidPartners: paid_partner_ids.size,
         depositPartners: deposit_partner_ids.size,
         unpaidPartners: partner_ids.size - paid_partner_ids.size - deposit_partner_ids.size,
+        bookedBooths: booth_count(kits),
+        paidBooths: booth_count(kits.select { |kit| settled_exhibitor_kit?(kit) }),
+        depositBooths: booth_count(kits.select(&:deposit?)),
+        unpaidBooths: booth_count(kits.select(&:unpaid?)),
         collectedRevenue: exhibitor_collected_revenue(kits),
         pendingRevenue: exhibitor_pending_revenue(kits),
         breakdown: exhibitor_breakdown(kits),
         filterOptions: exhibitor_filter_options,
         vendorMetrics: vendor_metrics
       }
+    end
+
+    def booth_count(kits)
+      kits.sum { |kit| [kit.booth_quantity.to_i, 1].max }
     end
 
     def vendor_analytics_payload
@@ -538,6 +546,10 @@ module V1
         paidPartners: 0,
         depositPartners: 0,
         unpaidPartners: 0,
+        bookedBooths: 0,
+        paidBooths: 0,
+        depositBooths: 0,
+        unpaidBooths: 0,
         collectedRevenue: 0.0,
         pendingRevenue: 0.0,
         breakdown: [],
