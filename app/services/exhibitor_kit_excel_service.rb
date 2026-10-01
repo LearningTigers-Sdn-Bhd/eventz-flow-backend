@@ -101,8 +101,8 @@ class ExhibitorKitExcelService
   def build_summary_sheet(package)
     package.workbook.add_worksheet(name: 'Summary') do |sheet|
       sheet.sheet_pr.tab_color = BRAND_BLUE
-      sheet.column_widths 24, 18, 18, 18, 18, 18, 18
-      sheet.merge_cells('A1:G1')
+      sheet.column_widths 24, 18, 18, 18, 18, 18, 18, 18
+      sheet.merge_cells('A1:H1')
       sheet.add_row [@event.title], style: @styles[:title], height: 28
       sheet.add_row ["Exhibitor Kit Report  •  Generated #{Time.current.strftime('%d %b %Y, %I:%M %p')}"],
                     style: @styles[:subtitle]
@@ -111,13 +111,14 @@ class ExhibitorKitExcelService
       sheet.add_row ['Overview'], style: @styles[:section_header]
       merge_row_across(sheet, 8)
 
-      sheet.add_row ['Total Exhibitors', 'Paid', 'Deposit', 'Unpaid', 'Collected Revenue', 'Pending Revenue'],
+      sheet.add_row ['Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid',
+                     'Collected Revenue', 'Pending Revenue'],
                     style: Array.new(6, @styles[:stat_label])
       sheet.add_row [
-        paid_partner_ids.size + deposit_partner_ids.size + unpaid_partner_ids.size,
-        paid_partner_ids.size,
-        deposit_partner_ids.size,
-        unpaid_partner_ids.size,
+        booth_count(@kits),
+        booth_count(@kits.select(&:settled?)),
+        booth_count(@kits.select(&:deposit?)),
+        booth_count(@kits.select(&:unpaid?)),
         collected_revenue,
         pending_revenue
       ], style: [@styles[:stat_value], @styles[:stat_value], @styles[:stat_value], @styles[:stat_value],
@@ -127,7 +128,7 @@ class ExhibitorKitExcelService
       sheet.add_row ['Booth Pricing Breakdown'], style: @styles[:section_header]
       merge_row_across(sheet, 8)
 
-      headers = ['Pricing', 'Zone', 'Booked', 'Paid', 'Deposit', 'Unpaid', 'Collected Revenue', 'Pending Revenue']
+      headers = ['Pricing', 'Zone', 'Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid', 'Collected Revenue', 'Pending Revenue']
       sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
       header_row_number = sheet.rows.size
 
@@ -252,18 +253,8 @@ class ExhibitorKitExcelService
 
   # --- Shared computation (mirrors EventAnalyticsController) ---
 
-  def paid_partner_ids
-    @paid_partner_ids ||= @kits.select(&:settled?).map(&:event_vendor_id).uniq
-  end
-
-  # Deposit is its own bucket (not settled?, not unpaid?) - matches how the panel UI
-  # treats it: a distinct badge/filter, amount_paid holds the deposit received so far.
-  def deposit_partner_ids
-    @deposit_partner_ids ||= @kits.select(&:deposit?).map(&:event_vendor_id).uniq - paid_partner_ids
-  end
-
-  def unpaid_partner_ids
-    @unpaid_partner_ids ||= @kits.map(&:event_vendor_id).uniq - paid_partner_ids - deposit_partner_ids
+  def booth_count(kits)
+    kits.sum { |k| [k.booth_quantity.to_i, 1].max }
   end
 
   def collected_revenue
@@ -292,10 +283,10 @@ class ExhibitorKitExcelService
       {
         label: booth_price&.label || first_kit.booth_type.to_s.humanize,
         zone: booth_price&.zone,
-        booked: kits.sum { |k| [k.booth_quantity.to_i, 1].max },
-        paid: paid_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
-        deposit: deposit_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
-        unpaid: unpaid_kits.sum { |k| [k.booth_quantity.to_i, 1].max },
+        booked: booth_count(kits),
+        paid: booth_count(paid_kits),
+        deposit: booth_count(deposit_kits),
+        unpaid: booth_count(unpaid_kits),
         collected: collected_revenue_for(kits),
         pending: (unpaid_kits.sum(&:booking_value) +
                   deposit_kits.sum { |k| k.booking_value - k.amount_paid.to_d }).round(2).to_f
