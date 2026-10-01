@@ -7,7 +7,7 @@ module V1
     before_action :require_staff_session!
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
-                                             flow sessions eligibility session_attendees guest_visits]
+                                             flow sessions eligibility session_attendees guest_visits display_activity]
     before_action :authorize_update!, only: %i[update_settings update_station manual_exit
                                                create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
@@ -45,6 +45,13 @@ module V1
 
       render json: { visits: report.visit_rows(visits), pagination: pagy_metadata(pagy) },
              status: :ok
+    end
+
+    def display_activity
+      mode = params[:mode].presence || 'in'
+      return unprocessable('mode must be in, out or both') unless ::Rfid::Report::DISPLAY_MODES.include?(mode)
+
+      render json: { activity: report.display_activity(mode: mode) }, status: :ok
     end
 
     def guest_visits

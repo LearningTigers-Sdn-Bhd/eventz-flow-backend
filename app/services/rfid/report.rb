@@ -135,6 +135,35 @@ module Rfid
       event.rfid_visits.includes(ticket: :ticket_type).order(entry_at: :desc, id: :desc)
     end
 
+    DISPLAY_MODES = %w[in out both].freeze
+
+    def display_activity(mode:)
+      rows = %w[in out].flat_map do |direction|
+        next [] unless mode == 'both' || mode == direction
+
+        column = direction == 'in' ? :entry_at : :exit_at
+        scope = event.rfid_visits.where.not(column => nil)
+        # Staff corrections close visits, but are not physical gate departures.
+        scope = scope.where.not(exit_observation_id: nil) if direction == 'out'
+        scope.order(column => :desc, id: :desc).limit(40).pluck(:id, :ticket_name, column).map do |id, name, at|
+          [at, id, direction, name, "#{id}-#{direction}"]
+        end
+      end
+      unless mode == 'in'
+        # An accepted departure still belongs on the screen if its entry was missed.
+        unmatched = event.rfid_observations.where(outcome: 'accepted')
+                         .where('anomalies @> ?::jsonb', [Visits::UNMATCHED_EXIT].to_json)
+                         .where.not('anomalies @> ?::jsonb', [Visits::REPEATED_ENTRY].to_json)
+                         .where.not(id: event.rfid_visits.select(:entry_observation_id))
+                         .where.not(id: event.rfid_visits.where.not(exit_observation_id: nil).select(:exit_observation_id))
+                         .includes(:ticket).order(captured_at: :desc, id: :desc).limit(40)
+        rows.concat(unmatched.map { |reading| [reading.captured_at, reading.id, 'out', reading.ticket&.attendee_name, "observation-#{reading.id}-out"] })
+      end
+      rows.sort_by { |at, id, direction, _name, _key| [-at.to_f, -id, direction == 'out' ? 0 : 1] }.first(40).map do |at, _id, direction, name, key|
+        { id: key, ticket_name: name, direction: direction, occurred_at: Wire.time(at) }
+      end
+    end
+
     GUEST_STATUSES = %w[inside outside].freeze
 
     # One entry per guest: all their gate visits folded into totals, newest

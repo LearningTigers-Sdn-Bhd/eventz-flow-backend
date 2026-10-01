@@ -183,6 +183,75 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
+  describe 'GET display_activity' do
+    before { bind_via_device(device_key) }
+
+    it 'defaults to entries and returns both directions in occurrence order' do
+      observe_via_device(device_key, [reading('entry', base), reading('entry', base + 1.minute),
+                                      reading('exit', base + 30.minutes), reading('entry', base + 1.hour)])
+      get "/v1/events/#{event.id}/rfid/display_activity", headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(body['activity'].map { |row| row['direction'] }).to eq(%w[in in])
+
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'both' }, headers: headers
+      expect(body['activity'].map { |row| row['direction'] }).to eq(%w[in out in])
+      expect(body['activity'].map { |row| Time.iso8601(row['occurred_at']) }).to eq([base + 1.hour, base + 30.minutes, base])
+      expect(body['activity'].map { |row| row['id'] }.uniq.length).to eq(3)
+      expect(body['activity'].first.keys).to match_array(%w[id ticket_name direction occurred_at])
+    end
+
+    it 'shows an accepted physical exit even when its entry scan was missed' do
+      observe_via_device(device_key, [reading('exit', base)])
+      expect(event.rfid_visits.count).to eq(0)
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'out' }, headers: headers
+      expect(body['activity'].size).to eq(1)
+      expect(body['activity'].first).to include('direction' => 'out', 'ticket_name' => 'Ahmad Bin Ali')
+      expect(Time.iso8601(body['activity'].first['occurred_at'])).to eq(base)
+    end
+
+    it 'finds a recent exit from an old visit even after 40 newer entries' do
+      observe_via_device(device_key, [reading('entry', base), reading('exit', base + 3.hours)])
+      41.times do |index|
+        observation = create(:rfid_observation, event: event, station: gate, outcome: 'accepted')
+        Rfid::Visit.create!(event: event, ticket: ticket, ticket_public_id: ticket.public_id, ticket_name: 'Later guest',
+                           entry_observation: observation, entry_at: base + (index + 1).minutes)
+      end
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'out' }, headers: headers
+      expect(body['activity'].size).to eq(1)
+      expect(body['activity'].first).to include('direction' => 'out', 'ticket_name' => 'Ahmad Bin Ali')
+      expect(Time.iso8601(body['activity'].first['occurred_at'])).to eq(base + 3.hours)
+
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'both' }, headers: headers
+      expect(body['activity'].size).to eq(40)
+      expect(body['activity'].first['direction']).to eq('out')
+    end
+
+    it 'excludes manual closures and data from other events' do
+      observe_via_device(device_key, [reading('entry', base)])
+      event.rfid_visits.first.update!(exit_at: base + 1.hour, manual: true)
+      other = create(:event)
+      observation = create(:rfid_observation, event: other)
+      Rfid::Visit.create!(event: other, ticket_public_id: SecureRandom.uuid, ticket_name: 'Other event guest', entry_observation: observation, entry_at: base + 2.hours)
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'out' }, headers: headers
+      expect(body['activity']).to eq([])
+      get "/v1/events/#{event.id}/rfid/display_activity", params: { mode: 'both' }, headers: headers
+      expect(body['activity'].size).to eq(1)
+      expect(response.body).not_to include('Other event guest')
+    end
+
+    it 'validates the mode and keeps the staff authorization boundary' do
+      path = "/v1/events/#{event.id}/rfid/display_activity"
+      get path, params: { mode: 'bogus' }, headers: headers
+      expect(response).to have_http_status(:unprocessable_content)
+      get path, headers: auth_headers(member)
+      expect(response).to have_http_status(:forbidden)
+      get path, headers: { 'Authorization' => device_key.raw_key }
+      expect(response).to have_http_status(:forbidden)
+      get path
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe 'GET guest_visits' do
     before { bind_via_device(device_key) }
 

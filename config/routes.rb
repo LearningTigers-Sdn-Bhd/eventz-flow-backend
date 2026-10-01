@@ -50,6 +50,7 @@ Rails.application.routes.draw do
       get 'visits.csv', action: :visits_csv
       get 'guest_visits', action: :guest_visits
       get 'visits', action: :visits
+      get 'display_activity', action: :display_activity
       post 'visits/:id/manual_exit', action: :manual_exit
       get 'missed_scans', action: :missed_scans
       get 'flow', action: :flow
