@@ -86,9 +86,13 @@ module V1
       tickets = @event.tickets.where.not(attendee_email: [nil, '']).order(:attendee_name)
       latest = latest_certificate_deliveries_by_ticket_id
       feedback_ids = SendEventCertificatesJob.feedback_ticket_ids(@event).pluck(:ticket_id).to_set
+      qualified_ids = ::Rfid::Attendance.qualified_ticket_ids(@event).to_set
 
       render json: {
-        data: tickets.map { |ticket| participant_row(ticket, latest[ticket.id], feedback_ids.include?(ticket.id)) }
+        data: tickets.map do |ticket|
+          participant_row(ticket, latest[ticket.id], feedback_ids.include?(ticket.id))
+            .merge(rfid_qualified: qualified_ids.include?(ticket.id))
+        end
       }, status: :ok
     end
 

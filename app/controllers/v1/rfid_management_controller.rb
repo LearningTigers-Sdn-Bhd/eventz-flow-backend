@@ -6,8 +6,10 @@ module V1
   class RfidManagementController < ApplicationController
     before_action :require_staff_session!
     before_action :set_event
-    before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies]
-    before_action :authorize_update!, only: %i[update_settings update_station manual_exit]
+    before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
+                                             flow sessions eligibility session_attendees guest_visits display_activity]
+    before_action :authorize_update!, only: %i[update_settings update_station manual_exit
+                                               create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
                                               dismiss_anomalies destroy_anomalies]
 
@@ -16,7 +18,7 @@ module V1
     end
 
     def summary
-      render json: report.summary, status: :ok
+      render json: report.summary(ticket_type_id: params[:ticket_type_id].presence), status: :ok
     end
 
     def stations
@@ -24,7 +26,18 @@ module V1
     end
 
     def bindings
-      render json: { bindings: report.bindings }, status: :ok
+      status = params[:status].to_s.presence
+      unless status.nil? || ::Rfid::Report::BINDING_STATUSES.include?(status)
+        return unprocessable("status must be one of #{::Rfid::Report::BINDING_STATUSES.join(', ')}")
+      end
+
+      scope = report.bindings_scope(status: status, query: params[:q].to_s.presence,
+                                    ticket_type_id: params[:ticket_type_id].presence)
+      pagy, rows = pagy(scope, limit: pagination_params[:per_page] || 25)
+
+      render json: { bindings: rows.map { |row| report.binding_row(row) },
+                     ticket_types: report.ticket_types, pagination: pagy_metadata(pagy) },
+             status: :ok
     end
 
     def visits
@@ -34,6 +47,34 @@ module V1
              status: :ok
     end
 
+    def display_activity
+      mode = params[:mode].presence || 'in'
+      return unprocessable('mode must be in, out or both') unless ::Rfid::Report::DISPLAY_MODES.include?(mode)
+
+      render json: { activity: report.display_activity(mode: mode) }, status: :ok
+    end
+
+    def guest_visits
+      status = params[:status].to_s.presence
+      unless status.nil? || ::Rfid::Report::GUEST_STATUSES.include?(status)
+        return unprocessable("status must be one of #{::Rfid::Report::GUEST_STATUSES.join(', ')}")
+      end
+
+      per_page = (pagination_params[:per_page] || 25).to_i
+      page = [(pagination_params[:page] || 1).to_i, 1].max
+      guests, total = report.guest_visits(status: status, query: params[:q].to_s.presence,
+                                          ticket_type_id: params[:ticket_type_id].presence,
+                                          page: page, per_page: per_page)
+      pages = [(total / per_page.to_f).ceil, 1].max
+
+      render json: {
+        guests: guests,
+        ticket_types: report.ticket_types,
+        pagination: { current_page: page, total_pages: pages, total_count: total, per_page: per_page,
+                      prev_page: page > 1 ? page - 1 : nil, next_page: page < pages ? page + 1 : nil }
+      }, status: :ok
+    end
+
     def visits_csv
       send_data report.visits_csv,
                 filename: "rfid-visits-event-#{@event.id}.csv",
@@ -41,11 +82,122 @@ module V1
                 disposition: 'attachment'
     end
 
-    def anomalies
-      pagy, observations = pagy(report.anomaly_observations,
-                                limit: pagination_params[:per_page] || 25)
+    def missed_scans
+      reason = params[:reason].to_s.presence
+      unless reason.nil? || ::Rfid::Report::MISSED_REASONS.include?(reason)
+        return unprocessable("reason must be one of #{::Rfid::Report::MISSED_REASONS.join(', ')}")
+      end
+
+      scope = report.missed_scans_scope(reason, query: params[:q].to_s.presence,
+                                                ticket_type_id: params[:ticket_type_id].presence)
+      pagy, tickets = pagy(scope, limit: pagination_params[:per_page] || 25)
 
       render json: {
+        tickets: report.missed_scan_rows(tickets),
+        ticket_types: @event.ticket_types.order(:name).map { |type| { id: type.id, name: type.name } },
+        pagination: pagy_metadata(pagy)
+      }, status: :ok
+    end
+
+    def flow
+      from = params[:from].present? ? parse_time(params[:from]) : nil
+      to = params[:to].present? ? parse_time(params[:to]) : nil
+      return unprocessable('from and to must be RFC3339 timestamps') if (params[:from].present? && from.nil?) ||
+                                                                       (params[:to].present? && to.nil?)
+      return unprocessable('from must be before to') if from && to && from >= to
+
+      render json: report.flow(from: from, to: to), status: :ok
+    end
+
+    def sessions
+      render json: { sessions: attendance.sessions, attendance_percent: @event.rfid_attendance_percent,
+                     eligibility: attendance.eligibility_summary }, status: :ok
+    end
+
+    def session_attendees
+      session = @event.rfid_sessions.find_by(id: params[:id])
+      return render json: { error: 'Session not found' }, status: :not_found if session.nil?
+
+      status = params[:status].to_s.presence
+      unless status.nil? || %w[attended partial].include?(status)
+        return unprocessable('status must be attended or partial')
+      end
+
+      rows, counts = attendance.session_attendees(session, status: status, query: params[:q].to_s.presence,
+                                                  ticket_type_id: params[:ticket_type_id].presence)
+      per_page = (pagination_params[:per_page] || 25).to_i
+      page = [(pagination_params[:page] || 1).to_i, 1].max
+      pages = [(rows.length / per_page.to_f).ceil, 1].max
+
+      render json: {
+        session: attendance.sessions.find { |row| row[:id] == session.id },
+        counts: counts,
+        ticket_types: attendance.ticket_types,
+        attendees: rows.slice((page - 1) * per_page, per_page) || [],
+        pagination: { current_page: page, total_pages: pages, total_count: rows.length,
+                      per_page: per_page, prev_page: page > 1 ? page - 1 : nil,
+                      next_page: page < pages ? page + 1 : nil }
+      }, status: :ok
+    end
+
+    def eligibility
+      status = params[:status].to_s.presence
+      unless status.nil? || ::Rfid::Attendance::STATUSES.include?(status)
+        return unprocessable("status must be one of #{::Rfid::Attendance::STATUSES.join(', ')}")
+      end
+
+      rows = attendance.filter_rows(attendance.eligibility_rows, query: params[:q].to_s.presence,
+                                                                 ticket_type_id: params[:ticket_type_id].presence)
+      rows = rows.select { |row| row[:status] == status } if status
+      per_page = (pagination_params[:per_page] || 25).to_i
+      page = [(pagination_params[:page] || 1).to_i, 1].max
+      pages = [(rows.length / per_page.to_f).ceil, 1].max
+
+      render json: {
+        tickets: rows.slice((page - 1) * per_page, per_page) || [],
+        ticket_types: attendance.ticket_types,
+        sessions: attendance.sessions.select { |row| row[:mandatory] },
+        pagination: { current_page: page, total_pages: pages, total_count: rows.length,
+                      per_page: per_page, prev_page: page > 1 ? page - 1 : nil,
+                      next_page: page < pages ? page + 1 : nil }
+      }, status: :ok
+    end
+
+    def create_session
+      session = @event.rfid_sessions.new(session_params)
+      session.save!
+      render json: { session: attendance.sessions.find { |row| row[:id] == session.id } },
+             status: :created
+    rescue ActiveRecord::RecordInvalid => e
+      unprocessable(e.record.errors.full_messages.to_sentence)
+    end
+
+    def update_session
+      session = @event.rfid_sessions.find_by(id: params[:id])
+      return render json: { error: 'Session not found' }, status: :not_found if session.nil?
+
+      session.update!(session_params)
+      render json: { session: attendance.sessions.find { |row| row[:id] == session.id } }, status: :ok
+    rescue ActiveRecord::RecordInvalid => e
+      unprocessable(e.record.errors.full_messages.to_sentence)
+    end
+
+    def destroy_session
+      session = @event.rfid_sessions.find_by(id: params[:id])
+      return render json: { error: 'Session not found' }, status: :not_found if session.nil?
+
+      session.destroy!
+      render json: { deleted: true }, status: :ok
+    end
+
+    def anomalies
+      scope = report.filter_anomalies(report.anomaly_observations, query: params[:q].to_s.presence,
+                                                                    outcome: params[:outcome].to_s.presence,
+                                                                    station: params[:station].to_s.presence)
+      pagy, observations = pagy(scope, limit: pagination_params[:per_page] || 25)
+
+      render json: {
+        stations: report.station_keys,
         observations: observations.map { |row| report.anomaly_observation_row(row) },
         visits: report.visit_rows(report.anomaly_visits.limit(pagy.limit)),
         pagination: pagy_metadata(pagy)
@@ -71,7 +223,16 @@ module V1
         attributes[:rfid_require_check_in] = value
       end
 
-      return unprocessable('rfid_mode or require_check_in is required') if attributes.empty?
+      if params.key?(:attendance_percent)
+        percent = params[:attendance_percent]
+        unless percent.is_a?(Integer) && percent.between?(1, 100)
+          return unprocessable('attendance_percent must be a whole number from 1 to 100')
+        end
+
+        attributes[:rfid_attendance_percent] = percent
+      end
+
+      return unprocessable('rfid_mode, require_check_in or attendance_percent is required') if attributes.empty?
 
       # Only the two RFID settings can move here: a general event update is a
       # different route with a different policy, and `write` changes the event
@@ -186,7 +347,7 @@ module V1
 
       admin.update_binding!(binding, ticket_public_id: params[:ticket_public_id].to_s.presence,
                                      tag_key: params[:tag_key].to_s.presence)
-      render json: { binding: report.bindings.find { |row| row[:id] == binding.id } }, status: :ok
+      render json: { binding: report.binding_row(binding.reload) }, status: :ok
     end
 
     def destroy_binding
@@ -255,6 +416,14 @@ module V1
       authorize @event, :update?
     end
 
+    def attendance
+      @attendance ||= ::Rfid::Attendance.new(@event)
+    end
+
+    def session_params
+      params.permit(:name, :starts_at, :ends_at, :mandatory)
+    end
+
     def report
       @report ||= ::Rfid::Report.new(@event)
     end
@@ -263,7 +432,8 @@ module V1
       {
         event_id: @event.id,
         rfid_mode: @event.rfid_mode,
-        require_check_in: @event.rfid_require_check_in
+        require_check_in: @event.rfid_require_check_in,
+        attendance_percent: @event.rfid_attendance_percent
       }
     end
 

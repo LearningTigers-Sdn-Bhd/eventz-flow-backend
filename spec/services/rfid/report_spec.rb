@@ -61,6 +61,30 @@ RSpec.describe Rfid::Report do
     expect(summary[:last_observed_at]).to eq(Rfid::Wire.time(base + 2.hours))
   end
 
+  it 'counts registered, checked-in, gate-scanned, inside and outside, and splits missed scans' do
+    # first: enters and stays inside. second: enters and leaves (outside).
+    # unbound: checked in, no sticker. unread: sticker linked, no gate read.
+    # absent: paid, never checked in.
+    unbound = create(:ticket, :paid, :checked_in, event: event, ticket_type: ticket_type,
+                                                  attendee_name: 'No Sticker',
+                                                  check_in_at: base - 1.hour)
+    unread = create(:ticket, :paid, :checked_in, event: event, ticket_type: ticket_type,
+                                                 attendee_name: 'Not Read',
+                                                 check_in_at: base - 1.hour)
+    bind(unread, uid: '0000000000000001')
+    create(:ticket, :paid, event: event, ticket_type: ticket_type, attendee_name: 'Absent')
+    deliver([reading('entry', base), reading('entry', base, uid: other_tag),
+             reading('exit', base + 10.minutes, uid: other_tag)])
+
+    summary = report.summary
+
+    expect(summary).to include(registered: 5, checked_in: 4, not_arrived: 1, gate_scanned: 2,
+                               inside: 1, outside: 1, missed_scans: { no_tag: 1, no_read: 1 })
+    expect(report.missed_scan_rows(report.missed_scans_scope.to_a).map { |row| [row[:ticket_name], row[:reason]] })
+      .to contain_exactly(['No Sticker', 'no_tag'], ['Not Read', 'no_read'])
+    expect(report.missed_scans_scope('no_tag').to_a).to eq([unbound])
+  end
+
   it 'reports zero headcount when all visits have ended' do
     deliver([reading('entry', base), reading('exit', base + 10.minutes)])
 

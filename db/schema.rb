@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -815,6 +815,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
+    t.integer "rfid_attendance_percent", default: 80, null: false
     t.boolean "require_unique_membership_numbers", default: true, null: false
     t.boolean "use_feedback", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
@@ -1652,6 +1653,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
     t.index ["ticket_id"], name: "index_rfid_observations_on_ticket_id"
   end
 
+  create_table "rfid_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.datetime "starts_at", null: false
+    t.datetime "ends_at", null: false
+    t.boolean "mandatory", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "starts_at"], name: "index_rfid_sessions_on_event_id_and_starts_at"
+    t.index ["event_id"], name: "index_rfid_sessions_on_event_id"
+  end
+
   create_table "rfid_stations", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "station_key", null: false
@@ -2291,6 +2304,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_100000) do
   add_foreign_key "rfid_observations", "events", on_delete: :cascade
   add_foreign_key "rfid_observations", "rfid_stations", column: "station_id"
   add_foreign_key "rfid_observations", "tickets", on_delete: :nullify
+  add_foreign_key "rfid_sessions", "events", on_delete: :cascade
   add_foreign_key "rfid_stations", "events", on_delete: :cascade
   add_foreign_key "rfid_visits", "events", on_delete: :cascade
   add_foreign_key "rfid_visits", "rfid_observations", column: "entry_observation_id"
