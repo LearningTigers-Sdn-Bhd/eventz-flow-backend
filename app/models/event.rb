@@ -69,6 +69,7 @@ class Event < ApplicationRecord
   has_many :rfid_bindings, class_name: 'Rfid::Binding'
   has_many :rfid_observations, class_name: 'Rfid::Observation'
   has_many :rfid_visits, class_name: 'Rfid::Visit'
+  has_many :rfid_sessions, class_name: 'Rfid::Session', dependent: :delete_all
   has_many :rfid_corrections, class_name: 'Rfid::Correction'
 
   # --- Reminders ---

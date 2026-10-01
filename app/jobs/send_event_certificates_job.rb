@@ -1,7 +1,7 @@
 class SendEventCertificatesJob < ApplicationJob
   queue_as :mailers
 
-  AUDIENCES = %w[all checked_in unsent feedback_submitted].freeze
+  AUDIENCES = %w[all checked_in unsent feedback_submitted rfid_qualified].freeze
 
   # Statuses that mean a certificate is already on its way / delivered, so the
   # ticket should be skipped by the "unsent" audience.
@@ -39,10 +39,12 @@ class SendEventCertificatesJob < ApplicationJob
   #   checked_in -> only checked-in tickets with an email
   #   unsent     -> tickets with an email that have no in-flight/delivered cert
   #   feedback_submitted -> tickets that answered the event's feedback form
+  #   rfid_qualified -> tickets that met every mandatory RFID session and answered the feedback form
   def self.recipient_scope(event, audience, excluded_public_ids = [])
     scope = event.tickets.where.not(attendee_email: [nil, '']).where(waiting_list: false)
     scope = scope.where(checked_in: true) if audience.to_s == 'checked_in'
     scope = scope.where(id: feedback_ticket_ids(event)) if audience.to_s == 'feedback_submitted'
+    scope = scope.where(id: Rfid::Attendance.qualified_ticket_ids(event)) if audience.to_s == 'rfid_qualified'
     scope = scope.where.not(public_id: excluded_public_ids) if excluded_public_ids.present?
     scope = scope.where.not(id: already_sent_ticket_ids(event)) if audience.to_s == 'unsent'
     scope

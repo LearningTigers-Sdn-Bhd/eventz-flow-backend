@@ -48,8 +48,17 @@ Rails.application.routes.draw do
       patch 'bindings/:id', action: :update_binding
       delete 'bindings/:id', action: :destroy_binding
       get 'visits.csv', action: :visits_csv
+      get 'guest_visits', action: :guest_visits
       get 'visits', action: :visits
       post 'visits/:id/manual_exit', action: :manual_exit
+      get 'missed_scans', action: :missed_scans
+      get 'flow', action: :flow
+      get 'sessions', action: :sessions
+      post 'sessions', action: :create_session
+      get 'sessions/:id/attendees', action: :session_attendees
+      patch 'sessions/:id', action: :update_session
+      delete 'sessions/:id', action: :destroy_session
+      get 'eligibility', action: :eligibility
       get 'anomalies', action: :anomalies
       post 'anomalies/dismiss', action: :dismiss_anomalies
       delete 'anomalies', action: :destroy_anomalies

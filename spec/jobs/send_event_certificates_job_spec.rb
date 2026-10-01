@@ -60,6 +60,14 @@ RSpec.describe SendEventCertificatesJob, type: :job do
       expect(ids).not_to include(ticket_waiting_list.id)
     end
 
+    it 'limits the rfid_qualified audience to tickets that met the RFID session rules' do
+      allow(Rfid::Attendance).to receive(:qualified_ticket_ids).with(event).and_return([ticket_checked_in.id])
+
+      ids = described_class.recipient_scope(event, 'rfid_qualified').pluck(:id)
+
+      expect(ids).to eq([ticket_checked_in.id])
+    end
+
     context 'unsent audience' do
       it 'excludes tickets that already have an in-flight/sent certificate' do
         create(:email_delivery,
