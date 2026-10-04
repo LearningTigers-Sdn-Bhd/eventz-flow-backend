@@ -7,7 +7,8 @@ module Rfid
 
     belongs_to :event
     belongs_to :ticket, optional: true
-    belongs_to :entry_observation, class_name: 'Rfid::Observation'
+    belongs_to :entry_observation, class_name: 'Rfid::Observation', optional: true
+    belongs_to :correction, class_name: 'Rfid::Correction', optional: true
     belongs_to :exit_observation, class_name: 'Rfid::Observation', optional: true
 
     scope :open, -> { where(exit_at: nil) }

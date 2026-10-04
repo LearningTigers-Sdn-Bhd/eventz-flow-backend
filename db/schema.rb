@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_04_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1603,10 +1603,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
     t.datetime "updated_at", null: false
     t.bigint "station_id"
     t.jsonb "details", default: {}, null: false
+    t.bigint "ticket_id"
     t.index ["actor_id"], name: "index_rfid_corrections_on_actor_id"
     t.index ["entry_observation_id"], name: "index_rfid_corrections_on_entry_observation_id"
     t.index ["event_id", "actor_id"], name: "idx_rfid_corrections_event_actor"
     t.index ["event_id", "entry_observation_id"], name: "idx_rfid_corrections_event_entry"
+    t.index ["event_id", "ticket_id"], name: "idx_rfid_corrections_event_ticket"
     t.index ["event_id"], name: "index_rfid_corrections_on_event_id"
     t.index ["station_id"], name: "index_rfid_corrections_on_station_id"
   end
@@ -1687,7 +1689,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
     t.bigint "ticket_id"
     t.uuid "ticket_public_id", null: false
     t.string "ticket_name"
-    t.bigint "entry_observation_id", null: false
+    t.bigint "entry_observation_id"
     t.bigint "exit_observation_id"
     t.datetime "entry_at", null: false
     t.datetime "exit_at"
@@ -1695,6 +1697,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
     t.jsonb "anomalies", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "correction_id"
+    t.index ["correction_id"], name: "index_rfid_visits_on_correction_id"
     t.index ["entry_observation_id"], name: "idx_rfid_visits_entry_observation", unique: true
     t.index ["entry_observation_id"], name: "index_rfid_visits_on_entry_observation_id"
     t.index ["event_id", "ticket_id", "entry_at"], name: "idx_rfid_visits_event_ticket_entry"
@@ -2299,6 +2303,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
   add_foreign_key "rfid_corrections", "events", on_delete: :cascade
   add_foreign_key "rfid_corrections", "rfid_observations", column: "entry_observation_id"
   add_foreign_key "rfid_corrections", "rfid_stations", column: "station_id", on_delete: :nullify
+  add_foreign_key "rfid_corrections", "tickets"
   add_foreign_key "rfid_corrections", "users", column: "actor_id", on_delete: :nullify
   add_foreign_key "rfid_desk_operations", "events", on_delete: :cascade
   add_foreign_key "rfid_observations", "events", on_delete: :cascade
@@ -2307,6 +2312,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000000) do
   add_foreign_key "rfid_sessions", "events", on_delete: :cascade
   add_foreign_key "rfid_stations", "events", on_delete: :cascade
   add_foreign_key "rfid_visits", "events", on_delete: :cascade
+  add_foreign_key "rfid_visits", "rfid_corrections", column: "correction_id", on_delete: :cascade
   add_foreign_key "rfid_visits", "rfid_observations", column: "entry_observation_id"
   add_foreign_key "rfid_visits", "rfid_observations", column: "exit_observation_id"
   add_foreign_key "rfid_visits", "tickets", on_delete: :nullify

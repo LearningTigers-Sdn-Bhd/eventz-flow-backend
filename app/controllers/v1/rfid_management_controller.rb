@@ -8,7 +8,7 @@ module V1
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
                                              flow sessions eligibility session_attendees guest_visits display_activity]
-    before_action :authorize_update!, only: %i[update_settings update_station manual_exit
+    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_entry grant_cert_override revoke_cert_override
                                                create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
                                               dismiss_anomalies destroy_anomalies]
@@ -327,6 +327,51 @@ module V1
       render json: { visit: report.visit_row(visit.reload) }, status: :ok
     end
 
+    # Add a visit the gate never recorded (gate offline, sticker unread). With
+    # no `exit_at` the guest is still inside and their next real exit closes it.
+    # A correction, not a synthetic reading, so it survives every rebuild.
+    def manual_entry
+      ticket = @event.tickets.active.paid.find_by(public_id: params[:ticket_public_id].to_s)
+      return render json: { error: 'Ticket not found' }, status: :not_found if ticket.nil?
+
+      reason = params[:reason].to_s.strip
+      return unprocessable('A reason is required.') if reason.empty?
+
+      entry_at = parse_time(params[:entry_at])
+      return unprocessable('entry_at must be an RFC3339 timestamp') if entry_at.nil?
+
+      exit_at = parse_time(params[:exit_at])
+      return unprocessable('exit_at must be an RFC3339 timestamp') if params[:exit_at].present? && exit_at.nil?
+      return unprocessable('The entry must be before the exit.') if exit_at && entry_at >= exit_at
+      return unprocessable('The time cannot be in the future.') if (exit_at || entry_at) > 1.minute.from_now
+
+      correction = nil
+      @event.with_lock do
+        overlap = @event.rfid_visits.where(ticket_id: ticket.id)
+                        .where('entry_at < ? AND COALESCE(exit_at, ?) > ?', exit_at || Time.current,
+                               Time.current, entry_at).exists?
+        return unprocessable('This guest already has a visit during that time.') if overlap
+
+        correction = ::Rfid::Correction.create!(
+          event: @event, actor: current_user, ticket: ticket, kind: 'manual_entry',
+          exit_at: exit_at, reason: reason, details: { 'entry_at' => entry_at.iso8601(6) }
+        )
+        ::Rfid::Visits.rebuild!(event: @event)
+      end
+
+      render json: { visit: report.visit_row(@event.rfid_visits.find_by!(correction_id: correction.id)) }, status: :ok
+    end
+
+    # Waive the session attendance rule for one guest (e.g. left early for
+    # logistics). Feedback is still required; the grant is an audited correction.
+    def grant_cert_override
+      set_cert_override('cert_override', require_reason: true)
+    end
+
+    def revoke_cert_override
+      set_cert_override('cert_override_revoked', require_reason: false)
+    end
+
     # --- Org-owner clean-up (see ::Rfid::Admin) ---------------------------------
 
     def destroy_station
@@ -414,6 +459,18 @@ module V1
 
     def authorize_update!
       authorize @event, :update?
+    end
+
+    def set_cert_override(kind, require_reason:)
+      ticket = @event.tickets.active.paid.find_by(id: params[:ticket_id])
+      return render json: { error: 'Ticket not found' }, status: :not_found if ticket.nil?
+
+      reason = params[:reason].to_s.strip
+      return unprocessable('A reason is required.') if require_reason && reason.empty?
+
+      ::Rfid::Correction.create!(event: @event, actor: current_user, ticket: ticket, kind: kind,
+                                 reason: reason.presence || 'override removed')
+      render json: { ticket: attendance.eligibility_rows.find { |row| row[:id] == ticket.id } }, status: :ok
     end
 
     def attendance

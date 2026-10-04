@@ -7,7 +7,8 @@ module Rfid
   # A guest "attended" a session when that overlap is at least
   # `event.rfid_attendance_percent` of the session's length. They qualify for
   # the e-certificate when they attended every *mandatory* session and have
-  # submitted the event's feedback form.
+  # submitted the event's feedback form. Staff can waive the attendance rule for
+  # one guest (`Rfid::Correction` cert_override); feedback is still required.
   class Attendance
     STATUSES = %w[qualified needs_feedback in_progress not_qualified].freeze
 
@@ -67,7 +68,8 @@ module Rfid
         return [] if required.empty?
 
         feedback_ids = feedback_ticket_ids
-        tickets.map { |ticket| eligibility_row(ticket, required, feedback_ids) }
+        overrides = cert_overrides
+        tickets.map { |ticket| eligibility_row(ticket, required, feedback_ids, overrides[ticket.id]) }
       end
     end
 
@@ -90,6 +92,14 @@ module Rfid
     def feedback_ticket_ids
       FeedbackResponse.joins(:feedback_form).where(feedback_forms: { event_id: event.id })
                       .where.not(ticket_id: nil).pluck(:ticket_id).to_set
+    end
+
+    # { ticket_id => the granting correction } — the latest correction per guest
+    # decides, so a revoke undoes a grant without losing either record.
+    def cert_overrides
+      event.rfid_corrections.where(kind: %w[cert_override cert_override_revoked]).order(:id)
+           .each_with_object({}) { |c, by_ticket| by_ticket[c.ticket_id] = c }
+           .select { |_, c| c.kind == 'cert_override' }
     end
 
     def need_seconds(session)
@@ -162,7 +172,7 @@ module Rfid
       'ended'
     end
 
-    def eligibility_row(ticket, required, feedback_ids)
+    def eligibility_row(ticket, required, feedback_ids, override)
       per_session = required.map do |session|
         secs = seconds_for(session)[ticket.id].to_i
         { session_id: session.id, percent: [(secs * 100.0 / session.duration_seconds).round, 100].min,
@@ -174,11 +184,13 @@ module Rfid
         ticket_type: ticket.ticket_type&.name, ticket_type_id: ticket.ticket_type_id,
         feedback_submitted: feedback,
         sessions: per_session.map { |item| item.slice(:session_id, :percent, :met) },
-        status: eligibility_status(per_session, feedback)
+        override: override && { reason: override.reason, at: Wire.time(override.created_at) },
+        status: eligibility_status(per_session, feedback, overridden: override.present?)
       }
     end
 
-    def eligibility_status(per_session, feedback)
+    def eligibility_status(per_session, feedback, overridden: false)
+      return(feedback ? 'qualified' : 'needs_feedback') if overridden
       return 'not_qualified' if per_session.any? { |item| item[:ended] && !item[:met] }
       return 'in_progress' unless per_session.all? { |item| item[:met] }
 
