@@ -52,6 +52,7 @@ Rails.application.routes.draw do
       get 'visits', action: :visits
       get 'display_activity', action: :display_activity
       post 'visits/:id/manual_exit', action: :manual_exit
+      post 'visits/manual_entry', action: :manual_entry
       get 'missed_scans', action: :missed_scans
       get 'flow', action: :flow
       get 'sessions', action: :sessions
@@ -60,6 +61,10 @@ Rails.application.routes.draw do
       patch 'sessions/:id', action: :update_session
       delete 'sessions/:id', action: :destroy_session
       get 'eligibility', action: :eligibility
+      get 'attendance_check', action: :attendance_check
+      post 'attendance_check/notify', action: :notify_attendance_check
+      post 'eligibility/:ticket_id/override', action: :grant_cert_override
+      delete 'eligibility/:ticket_id/override', action: :revoke_cert_override
       get 'anomalies', action: :anomalies
       post 'anomalies/dismiss', action: :dismiss_anomalies
       delete 'anomalies', action: :destroy_anomalies

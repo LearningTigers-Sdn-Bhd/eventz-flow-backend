@@ -154,7 +154,7 @@ module Rfid
         unmatched = event.rfid_observations.where(outcome: 'accepted')
                          .where('anomalies @> ?::jsonb', [Visits::UNMATCHED_EXIT].to_json)
                          .where.not('anomalies @> ?::jsonb', [Visits::REPEATED_ENTRY].to_json)
-                         .where.not(id: event.rfid_visits.select(:entry_observation_id))
+                         .where.not(id: event.rfid_visits.where.not(entry_observation_id: nil).select(:entry_observation_id))
                          .where.not(id: event.rfid_visits.where.not(exit_observation_id: nil).select(:exit_observation_id))
                          .includes(:ticket).order(captured_at: :desc, id: :desc).limit(40)
         rows.concat(unmatched.map { |reading| [reading.captured_at, reading.id, 'out', reading.ticket&.attendee_name, "observation-#{reading.id}-out"] })

@@ -79,6 +79,26 @@ RSpec.describe Rfid::Attendance do
     expect(described_class.qualified_ticket_ids(event)).to eq([good.id])
   end
 
+  it 'lets a staff override waive attendance but still needs feedback, until revoked' do
+    left_early = ticket('Early')
+    visit(left_early, base + 50.minutes, base + 60.minutes)
+    row = -> { described_class.new(event).eligibility_rows.first }
+    grant = lambda do |kind|
+      Rfid::Correction.create!(event: event, ticket: left_early, kind: kind, reason: 'logistics')
+    end
+
+    expect(row.call[:status]).to eq('not_qualified')
+
+    grant.call('cert_override')
+    expect(row.call).to include(status: 'needs_feedback', override: include(reason: 'logistics'))
+
+    feedback(left_early)
+    expect(row.call[:status]).to eq('qualified')
+
+    grant.call('cert_override_revoked')
+    expect(row.call).to include(status: 'not_qualified', override: nil)
+  end
+
   it 'keeps a guest in progress while a mandatory session has not ended' do
     ticket('Waiting')
     live = described_class.new(event, now: base + 10.minutes)

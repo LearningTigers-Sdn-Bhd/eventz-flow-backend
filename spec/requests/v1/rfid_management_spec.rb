@@ -742,6 +742,127 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
+  describe 'POST visits/manual_entry' do
+    let(:guest) { create(:ticket, :paid, event: event) }
+    let(:path) { "/v1/events/#{event.id}/rfid/visits/manual_entry" }
+    let(:params) do
+      { ticket_public_id: guest.public_id, entry_at: (base + 10.minutes).iso8601(6),
+        exit_at: (base + 40.minutes).iso8601(6), reason: 'IN gate was down' }
+    end
+
+    it 'adds an audited visit that counts for attendance and survives a rebuild' do
+      session = Rfid::Session.create!(event: event, name: 'Keynote', starts_at: base,
+                                      ends_at: base + 60.minutes, mandatory: true)
+
+      post path, params: params, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body['visit']).to include('ticket_public_id' => guest.public_id, 'duration_seconds' => 30 * 60,
+                                       'anomalies' => ['manual_entry'], 'entry_station' => nil)
+      expect(Rfid::Correction.sole).to have_attributes(kind: 'manual_entry', actor: owner, ticket: guest)
+
+      Rfid::Visits.rebuild!(event: event)
+      expect(event.rfid_visits.count).to eq(1)
+      row = Rfid::Attendance.new(event, now: base + 2.hours).sessions.find { |item| item[:id] == session.id }
+      expect(row[:present]).to eq(1)
+    end
+
+    it 'leaves the visit open without an exit, and the next real exit closes it' do
+      bind_via_device(device_key)
+      post path, params: params.except(:exit_at).merge(ticket_public_id: ticket.public_id),
+           headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body['visit']).to include('status' => 'open', 'anomalies' => ['manual_entry'])
+
+      results = observe_via_device(device_key, [reading('exit', base + 50.minutes)])
+      visit = event.rfid_visits.sole
+      expect(visit).to have_attributes(exit_at: base + 50.minutes, correction_id: Rfid::Correction.sole.id)
+      expect(visit.exit_observation_id).to be_present
+      expect(Rfid::Observation.sole.anomalies).not_to include('unmatched_exit')
+      expect(results.first['outcome']).to eq('accepted')
+    end
+
+    it 'rejects a missing reason, a reversed range, a future exit, an overlap and an unknown ticket' do
+      post path, params: params.merge(reason: ' '), headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post path, params: params.merge(exit_at: (base).iso8601(6)), headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post path, params: params.merge(exit_at: 1.day.from_now.iso8601(6)), headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post path, params: params.merge(ticket_public_id: SecureRandom.uuid), headers: headers, as: :json
+      expect(response).to have_http_status(:not_found)
+
+      post path, params: params, headers: headers, as: :json
+      post path, params: params.merge(entry_at: (base + 20.minutes).iso8601(6)), headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Rfid::Correction.count).to eq(1)
+    end
+  end
+
+  describe 'attendance_check' do
+    it 'previews the groups and refuses to notify without a webhook url or valid reasons' do
+      create(:ticket, :paid, :checked_in, event: event, ticket_type: ticket_type, attendee_phone: '0111111111')
+      get "/v1/events/#{event.id}/rfid/attendance_check", headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('webhook_configured' => false)
+
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['never_detected'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      event.update!(webhook_url: 'https://hooks.example.com/a')
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['bogus'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['never_detected'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('sent' => 1)
+    end
+  end
+
+  describe 'POST/DELETE eligibility/:ticket_id/override' do
+    let(:guest) { create(:ticket, :paid, event: event) }
+    let(:path) { "/v1/events/#{event.id}/rfid/eligibility/#{guest.id}/override" }
+
+    before do
+      Rfid::Session.create!(event: event, name: 'Keynote', starts_at: base,
+                            ends_at: base + 100.minutes, mandatory: true)
+    end
+
+    it 'records an audited grant and reports it on the guest row' do
+      post path, params: { reason: 'left to handle logistics' }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body['ticket']['override']).to include('reason' => 'left to handle logistics')
+      expect(Rfid::Correction.sole).to have_attributes(kind: 'cert_override', actor: owner, ticket: guest)
+    end
+
+    it 'requires a reason and an active paid ticket of this event' do
+      post path, params: { reason: ' ' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post "/v1/events/#{event.id}/rfid/eligibility/0/override",
+           params: { reason: 'x' }, headers: headers, as: :json
+      expect(response).to have_http_status(:not_found)
+      expect(Rfid::Correction.count).to eq(0)
+    end
+
+    it 'revokes without deleting the grant' do
+      post path, params: { reason: 'logistics' }, headers: headers, as: :json
+      delete path, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body['ticket']['override']).to be_nil
+      expect(Rfid::Correction.pluck(:kind)).to eq(%w[cert_override cert_override_revoked])
+    end
+  end
+
   describe 'GET visits.csv' do
     it 'exports this event only, with no key, no contact and no live formula' do
       formula_title_type = create(:ticket_type, event: event, name: '=IMPORTXML("x")')
