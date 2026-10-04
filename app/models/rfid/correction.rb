@@ -8,13 +8,15 @@
 #                    sticker unread); names the guest, entry in `details`. With
 #                    an exit it is a closed visit; without, the next real exit
 #                    closes it.
+#   attendance_notice — a WhatsApp attendance-check webhook was sent for one
+#                    guest (dedupes re-sends).
 #   cert_override / cert_override_revoked — staff waive (or restore) the session
 #                    attendance rule for one guest; the latest one wins.
 module Rfid
   class Correction < ApplicationRecord
     self.table_name = 'rfid_corrections'
 
-    KINDS = %w[manual_exit station_change manual_entry cert_override cert_override_revoked].freeze
+    KINDS = %w[manual_exit station_change manual_entry cert_override cert_override_revoked attendance_notice].freeze
 
     belongs_to :event
     belongs_to :actor, class_name: 'User', optional: true
@@ -41,7 +43,7 @@ module Rfid
         errors.add(:ticket, 'is required') if ticket.nil?
         errors.add(:base, 'entry_at is required') if entry_at.nil?
         errors.add(:base, 'entry must be before exit') if entry_at && exit_at && entry_at >= exit_at
-      elsif kind.in?(%w[cert_override cert_override_revoked])
+      elsif kind.in?(%w[cert_override cert_override_revoked attendance_notice])
         errors.add(:ticket, 'is required') if ticket.nil?
       else
         errors.add(:entry_observation, 'is required') if entry_observation.nil?

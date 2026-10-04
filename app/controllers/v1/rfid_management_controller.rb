@@ -7,8 +7,8 @@ module V1
     before_action :require_staff_session!
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
-                                             flow sessions eligibility session_attendees guest_visits display_activity]
-    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_entry grant_cert_override revoke_cert_override
+                                             flow sessions eligibility attendance_check session_attendees guest_visits display_activity]
+    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_entry notify_attendance_check grant_cert_override revoke_cert_override
                                                create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
                                               dismiss_anomalies destroy_anomalies]
@@ -327,6 +327,23 @@ module V1
       render json: { visit: report.visit_row(visit.reload) }, status: :ok
     end
 
+    # Who the gates may have missed, and the webhook that lets the event's
+    # receiver (SalesCatalyst) reach them on WhatsApp.
+    def attendance_check
+      render json: attendance_check_for(params[:ticket_type_ids]).summary, status: :ok
+    end
+
+    def notify_attendance_check
+      reasons = Array(params[:reasons]).map(&:to_s).uniq
+      if reasons.empty? || (reasons - ::Rfid::AttendanceCheck::REASONS).any?
+        return unprocessable("reasons must be from #{::Rfid::AttendanceCheck::REASONS.join(', ')}")
+      end
+      return unprocessable('This event has no webhook URL configured.') if @event.webhook_urls.empty?
+
+      render json: attendance_check_for(params[:ticket_type_ids]).notify!(reasons: reasons, actor: current_user),
+             status: :ok
+    end
+
     # Add a visit the gate never recorded (gate offline, sticker unread). With
     # no `exit_at` the guest is still inside and their next real exit closes it.
     # A correction, not a synthetic reading, so it survives every rebuild.
@@ -459,6 +476,12 @@ module V1
 
     def authorize_update!
       authorize @event, :update?
+    end
+
+    # `ids` nil means every ticket type; a list (even empty) narrows to it.
+    def attendance_check_for(ids)
+      ids = Array(ids).map(&:to_i) unless ids.nil?
+      ::Rfid::AttendanceCheck.new(@event, ticket_type_ids: ids)
     end
 
     def set_cert_override(kind, require_reason:)

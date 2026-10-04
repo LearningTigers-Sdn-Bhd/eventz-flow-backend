@@ -803,6 +803,29 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
+  describe 'attendance_check' do
+    it 'previews the groups and refuses to notify without a webhook url or valid reasons' do
+      create(:ticket, :paid, :checked_in, event: event, ticket_type: ticket_type, attendee_phone: '0111111111')
+      get "/v1/events/#{event.id}/rfid/attendance_check", headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('webhook_configured' => false)
+
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['never_detected'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      event.update!(webhook_url: 'https://hooks.example.com/a')
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['bogus'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post "/v1/events/#{event.id}/rfid/attendance_check/notify",
+           params: { reasons: ['never_detected'] }, headers: headers, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('sent' => 1)
+    end
+  end
+
   describe 'POST/DELETE eligibility/:ticket_id/override' do
     let(:guest) { create(:ticket, :paid, event: event) }
     let(:path) { "/v1/events/#{event.id}/rfid/eligibility/#{guest.id}/override" }
