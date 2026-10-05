@@ -53,6 +53,7 @@ RSpec.describe 'V1::Rfid admin actions', type: :request do
         [:patch, "#{root}/bindings/#{binding.id}", { tag_key: 'AABB' }],
         [:delete, "#{root}/bindings/#{binding.id}", {}],
         [:delete, "#{root}/visits/1", {}],
+        [:delete, "#{root}/guest_visits/1", {}],
         [:post, "#{root}/anomalies/dismiss", { all: true }],
         [:delete, "#{root}/anomalies", { all: true }]
       ]
@@ -163,6 +164,33 @@ RSpec.describe 'V1::Rfid admin actions', type: :request do
       foreign = Rfid::Visit.create!(event: other, entry_at: base, ticket_public_id: ticket.public_id)
 
       delete "#{root}/visits/#{foreign.id}", headers: headers, as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe 'DELETE guest visits' do
+    before { bind! }
+
+    it 'removes every visit of that guest only, keeping gate, binding and others' do
+      bind!(for_ticket: other_ticket, uid: 'AABBCCDD11223344')
+      read!('entry', base)
+      read!('exit', base + 1.hour)
+      read!('entry', base + 2.hours)
+      read!('entry', base, uid: 'AABBCCDD11223344')
+      expect(fresh.rfid_visits.count).to eq(3)
+
+      delete "#{root}/guest_visits/#{ticket.id}", headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body['deleted']).to eq(2)
+      expect(fresh.rfid_visits.sole.ticket_id).to eq(other_ticket.id)
+      expect(Rfid::Station.exists?(gate.id)).to be true
+      expect(fresh.rfid_bindings.count).to eq(2)
+    end
+
+    it 'answers 404 when the guest has no visits' do
+      delete "#{root}/guest_visits/#{ticket.id}", headers: headers, as: :json
 
       expect(response).to have_http_status(:not_found)
     end

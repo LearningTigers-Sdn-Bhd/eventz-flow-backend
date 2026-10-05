@@ -53,6 +53,7 @@ Rails.application.routes.draw do
       get 'display_activity', action: :display_activity
       post 'visits/:id/manual_exit', action: :manual_exit
       delete 'visits/:id', action: :destroy_visit
+      delete 'guest_visits/:ticket_id', action: :destroy_guest_visits
       post 'visits/manual_entry', action: :manual_entry
       get 'missed_scans', action: :missed_scans
       get 'flow', action: :flow

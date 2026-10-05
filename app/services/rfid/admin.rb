@@ -46,6 +46,21 @@ module Rfid
       end
     end
 
+    # Every visit of one guest: their accepted readings and manual entries.
+    # Declined or unknown readings stay (they belong to Anomalies), as do the
+    # station and the sticker binding. Returns how many visits went.
+    def delete_guest_visits!(ticket_id)
+      event.with_lock do
+        count = event.rfid_visits.where(ticket_id: ticket_id).count
+        raise Error.new('This guest has no visits.', status: :not_found) if count.zero?
+
+        event.rfid_corrections.where(kind: Visits::MANUAL_ENTRY, ticket_id: ticket_id).delete_all
+        remove_observations!(event.rfid_observations.where(ticket_id: ticket_id, outcome: 'accepted').pluck(:id))
+        Visits.rebuild!(event: event)
+        count
+      end
+    end
+
     # Hard delete. Earlier readings of that sticker are re-measured, so they
     # become unknown_tag.
     def delete_binding!(binding)
