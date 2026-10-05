@@ -31,6 +31,36 @@ module Rfid
       end
     end
 
+    # One visit and the readings it was built from: its entry and exit, plus
+    # any repeated entries the ticket made while it was open (left behind they
+    # would reappear as a new visit). A manual entry loses its correction too.
+    # The station and the sticker binding are untouched.
+    def delete_visit!(visit)
+      event.with_lock do
+        visit = event.rfid_visits.find_by(id: visit.id)
+        raise Error.new('Visit not found.', status: :not_found) if visit.nil?
+
+        event.rfid_corrections.where(id: visit.correction_id, kind: Visits::MANUAL_ENTRY).delete_all if visit.correction_id
+        remove_observations!(visit_observation_ids(visit))
+        Visits.rebuild!(event: event)
+      end
+    end
+
+    # Every visit of one guest: their accepted readings and manual entries.
+    # Declined or unknown readings stay (they belong to Anomalies), as do the
+    # station and the sticker binding. Returns how many visits went.
+    def delete_guest_visits!(ticket_id)
+      event.with_lock do
+        count = event.rfid_visits.where(ticket_id: ticket_id).count
+        raise Error.new('This guest has no visits.', status: :not_found) if count.zero?
+
+        event.rfid_corrections.where(kind: Visits::MANUAL_ENTRY, ticket_id: ticket_id).delete_all
+        remove_observations!(event.rfid_observations.where(ticket_id: ticket_id, outcome: 'accepted').pluck(:id))
+        Visits.rebuild!(event: event)
+        count
+      end
+    end
+
     # Hard delete. Earlier readings of that sticker are re-measured, so they
     # become unknown_tag.
     def delete_binding!(binding)
@@ -93,6 +123,16 @@ module Rfid
       raise Error.new('Some readings are not anomalies of this event.') if (wanted - all).any?
 
       wanted
+    end
+
+    def visit_observation_ids(visit)
+      ids = [visit.entry_observation_id, visit.exit_observation_id].compact
+      return ids if visit.ticket_id.nil?
+
+      span = event.rfid_observations.where(ticket_id: visit.ticket_id, outcome: 'accepted')
+                  .where(captured_at: visit.entry_at..)
+      span = span.where(captured_at: ..visit.exit_at) if visit.exit_at
+      ids | span.pluck(:id)
     end
 
     # Readings can be referenced by visits and manual-exit corrections; clear
