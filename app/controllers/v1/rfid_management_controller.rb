@@ -10,7 +10,7 @@ module V1
                                              flow sessions eligibility attendance_check session_attendees guest_visits display_activity]
     before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_entry notify_attendance_check grant_cert_override revoke_cert_override
                                                create_session update_session destroy_session]
-    before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding
+    before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding destroy_visit
                                               dismiss_anomalies destroy_anomalies]
 
     rescue_from ::Rfid::Admin::Error do |error|
@@ -417,6 +417,14 @@ module V1
       return render json: { error: 'Binding not found' }, status: :not_found if binding.nil?
 
       admin.delete_binding!(binding)
+      render json: { deleted: true }, status: :ok
+    end
+
+    def destroy_visit
+      visit = @event.rfid_visits.find_by(id: params[:id])
+      return render json: { error: 'Visit not found' }, status: :not_found if visit.nil?
+
+      admin.delete_visit!(visit)
       render json: { deleted: true }, status: :ok
     end
 

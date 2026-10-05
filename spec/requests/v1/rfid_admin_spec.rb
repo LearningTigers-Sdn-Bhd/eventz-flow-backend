@@ -52,6 +52,7 @@ RSpec.describe 'V1::Rfid admin actions', type: :request do
         [:delete, "#{root}/stations/#{gate.id}", {}],
         [:patch, "#{root}/bindings/#{binding.id}", { tag_key: 'AABB' }],
         [:delete, "#{root}/bindings/#{binding.id}", {}],
+        [:delete, "#{root}/visits/1", {}],
         [:post, "#{root}/anomalies/dismiss", { all: true }],
         [:delete, "#{root}/anomalies", { all: true }]
       ]
@@ -105,6 +106,65 @@ RSpec.describe 'V1::Rfid admin actions', type: :request do
       expect(Rfid::Binding.exists?(binding.id)).to be false
       expect(fresh.rfid_observations.sole.outcome).to eq('unknown_tag')
       expect(fresh.rfid_visits.count).to eq(0)
+    end
+  end
+
+  describe 'DELETE visit' do
+    before { bind! }
+
+    it 'removes one visit and its readings, keeps the gate, sticker and other visits' do
+      read!('entry', base)
+      read!('exit', base + 1.hour)
+      read!('entry', base + 2.hours)
+      first = fresh.rfid_visits.closed.sole
+
+      delete "#{root}/visits/#{first.id}", headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(fresh.rfid_visits.sole.entry_at).to eq(base + 2.hours)
+      expect(fresh.rfid_observations.count).to eq(1)
+      expect(Rfid::Station.exists?(gate.id)).to be true
+      expect(fresh.rfid_bindings.count).to eq(1)
+    end
+
+    it 'does not let a repeated entry inside the visit become a new visit' do
+      read!('entry', base)
+      read!('entry', base + 10.minutes)
+      visit = fresh.rfid_visits.sole
+
+      delete "#{root}/visits/#{visit.id}", headers: headers, as: :json
+
+      expect(fresh.rfid_visits.count).to eq(0)
+      expect(fresh.rfid_observations.count).to eq(0)
+    end
+
+    it 'removes a manual-exit correction and a manual entry' do
+      read!('entry', base)
+      visit = fresh.rfid_visits.sole
+      post "#{root}/visits/#{visit.id}/manual_exit", params: { reason: 'left', at: (base + 1.hour).iso8601 },
+                                                     headers: headers, as: :json
+      expect(fresh.rfid_visits.closed.count).to eq(1)
+
+      delete "#{root}/visits/#{visit.id}", headers: headers, as: :json
+
+      expect(fresh.rfid_visits.count).to eq(0)
+      expect(fresh.rfid_corrections.count).to eq(0)
+
+      post "#{root}/visits/manual_entry", params: { ticket_public_id: ticket.public_id, reason: 'gate down',
+                                                    entry_at: base.iso8601 }, headers: headers, as: :json
+      manual = fresh.rfid_visits.sole
+      delete "#{root}/visits/#{manual.id}", headers: headers, as: :json
+      expect(fresh.rfid_visits.count).to eq(0)
+      expect(fresh.rfid_corrections.where(kind: 'manual_entry').count).to eq(0)
+    end
+
+    it 'answers 404 for a visit of another event' do
+      other = create(:event, use_api_access: true)
+      foreign = Rfid::Visit.create!(event: other, entry_at: base, ticket_public_id: ticket.public_id)
+
+      delete "#{root}/visits/#{foreign.id}", headers: headers, as: :json
+
+      expect(response).to have_http_status(:not_found)
     end
   end
 
