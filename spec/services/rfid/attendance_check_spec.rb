@@ -92,4 +92,11 @@ RSpec.describe Rfid::AttendanceCheck do
     again = described_class.new(event, now: now).notify!(reasons: %w[never_detected], actor: actor)
     expect(again).to eq(sent: 0, skipped_no_phone: 1, skipped_recent: 1)
   end
+
+  it 'lets a notified guest be hard-deleted, taking its notice with it' do
+    check.notify!(reasons: %w[never_detected], actor: actor)
+
+    expect { never.delete }.not_to raise_error
+    expect(event.rfid_corrections.where(kind: 'attendance_notice', ticket_id: never.id)).to be_empty
+  end
 end
