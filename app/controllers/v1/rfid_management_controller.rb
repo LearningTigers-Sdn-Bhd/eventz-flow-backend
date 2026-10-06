@@ -6,7 +6,7 @@ module V1
   class RfidManagementController < ApplicationController
     before_action :require_staff_session!
     before_action :set_event
-    before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
+    before_action :authorize_read!, only: %i[summary stations bindings visits report_xlsx anomalies missed_scans
                                              flow sessions eligibility attendance_check session_attendees guest_visits display_activity]
     before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_exit_all undo_manual_exit_all manual_entry notify_attendance_check grant_cert_override revoke_cert_override
                                                create_session update_session destroy_session]
@@ -75,10 +75,10 @@ module V1
       }, status: :ok
     end
 
-    def visits_csv
-      send_data report.visits_csv,
-                filename: "rfid-visits-event-#{@event.id}.csv",
-                type: 'text/csv; charset=utf-8',
+    def report_xlsx
+      send_data ::Rfid::ReportWorkbook.new(@event).call,
+                filename: "rfid-report-event-#{@event.id}.xlsx",
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 disposition: 'attachment'
     end
 

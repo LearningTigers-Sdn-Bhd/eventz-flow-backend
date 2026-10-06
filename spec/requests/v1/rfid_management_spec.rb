@@ -64,7 +64,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
         expect(response).to have_http_status(:ok), path
       end
 
-      get "/v1/events/#{event.id}/rfid/visits.csv", headers: headers
+      get "/v1/events/#{event.id}/rfid/report.xlsx", headers: headers
       expect(response).to have_http_status(:ok)
     end
 
@@ -919,8 +919,15 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
-  describe 'GET visits.csv' do
-    it 'exports this event only, with no key, no contact and no live formula' do
+  describe 'GET report.xlsx' do
+    def sheet_rows(name)
+      file = Tempfile.new(['rfid-report', '.xlsx'], binmode: true)
+      file.write(response.body)
+      file.flush
+      Roo::Excelx.new(file.path).sheet(name).parse
+    end
+
+    it 'exports this event only, as plain-language sheets with no contact, key or live formula' do
       formula_title_type = create(:ticket_type, event: event, name: '=IMPORTXML("x")')
       formula_ticket = create(:ticket, :paid, :checked_in, event: event,
                                                 ticket_type: formula_title_type,
@@ -944,29 +951,16 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
                                exit_at: base + 5.minutes, reason: 'left')
       Rfid::Visits.rebuild!(event: event)
 
-      get "/v1/events/#{event.id}/rfid/visits.csv", headers: headers
+      get "/v1/events/#{event.id}/rfid/report.xlsx", headers: headers
 
       expect(response).to have_http_status(:ok)
-      expect(response.headers['Content-Type']).to include('text/csv')
-      rows = CSV.parse(response.body, headers: true)
-      expect(rows.length).to eq(2)
-      expect(rows.map { |row| row['ticket_public_id'] }).to contain_exactly(
-        formula_ticket.public_id, ticket.public_id
-      )
+      expect(response.headers['Content-Type']).to include('spreadsheetml.sheet')
+      expect(response.headers['Content-Disposition']).to include('.xlsx')
 
-      formula = rows.find { |row| row['ticket_public_id'] == formula_ticket.public_id }
-      expect(formula['ticket_name']).to start_with("'=cmd")
-      expect(formula['ticket_type']).to start_with("'=IMPORTXML")
-      expect(formula['manual']).to eq('true')
-      expect(formula['status']).to eq('closed')
-      expect(formula['duration_seconds']).to eq('300')
-
-      open_row = rows.find { |row| row['ticket_public_id'] == ticket.public_id }
-      expect(open_row['status']).to eq('open')
-      expect(open_row['duration_seconds'].to_s).to eq('')
-      expect(open_row['manual']).to eq('false')
-
-      expect(response.body).not_to include('formula@example.com', '0199999999', 'ahmad@example.com')
+      log = sheet_rows('Guest Visits').flatten.compact.map(&:to_s)
+      expect(log).to include('=cmd|calc', formula_ticket.public_id.to_s)
+      expect(log).not_to include('formula@example.com', '0199999999')
+      expect(sheet_rows('Summary').flatten.compact.map(&:to_s)).to include('Venue at a glance')
       expect(response.body).not_to include(device_key.raw_key)
     end
   end

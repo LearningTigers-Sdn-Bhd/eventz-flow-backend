@@ -37,8 +37,7 @@ Rails.application.routes.draw do
 
     # --- RfiDex staff API ---------------------------------------------------
     # Signed-in users only (never API keys), same event path the panel uses.
-    # `visits.csv` is declared before `visits` so the file name is not read as
-    # a format; both sit under the literal `/v1/events/:event_id/rfid` prefix.
+    # `report.xlsx` sits under the literal `/v1/events/:event_id/rfid` prefix.
     scope 'events/:event_id/rfid', controller: 'rfid_management', as: 'event_rfid' do
       get 'summary', action: :summary
       get 'stations', action: :stations
@@ -47,7 +46,7 @@ Rails.application.routes.draw do
       get 'bindings', action: :bindings
       patch 'bindings/:id', action: :update_binding
       delete 'bindings/:id', action: :destroy_binding
-      get 'visits.csv', action: :visits_csv
+      get 'report.xlsx', action: :report_xlsx
       get 'guest_visits', action: :guest_visits
       get 'visits', action: :visits
       get 'display_activity', action: :display_activity

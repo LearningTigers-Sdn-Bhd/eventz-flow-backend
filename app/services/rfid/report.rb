@@ -1,22 +1,10 @@
-require 'csv'
-
 module Rfid
-  # Event-scoped staff reads: the live summary, the raw device history and the
-  # visit CSV.
+  # Event-scoped staff reads: the live summary and the raw device history.
   #
   # Everything is read from the current adjudication and the visit projection.
   # Nothing here re-derives facts for the device API or writes anything, and no
   # full contact value or key ever appears in a row.
   class Report
-    CSV_HEADERS = %w[
-      ticket_public_id ticket_name ticket_type entry_at exit_at duration_seconds
-      status manual anomalies entry_station exit_station
-    ].freeze
-
-    # A cell that starts like a formula (or with a tab/newline) is prefixed with
-    # an apostrophe so a spreadsheet shows the text instead of evaluating it.
-    FORMULA_LEAD = /\A[=+\-@\t\r\n]/.freeze
-
     def initialize(event)
       @event = event
     end
@@ -281,14 +269,6 @@ module Rfid
       visits.map { |visit| visit_row(visit) }
     end
 
-    def visits_csv
-      CSV.generate(headers: CSV_HEADERS, write_headers: true) do |csv|
-        visits_scope.each do |visit|
-          csv << visit_row(visit).values_at(*CSV_HEADERS.map(&:to_sym)).map { |cell| cell_for(cell) }
-        end
-      end
-    end
-
     # Entries, exits and the running "inside" figure per time bucket, built
     # from the visit projection. Buckets are 15 min for a one-day event, hourly
     # for longer ones.
@@ -366,12 +346,6 @@ module Rfid
 
     def visit_ticket_ids
       event.rfid_visits.where.not(ticket_id: nil).select(:ticket_id)
-    end
-
-    def cell_for(value)
-      text = value.is_a?(Array) ? value.join(' ') : value.to_s
-      text = "'#{text}" if text.match?(FORMULA_LEAD)
-      text
     end
   end
 end

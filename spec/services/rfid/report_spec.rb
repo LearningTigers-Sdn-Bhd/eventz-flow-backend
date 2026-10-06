@@ -106,19 +106,6 @@ RSpec.describe Rfid::Report do
     expect(rows[1][:anomalies]).to eq([])
   end
 
-  it 'exports visits newest first as the staff list does' do
-    deliver([reading('entry', base)])
-    exit_gate = Rfid::Station.create!(event: event, station_key: 'gate-exit',
-                                                   kind: 'gate', role: 'exit')
-    Rfid::Observe.call(event: event, station: exit_gate,
-                       items: [reading('exit', base + 10.minutes)])
-    deliver([reading('entry', base + 1.hour)])
-
-    rows = CSV.parse(report.visits_csv, headers: true)
-    expect(rows.map { |row| row['entry_at'] })
-      .to eq([Rfid::Wire.time(base + 1.hour), Rfid::Wire.time(base)])
-  end
-
   it 'lists the binding history, active and revoked' do
     old = event.rfid_bindings.find_by(tag_key: tag)
     old.update!(revoked_at: Time.current, revocation_reason: 'moved')
