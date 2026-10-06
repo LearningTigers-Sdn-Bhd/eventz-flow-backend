@@ -229,6 +229,18 @@ RSpec.describe 'V1::Rfid reads', type: :request do
       expect(body['revoked_tag_keys']).to eq(['AABBCCDD'])
     end
 
+    it 'gzips the snapshot for a client that accepts it, and only then' do
+      get '/v1/rfid/cache', headers: headers.merge('Accept-Encoding' => 'gzip')
+
+      expect(response.headers['Content-Encoding']).to eq('gzip')
+      plain = ActiveSupport::Gzip.decompress(response.body)
+      expect(JSON.parse(plain).keys).to contain_exactly('tickets', 'bindings', 'revoked_tag_keys',
+                                                        'server_time')
+
+      get '/v1/rfid/cache', headers: headers.merge('Accept-Encoding' => 'identity')
+      expect(response.headers['Content-Encoding']).to be_nil
+    end
+
     it 'never carries a contact or a hint' do
       get '/v1/rfid/cache', headers: headers
 
