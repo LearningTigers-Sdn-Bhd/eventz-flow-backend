@@ -51,6 +51,8 @@ Rails.application.routes.draw do
       get 'guest_visits', action: :guest_visits
       get 'visits', action: :visits
       get 'display_activity', action: :display_activity
+      post 'visits/manual_exit_all', action: :manual_exit_all
+      delete 'visits/manual_exit_all', action: :undo_manual_exit_all
       post 'visits/:id/manual_exit', action: :manual_exit
       delete 'visits/:id', action: :destroy_visit
       delete 'guest_visits/:ticket_id', action: :destroy_guest_visits

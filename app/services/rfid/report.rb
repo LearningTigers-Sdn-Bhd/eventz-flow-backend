@@ -24,6 +24,8 @@ module Rfid
     attr_reader :event
 
     MISSED_REASONS = %w[no_tag no_read].freeze
+    # An open visit older than this is probably a guest who left untapped.
+    STALE_VISIT_HOURS = 6
 
     # `ticket_type_id` narrows the attendance figures (registered, checked in,
     # gate-scanned, inside, outside, missed scans) to one ticket type. Anomalies
@@ -41,6 +43,10 @@ module Rfid
       {
         headcount: open_visits.distinct.count(:ticket_id),
         open_visits: open_visits.count,
+        likely_gone: open_visits.where(entry_at: ...STALE_VISIT_HOURS.hours.ago).count,
+        stale_hours: STALE_VISIT_HOURS,
+        unmatched_exits: anomaly_observations.where('anomalies @> ?::jsonb', [Visits::UNMATCHED_EXIT].to_json).count,
+        last_bulk_exit: last_bulk_exit,
         anomaly_count: anomaly_observations.count + anomaly_visits.count,
         last_observed_at: Wire.time(event.rfid_observations.maximum(:captured_at)),
         registered: registered,
@@ -55,6 +61,20 @@ module Rfid
         },
         ticket_types: event.ticket_types.order(:name).map { |type| { id: type.id, name: type.name } }
       }
+    end
+
+    # The newest "mark all as exited" sweep, so staff can undo a mistaken one.
+    def last_bulk_exit
+      latest = event.rfid_corrections.where(kind: 'manual_exit').where("details ->> 'batch' IS NOT NULL")
+                    .order(:id).last
+      return nil if latest.nil?
+
+      batch = latest.details['batch']
+      { batch: batch, at: Wire.time(latest.exit_at), closed: bulk_exit_scope(batch).count }
+    end
+
+    def bulk_exit_scope(batch)
+      event.rfid_corrections.where(kind: 'manual_exit').where("details ->> 'batch' = ?", batch)
     end
 
     # Checked in at the desk but never read by a gate. `no_tag`: no sticker is

@@ -8,7 +8,7 @@ module V1
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits visits_csv anomalies missed_scans
                                              flow sessions eligibility attendance_check session_attendees guest_visits display_activity]
-    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_entry notify_attendance_check grant_cert_override revoke_cert_override
+    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_exit_all undo_manual_exit_all manual_entry notify_attendance_check grant_cert_override revoke_cert_override
                                                create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding destroy_visit destroy_guest_visits
                                               dismiss_anomalies destroy_anomalies]
@@ -325,6 +325,57 @@ module V1
       end
 
       render json: { visit: report.visit_row(visit.reload) }, status: :ok
+    end
+
+    # End-of-day sweep: close every open visit (optionally one ticket type) at
+    # one time, one correction each, so the headcount stops counting guests
+    # who left without tapping out. Manual-entry visits have no entry reading
+    # to correct against and are left for their own exit.
+    def manual_exit_all
+      reason = params[:reason].to_s.strip
+      return unprocessable('A reason is required.') if reason.empty?
+
+      at = parse_time(params[:at])
+      return unprocessable('at must be an RFC3339 timestamp') if at.nil?
+      return unprocessable('The time cannot be in the future.') if at > 1.minute.from_now
+
+      closed = 0
+      batch = SecureRandom.uuid
+      @event.with_lock do
+        visits = @event.rfid_visits.open.where.not(entry_observation_id: nil).where(entry_at: ..at)
+        type_id = params[:ticket_type_id].presence
+        visits = visits.where(ticket_id: @event.tickets.where(ticket_type_id: type_id).select(:id)) if type_id
+        visits = visits.to_a
+        visits.each do |visit|
+          ::Rfid::Correction.create!(
+            event: @event, actor: current_user, entry_observation_id: visit.entry_observation_id,
+            kind: 'manual_exit', exit_at: at, reason: reason,
+            details: { 'entry_observation_id' => visit.entry_observation_id, 'batch' => batch }
+          )
+        end
+        ::Rfid::Visits.rebuild!(event: @event, ticket_ids: visits.map(&:ticket_id).compact.uniq)
+        closed = visits.size
+      end
+
+      render json: { closed: closed }, status: :ok
+    end
+
+    # Takes back the newest sweep: its corrections go, and those guests are
+    # rebuilt as inside again (unless a real gate exit has closed them since).
+    def undo_manual_exit_all
+      reopened = 0
+      @event.with_lock do
+        batch = report.last_bulk_exit&.dig(:batch)
+        return unprocessable('There is no bulk exit to undo.') if batch.nil?
+
+        corrections = report.bulk_exit_scope(batch)
+        ticket_ids = @event.rfid_observations.where(id: corrections.select(:entry_observation_id))
+                           .distinct.pluck(:ticket_id).compact
+        reopened = corrections.delete_all
+        ::Rfid::Visits.rebuild!(event: @event, ticket_ids: ticket_ids)
+      end
+
+      render json: { reopened: reopened }, status: :ok
     end
 
     # Who the gates may have missed, and the webhook that lets the event's
