@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # eventz_flow_api/app/mailers/booking_mailer.rb
 class BookingMailer < ApplicationMailer
   default from: 'EventzFlow <notifications@updates.eventzflow.com>'
@@ -11,7 +13,12 @@ class BookingMailer < ApplicationMailer
 
     Rails.logger.info "Sending confirmation email for event_id #{event_id}. Date: #{@booking_date}, Time: #{@booking_time}"
 
-    mail(to: @booking['email'], subject: "Booking Confirmation for #{@event_title}")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Booking Confirmation for #{@event_title}"
+    )
   end
 
   # Sent instead of confirmation_email when the event requires approval — the
@@ -23,7 +30,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @booking['email'], subject: "Booking Request Received for #{@event_title} — Awaiting Approval")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Booking Request Received for #{@event_title} — Awaiting Approval"
+    )
   end
 
   # Sent once a host/admin approves a previously pending booking.
@@ -34,7 +46,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Is Confirmed")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Your Booking for #{@event_title} Is Confirmed"
+    )
   end
 
   def host_confirmation_email(booking_data, event_title, event_id, host)
@@ -50,7 +67,12 @@ class BookingMailer < ApplicationMailer
                 "New Booking: #{@booking['name']} for #{@event_title}"
               end
 
-    mail(to: @host.email, subject: subject)
+    mail(
+      to: @host.email,
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: subject
+    )
   end
 
   def reschedule_email(booking_data, event_title, event_id, old_date, old_time)
@@ -62,7 +84,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Has Been Rescheduled")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Your Booking for #{@event_title} Has Been Rescheduled"
+    )
   end
 
   def host_reschedule_email(booking_data, event_title, event_id, host, old_date, old_time)
@@ -74,7 +101,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_datetime
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @host.email, subject: "Booking Rescheduled: #{@booking['name']} for #{@event_title}")
+    mail(
+      to: @host.email,
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Booking Rescheduled: #{@booking['name']} for #{@event_title}"
+    )
   end
 
   def cancellation_email(booking_data, event_title, event_id)
@@ -83,7 +115,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_datetime
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @booking['email'], subject: "Your Booking for #{@event_title} Has Been Cancelled")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Your Booking for #{@event_title} Has Been Cancelled"
+    )
   end
 
   def host_cancellation_email(booking_data, event_title, event_id, host)
@@ -93,7 +130,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_datetime
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @host.email, subject: "Booking Cancelled: #{@booking['name']} for #{@event_title}")
+    mail(
+      to: @host.email,
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Booking Cancelled: #{@booking['name']} for #{@event_title}"
+    )
   end
 
   def session_reminder_email(booking_data, event_title, event_id)
@@ -103,7 +145,12 @@ class BookingMailer < ApplicationMailer
     _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
 
-    mail(to: @booking['email'], subject: "Reminder: Your session for #{@event_title} starts in 1 hour")
+    mail(
+      to: @booking['email'],
+      from: _bm_sender_from(event_id),
+      reply_to: _bm_reply_to(event_id),
+      subject: "Reminder: Your session for #{@event_title} starts in 1 hour"
+    )
   end
 
   def host_daily_overview_email(host, bookings, date)
@@ -119,22 +166,85 @@ class BookingMailer < ApplicationMailer
     end
 
     session_word = @session_count == 1 ? "session" : "sessions"
-    mail(to: @host.email, subject: "You have #{@session_count} #{session_word} today (#{date.strftime('%A, %B %d')})")
+    event = bookings.first&.business_matching_session&.event
+    mail(
+      to: @host.email,
+      from: _bm_sender_from(event),
+      reply_to: _bm_reply_to(event),
+      subject: "You have #{@session_count} #{session_word} today (#{date.strftime('%A, %B %d')})"
+    )
   end
 
-  def host_invitation_email(recipient_email, event_title, session_title, invite_url, inviter_name)
-    @event_title = event_title
+  def host_invitation_email(recipient_email, event_or_id_or_title, session_title, invite_url, inviter_name, custom_message = nil)
+    event = _resolve_event(event_or_id_or_title)
+    @event_title = event&.title.presence || event_or_id_or_title.to_s
     @session_title = session_title
     @invite_url = invite_url
     @inviter_name = inviter_name
+    @sender_display_name = _bm_sender_display_name(event)
+
+    email_setting = event&.event_email_setting
+
+    raw_message = custom_message.presence || email_setting&.business_matching_host_invite_message.presence
+    if raw_message.present?
+      @custom_message = raw_message
+                        .gsub('{{event_name}}', @event_title.to_s)
+                        .gsub('{{session_title}}', @session_title.to_s)
+                        .gsub('{{inviter_name}}', @inviter_name.presence || 'The event organizer')
+                        .gsub('{{invite_url}}', @invite_url.to_s)
+    end
+
+    raw_subject = email_setting&.business_matching_host_invite_subject.presence ||
+                  "You've been invited as a Business Host for #{@event_title}"
+    subject_text = raw_subject
+                   .gsub('{{event_name}}', @event_title.to_s)
+                   .gsub('{{session_title}}', @session_title.to_s)
+                   .gsub('{{inviter_name}}', @inviter_name.presence || 'The event organizer')
 
     mail(
       to: recipient_email,
-      subject: "You've been invited as a Business Host for #{@event_title}"
+      from: _bm_sender_from(event),
+      reply_to: _bm_reply_to(event),
+      subject: subject_text
     )
   end
 
   private
+
+  def _resolve_event(event_or_id_or_title)
+    if event_or_id_or_title.is_a?(Event)
+      event_or_id_or_title
+    elsif event_or_id_or_title.is_a?(Integer) || event_or_id_or_title.to_s.match?(/\A\d+\z/)
+      Event.find_by(id: event_or_id_or_title)
+    else
+      Event.find_by(title: event_or_id_or_title)
+    end
+  end
+
+  def _bm_sender_from(event_or_id)
+    event = event_or_id.is_a?(Event) ? event_or_id : Event.find_by(id: event_or_id)
+    email_setting = event&.event_email_setting
+    name = email_setting&.business_matching_sender_name.presence ||
+           email_setting&.sender_name.presence ||
+           event&.title.presence ||
+           'EventzFlow'
+    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    format_sender(name, address)
+  end
+
+  def _bm_reply_to(event_or_id)
+    event = event_or_id.is_a?(Event) ? event_or_id : Event.find_by(id: event_or_id)
+    event&.event_email_setting&.contact_email.presence
+  end
+
+  def _bm_sender_display_name(event_or_id)
+    event = event_or_id.is_a?(Event) ? event_or_id : Event.find_by(id: event_or_id)
+    email_setting = event&.event_email_setting
+    email_setting&.business_matching_sender_name.presence ||
+      email_setting&.sender_name.presence ||
+      event&.title.presence ||
+      'EventzFlow'
+  end
 
   def _assign_booking_datetime
     raw_date = @booking['booking_date'] || @booking['date']

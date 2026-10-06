@@ -145,4 +145,63 @@ RSpec.describe BookingMailer, type: :mailer do
       expect(body).to include('02:00 PM')
     end
   end
+
+  describe '#host_invitation_email' do
+    let(:recipient_email) { 'newhost@example.com' }
+    let(:invite_url) { 'https://eventzflow.com/invite/host?token=xyz' }
+
+    context 'with default settings' do
+      let(:mail) do
+        described_class.host_invitation_email(
+          recipient_email, event.id, session.title, invite_url, 'Organizer John'
+        )
+      end
+
+      it 'sends to the recipient with default subject and event title as sender display' do
+        expect(mail.to).to eq([recipient_email])
+        expect(mail.subject).to eq("You've been invited as a Business Host for #{event.title}")
+        expect(mail.from).to eq(['notifications@updates.eventzflow.com'])
+        expect(mail.header['From'].to_s).to include(event.title)
+        expect(mail.body.encoded).to include('Organizer John')
+        expect(mail.body.encoded).to include('As a Business Host, you can set up your profile')
+      end
+    end
+
+    context 'with custom business matching email settings' do
+      before do
+        event.create_event_email_setting!(
+          sender_name: 'Regular Event Secretariat',
+          business_matching_sender_name: 'Event Secretariat B2B',
+          business_matching_host_invite_subject: 'Special B2B Host Invitation for {{event_name}} ({{session_title}})',
+          business_matching_host_invite_message: 'Welcome {{inviter_name}} invites you. Please join us at {{event_name}}.'
+        )
+      end
+
+      let(:mail) do
+        described_class.host_invitation_email(
+          recipient_email, event.id, session.title, invite_url, 'Organizer John'
+        )
+      end
+
+      it 'uses business_matching_sender_name instead of regular sender_name' do
+        expect(mail.header['From'].to_s).to include('Event Secretariat B2B')
+        expect(mail.header['From'].to_s).not_to include('Regular Event Secretariat')
+      end
+
+      it 'interpolates placeholders in custom subject' do
+        expect(mail.subject).to eq("Special B2B Host Invitation for #{event.title} (#{session.title})")
+      end
+
+      it 'interpolates placeholders in custom message body' do
+        expect(mail.body.encoded).to include("Welcome Organizer John invites you. Please join us at #{event.title}.")
+      end
+
+      it 'prefers ad-hoc custom message over saved template when provided' do
+        adhoc_mail = described_class.host_invitation_email(
+          recipient_email, event.id, session.title, invite_url, 'Organizer John', 'Custom one-off note for you!'
+        )
+        expect(adhoc_mail.body.encoded).to include('Custom one-off note for you!')
+      end
+    end
+  end
 end

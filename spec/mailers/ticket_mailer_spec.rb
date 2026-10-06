@@ -151,6 +151,41 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(free_mail.body.encoded).not_to include('Payment Receipt')
       expect(free_mail.bcc.to_a).to include('eventpayment@eventzflow.com')
     end
+
+    it 'uses standard sender_name and never uses business_matching_sender_name' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk',
+        business_matching_sender_name: 'Event Secretariat B2B'
+      )
+
+      expect(mail.header['From'].to_s).to include('Main Registration Desk')
+      expect(mail.header['From'].to_s).not_to include('Event Secretariat B2B')
+    end
+  end
+
+  describe '#business_matching_email' do
+    let(:event) { create(:event, title: 'Test Event') }
+    let(:ticket_type) { create(:ticket_type, event: event, name: 'VIP') }
+    let(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, attendee_name: 'John', attendee_email: 'john@example.com') }
+    let(:mail) { described_class.business_matching_email(ticket) }
+
+    it 'uses business_matching_sender_name when present' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk',
+        business_matching_sender_name: 'Event Secretariat B2B'
+      )
+
+      expect(mail.header['From'].to_s).to include('Event Secretariat B2B')
+      expect(mail.header['From'].to_s).not_to include('Main Registration Desk')
+    end
+
+    it 'falls back to sender_name when business_matching_sender_name is not set' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk'
+      )
+
+      expect(mail.header['From'].to_s).to include('Main Registration Desk')
+    end
   end
 
   describe '#group_confirmation_email' do

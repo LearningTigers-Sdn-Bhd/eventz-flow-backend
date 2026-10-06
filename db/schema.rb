@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_05_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_06_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -375,6 +375,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_05_000000) do
     t.jsonb "disabled_categories", default: [], null: false
     t.jsonb "business_matching_ticket_type_ids", default: [], null: false
     t.boolean "thank_you_include_feedback", default: false, null: false
+    t.string "business_matching_sender_name"
+    t.string "business_matching_host_invite_subject"
+    t.text "business_matching_host_invite_message"
     t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
 
