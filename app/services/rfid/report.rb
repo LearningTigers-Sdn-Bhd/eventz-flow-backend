@@ -132,7 +132,9 @@ module Rfid
     end
 
     def visits_scope
-      event.rfid_visits.includes(ticket: :ticket_type).order(entry_at: :desc, id: :desc)
+      event.rfid_visits.includes(ticket: :ticket_type, entry_observation: :station,
+                                 exit_observation: :station)
+           .order(entry_at: :desc, id: :desc)
     end
 
     DISPLAY_MODES = %w[in out both].freeze
