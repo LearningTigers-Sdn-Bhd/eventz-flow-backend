@@ -742,6 +742,62 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
+  describe 'POST visits/manual_exit_all' do
+    let(:path) { "/v1/events/#{event.id}/rfid/visits/manual_exit_all" }
+
+    before { bind_via_device(device_key) }
+
+    it 'closes every open visit with one correction each and survives a rebuild' do
+      observe_via_device(device_key, [reading('entry', base)])
+      visit = event.rfid_visits.open.sole
+
+      post path, params: { at: (base + 30.minutes).iso8601(6), reason: 'hall empty' },
+                 headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body).to eq('closed' => 1)
+      expect(visit.reload).to have_attributes(exit_at: base + 30.minutes, manual: true)
+      expect(Rfid::Correction.sole).to have_attributes(kind: 'manual_exit', actor: owner)
+
+      Rfid::Visits.rebuild!(event: event)
+      expect(event.rfid_visits.open.count).to eq(0)
+
+      post path, params: { at: (base + 31.minutes).iso8601(6), reason: 'again' }, headers: headers, as: :json
+      expect(body).to eq('closed' => 0)
+    end
+
+    it 'reports the sweep in the summary and undoes it' do
+      observe_via_device(device_key, [reading('entry', base)])
+
+      post path, params: { at: (base + 30.minutes).iso8601(6), reason: 'hall empty' }, headers: headers, as: :json
+      get "/v1/events/#{event.id}/rfid/summary", headers: headers
+      expect(body['last_bulk_exit']).to include('closed' => 1)
+
+      delete path, headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(body).to eq('reopened' => 1)
+      expect(event.rfid_visits.open.count).to eq(1)
+      expect(Rfid::Correction.count).to eq(0)
+
+      delete path, headers: headers
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'counts stale open visits and unmatched exits in the summary' do
+      observe_via_device(device_key, [reading('entry', base)])
+      get "/v1/events/#{event.id}/rfid/summary", headers: headers
+      expect(body).to include('likely_gone' => 1, 'stale_hours' => 6, 'unmatched_exits' => 0)
+    end
+
+    it 'needs a reason and a time that is not in the future' do
+      post path, params: { at: base.iso8601(6), reason: ' ' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post path, params: { at: 1.hour.from_now.iso8601, reason: 'x' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
   describe 'POST visits/manual_entry' do
     let(:guest) { create(:ticket, :paid, event: event) }
     let(:path) { "/v1/events/#{event.id}/rfid/visits/manual_entry" }
