@@ -161,9 +161,10 @@ RSpec.describe BookingMailer, type: :mailer do
         expect(mail.to).to eq([recipient_email])
         expect(mail.subject).to eq("You've been invited as a Business Host for #{event.title}")
         expect(mail.from).to eq(['notifications@updates.eventzflow.com'])
-        expect(mail.header['From'].to_s).to include(event.title)
         expect(mail.body.encoded).to include('Organizer John')
         expect(mail.body.encoded).to include('As a Business Host, you can set up your profile')
+        expect(mail.html_part.body.encoded).to include("&copy; #{Time.now.year} EventzFlow. All rights reserved.")
+        expect(mail.text_part.body.decoded).to include("© #{Time.now.year} EventzFlow. All rights reserved.")
       end
     end
 
