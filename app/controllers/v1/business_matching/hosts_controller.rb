@@ -435,14 +435,19 @@ module V1
         end
 
         ActiveRecord::Base.transaction do
-          # 1. Ensure general event access via EventAssignment
+          # 1. Auto-verify the host's email upon accepting the invitation if not already verified
+          unless current_user.email_verified?
+            current_user.update!(email_verified_at: Time.current)
+          end
+
+          # 2. Ensure general event access via EventAssignment
           EventAssignment.find_or_create_by!(
             user: current_user,
             event: event,
             role: :business_host
           )
 
-          # 2. Create the specific session assignment
+          # 3. Create the specific session assignment
           BusinessHostAssignment.find_or_create_by!(
             user: current_user,
             event: event,
