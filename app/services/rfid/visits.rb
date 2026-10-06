@@ -16,20 +16,29 @@ module Rfid
 
     # Re-measure the readings the given filters touch and rebuild the
     # projection once. Called after a binding, a check-in or a correction.
+    #
+    # Only the tickets whose readings were touched (the one named, plus any a
+    # re-measured reading moved from or to) are rebuilt, so a binding or
+    # check-in costs the same however large the event's history is.
     def self.reconcile_locked!(event:, tag_key: nil, ticket_id: nil)
-      refresh_locked!(event: event, tag_keys: [tag_key].compact, ticket_ids: [ticket_id].compact)
-      rebuild!(event: event)
+      moved = refresh_locked!(event: event, tag_keys: [tag_key].compact,
+                              ticket_ids: [ticket_id].compact)
+      rebuild!(event: event, ticket_ids: ([ticket_id] + moved).compact.uniq)
     end
 
+    # Returns the ticket ids of every reading that changed meaning, old and
+    # new, so the caller can rebuild exactly those timelines.
     def self.refresh_locked!(event:, tag_keys: [], ticket_ids: [])
-      return if tag_keys.empty? && ticket_ids.empty?
+      return [] if tag_keys.empty? && ticket_ids.empty?
 
       scopes = []
       scopes << event.rfid_observations.where(tag_key: tag_keys) if tag_keys.any?
       scopes << event.rfid_observations.where(ticket_id: ticket_ids) if ticket_ids.any?
+      moved = []
       scopes.reduce { |left, right| left.or(right) }.find_each do |observation|
-        refresh(observation, event)
+        moved.concat(refresh(observation, event))
       end
+      moved.compact.uniq
     end
 
     # Only the readings a staff correction explicitly named.
@@ -41,24 +50,37 @@ module Rfid
 
     # Re-derive one reading's current meaning. Duplicate deliveries keep their
     # outcome: a duplicate is a fact about the delivery, not about the binding.
+    # Returns the ticket ids the reading belonged to before and after (empty
+    # when nothing changed).
     def self.refresh(observation, event)
-      return if observation.outcome == 'possible_duplicate'
+      return [] if observation.outcome == 'possible_duplicate'
 
       result = Adjudicate.call(event: event, observation: observation)
-      return if observation.outcome == result.outcome &&
-                observation.anomalies == result.anomalies &&
-                observation.ticket_id == result.ticket_id
+      return [] if observation.outcome == result.outcome &&
+                   observation.anomalies == result.anomalies &&
+                   observation.ticket_id == result.ticket_id
 
+      before = observation.ticket_id
       observation.update_columns(outcome: result.outcome, anomalies: result.anomalies,
                                  ticket_id: result.ticket_id)
+      [before, result.ticket_id]
     end
 
     # Rebuilds from readings as currently adjudicated. It does not re-measure
     # them (one Adjudicate per reading, under the event lock, on every batch):
     # whoever changes what readings mean calls refresh_* first.
-    def self.rebuild!(event:)
-      readings = event.rfid_observations.where(outcome: 'accepted')
-                      .order(:captured_at, :station_id, :delivery_id).to_a
+    #
+    # `ticket_ids` limits the rebuild to those tickets' timelines; nil rebuilds
+    # the whole event (staff corrections and admin tools). Each timeline only
+    # depends on its own ticket's readings and corrections, so the rows are the
+    # same either way.
+    def self.rebuild!(event:, ticket_ids: nil)
+      scoped = !ticket_ids.nil?
+      return if scoped && ticket_ids.empty?
+
+      accepted = event.rfid_observations.where(outcome: 'accepted')
+      accepted = accepted.where(ticket_id: ticket_ids) if scoped
+      readings = accepted.order(:captured_at, :station_id, :delivery_id).to_a
       role_overrides = event.rfid_corrections.where(kind: 'station_change').order(:id)
                             .each_with_object({}) do |correction, roles|
         next unless correction.details['role'].present?
@@ -71,10 +93,14 @@ module Rfid
         station_id, role = role_overrides[reading.id]
         reading.role = role if station_id == reading.station_id
       end
-      manual_entries = event.rfid_corrections.where(kind: MANUAL_ENTRY).order(:id).group_by(&:ticket_id)
+      manual = event.rfid_corrections.where(kind: MANUAL_ENTRY)
+      manual = manual.where(ticket_id: ticket_ids) if scoped
+      manual_entries = manual.order(:id).group_by(&:ticket_id)
       by_ticket = readings.group_by(&:ticket_id)
       tickets = event.tickets.where(id: by_ticket.keys | manual_entries.keys).index_by(&:id)
-      corrections = event.rfid_corrections.order(:id).group_by(&:entry_observation_id)
+      all_corrections = event.rfid_corrections
+      all_corrections = all_corrections.where(entry_observation_id: readings.map(&:id)) if scoped
+      corrections = all_corrections.order(:id).group_by(&:entry_observation_id)
 
       desired = {}
       visit_anomalies = Hash.new { |hash, key| hash[key] = [] }
@@ -84,7 +110,7 @@ module Rfid
                 tickets, corrections, desired, visit_anomalies)
       end
 
-      persist!(event, desired, visit_anomalies, readings)
+      persist!(event, desired, visit_anomalies, readings, ticket_ids)
     end
 
     # What a staff "manual entry" looks like to the timeline: an entry at a
@@ -156,8 +182,12 @@ module Rfid
     private_class_method :closes?
     private_class_method :project
 
-    def self.persist!(event, desired, visit_anomalies, readings)
-      existing = event.rfid_visits.index_by { |visit| visit.correction_id ? "m#{visit.correction_id}" : visit.entry_observation_id }
+    def self.persist!(event, desired, visit_anomalies, readings, ticket_ids)
+      # `.all` is a fresh query, never the association's cached records, which
+      # can hold stale copies of rows another path already changed.
+      visits = event.rfid_visits.all
+      visits = visits.where(ticket_id: ticket_ids) unless ticket_ids.nil?
+      existing = visits.index_by { |visit| visit.correction_id ? "m#{visit.correction_id}" : visit.entry_observation_id }
       desired.each do |entry_observation_id, attributes|
         visit = existing.delete(entry_observation_id)
         visit ? visit.update!(attributes) : event.rfid_visits.create!(attributes)

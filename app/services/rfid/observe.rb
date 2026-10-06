@@ -70,9 +70,12 @@ module Rfid
           affected_tickets << ticket_id if ticket_id
         end
 
-        Visits.refresh_locked!(event: event, tag_keys: affected_tags.uniq,
-                              ticket_ids: affected_tickets.uniq)
-        Visits.rebuild!(event: event)
+        moved = Visits.refresh_locked!(event: event, tag_keys: affected_tags.uniq,
+                                      ticket_ids: affected_tickets.uniq)
+        # Only the timelines this batch (or a re-measured older reading)
+        # touched; a full-event rebuild here made every batch cost the whole
+        # event's history while holding the lock.
+        Visits.rebuild!(event: event, ticket_ids: (affected_tickets + moved).uniq)
       end
 
       results

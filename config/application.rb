@@ -93,6 +93,14 @@ module EventzFlowApi
     # --- Rate Limiting ---
     config.middleware.use Rack::Attack
 
+    # --- Compression ---
+    # The RfiDex ticket snapshot is the whole event's tickets on every station
+    # refresh; gzip cuts it several-fold on a weak venue link. Only that path,
+    # and only for clients that send Accept-Encoding: gzip.
+    config.middleware.use Rack::Deflater, if: ->(env, _status, _headers, _body) {
+      env['PATH_INFO'] == '/v1/rfid/cache'
+    }
+
     # --- 2. Active Job Adapter (for Sidekiq) ---
     # Set the queue adapter for webhooks and notifications
     config.active_job.queue_adapter = :sidekiq
