@@ -27,6 +27,13 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
+# Worker processes. With one process, a few requests stuck behind the RfiDex
+# event lock fill every thread and block the panel and registration too.
+# Production runs 2 by default (set WEB_CONCURRENCY to change it); dev and
+# test stay single-process. Database connections needed = workers x threads.
+workers ENV.fetch("WEB_CONCURRENCY") { ENV["RAILS_ENV"] == "production" ? 2 : 0 }.to_i
+preload_app!
+
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
 
