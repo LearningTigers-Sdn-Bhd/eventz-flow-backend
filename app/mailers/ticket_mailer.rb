@@ -99,7 +99,8 @@ class TicketMailer < ApplicationMailer
 
     mail(
       to: ticket.attendee_email,
-      from: sender_from,
+      from: bm_sender_from,
+      reply_to: @contact_email,
       subject: "🤝 Book your business matching sessions at #{@event.title}"
     )
   end
@@ -130,6 +131,14 @@ class TicketMailer < ApplicationMailer
   def sender_from
     address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
     name = email_setting&.sender_name.presence || @event.title
+    format_sender(name, address)
+  end
+
+  def bm_sender_from
+    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    name = email_setting&.business_matching_sender_name.presence ||
+           email_setting&.sender_name.presence ||
+           @event.title
     format_sender(name, address)
   end
 

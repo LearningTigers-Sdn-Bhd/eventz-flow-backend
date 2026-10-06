@@ -18,9 +18,15 @@
         <strong>Business Host</strong> for <strong><%= @event_title %></strong>
         <% if @session_title.present? %>(Session: <%= @session_title %>)<% end %>.
       </p>
-      <p>
-        As a Business Host, you can set up your profile, manage your schedule, and connect with attendees during business matching sessions.
-      </p>
+      <% if @custom_message.present? %>
+        <div style="background: #f8fafc; border-left: 4px solid #0284c7; padding: 12px 16px; margin: 16px 0; border-radius: 4px; color: #334155; line-height: 1.6;">
+          <%= simple_format(@custom_message) %>
+        </div>
+      <% else %>
+        <p>
+          As a Business Host, you can set up your profile, manage your schedule, and connect with attendees during business matching sessions.
+        </p>
+      <% end %>
       <div style="text-align: center; margin: 30px 0;">
         <a href="<%= @invite_url %>" class="button">Accept Invitation &amp; Join Session</a>
       </div>
