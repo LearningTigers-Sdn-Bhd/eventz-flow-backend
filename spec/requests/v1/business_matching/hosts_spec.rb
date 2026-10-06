@@ -464,6 +464,25 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(json_response['invite_url']).to be_present
     end
 
+    it "queues an invitation email with a custom message when provided" do
+      expect {
+        post "/v1/business_matching/events/#{event.id}/hosts/send_invite_email",
+             params: {
+               business_matching_event_id: session.id.to_s,
+               email: "host.recipient@example.com",
+               message: "Please join as our VIP speaker and host."
+             },
+             headers: auth_headers(admin)
+      }.to have_enqueued_job(EmailDeliveryJob).with(
+        anything,
+        'BookingMailer',
+        'host_invitation_email',
+        satisfy { |args| args.last == "Please join as our VIP speaker and host." }
+      )
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "rejects when recipient email is missing" do
       post "/v1/business_matching/events/#{event.id}/hosts/send_invite_email",
            params: { business_matching_event_id: session.id.to_s, email: "" },

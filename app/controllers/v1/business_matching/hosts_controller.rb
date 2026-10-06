@@ -181,10 +181,11 @@ module V1
         invite_url = "#{frontend_url}/invite/host?token=#{CGI.escape(token)}"
 
         # Deliver host invitation email via BookingMailer with AuditedDelivery
+        custom_message = params[:message].presence
         EmailDelivery::AuditedDelivery.deliver_later(
           mailer_name: 'BookingMailer',
           mailer_action: 'host_invitation_email',
-          args: [email, event.title, session_title, invite_url, current_user.full_name],
+          args: [email, event.id, session_title, invite_url, current_user.full_name, custom_message],
           event: event
         )
 
