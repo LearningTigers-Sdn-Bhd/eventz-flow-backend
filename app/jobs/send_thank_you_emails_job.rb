@@ -1,16 +1,19 @@
 class SendThankYouEmailsJob < ApplicationJob
   queue_as :mailers
 
-  # Wait a bit after the event ends so late check-ins land first. The lookback
-  # cap is a second guard (besides the migration backfill) so an old event
-  # whose thank_you_sent_at got cleared never mass-mails months later.
-  SEND_DELAY = 2.hours
+  # Per-event delay (EventEmailSetting#thank_you_delay_minutes, default 2h) lets
+  # late check-ins land first. The lookback cap is a second guard (besides the
+  # migration backfill) so an old event whose thank_you_sent_at got cleared
+  # never mass-mails months later.
+  DEFAULT_DELAY_MINUTES = 120
   LOOKBACK = 3.days
 
   def perform
+    now = Time.current
     Event.where(status: %i[published completed], thank_you_sent_at: nil)
-         .ended_between(Time.current - LOOKBACK, Time.current - SEND_DELAY)
-         .find_each { |event| send_for(event) }
+         .includes(:event_email_setting)
+         .ended_between(now - LOOKBACK, now)
+         .find_each { |event| send_for(event) if due?(event, now) }
   end
 
   # One email per address: several tickets bought under the same email only
@@ -24,6 +27,11 @@ class SendThankYouEmailsJob < ApplicationJob
   end
 
   private
+
+  def due?(event, now)
+    minutes = event.event_email_setting&.thank_you_delay_minutes || DEFAULT_DELAY_MINUTES
+    event.effective_end_date <= now - minutes.minutes
+  end
 
   def send_for(event)
     # Atomic claim so overlapping cron runs can't double-send.
