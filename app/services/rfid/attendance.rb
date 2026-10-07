@@ -51,11 +51,34 @@ module Rfid
 
     # Search (name, ticket id, email, phone) and ticket-type narrowing shared by
     # the attendee and e-certificate lists.
-    def filter_rows(rows, query: nil, ticket_type_id: nil)
+    def filter_rows(rows, query: nil, ticket_type_id: nil, custom_fields: nil)
       by_id = tickets.index_by(&:id)
+      custom_fields&.each do |key, value|
+        rows = rows.select { |row| by_id[row[:id]]&.custom_fields_data.to_h[key].to_s.strip == value.to_s.strip }
+      end
       rows = rows.select { |row| row[:ticket_type_id].to_s == ticket_type_id.to_s } if ticket_type_id.present?
       rows = rows.select { |row| matches_query?(row, by_id[row[:id]], query) } if query.present?
       rows
+    end
+
+    # Registration-form answers staff can narrow a bulk action by, e.g. category
+    # or agency name: { key:, values: [...] } for every custom field. Free-text
+    # fields with thousands of distinct answers (names, IC numbers) are left out.
+    CUSTOM_FIELD_MAX_VALUES = 2000
+
+    def custom_field_options
+      excluded = Ticket::RESERVED_CUSTOM_FIELD_KEYS + Ticket::DOCUMENT_KEYS
+      values = Hash.new { |hash, key| hash[key] = Set.new }
+      tickets.each do |ticket|
+        ticket.custom_fields_data.to_h.each do |key, value|
+          next if excluded.include?(key) || !value.is_a?(String) || value.strip.empty?
+
+          values[key] << value.strip
+        end
+      end
+      values.filter_map do |key, set|
+        { key: key, values: set.to_a.sort } if set.size <= CUSTOM_FIELD_MAX_VALUES
+      end.sort_by { |field| field[:key] }
     end
 
     def ticket_types

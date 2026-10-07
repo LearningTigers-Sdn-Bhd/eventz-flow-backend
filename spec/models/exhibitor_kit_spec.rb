@@ -54,11 +54,13 @@ RSpec.describe ExhibitorKit, type: :model do
     let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid) }
 
     it 'stamps payment_recorded_at when payment_status transitions into a money status' do
-      travel_to(1.day.from_now) do
+      # travel_to drops sub-second precision, so compare against the same instant.
+      stamped_at = 1.day.from_now.change(usec: 0)
+      travel_to(stamped_at) do
         kit.update!(payment_status: :deposit)
       end
 
-      expect(kit.payment_recorded_at).to be_within(1.second).of(1.day.from_now)
+      expect(kit.payment_recorded_at).to be_within(1.second).of(stamped_at)
     end
 
     it 'does not shift payment_recorded_at when an unrelated field is edited' do

@@ -7,8 +7,8 @@ module V1
     before_action :require_staff_session!
     before_action :set_event
     before_action :authorize_read!, only: %i[summary stations bindings visits report_xlsx report_fields anomalies missed_scans
-                                             flow sessions eligibility attendance_check session_attendees guest_visits display_activity]
-    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_exit_all undo_manual_exit_all manual_entry notify_attendance_check grant_cert_override revoke_cert_override
+                                             flow sessions eligibility eligibility_fields attendance_check session_attendees guest_visits display_activity]
+    before_action :authorize_update!, only: %i[update_settings update_station manual_exit manual_exit_all undo_manual_exit_all manual_entry notify_attendance_check grant_cert_override revoke_cert_override bulk_cert_override
                                                create_session update_session destroy_session]
     before_action :authorize_admin!, only: %i[destroy_station update_binding destroy_binding destroy_visit destroy_guest_visits
                                               dismiss_anomalies destroy_anomalies]
@@ -147,14 +147,9 @@ module V1
     end
 
     def eligibility
-      status = params[:status].to_s.presence
-      unless status.nil? || ::Rfid::Attendance::STATUSES.include?(status)
-        return unprocessable("status must be one of #{::Rfid::Attendance::STATUSES.join(', ')}")
-      end
+      rows = filtered_eligibility_rows
+      return if performed?
 
-      rows = attendance.filter_rows(attendance.eligibility_rows, query: params[:q].to_s.presence,
-                                                                 ticket_type_id: params[:ticket_type_id].presence)
-      rows = rows.select { |row| row[:status] == status } if status
       per_page = (pagination_params[:per_page] || 25).to_i
       page = [(pagination_params[:page] || 1).to_i, 1].max
       pages = [(rows.length / per_page.to_f).ceil, 1].max
@@ -167,6 +162,33 @@ module V1
                       per_page: per_page, prev_page: page > 1 ? page - 1 : nil,
                       next_page: page < pages ? page + 1 : nil }
       }, status: :ok
+    end
+
+    # Custom registration fields (category, agency...) the bulk waive can filter by.
+    def eligibility_fields
+      render json: { fields: attendance.custom_field_options }, status: :ok
+    end
+
+    # Waive the session rule for every guest who matches the same filters as the
+    # eligibility list and is still short (already-waived and already-met guests
+    # are skipped). `dry_run` only reports how many guests that is.
+    def bulk_cert_override
+      rows = filtered_eligibility_rows
+      return if performed?
+
+      targets = rows.select { |row| row[:override].nil? && row[:sessions].any? { |item| !item[:met] } }
+      return render json: bulk_preview(targets), status: :ok if bool_param(:dry_run)
+
+      reason = params[:reason].to_s.strip
+      return unprocessable('A reason is required.') if reason.empty?
+
+      ::Rfid::Correction.transaction do
+        targets.each do |row|
+          ::Rfid::Correction.create!(event: @event, actor: current_user, ticket_id: row[:id],
+                                     kind: 'cert_override', reason: reason)
+        end
+      end
+      render json: { count: targets.length, dry_run: false }, status: :ok
     end
 
     def create_session
@@ -563,6 +585,54 @@ module V1
       ::Rfid::Correction.create!(event: @event, actor: current_user, ticket: ticket, kind: kind,
                                  reason: reason.presence || 'override removed')
       render json: { ticket: attendance.eligibility_rows.find { |row| row[:id] == ticket.id } }, status: :ok
+    end
+
+    # Shared by the eligibility list and the bulk waive so "waive everyone shown"
+    # means exactly the rows the filters select. A bad filter renders a 422;
+    # callers must check `performed?` before using the result.
+    def filtered_eligibility_rows
+      status = params[:status].to_s.presence
+      unless status.nil? || ::Rfid::Attendance::STATUSES.include?(status)
+        return unprocessable("status must be one of #{::Rfid::Attendance::STATUSES.join(', ')}")
+      end
+
+      min_percent = params[:min_percent].presence
+      if min_percent && !min_percent.to_s.match?(/\A\d{1,3}(\.\d+)?\z/)
+        return unprocessable('min_percent must be a number between 0 and 100')
+      end
+
+      rows = attendance.filter_rows(attendance.eligibility_rows, query: params[:q].to_s.presence,
+                                                                 ticket_type_id: params[:ticket_type_id].presence,
+                                                                 custom_fields: custom_field_filters)
+      rows = rows.select { |row| row[:status] == status } if status
+      # Lowest session percent at least this value: the near-miss guests.
+      rows = rows.select { |row| row[:sessions].all? { |item| item[:percent] >= min_percent.to_f } } if min_percent
+      rows
+    end
+
+    # { "category" => "Agensi" } from `custom_fields[category]=Agensi`; keys that
+    # aren't plain identifiers are dropped.
+    def custom_field_filters
+      raw = params[:custom_fields]
+      return nil unless raw.respond_to?(:to_unsafe_h)
+
+      raw.to_unsafe_h.select { |key, value| key.to_s.match?(/\A[a-z0-9_]+\z/i) && value.is_a?(String) && value.present? }
+    end
+
+    BULK_PREVIEW_LIMIT = 200
+
+    # The guests a bulk waive would touch (first page only, the count is exact).
+    def bulk_preview(targets)
+      guests = targets.first(BULK_PREVIEW_LIMIT).map do |row|
+        { id: row[:id], ticket_name: row[:ticket_name], ticket_public_id: row[:ticket_public_id],
+          ticket_type: row[:ticket_type], feedback_submitted: row[:feedback_submitted],
+          lowest_percent: row[:sessions].map { |item| item[:percent] }.min }
+      end
+      { count: targets.length, dry_run: true, guests: guests, limit: BULK_PREVIEW_LIMIT }
+    end
+
+    def bool_param(key)
+      ActiveModel::Type::Boolean.new.cast(params[key]) || false
     end
 
     def attendance
