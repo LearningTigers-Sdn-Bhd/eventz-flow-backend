@@ -152,7 +152,7 @@ module Rfid
       {
         id: ticket.id, ticket_public_id: ticket.public_id, ticket_name: ticket.attendee_name,
         ticket_type: ticket.ticket_type&.name, ticket_type_id: ticket.ticket_type_id, seconds: seconds,
-        percent: [(seconds * 100.0 / session.duration_seconds).round, 100].min,
+        percent: [(seconds * 10_000 / session.duration_seconds) / 100.0, 100].min,
         attended: seconds >= need, visit_count: segments.length,
         first_in: segments.first[:in], last_out: segments.last[:out],
         still_inside: segments.any? { |segment| segment[:open] }, segments: segments
@@ -175,7 +175,7 @@ module Rfid
     def eligibility_row(ticket, required, feedback_ids, override)
       per_session = required.map do |session|
         secs = seconds_for(session)[ticket.id].to_i
-        { session_id: session.id, percent: [(secs * 100.0 / session.duration_seconds).round, 100].min,
+        { session_id: session.id, percent: [(secs * 10_000 / session.duration_seconds) / 100.0, 100].min,
           met: secs >= need_seconds(session), ended: now >= session.ends_at }
       end
       feedback = feedback_ids.include?(ticket.id)
