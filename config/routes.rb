@@ -65,8 +65,10 @@ Rails.application.routes.draw do
       patch 'sessions/:id', action: :update_session
       delete 'sessions/:id', action: :destroy_session
       get 'eligibility', action: :eligibility
+      get 'eligibility/fields', action: :eligibility_fields
       get 'attendance_check', action: :attendance_check
       post 'attendance_check/notify', action: :notify_attendance_check
+      post 'eligibility/bulk_override', action: :bulk_cert_override
       post 'eligibility/:ticket_id/override', action: :grant_cert_override
       delete 'eligibility/:ticket_id/override', action: :revoke_cert_override
       get 'anomalies', action: :anomalies

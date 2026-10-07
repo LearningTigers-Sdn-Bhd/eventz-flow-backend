@@ -919,6 +919,74 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
     end
   end
 
+  describe 'POST eligibility/bulk_override' do
+    let(:path) { "/v1/events/#{event.id}/rfid/eligibility/bulk_override" }
+    let!(:near)  { create(:ticket, :paid, event: event) }
+    let!(:far)   { create(:ticket, :paid, event: event) }
+    let!(:full)  { create(:ticket, :paid, event: event) }
+
+    before do
+      event.update!(rfid_attendance_percent: 80)
+      Rfid::Session.create!(event: event, name: 'Keynote', starts_at: base,
+                            ends_at: base + 100.minutes, mandatory: true)
+      visit = lambda do |ticket, minutes|
+        observation = create(:rfid_observation, event: event, station: gate, outcome: 'accepted')
+        Rfid::Visit.create!(event: event, ticket: ticket, ticket_public_id: ticket.public_id, ticket_name: 'Guest',
+                            entry_observation: observation, entry_at: base, exit_at: base + minutes.minutes)
+      end
+      visit.call(near, 70)  # 70% - short of 80%
+      visit.call(far, 10)   # 10%
+      visit.call(full, 90)  # 90% - already met
+    end
+
+    it 'reports how many guests would be waived without changing anything' do
+      post path, params: { dry_run: true }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('count' => 2, 'dry_run' => true)
+      expect(body['guests'].map { |guest| guest['lowest_percent'] }).to contain_exactly(10.0, 70.0)
+      expect(Rfid::Correction.count).to eq(0)
+    end
+
+    it 'waives only the guests matching the filters, skipping those who already met it' do
+      post path, params: { reason: 'gate lag, organizer approved', min_percent: 50 }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(body).to include('count' => 1)
+      expect(Rfid::Correction.where(kind: 'cert_override').pluck(:ticket_id)).to eq([near.id])
+      expect(Rfid::Correction.sole).to have_attributes(actor: owner, reason: 'gate lag, organizer approved')
+    end
+
+    it 'narrows the waive by a custom registration field and lists the available fields' do
+      near.update!(custom_fields_data: { 'category' => 'Agensi' })
+      far.update!(custom_fields_data: { 'category' => 'Swasta' })
+
+      get "/v1/events/#{event.id}/rfid/eligibility/fields", headers: headers
+      expect(body['fields']).to include('key' => 'category', 'values' => %w[Agensi Swasta])
+
+      post path, params: { dry_run: true, custom_fields: { category: 'Agensi' } }, headers: headers, as: :json
+      expect(body).to include('count' => 1)
+      post path, params: { reason: 'agency exception', custom_fields: { category: 'Agensi' } }, headers: headers, as: :json
+      expect(Rfid::Correction.where(kind: 'cert_override').pluck(:ticket_id)).to eq([near.id])
+    end
+
+    it 'does not waive anyone twice' do
+      2.times { post path, params: { reason: 'gate lag' }, headers: headers, as: :json }
+
+      expect(Rfid::Correction.where(kind: 'cert_override').count).to eq(2)
+      expect(body).to include('count' => 0)
+    end
+
+    it 'requires a reason and a numeric min_percent' do
+      post path, params: {}, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      post path, params: { reason: 'x', min_percent: 'abc' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Rfid::Correction.count).to eq(0)
+    end
+  end
+
   describe 'GET report.xlsx' do
     def sheet_rows(name)
       file = Tempfile.new(['rfid-report', '.xlsx'], binmode: true)
