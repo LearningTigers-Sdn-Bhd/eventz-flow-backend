@@ -3,7 +3,7 @@ module V1
     before_action :set_event_and_authorize
 
     # POST /v1/events/:event_id/certificates/send_batch
-    # Body: { audience: "all" | "checked_in", excluded_ticket_ids: [Integer] }
+    # Body: { audience, excluded_public_ids: [String], skip_sent: Boolean }
     def send_batch
       authorize @event, :send_batch?, policy_class: CertificateTemplatePolicy
 
@@ -16,12 +16,12 @@ module V1
       excluded = excluded_public_ids
 
       # Tickets whose template isn't ready are skipped by the job, so don't count them.
-      queued = SendEventCertificatesJob.recipient_scope(@event, audience, excluded)
+      queued = SendEventCertificatesJob.recipient_scope(@event, audience, excluded, skip_sent: skip_sent?)
                                        .select(:id, :ticket_type_id)
                                        .count { |t| @event.certificate_template_for(t)&.ready? }
       skipped = skipped_no_email_count(audience, excluded)
 
-      SendEventCertificatesJob.perform_later(@event.id, audience, excluded, current_user&.id)
+      SendEventCertificatesJob.perform_later(@event.id, audience, excluded, current_user&.id, skip_sent?)
 
       render json: {
         message: 'Certificates have been queued for sending',
@@ -93,12 +93,15 @@ module V1
       tickets = @event.tickets.where.not(attendee_email: [nil, '']).order(:attendee_name)
       latest = latest_certificate_deliveries_by_ticket_id
       feedback_ids = SendEventCertificatesJob.feedback_ticket_ids(@event).pluck(:ticket_id).to_set
-      qualified_ids = ::Rfid::Attendance.qualified_ticket_ids(@event).to_set
+      rows = ::Rfid::Attendance.new(@event).eligibility_rows
+      qualified_ids = rows.select { |row| row[:status] == 'qualified' }.to_set { |row| row[:id] }
+      sessions_done_ids = rows.select { |row| row[:sessions_met] }.to_set { |row| row[:id] }
 
       render json: {
         data: tickets.map do |ticket|
           participant_row(ticket, latest[ticket.id], feedback_ids.include?(ticket.id))
-            .merge(rfid_qualified: qualified_ids.include?(ticket.id))
+            .merge(rfid_qualified: qualified_ids.include?(ticket.id),
+                   sessions_done: sessions_done_ids.include?(ticket.id))
         end
       }, status: :ok
     end
@@ -183,6 +186,10 @@ module V1
     def resolved_audience
       audience = params[:audience].to_s
       SendEventCertificatesJob::AUDIENCES.include?(audience) ? audience : 'all'
+    end
+
+    def skip_sent?
+      ActiveModel::Type::Boolean.new.cast(params[:skip_sent]) || false
     end
 
     def excluded_public_ids

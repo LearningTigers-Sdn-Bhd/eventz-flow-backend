@@ -59,6 +59,24 @@ RSpec.describe SendEventCertificatesJob, type: :job do
     end
   end
 
+  describe '.deliver_after_feedback' do
+    before { template.update!(require_feedback: true) }
+
+    it 'sends when the guest is qualified (or the event has no attendance rule)' do
+      allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(true)
+
+      expect { described_class.deliver_after_feedback(ticket_with_email) }
+        .to have_enqueued_job(EmailDeliveryJob).once
+    end
+
+    it 'holds the certificate back when the guest did not meet the mandatory sessions' do
+      allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(false)
+
+      expect { described_class.deliver_after_feedback(ticket_with_email) }
+        .not_to have_enqueued_job(EmailDeliveryJob)
+    end
+  end
+
   describe '.recipient_scope' do
     it 'excludes blank-email tickets' do
       ids = described_class.recipient_scope(event, 'all').pluck(:id)
@@ -76,6 +94,34 @@ RSpec.describe SendEventCertificatesJob, type: :job do
       ids = described_class.recipient_scope(event, 'rfid_qualified').pluck(:id)
 
       expect(ids).to eq([ticket_checked_in.id])
+    end
+
+    it 'limits the sessions_done audience to guests who met every mandatory session' do
+      allow(Rfid::Attendance).to receive(:sessions_done_ticket_ids).with(event).and_return([ticket_with_email.id])
+
+      ids = described_class.recipient_scope(event, 'sessions_done').pluck(:id)
+
+      expect(ids).to eq([ticket_with_email.id])
+    end
+
+    it 'sessions_or_feedback includes guests who met sessions or answered feedback' do
+      allow(Rfid::Attendance).to receive(:sessions_done_ticket_ids).with(event).and_return([ticket_with_email.id])
+      allow(described_class).to receive(:feedback_ticket_ids).with(event)
+                                                             .and_return(double(pluck: [ticket_checked_in.id]))
+
+      ids = described_class.recipient_scope(event, 'sessions_or_feedback').pluck(:id)
+
+      expect(ids).to contain_exactly(ticket_with_email.id, ticket_checked_in.id)
+    end
+
+    it 'skip_sent drops guests who already have a delivered certificate, on any audience' do
+      create(:email_delivery, related: ticket_with_email, mailer_name: 'CertificateMailer',
+                              mailer_action: 'certificate_email', status: 'delivered')
+
+      ids = described_class.recipient_scope(event, 'all', [], skip_sent: true).pluck(:id)
+
+      expect(ids).to contain_exactly(ticket_checked_in.id)
+      expect(described_class.recipient_scope(event, 'all').pluck(:id)).to include(ticket_with_email.id)
     end
 
     context 'unsent audience' do

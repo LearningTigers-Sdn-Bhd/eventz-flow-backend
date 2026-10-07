@@ -16,6 +16,12 @@ module Rfid
       new(event).eligibility_rows.select { |row| row[:status] == 'qualified' }.map { |row| row[:id] }
     end
 
+    # Guests who met every mandatory session (or were waived by staff),
+    # whether or not they answered the feedback form.
+    def self.sessions_done_ticket_ids(event)
+      new(event).eligibility_rows.select { |row| row[:sessions_met] }.map { |row| row[:id] }
+    end
+
     def initialize(event, now: Time.current)
       @event = event
       @now = now
@@ -54,6 +60,17 @@ module Rfid
 
     def ticket_types
       event.ticket_types.order(:name).map { |type| { id: type.id, name: type.name } }
+    end
+
+    # True when this one guest should get the e-certificate automatically after
+    # submitting feedback. Events without mandatory sessions have no attendance
+    # rule, so feedback alone is enough there.
+    def qualified?(ticket)
+      required = required_sessions
+      return true if required.empty?
+
+      row = eligibility_row(ticket, required, Set[ticket.id], cert_overrides[ticket.id])
+      row[:status] == 'qualified'
     end
 
     def eligibility_summary
@@ -183,6 +200,7 @@ module Rfid
         id: ticket.id, ticket_public_id: ticket.public_id, ticket_name: ticket.attendee_name,
         ticket_type: ticket.ticket_type&.name, ticket_type_id: ticket.ticket_type_id,
         feedback_submitted: feedback,
+        sessions_met: override.present? || per_session.all? { |item| item[:met] },
         sessions: per_session.map { |item| item.slice(:session_id, :percent, :met) },
         override: override && { reason: override.reason, at: Wire.time(override.created_at) },
         status: eligibility_status(per_session, feedback, overridden: override.present?)
