@@ -42,6 +42,16 @@ RSpec.describe SendEventCertificatesJob, type: :job do
       }.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
+    it 'skips tickets whose own template is not ready, even if the default is' do
+      committee = create(:ticket_type, event: event)
+      create(:certificate_template, event: event, name: 'Jawatankuasa', ticket_type_ids: [committee.id]) # draft
+      create(:ticket, event: event, ticket_type: committee, attendee_email: 'd@example.com')
+
+      expect {
+        described_class.new.perform(event.id, 'all')
+      }.to have_enqueued_job(EmailDeliveryJob).exactly(2).times
+    end
+
     it 'does nothing when the event is missing' do
       expect {
         described_class.new.perform(-1, 'all')

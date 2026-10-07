@@ -78,4 +78,21 @@ RSpec.describe CertificateTemplate, type: :model do
       expect(template.as_json).to have_key('background_image_url')
     end
   end
+
+  describe 'Event#certificate_template_for' do
+    let(:event) { create(:event) }
+    let(:committee) { create(:ticket_type, event: event) }
+    let!(:default_template) { create(:certificate_template, event: event) }
+    let!(:committee_template) do
+      create(:certificate_template, event: event, name: 'Jawatankuasa', ticket_type_ids: [committee.id])
+    end
+
+    it 'picks the template assigned to the ticket type, else the default' do
+      committee_ticket = create(:ticket, event: event, ticket_type: committee)
+      other_ticket = create(:ticket, event: event)
+
+      expect(event.certificate_template_for(committee_ticket)).to eq(committee_template)
+      expect(event.certificate_template_for(other_ticket)).to eq(default_template)
+    end
+  end
 end

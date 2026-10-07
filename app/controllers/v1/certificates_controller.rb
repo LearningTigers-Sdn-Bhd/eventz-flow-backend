@@ -7,8 +7,7 @@ module V1
     def send_batch
       authorize @event, :send_batch?, policy_class: CertificateTemplatePolicy
 
-      template = @event.certificate_template
-      unless template&.ready?
+      unless @event.certificate_templates.any?(&:ready?)
         return render json: { errors: ['Certificate template is not ready to send'] },
                       status: :unprocessable_content
       end
@@ -16,7 +15,10 @@ module V1
       audience = resolved_audience
       excluded = excluded_public_ids
 
-      queued = SendEventCertificatesJob.recipient_scope(@event, audience, excluded).count
+      # Tickets whose template isn't ready are skipped by the job, so don't count them.
+      queued = SendEventCertificatesJob.recipient_scope(@event, audience, excluded)
+                                       .select(:id, :ticket_type_id)
+                                       .count { |t| @event.certificate_template_for(t)&.ready? }
       skipped = skipped_no_email_count(audience, excluded)
 
       SendEventCertificatesJob.perform_later(@event.id, audience, excluded, current_user&.id)
@@ -34,13 +36,19 @@ module V1
     def preview
       authorize @event, :preview?, policy_class: CertificateTemplatePolicy
 
-      template = @event.certificate_template
+      ticket = params[:ticket_id].present? ? @event.tickets.find_by(public_id: params[:ticket_id]) : nil
+      template = if params[:template_id].present?
+                   @event.certificate_templates.find_by(id: params[:template_id])
+                 elsif ticket
+                   @event.certificate_template_for(ticket)
+                 else
+                   @event.certificate_template || @event.certificate_templates.first
+                 end
       unless template.present? && template.background_image.attached?
         return render json: { errors: ['Certificate template is not configured'] },
                       status: :unprocessable_content
       end
 
-      ticket = params[:ticket_id].present? ? @event.tickets.find_by(public_id: params[:ticket_id]) : nil
       sample_name = ticket ? nil : 'Attendee Name'
 
       pdf = CertificatePdfGenerator.new(template, ticket, sample_name: sample_name).render
@@ -57,8 +65,7 @@ module V1
     def download_all
       authorize @event, :preview?, policy_class: CertificateTemplatePolicy
 
-      template = @event.certificate_template
-      unless template.present? && template.background_image.attached?
+      unless @event.certificate_templates.any? { |t| t.background_image.attached? }
         return render json: { errors: ['Certificate template is not configured'] },
                       status: :unprocessable_content
       end
@@ -66,7 +73,7 @@ module V1
       tickets = SendEventCertificatesJob.recipient_scope(@event, resolved_audience)
                                         .order(:attendee_name)
 
-      pdf = CertificatePdfGenerator.render_batch(template, tickets)
+      pdf = CertificatePdfGenerator.render_batch(@event, tickets)
       if pdf.nil?
         return render json: { errors: ['No matching attendees to download'] },
                       status: :unprocessable_content
@@ -101,15 +108,14 @@ module V1
     def send_one
       authorize @event, :send_batch?, policy_class: CertificateTemplatePolicy
 
-      template = @event.certificate_template
-      unless template&.ready?
-        return render json: { errors: ['Certificate template is not ready to send'] },
-                      status: :unprocessable_content
-      end
-
       ticket = @event.tickets.find_by(public_id: params[:public_id])
       if ticket.nil?
         return render json: { errors: ['Ticket not found'] }, status: :not_found
+      end
+
+      unless @event.certificate_template_for(ticket)&.ready?
+        return render json: { errors: ['Certificate template is not ready to send'] },
+                      status: :unprocessable_content
       end
 
       if ticket.attendee_email.blank?
@@ -165,6 +171,7 @@ module V1
         attendee_name: ticket.attendee_name,
         attendee_email: ticket.attendee_email,
         ticket_type: ticket.ticket_type&.name,
+        certificate_template: @event.certificate_template_for(ticket)&.name,
         checked_in: ticket.checked_in,
         feedback_submitted: feedback_submitted,
         certificate_status: delivery&.status,

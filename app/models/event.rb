@@ -49,9 +49,21 @@ class Event < ApplicationRecord
   has_one :feedback_form, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
-  has_one :certificate_template, dependent: :destroy
+  has_many :certificate_templates, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
   has_one :event_payment_gateway, dependent: :destroy
+
+  # The template with no ticket types assigned: used for every ticket whose
+  # ticket type has no template of its own.
+  def certificate_template
+    certificate_templates.find { |t| t.ticket_type_ids.empty? }
+  end
+
+  # The template a ticket's certificate is rendered from: the one assigned to
+  # its ticket type, else the default. May be nil (no template configured).
+  def certificate_template_for(ticket)
+    certificate_templates.find { |t| t.ticket_type_ids.include?(ticket.ticket_type_id) } || certificate_template
+  end
 
   # --- Sponsorships ---
   has_many :event_sponsorship_tiers, dependent: :destroy

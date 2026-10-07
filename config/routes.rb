@@ -47,6 +47,7 @@ Rails.application.routes.draw do
       patch 'bindings/:id', action: :update_binding
       delete 'bindings/:id', action: :destroy_binding
       get 'report.xlsx', action: :report_xlsx
+      get 'report_fields', action: :report_fields
       get 'guest_visits', action: :guest_visits
       get 'visits', action: :visits
       get 'display_activity', action: :display_activity
@@ -258,8 +259,7 @@ Rails.application.routes.draw do
       end
 
       # E-Certificates
-      resource :certificate_template, only: %i[show create update destroy],
-                                      controller: 'certificate_templates'
+      resources :certificate_templates, only: %i[index show create update destroy]
       resources :certificates, only: [] do
         collection do
           post :send_batch

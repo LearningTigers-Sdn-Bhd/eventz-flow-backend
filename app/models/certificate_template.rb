@@ -15,9 +15,14 @@ class CertificateTemplate < ApplicationRecord
   # --- Validations ---
   validates :orientation, inclusion: { in: ORIENTATIONS }
   validates :canvas_width, :canvas_height, numericality: { greater_than: 0 }
+  validates :name, presence: true, length: { maximum: 100 }
   validate :fields_must_be_array
+  validate :ticket_types_valid
+  validate :single_default_template
   validate :ready_requires_completeness
   validate :acceptable_background_image
+
+  before_validation { self.ticket_type_ids = Array(ticket_type_ids).map(&:to_i).uniq }
 
   # --- Instance Methods ---
   def background_image_url
@@ -34,6 +39,25 @@ class CertificateTemplate < ApplicationRecord
 
   def fields_must_be_array
     errors.add(:fields, "must be an array") unless fields.is_a?(Array)
+  end
+
+  # Ticket types must belong to this event and be claimed by one template only,
+  # otherwise a ticket could resolve to two designs.
+  def ticket_types_valid
+    return if event.nil? || ticket_type_ids.empty?
+
+    valid = event.ticket_types.where(id: ticket_type_ids).pluck(:id)
+    errors.add(:ticket_type_ids, 'must belong to this event') if valid.size != ticket_type_ids.size
+
+    taken = event.certificate_templates.where.not(id: id).pluck(:ticket_type_ids).flatten
+    errors.add(:ticket_type_ids, 'are already used by another template') if (taken & ticket_type_ids).any?
+  end
+
+  def single_default_template
+    return if event.nil? || ticket_type_ids.any?
+
+    others = event.certificate_templates.where.not(id: id).where(ticket_type_ids: [])
+    errors.add(:base, 'Only one template can apply to all other ticket types') if others.exists?
   end
 
   # A template can only be marked ready when it is actually sendable.
