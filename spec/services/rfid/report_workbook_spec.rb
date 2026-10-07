@@ -62,4 +62,39 @@ RSpec.describe Rfid::ReportWorkbook do
     expect(names.index('Sticker But No Read')).to be < names.index('No Sticker')
     expect(rows.flatten.compact).to include('Sticker linked, no gate read', 'No sticker linked')
   end
+
+  describe 'extra custom-field columns' do
+    before do
+      event.update!(labels_data: { 'nama_agensi' => 'Nama Agensi' })
+      event.tickets.find_by!(attendee_name: 'Stayed Long')
+           .update_columns(custom_fields_data: { 'nama_agensi' => 'JKR', 'kategori' => 'KERAJAAN', '_internal' => 'x' })
+    end
+
+    def workbook_with(fields)
+      file = Tempfile.new(['report', '.xlsx'], binmode: true)
+      file.write(described_class.new(event, now: base + 3.hours, fields: fields).call)
+      file.flush
+      Roo::Excelx.new(file.path)
+    end
+
+    it 'offers event labels, falls back to the key, and hides reserved keys' do
+      expect(described_class.custom_fields(event)).to eq('nama_agensi' => 'Nama Agensi', 'kategori' => 'Kategori')
+    end
+
+    it 'adds the picked fields after Ticket type on every guest sheet, ignoring unknown keys' do
+      book = workbook_with(%w[kategori nama_agensi _internal bogus])
+      %w[Keynote Guest\ Visits No\ Gate\ Read E-Certificate].each do |name|
+        rows = book.sheet(name).parse
+        header = rows.find { |row| row.include?('Ticket type') }
+        expect(header.compact.first(4)).to eq(['Guest', 'Ticket type', 'Kategori', 'Nama Agensi'])
+      end
+      row = book.sheet('Guest Visits').parse.find { |r| r.include?('Stayed Long') }
+      expect(row.first(4)).to eq(['Stayed Long', 'Delegate', 'KERAJAAN', 'JKR'])
+    end
+
+    it 'leaves the workbook unchanged when nothing is picked' do
+      header = workbook_with([]).sheet('Guest Visits').parse.find { |row| row.include?('Ticket type') }
+      expect(header.compact.first(3)).to eq(['Guest', 'Ticket type', 'Times entered'])
+    end
+  end
 end
