@@ -2,7 +2,7 @@ class CertificateMailer < ApplicationMailer
   def certificate_email(ticket)
     @ticket = ticket
     @event = ticket.event
-    @template = @event.certificate_template
+    @template = @event.certificate_template_for(ticket)
     set_email_config
 
     pdf = CertificatePdfGenerator.new(@template, ticket).render

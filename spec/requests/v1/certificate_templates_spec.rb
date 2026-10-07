@@ -17,72 +17,109 @@ RSpec.describe 'V1::CertificateTemplates', type: :request do
     )
   end
 
-  describe 'GET /v1/events/:event_id/certificate_template' do
-    it 'returns null when no template exists' do
-      get "/v1/events/#{event.id}/certificate_template", headers: org_owner_headers
+  let(:base) { "/v1/events/#{event.id}/certificate_templates" }
+  let(:field) do
+    { id: 'f_name', type: 'attendee_name', label: 'Name', x: 200, y: 350,
+      width: 700, height: 100, font_size: 48, font_style: 'bold', color: '#1A1A1A', align: 'center' }
+  end
+
+  describe 'GET /v1/events/:event_id/certificate_templates' do
+    it 'returns an empty list when no template exists' do
+      get base, headers: org_owner_headers
       expect(response).to have_http_status(:ok)
-      expect(response.body).to eq('null')
+      expect(JSON.parse(response.body)).to eq([])
     end
 
-    it 'returns the template when it exists' do
+    it 'lists every template of the event' do
       create(:certificate_template, event: event)
-      get "/v1/events/#{event.id}/certificate_template", headers: org_owner_headers
-      expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)).to include('orientation' => 'landscape')
+      create(:certificate_template, event: event, name: 'Jawatankuasa',
+                                    ticket_type_ids: [create(:ticket_type, event: event).id])
+      get base, headers: org_owner_headers
+      expect(JSON.parse(response.body).map { |t| t['name'] }).to contain_exactly('Default', 'Jawatankuasa')
     end
 
     it 'forbids a non-admin user' do
-      get "/v1/events/#{event.id}/certificate_template", headers: member_headers
+      get base, headers: member_headers
       expect(response).to have_http_status(:forbidden)
     end
   end
 
-  describe 'POST /v1/events/:event_id/certificate_template' do
+  describe 'POST /v1/events/:event_id/certificate_templates' do
     let(:params) do
-      {
-        certificate_template: {
-          orientation: 'landscape',
-          canvas_width: 1123,
-          canvas_height: 794,
-          fields: [
-            { id: 'f_name', type: 'attendee_name', label: 'Name', x: 200, y: 350,
-              width: 700, height: 100, font_size: 48, font_style: 'bold', color: '#1A1A1A', align: 'center' }
-          ]
-        }
-      }
+      { certificate_template: { orientation: 'landscape', canvas_width: 1123, canvas_height: 794, fields: [field] } }
     end
 
     it 'creates a template' do
-      expect {
-        post "/v1/events/#{event.id}/certificate_template", params: params, headers: org_owner_headers
-      }.to change(CertificateTemplate, :count).by(1)
+      expect { post base, params: params, headers: org_owner_headers }.to change(CertificateTemplate, :count).by(1)
       expect(response).to have_http_status(:created)
     end
 
     it 'accepts a background image upload and returns its url' do
-      post "/v1/events/#{event.id}/certificate_template",
-           params: params.deep_merge(certificate_template: { background_image: png }),
-           headers: org_owner_headers
+      post base, params: params.deep_merge(certificate_template: { background_image: png }), headers: org_owner_headers
       expect(response).to have_http_status(:created)
       expect(JSON.parse(response.body)['background_image_url']).to be_present
     end
 
     it 'forbids a non-admin user' do
-      post "/v1/events/#{event.id}/certificate_template", params: params, headers: member_headers
+      post base, params: params, headers: member_headers
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'assigns ticket types and rejects a second default template' do
+      create(:certificate_template, event: event)
+      ticket_type = create(:ticket_type, event: event)
+
+      post base, params: { certificate_template: { name: 'Jawatankuasa', ticket_type_ids: [ticket_type.id] } },
+                 headers: org_owner_headers
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(response.body)['ticket_type_ids']).to eq([ticket_type.id])
+
+      expect {
+        post base, params: { certificate_template: { name: 'Another default' } }, headers: org_owner_headers
+      }.not_to change(CertificateTemplate, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'rejects a ticket type already used by another template' do
+      ticket_type = create(:ticket_type, event: event)
+      create(:certificate_template, event: event, ticket_type_ids: [ticket_type.id])
+
+      post base, params: { certificate_template: { name: 'Dup', ticket_type_ids: [ticket_type.id] } },
+                 headers: org_owner_headers
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'rejects a ticket type from another event' do
+      other = create(:ticket_type, event: create(:event))
+
+      post base, params: { certificate_template: { name: 'X', ticket_type_ids: [other.id] } },
+                 headers: org_owner_headers
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'duplicates design and background from another template' do
+      source = create(:certificate_template, :ready, event: event)
+      ticket_type = create(:ticket_type, event: event)
+
+      post base, params: { duplicate_from_id: source.id,
+                           certificate_template: { name: 'Jawatankuasa', ticket_type_ids: [ticket_type.id] } },
+                 headers: org_owner_headers
+
+      expect(response).to have_http_status(:created)
+      copy = CertificateTemplate.find(JSON.parse(response.body)['id'])
+      expect(copy.fields).to eq(source.fields)
+      expect(copy.background_image).to be_attached
+      expect(copy.background_image.blob).not_to eq(source.background_image.blob)
+      expect(copy.status).to eq('draft')
     end
   end
 
-  describe 'PATCH /v1/events/:event_id/certificate_template' do
+  describe 'PATCH /v1/events/:event_id/certificate_templates/:id' do
+    let!(:template) { create(:certificate_template, event: event) }
+
     it 'marks ready when background and fields are present in one request' do
-      patch "/v1/events/#{event.id}/certificate_template",
-            params: {
-              certificate_template: {
-                status: 'ready',
-                background_image: png,
-                fields: [{ id: 'f_name', type: 'attendee_name', x: 1, y: 1, width: 10, height: 10, font_size: 12 }]
-              }
-            },
+      patch "#{base}/#{template.id}",
+            params: { certificate_template: { status: 'ready', background_image: png, fields: [field] } },
             headers: org_owner_headers
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['status']).to eq('ready')
@@ -94,7 +131,7 @@ RSpec.describe 'V1::CertificateTemplates', type: :request do
       it 'purges the image and downgrades a ready template to draft' do
         expect(template.background_image).to be_attached
 
-        patch "/v1/events/#{event.id}/certificate_template",
+        patch "#{base}/#{template.id}",
               params: { certificate_template: { remove_background_image: true } },
               headers: org_owner_headers
 
@@ -104,6 +141,18 @@ RSpec.describe 'V1::CertificateTemplates', type: :request do
         expect(body['background_image_url']).to be_nil
         expect(template.reload.background_image).not_to be_attached
       end
+    end
+  end
+
+  describe 'DELETE /v1/events/:event_id/certificate_templates/:id' do
+    it 'removes only that template' do
+      keep = create(:certificate_template, event: event)
+      drop = create(:certificate_template, event: event, ticket_type_ids: [create(:ticket_type, event: event).id])
+
+      delete "#{base}/#{drop.id}", headers: org_owner_headers
+
+      expect(response).to have_http_status(:no_content)
+      expect(event.certificate_templates.reload).to eq([keep])
     end
   end
 end

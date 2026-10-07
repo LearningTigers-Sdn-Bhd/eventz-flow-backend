@@ -258,8 +258,7 @@ Rails.application.routes.draw do
       end
 
       # E-Certificates
-      resource :certificate_template, only: %i[show create update destroy],
-                                      controller: 'certificate_templates'
+      resources :certificate_templates, only: %i[index show create update destroy]
       resources :certificates, only: [] do
         collection do
           post :send_batch

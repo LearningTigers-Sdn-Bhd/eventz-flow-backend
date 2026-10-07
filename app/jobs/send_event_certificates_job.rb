@@ -11,10 +11,11 @@ class SendEventCertificatesJob < ApplicationJob
     event = Event.find_by(id: event_id)
     return if event.nil?
 
-    template = event.certificate_template
-    return unless template&.ready?
+    return unless event.certificate_templates.any?(&:ready?)
 
     recipient_scope(event, audience, excluded_public_ids).find_each do |ticket|
+      next unless event.certificate_template_for(ticket)&.ready?
+
       EmailDelivery::AuditedDelivery.deliver_later(
         mailer_name: 'CertificateMailer',
         mailer_action: 'certificate_email',
@@ -67,7 +68,7 @@ class SendEventCertificatesJob < ApplicationJob
   # Feedback-gated certificates: fired right after an attendee submits the
   # form, when the organizer switched on "require feedback".
   def self.deliver_after_feedback(ticket)
-    template = ticket.event.certificate_template
+    template = ticket.event.certificate_template_for(ticket)
     return unless template&.ready? && template.require_feedback && ticket.attendee_email.present?
 
     EmailDelivery::AuditedDelivery.deliver_later(
