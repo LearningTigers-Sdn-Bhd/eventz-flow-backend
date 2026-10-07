@@ -2,6 +2,9 @@ class EventEmailSetting < ApplicationRecord
   belongs_to :event
 
   validates :event_id, uniqueness: true
+  # Must match the delay options in the panel's email-settings-form.tsx.
+  THANK_YOU_DELAY_OPTIONS = [0, 30, 60, 120, 240, 1440].freeze
+  validates :thank_you_delay_minutes, inclusion: { in: THANK_YOU_DELAY_OPTIONS }
 
   # Groups every event-scoped mailer action into a toggle an org_owner can
   # switch off. Keys are what's stored in `disabled_categories`. `group` is

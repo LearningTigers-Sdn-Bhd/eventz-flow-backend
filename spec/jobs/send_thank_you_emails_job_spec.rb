@@ -26,6 +26,21 @@ RSpec.describe SendThankYouEmailsJob, type: :job do
     expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
   end
 
+  it 'honours a per-event delay' do
+    event.update_columns(end_date: 30.minutes.ago)
+    event.create_event_email_setting!(thank_you_delay_minutes: 0)
+    expect { described_class.new.perform }.to have_enqueued_job(EmailDeliveryJob).twice
+
+    other = create(:event, status: :published, start_date: 1.day.ago, end_date: 30.minutes.ago)
+    other.create_event_email_setting!(thank_you_delay_minutes: 60)
+    create(:ticket, :checked_in, :paid, event: other, attendee_email: 'c@example.com')
+    expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+  end
+
+  it 'rejects delays outside the preset options' do
+    expect(event.build_event_email_setting(thank_you_delay_minutes: 45)).not_to be_valid
+  end
+
   it 'respects the thank_you category toggle' do
     event.create_event_email_setting!(disabled_categories: ['thank_you'])
     expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_07_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_07_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -380,6 +380,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_000000) do
     t.string "business_matching_sender_name"
     t.string "business_matching_host_invite_subject"
     t.text "business_matching_host_invite_message"
+    t.integer "thank_you_delay_minutes", default: 120, null: false
     t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
 
@@ -475,7 +476,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_000000) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|

@@ -7,8 +7,8 @@ Rails.application.config.after_initialize do
     )
 
     Sidekiq::Cron::Job.create(
-      name: 'Send post-event thank you emails - every hour',
-      cron: '15 * * * *',
+      name: 'Send post-event thank you emails - every 10 minutes',
+      cron: '*/10 * * * *',
       class: 'SendThankYouEmailsJob'
     )
 
