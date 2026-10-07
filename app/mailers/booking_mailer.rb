@@ -184,6 +184,7 @@ class BookingMailer < ApplicationMailer
     @sender_display_name = _bm_sender_display_name(event)
 
     email_setting = event&.event_email_setting
+    @host_label = email_setting&.business_matching_host_label.presence || 'Business Host'
 
     raw_message = custom_message.presence || email_setting&.business_matching_host_invite_message.presence
     if raw_message.present?
@@ -191,15 +192,17 @@ class BookingMailer < ApplicationMailer
                         .gsub('{{event_name}}', @event_title.to_s)
                         .gsub('{{session_title}}', @session_title.to_s)
                         .gsub('{{inviter_name}}', @inviter_name.presence || 'The event organizer')
+                        .gsub('{{host_label}}', @host_label.to_s)
                         .gsub('{{invite_url}}', @invite_url.to_s)
     end
 
     raw_subject = email_setting&.business_matching_host_invite_subject.presence ||
-                  "You've been invited as a Business Host for #{@event_title}"
+                  "You've been invited as a #{@host_label} for #{@event_title}"
     subject_text = raw_subject
                    .gsub('{{event_name}}', @event_title.to_s)
                    .gsub('{{session_title}}', @session_title.to_s)
                    .gsub('{{inviter_name}}', @inviter_name.presence || 'The event organizer')
+                   .gsub('{{host_label}}', @host_label.to_s)
 
     mail(
       to: recipient_email,

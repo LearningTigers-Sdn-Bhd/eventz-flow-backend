@@ -203,6 +203,26 @@ RSpec.describe BookingMailer, type: :mailer do
         )
         expect(adhoc_mail.body.encoded).to include('Custom one-off note for you!')
       end
+
+      context 'with custom business_matching_host_label' do
+        before do
+          event.event_email_setting.update!(
+            business_matching_host_label: 'Business Partner',
+            business_matching_host_invite_subject: nil,
+            business_matching_host_invite_message: nil
+          )
+        end
+
+        it 'uses the custom host label in default subject and body' do
+          expect(mail.subject).to eq("You've been invited as a Business Partner for #{event.title}")
+          expect(mail.html_part.body.encoded).to include('<h2>Business Partner Invitation</h2>')
+          expect(mail.html_part.body.encoded).to include('join as a')
+          expect(mail.html_part.body.encoded).to include('<strong>Business Partner</strong>')
+          expect(mail.html_part.body.encoded).to include('As a Business Partner, you can set up your profile')
+          expect(mail.text_part.body.decoded).to include('join as a Business Partner for')
+          expect(mail.text_part.body.decoded).to include('As a Business Partner, you can set up your profile')
+        end
+      end
     end
   end
 end
