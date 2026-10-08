@@ -7,6 +7,8 @@ module V1
     EXPORT_LIMIT = 10_000
     REMINDER_LIMIT = 500
     REMINDER_COOLDOWN = 24.hours
+    # Thank-you also carries the link, so either counts as "last emailed".
+    FEEDBACK_MAIL_ACTIONS = %w[thank_you_email feedback_reminder_email].freeze
 
     before_action :authenticate_user!
     before_action :set_event
@@ -79,7 +81,7 @@ module V1
 
     # POST /v1/events/:event_id/feedback_form/remind
     # Body: { ticket_ids: [public_id, ...] } or { all: true } (plus filters).
-    # Re-sends the thank-you email (which carries the feedback link).
+    # Sends the dedicated feedback-reminder email.
     def remind
       error = reminder_blocker
       return error_response(message: error, status: :unprocessable_content) if error
@@ -94,7 +96,7 @@ module V1
         next if recent.include?(ticket.id)
 
         EmailDelivery::AuditedDelivery.deliver_later(
-          mailer_name: 'ThankYouMailer', mailer_action: 'thank_you_email', args: [ticket], related: ticket,
+          mailer_name: 'ThankYouMailer', mailer_action: 'feedback_reminder_email', args: [ticket], related: ticket,
           metadata: { source: 'feedback_reminder', event_id: @event.id }, dedupe: true
         )
         queued += 1
@@ -252,13 +254,13 @@ module V1
 
     def last_emailed_at(ticket_ids)
       EmailDelivery.where(related_type: 'Ticket', related_id: ticket_ids, mailer_name: 'ThankYouMailer',
-                          mailer_action: 'thank_you_email', status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
+                          mailer_action: FEEDBACK_MAIL_ACTIONS, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
                    .group(:related_id).maximum(:created_at)
     end
 
     def recently_emailed_ticket_ids(ticket_ids)
       EmailDelivery.where(related_type: 'Ticket', related_id: ticket_ids, mailer_name: 'ThankYouMailer',
-                          mailer_action: 'thank_you_email', status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
+                          mailer_action: FEEDBACK_MAIL_ACTIONS, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
                    .where('created_at >= ?', REMINDER_COOLDOWN.ago)
                    .distinct.pluck(:related_id).to_set
     end

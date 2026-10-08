@@ -48,7 +48,7 @@ class EventEmailSetting < ApplicationRecord
     'thank_you' => {
       label: 'Post-Event Thank You',
       group: 'ticket',
-      mailers: [%w[ThankYouMailer thank_you_email]]
+      mailers: [%w[ThankYouMailer thank_you_email], %w[ThankYouMailer feedback_reminder_email]]
     },
     'ticket_application' => {
       label: 'Ticket Application (RSVP)',

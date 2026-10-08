@@ -21,6 +21,21 @@ class ThankYouMailer < ApplicationMailer
     )
   end
 
+  # Nudge for attendees who got the thank-you but haven't filled in the form.
+  def feedback_reminder_email(ticket)
+    @ticket = ticket
+    @event = ticket.event
+    @sender_name = email_setting&.sender_name.presence || @event.title
+    @contact_email = email_setting&.contact_email.presence
+    @feedback_url = feedback_url
+
+    mail(
+      to: ticket.attendee_email,
+      from: format_sender(@sender_name, email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'),
+      subject: "Quick reminder: share your feedback on #{@event.title}"
+    )
+  end
+
   private
 
   def email_setting
