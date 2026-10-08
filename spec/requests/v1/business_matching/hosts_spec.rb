@@ -398,6 +398,18 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       ).to eq(true)
     end
 
+    it "auto-verifies the user email when accepting the invitation if unverified" do
+      unverified_user = create(:user, email_verified_at: nil)
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      post "/v1/business_matching/host_invites/accept",
+           params: { token: token },
+           headers: auth_headers(unverified_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(unverified_user.reload.email_verified_at).to be_present
+    end
+
     it "rejects a hand-typed/garbage token" do
       post "/v1/business_matching/host_invites/accept",
            params: { token: "totally-made-up-token" },

@@ -380,6 +380,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_120000) do
     t.string "business_matching_sender_name"
     t.string "business_matching_host_invite_subject"
     t.text "business_matching_host_invite_message"
+    t.string "business_matching_host_label"
     t.integer "thank_you_delay_minutes", default: 120, null: false
     t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
@@ -821,9 +822,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_120000) do
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
-    t.integer "rfid_attendance_percent", default: 80, null: false
     t.boolean "require_unique_membership_numbers", default: true, null: false
     t.boolean "use_feedback", default: false, null: false
+    t.integer "rfid_attendance_percent", default: 80, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
