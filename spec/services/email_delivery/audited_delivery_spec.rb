@@ -100,6 +100,46 @@ RSpec.describe EmailDelivery::AuditedDelivery do
     end
   end
 
+  describe '.send_delay (provider rate-limit spacing)' do
+    # Stands in for the Redis Lua script: hands out consecutive slots.
+    def fake_slots(start, spacing)
+      next_slot = start
+      conn = double('redis')
+      allow(conn).to receive(:call) do
+        slot = next_slot
+        next_slot += spacing
+        slot.to_s
+      end
+      allow(Sidekiq).to receive(:redis).and_yield(conn)
+    end
+
+    it 'spaces a burst one slot apart and gives the first email no delay' do
+      fake_slots(Time.current.to_f, described_class::SEND_SPACING)
+
+      delays = Array.new(3) { described_class.send_delay }
+      expect(delays[0]).to be_nil
+      expect(delays[1]).to be_within(0.2).of(described_class::SEND_SPACING)
+      expect(delays[2]).to be_within(0.2).of(described_class::SEND_SPACING * 2)
+    end
+
+    it 'schedules the job for later when a slot is not free yet' do
+      allow(described_class).to receive(:send_delay).and_return(1.5)
+      clear_enqueued_jobs
+
+      described_class.deliver_later(
+        mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
+      )
+
+      expect(enqueued_jobs.last[:at]).to be > Time.current.to_f
+    end
+
+    it 'fails open (no delay) when Redis is down' do
+      allow(Sidekiq).to receive(:redis).and_raise(RedisClient::CannotConnectError)
+
+      expect(described_class.send_delay).to be_nil
+    end
+  end
+
   describe 'event email toggles' do
     let(:exhibitor_kit) { create(:exhibitor_kit) }
     let(:event) { exhibitor_kit.event_vendor.event }

@@ -70,15 +70,17 @@ module Rfid
       SheetKit::Column.new(title, width, kind)
     end
 
+    # Email and phone always show; chosen custom fields follow.
     def custom_cols
-      @fields.map { |key| col(@labels[key], 30) }
+      [col('Email', 30), col('Phone', 18), *@fields.map { |key| col(@labels[key], 30) }]
     end
 
     # Cells for one ticket, in the order of `custom_cols`.
     def custom_cells(ticket_id)
-      @custom_data ||= @event.tickets.pluck(:id, :custom_fields_data).to_h
-      data = @custom_data[ticket_id].to_h
-      @fields.map { |key| data[key].to_s.strip.presence }
+      @contact_data ||= @event.tickets.pluck(:id, :attendee_email, :attendee_phone, :custom_fields_data)
+                              .to_h { |id, email, phone, data| [id, [email, phone, data.to_h]] }
+      email, phone, data = @contact_data[ticket_id]
+      [email.presence, phone.presence, *@fields.map { |key| data.to_h[key].to_s.strip.presence }]
     end
 
     def time(iso)

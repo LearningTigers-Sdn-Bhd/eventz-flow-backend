@@ -86,15 +86,15 @@ RSpec.describe Rfid::ReportWorkbook do
       %w[Keynote Guest\ Visits No\ Gate\ Read E-Certificate].each do |name|
         rows = book.sheet(name).parse
         header = rows.find { |row| row.include?('Ticket type') }
-        expect(header.compact.first(4)).to eq(['Guest', 'Ticket type', 'Kategori', 'Nama Agensi'])
+        expect(header.compact.first(6)).to eq(['Guest', 'Ticket type', 'Email', 'Phone', 'Kategori', 'Nama Agensi'])
       end
       row = book.sheet('Guest Visits').parse.find { |r| r.include?('Stayed Long') }
-      expect(row.first(4)).to eq(['Stayed Long', 'Delegate', 'KERAJAAN', 'JKR'])
+      expect(row.values_at(0, 1, 4, 5)).to eq(['Stayed Long', 'Delegate', 'KERAJAAN', 'JKR'])
     end
 
-    it 'leaves the workbook unchanged when nothing is picked' do
+    it 'still shows email and phone when no custom field is picked' do
       header = workbook_with([]).sheet('Guest Visits').parse.find { |row| row.include?('Ticket type') }
-      expect(header.compact.first(3)).to eq(['Guest', 'Ticket type', 'Times entered'])
+      expect(header.compact.first(5)).to eq(['Guest', 'Ticket type', 'Email', 'Phone', 'Times entered'])
     end
   end
 end

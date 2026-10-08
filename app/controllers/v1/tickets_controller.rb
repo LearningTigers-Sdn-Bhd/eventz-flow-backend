@@ -471,7 +471,7 @@ module V1
 
       delivery = EmailDelivery::AuditedDelivery.deliver_later(
         mailer_name: 'ThankYouMailer',
-        mailer_action: 'thank_you_email',
+        mailer_action: 'feedback_reminder_email',
         args: [@ticket],
         related: @ticket,
         metadata: { source: 'ticket_actions_menu_manual_resend', event_id: @event.id }

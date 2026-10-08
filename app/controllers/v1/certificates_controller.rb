@@ -90,18 +90,24 @@ module V1
     def participants
       authorize @event, :preview?, policy_class: CertificateTemplatePolicy
 
-      tickets = @event.tickets.where.not(attendee_email: [nil, '']).order(:attendee_name)
+      tickets = @event.tickets.where.not(attendee_email: [nil, '']).includes(:ticket_type).order(:attendee_name)
       latest = latest_certificate_deliveries_by_ticket_id
       feedback_ids = SendEventCertificatesJob.feedback_ticket_ids(@event).pluck(:ticket_id).to_set
-      rows = ::Rfid::Attendance.new(@event).eligibility_rows
+      attendance = ::Rfid::Attendance.new(@event)
+      rows = attendance.eligibility_rows
       qualified_ids = rows.select { |row| row[:status] == 'qualified' }.to_set { |row| row[:id] }
       sessions_done_ids = rows.select { |row| row[:sessions_met] }.to_set { |row| row[:id] }
+      # Only the filterable registration answers (category, agency...), so IC
+      # numbers and other free text never reach the browser.
+      field_keys = attendance.custom_field_options.pluck(:key)
 
       render json: {
         data: tickets.map do |ticket|
           participant_row(ticket, latest[ticket.id], feedback_ids.include?(ticket.id))
             .merge(rfid_qualified: qualified_ids.include?(ticket.id),
-                   sessions_done: sessions_done_ids.include?(ticket.id))
+                   sessions_done: sessions_done_ids.include?(ticket.id),
+                   custom_fields: ticket.custom_fields_data.to_h.slice(*field_keys)
+                                        .transform_values { |value| value.to_s.strip })
         end
       }, status: :ok
     end

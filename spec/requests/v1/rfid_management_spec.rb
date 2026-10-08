@@ -945,6 +945,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       expect(response).to have_http_status(:ok)
       expect(body).to include('count' => 2, 'dry_run' => true)
       expect(body['guests'].map { |guest| guest['lowest_percent'] }).to contain_exactly(10.0, 70.0)
+      expect(body['guests']).to all(include('sessions_attended' => 1, 'sessions_total' => 1))
       expect(Rfid::Correction.count).to eq(0)
     end
 
@@ -968,6 +969,38 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       expect(body).to include('count' => 1)
       post path, params: { reason: 'agency exception', custom_fields: { category: 'Agensi' } }, headers: headers, as: :json
       expect(Rfid::Correction.where(kind: 'cert_override').pluck(:ticket_id)).to eq([near.id])
+    end
+
+    it 'filters by event day: came any day, every day, or only some days' do
+      day1 = Rfid::Session.find_by!(event: event, name: 'Keynote')
+      day2 = Rfid::Session.create!(event: event, name: 'Day 2', starts_at: base + 1.day,
+                                   ends_at: base + 1.day + 100.minutes, mandatory: true)
+      create(:ticket, :paid, event: event) # never came: held in every mode
+      observation = create(:rfid_observation, event: event, station: gate, outcome: 'accepted')
+      Rfid::Visit.create!(event: event, ticket: near, ticket_public_id: near.public_id, ticket_name: 'Guest',
+                          entry_observation: observation, entry_at: base + 1.day,
+                          exit_at: base + 1.day + 30.minutes) # near came on both days
+      days = [[day1.id], [day2.id]]
+      count = lambda do |mode|
+        post path, params: { dry_run: true, attended_days: days, attended_mode: mode }, headers: headers, as: :json
+        body['count']
+      end
+
+      expect(count.call('any')).to eq(3)     # near, far, full; the 0% guest held
+      expect(count.call('all')).to eq(1)     # near only
+      expect(count.call('partial')).to eq(2) # far + full came day 1 only
+
+      post path, params: { dry_run: true, attended_mode: 'bogus' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'matches any of several values for one registration field' do
+      near.update!(custom_fields_data: { 'category' => 'Agensi' })
+      far.update!(custom_fields_data: { 'category' => 'Swasta' })
+      full.update!(custom_fields_data: { 'category' => 'Lain' })
+
+      post path, params: { dry_run: true, custom_fields: { category: %w[Agensi Swasta] } }, headers: headers, as: :json
+      expect(body['guests'].map { |guest| guest['ticket_public_id'] }).to contain_exactly(near.public_id, far.public_id)
     end
 
     it 'does not waive anyone twice' do
@@ -995,7 +1028,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       Roo::Excelx.new(file.path).sheet(name).parse
     end
 
-    it 'exports this event only, as plain-language sheets with no contact, key or live formula' do
+    it 'exports this event only, as plain-language sheets with email and phone but no key or live formula' do
       formula_title_type = create(:ticket_type, event: event, name: '=IMPORTXML("x")')
       formula_ticket = create(:ticket, :paid, :checked_in, event: event,
                                                 ticket_type: formula_title_type,
@@ -1027,7 +1060,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
 
       log = sheet_rows('Guest Visits').flatten.compact.map(&:to_s)
       expect(log).to include('=cmd|calc', formula_ticket.public_id.to_s)
-      expect(log).not_to include('formula@example.com', '0199999999')
+      expect(log).to include('formula@example.com', '0199999999')
       expect(sheet_rows('Summary').flatten.compact.map(&:to_s)).to include('Venue at a glance')
       expect(response.body).not_to include(device_key.raw_key)
     end
