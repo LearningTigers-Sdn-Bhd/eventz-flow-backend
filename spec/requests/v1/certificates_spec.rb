@@ -77,6 +77,16 @@ RSpec.describe 'V1::Certificates', type: :request do
       expect(data.first['certificate_status']).to be_nil
     end
 
+    it 'exposes filterable registration answers, trimmed' do
+      ticket.update!(payment_status: :paid, custom_fields_data: { 'category' => ' 2 ' })
+      create(:ticket, :paid, event: event, attendee_email: 'bob@example.com',
+                             custom_fields_data: { 'category' => '3' })
+
+      get "/v1/events/#{event.id}/certificates/participants", headers: org_owner_headers
+      data = JSON.parse(response.body)['data']
+      expect(data.map { |row| row['custom_fields'] }).to contain_exactly({ 'category' => '2' }, { 'category' => '3' })
+    end
+
     it 'reflects the latest certificate delivery status' do
       create(:email_delivery,
              related: ticket,
