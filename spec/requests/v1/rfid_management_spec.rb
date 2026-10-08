@@ -945,6 +945,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       expect(response).to have_http_status(:ok)
       expect(body).to include('count' => 2, 'dry_run' => true)
       expect(body['guests'].map { |guest| guest['lowest_percent'] }).to contain_exactly(10.0, 70.0)
+      expect(body['guests']).to all(include('sessions_attended' => 1, 'sessions_total' => 1))
       expect(Rfid::Correction.count).to eq(0)
     end
 
@@ -1027,7 +1028,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       Roo::Excelx.new(file.path).sheet(name).parse
     end
 
-    it 'exports this event only, as plain-language sheets with no contact, key or live formula' do
+    it 'exports this event only, as plain-language sheets with email and phone but no key or live formula' do
       formula_title_type = create(:ticket_type, event: event, name: '=IMPORTXML("x")')
       formula_ticket = create(:ticket, :paid, :checked_in, event: event,
                                                 ticket_type: formula_title_type,
@@ -1059,7 +1060,7 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
 
       log = sheet_rows('Guest Visits').flatten.compact.map(&:to_s)
       expect(log).to include('=cmd|calc', formula_ticket.public_id.to_s)
-      expect(log).not_to include('formula@example.com', '0199999999')
+      expect(log).to include('formula@example.com', '0199999999')
       expect(sheet_rows('Summary').flatten.compact.map(&:to_s)).to include('Venue at a glance')
       expect(response.body).not_to include(device_key.raw_key)
     end

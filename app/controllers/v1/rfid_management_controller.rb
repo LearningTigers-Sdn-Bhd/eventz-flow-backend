@@ -654,7 +654,9 @@ module V1
       guests = targets.first(BULK_PREVIEW_LIMIT).map do |row|
         { id: row[:id], ticket_name: row[:ticket_name], ticket_public_id: row[:ticket_public_id],
           ticket_type: row[:ticket_type], feedback_submitted: row[:feedback_submitted],
-          lowest_percent: row[:sessions].map { |item| item[:percent] }.min }
+          lowest_percent: row[:sessions].map { |item| item[:percent] }.min,
+          sessions_attended: row[:sessions].count { |item| item[:percent].positive? },
+          sessions_total: row[:sessions].length }
       end
       { count: targets.length, dry_run: true, guests: guests, limit: BULK_PREVIEW_LIMIT }
     end
