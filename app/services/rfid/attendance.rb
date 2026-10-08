@@ -54,7 +54,8 @@ module Rfid
     def filter_rows(rows, query: nil, ticket_type_id: nil, custom_fields: nil)
       by_id = tickets.index_by(&:id)
       custom_fields&.each do |key, value|
-        rows = rows.select { |row| by_id[row[:id]]&.custom_fields_data.to_h[key].to_s.strip == value.to_s.strip }
+        wanted = Array(value).map { |item| item.to_s.strip } # several values = any of them
+        rows = rows.select { |row| wanted.include?(by_id[row[:id]]&.custom_fields_data.to_h[key].to_s.strip) }
       end
       rows = rows.select { |row| row[:ticket_type_id].to_s == ticket_type_id.to_s } if ticket_type_id.present?
       rows = rows.select { |row| matches_query?(row, by_id[row[:id]], query) } if query.present?

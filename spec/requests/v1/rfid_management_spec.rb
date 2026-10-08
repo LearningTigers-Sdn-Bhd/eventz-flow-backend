@@ -970,6 +970,38 @@ RSpec.describe 'V1::Rfid staff API', type: :request do
       expect(Rfid::Correction.where(kind: 'cert_override').pluck(:ticket_id)).to eq([near.id])
     end
 
+    it 'filters by event day: came any day, every day, or only some days' do
+      day1 = Rfid::Session.find_by!(event: event, name: 'Keynote')
+      day2 = Rfid::Session.create!(event: event, name: 'Day 2', starts_at: base + 1.day,
+                                   ends_at: base + 1.day + 100.minutes, mandatory: true)
+      create(:ticket, :paid, event: event) # never came: held in every mode
+      observation = create(:rfid_observation, event: event, station: gate, outcome: 'accepted')
+      Rfid::Visit.create!(event: event, ticket: near, ticket_public_id: near.public_id, ticket_name: 'Guest',
+                          entry_observation: observation, entry_at: base + 1.day,
+                          exit_at: base + 1.day + 30.minutes) # near came on both days
+      days = [[day1.id], [day2.id]]
+      count = lambda do |mode|
+        post path, params: { dry_run: true, attended_days: days, attended_mode: mode }, headers: headers, as: :json
+        body['count']
+      end
+
+      expect(count.call('any')).to eq(3)     # near, far, full; the 0% guest held
+      expect(count.call('all')).to eq(1)     # near only
+      expect(count.call('partial')).to eq(2) # far + full came day 1 only
+
+      post path, params: { dry_run: true, attended_mode: 'bogus' }, headers: headers, as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it 'matches any of several values for one registration field' do
+      near.update!(custom_fields_data: { 'category' => 'Agensi' })
+      far.update!(custom_fields_data: { 'category' => 'Swasta' })
+      full.update!(custom_fields_data: { 'category' => 'Lain' })
+
+      post path, params: { dry_run: true, custom_fields: { category: %w[Agensi Swasta] } }, headers: headers, as: :json
+      expect(body['guests'].map { |guest| guest['ticket_public_id'] }).to contain_exactly(near.public_id, far.public_id)
+    end
+
     it 'does not waive anyone twice' do
       2.times { post path, params: { reason: 'gate lag' }, headers: headers, as: :json }
 

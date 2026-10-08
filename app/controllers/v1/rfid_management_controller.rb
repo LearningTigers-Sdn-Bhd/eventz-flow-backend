@@ -601,22 +601,50 @@ module V1
         return unprocessable('min_percent must be a number between 0 and 100')
       end
 
+      mode = params[:attended_mode].presence
+      return unprocessable("attended_mode must be one of #{ATTENDED_MODES.join(', ')}") if mode && ATTENDED_MODES.exclude?(mode)
+
       rows = attendance.filter_rows(attendance.eligibility_rows, query: params[:q].to_s.presence,
                                                                  ticket_type_id: params[:ticket_type_id].presence,
                                                                  custom_fields: custom_field_filters)
       rows = rows.select { |row| row[:status] == status } if status
       # Lowest session percent at least this value: the near-miss guests.
       rows = rows.select { |row| row[:sessions].all? { |item| item[:percent] >= min_percent.to_f } } if min_percent
-      rows
+      attended_filter(rows)
     end
 
-    # { "category" => "Agensi" } from `custom_fields[category]=Agensi`; keys that
-    # aren't plain identifiers are dropped.
+    ATTENDED_MODES = %w[any all partial].freeze
+
+    # Event days as groups of session ids. A guest "came" on a day when they were
+    # inside any session that day (any time inside counts). `attended_mode`:
+    # any = came on at least one day (holds the 0% guests), all = came every day,
+    # partial = came some days but missed at least one.
+    def attended_filter(rows)
+      days = Array(params[:attended_days]).map { |ids| Array(ids).map(&:to_i) }.reject(&:empty?)
+      return rows if days.empty?
+
+      rows.select do |row|
+        percents = row[:sessions].to_h { |item| [item[:session_id], item[:percent]] }
+        came = days.count { |ids| ids.any? { |id| percents[id].to_f.positive? } }
+        case params[:attended_mode].to_s
+        when 'all' then came == days.length
+        when 'partial' then came.between?(1, days.length - 1)
+        else came >= 1
+        end
+      end
+    end
+
+    # { "category" => ["Agensi"] } from `custom_fields[category]=Agensi` (or a
+    # list of values, any of which matches); keys that aren't plain identifiers
+    # are dropped.
     def custom_field_filters
       raw = params[:custom_fields]
       return nil unless raw.respond_to?(:to_unsafe_h)
 
-      raw.to_unsafe_h.select { |key, value| key.to_s.match?(/\A[a-z0-9_]+\z/i) && value.is_a?(String) && value.present? }
+      raw.to_unsafe_h.filter_map do |key, value|
+        values = Array(value).select { |item| item.is_a?(String) && item.present? }
+        [key, values] if key.to_s.match?(/\A[a-z0-9_]+\z/i) && values.any?
+      end.to_h
     end
 
     BULK_PREVIEW_LIMIT = 200
