@@ -60,6 +60,19 @@ RSpec.describe 'V1::CertificateTemplates', type: :request do
       expect(JSON.parse(response.body)['background_image_url']).to be_present
     end
 
+    it 'inherits the event-wide auto-send settings from an existing template' do
+      filter = { 'key' => 'kategori', 'values' => %w[2 3] }
+      create(:certificate_template, event: event, require_feedback: true, auto_send_filter: filter)
+      ticket_type = create(:ticket_type, event: event)
+
+      post base, params: { certificate_template: { name: 'VIP', ticket_type_ids: [ticket_type.id] } },
+                 headers: org_owner_headers
+
+      body = JSON.parse(response.body)
+      expect(body['require_feedback']).to be(true)
+      expect(body['auto_send_filter']).to eq(filter)
+    end
+
     it 'forbids a non-admin user' do
       post base, params: params, headers: member_headers
       expect(response).to have_http_status(:forbidden)

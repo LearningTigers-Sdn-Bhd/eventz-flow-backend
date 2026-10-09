@@ -82,6 +82,7 @@ class SendEventCertificatesJob < ApplicationJob
   def self.deliver_after_feedback(ticket)
     template = ticket.event.certificate_template_for(ticket)
     return unless template&.ready? && template.require_feedback && ticket.attendee_email.present?
+    return unless template.auto_send_allows?(ticket)
     # Events with mandatory sessions only auto-send to guests who also met them;
     # anyone else is sent later by the organizer.
     return unless Rfid::Attendance.new(ticket.event).qualified?(ticket)

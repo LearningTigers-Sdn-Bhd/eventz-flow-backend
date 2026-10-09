@@ -22,6 +22,10 @@ class CertificateTemplate < ApplicationRecord
   validate :ready_requires_completeness
   validate :acceptable_background_image
 
+  # Auto-send settings are event-wide (the panel saves them on every template),
+  # so a new template must not silently reset them.
+  before_create :inherit_auto_send_settings
+
   before_validation { self.ticket_type_ids = Array(ticket_type_ids).map(&:to_i).uniq }
 
   # --- Instance Methods ---
@@ -31,11 +35,29 @@ class CertificateTemplate < ApplicationRecord
     Rails.application.routes.url_helpers.rails_blob_url(background_image, only_path: true)
   end
 
+  # Auto-send (after feedback) narrowing by one registration answer, e.g.
+  # { "key" => "category", "values" => ["2", "3"] }. Blank filter = everyone.
+  def auto_send_allows?(ticket)
+    key = auto_send_filter['key'].to_s
+    values = Array(auto_send_filter['values']).map { |v| v.to_s.strip.downcase }
+    return true if key.blank? || values.empty?
+
+    values.include?(ticket.custom_fields_data.to_h[key].to_s.strip.downcase)
+  end
+
   def as_json(options = {})
     super(options).merge("background_image_url" => background_image_url)
   end
 
   private
+
+  def inherit_auto_send_settings
+    sibling = event.certificate_templates.where.not(id: id).order(:id).first
+    return unless sibling
+
+    self.require_feedback = sibling.require_feedback
+    self.auto_send_filter = sibling.auto_send_filter
+  end
 
   def fields_must_be_array
     errors.add(:fields, "must be an array") unless fields.is_a?(Array)

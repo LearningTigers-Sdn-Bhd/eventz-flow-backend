@@ -171,7 +171,7 @@ module V1
       end
 
       def session_params
-        params.permit(:title, :draw_date, :use_gifts, draw_styles: {}, wrapper_background: {})
+        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, draw_styles: {}, wrapper_background: {})
       end
 
       def format_session_response(session)
@@ -184,6 +184,10 @@ module V1
           draw_styles: session.draw_styles || {},
           wrapper_background: format_wrapper_background(session),
           use_gifts: session.use_gifts,
+          scanned_only: session.scanned_only,
+          scanned_from: session.scanned_from,
+          scanned_to: session.scanned_to,
+          scanned_source: session.scanned_source,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }

@@ -75,6 +75,27 @@ RSpec.describe SendEventCertificatesJob, type: :job do
       expect { described_class.deliver_after_feedback(ticket_with_email) }
         .not_to have_enqueued_job(EmailDeliveryJob)
     end
+
+    context 'with an auto-send filter' do
+      before do
+        allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(true)
+        template.update!(auto_send_filter: { 'key' => 'category', 'values' => %w[2 3] })
+      end
+
+      it 'sends when the registration answer matches' do
+        ticket_with_email.update!(custom_fields_data: { 'category' => '2' })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .to have_enqueued_job(EmailDeliveryJob).once
+      end
+
+      it 'holds back when the registration answer does not match' do
+        ticket_with_email.update!(custom_fields_data: { 'category' => '5' })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .not_to have_enqueued_job(EmailDeliveryJob)
+      end
+    end
   end
 
   describe '.recipient_scope' do

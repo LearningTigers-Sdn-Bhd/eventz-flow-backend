@@ -12,10 +12,17 @@ class LuckyDrawSession < ApplicationRecord
   # --- JSONB Attribute ---
   # draw_styles structure: { style: "wheel|slot|box", theme: "wireframe|colorful|cartoon" }
 
+  # scanned_source: where "scanned" is read from when a day range is set
+  #   ticket   - the ticket/visitor's first check-in (check_in_at)
+  #   scan_log - any scan in the range (multi-scan events)
+  SCANNED_SOURCES = %w[ticket scan_log].freeze
+
   # --- Validations ---
+  validates :scanned_source, inclusion: { in: SCANNED_SOURCES }
   validates :event_id, presence: true
   validates :title, presence: true
   validate :validate_draw_styles_structure
+  validate :validate_scanned_range
   validate :acceptable_logo
   validate :acceptable_background_image
 
@@ -32,6 +39,12 @@ class LuckyDrawSession < ApplicationRecord
   end
 
   private
+
+  def validate_scanned_range
+    return unless scanned_from && scanned_to && scanned_from > scanned_to
+
+    errors.add(:scanned_to, 'must be on or after scanned_from')
+  end
 
   def acceptable_logo
     return unless logo.attached?
