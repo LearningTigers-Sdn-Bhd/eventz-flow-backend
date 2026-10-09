@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_09_050000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_09_060000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -205,6 +205,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_09_050000) do
     t.boolean "require_feedback", default: false, null: false
     t.string "name", default: "Default", null: false
     t.bigint "ticket_type_ids", default: [], null: false, array: true
+    t.jsonb "auto_send_filter", default: {}, null: false
     t.index ["event_id"], name: "index_certificate_templates_on_event_id"
     t.index ["status"], name: "index_certificate_templates_on_status"
   end

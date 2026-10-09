@@ -120,6 +120,7 @@ module V1
         :background_image,
         :remove_background_image,
         ticket_type_ids: [],
+        auto_send_filter: [:key, { values: [] }],
         fields: [
           :id,
           :type,
