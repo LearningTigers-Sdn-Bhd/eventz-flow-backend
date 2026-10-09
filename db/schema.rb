@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_07_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_09_050000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1270,6 +1270,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "created_by_id"
+    t.boolean "scanned_only", default: false, null: false
+    t.date "scanned_from"
+    t.date "scanned_to"
+    t.string "scanned_source", default: "ticket", null: false
     t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
