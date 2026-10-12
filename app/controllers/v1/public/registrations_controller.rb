@@ -415,6 +415,13 @@ module V1
 
         sibling_tickets = []
 
+        # One shared inbox for the whole group → one batched email instead of
+        # one per seat. Mixed addresses keep per-ticket emails (sibling_passes
+        # would otherwise put everyone's QR in every inbox).
+        batch_emails = group_attendees.present? &&
+                       [ticket.attendee_email, *group_attendees.pluck(:attendee_email)].uniq.one?
+        ticket.suppress_confirmation_email = true if batch_emails
+
         begin
           saved = ActiveRecord::Base.transaction do
             result = if VehicleRegistrationRules.supported?(form)
@@ -450,6 +457,7 @@ module V1
               )
               sibling.ticket_type = ticket_type
               sibling.waiting_list = ticket.waiting_list
+              sibling.suppress_confirmation_email = batch_emails
               sibling.status = ticket.status
               sibling.payment_status = ticket.payment_status
               # Family/group siblings (e.g. SIE visitor pax) share the head's
@@ -491,6 +499,7 @@ module V1
           handle_ticket_application!(registration_form: form, ticket: ticket)
           assign_bundle_table!(ticket: ticket, bundle: bundle) if bundle.present?
           send_batched_payment_pending_notifications([ticket, *sibling_tickets])
+          send_group_confirmation(ticket) if batch_emails && ticket.paid? && ticket.purchased?
 
           render json: {
             success: true,
@@ -853,6 +862,20 @@ module V1
             send_payment_pending_notification(representative)
           end
         end
+      end
+
+      # Counterpart to the per-ticket suppression above: auto-paid (free) group
+      # submissions get a single email carrying every QR.
+      def send_group_confirmation(ticket)
+        return if ticket.attendee_email.blank?
+
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'TicketMailer',
+          mailer_action: 'group_confirmation_email',
+          args: [ticket],
+          related: ticket,
+          metadata: { source: 'public_group_registration', event_id: ticket.event_id }
+        )
       end
 
       def delegate_approval_enabled_for_form?(form)
