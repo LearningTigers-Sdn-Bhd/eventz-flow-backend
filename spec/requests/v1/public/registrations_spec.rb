@@ -469,6 +469,42 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         )
       end
 
+      context 'with a free ticket type (auto-paid)' do
+        before { ticket_type.update!(price: 0) }
+
+        def group_params(emails)
+          valid_params.merge(
+            attendee_email: emails.first,
+            attendees_payload: emails.each_with_index.map do |email, i|
+              { attendee_name: "Guest #{i}", attendee_email: email, attendee_phone: "01234567#{i}0" }
+            end.to_json
+          )
+        end
+
+        it 'sends one batched confirmation when the whole group shares an email' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register", params: group_params(%w[a@example.com] * 3)
+
+          expect(response).to have_http_status(:created)
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'group_confirmation_email')).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'confirmation_email'))
+        end
+
+        it 'keeps one confirmation per ticket when emails differ' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register", params: group_params(%w[a@example.com b@example.com])
+
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'confirmation_email')).twice
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'group_confirmation_email'))
+        end
+      end
+
       it 'sends separate pending-payment emails when siblings use distinct emails' do
         allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
 
