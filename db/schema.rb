@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_13_060000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_13_080000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -839,6 +839,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_060000) do
     t.boolean "require_unique_membership_numbers", default: true, null: false
     t.boolean "use_feedback", default: false, null: false
     t.integer "rfid_attendance_percent", default: 80, null: false
+    t.boolean "use_rfid", default: false, null: false
+    t.boolean "use_people_counter", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end

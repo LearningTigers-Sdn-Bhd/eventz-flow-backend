@@ -10,7 +10,7 @@ RSpec.describe 'V1 Public PeopleCounters', type: :request do
       halls: [{ id: 5, name: 'Main Hall', floor: 'Level 1', status: 'ok', inside_now: 172, capacity: 200,
                 in_today: 900, out_today: 700, in_event: 3000, out_event: 2800 }] }
   end
-  let!(:event) { create(:event, status: :published, title: 'Big Expo') }
+  let!(:event) { create(:event, status: :published, title: 'Big Expo', use_people_counter: true) }
   let(:url) { "/v1/public/events/#{event.slug}/people_counter" }
 
   before { allow_any_instance_of(PeopleCounter::EventHeadcount).to receive(:call).and_return(headcount) } # rubocop:disable RSpec/AnyInstance
@@ -32,6 +32,12 @@ RSpec.describe 'V1 Public PeopleCounters', type: :request do
 
   it 'is a 404 for an unpublished event' do
     event.update!(status: :draft)
+    get url
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it 'is a 404 once the People Counter is turned off for the event' do
+    event.update!(use_people_counter: false)
     get url
     expect(response).to have_http_status(:not_found)
   end
