@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_09_060000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1261,6 +1261,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_09_060000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "lucky_draw_entries", force: :cascade do |t|
+    t.bigint "lucky_draw_session_id", null: false
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.bigint "scanned_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lucky_draw_session_id", "ticket_id"], name: "idx_lucky_draw_entries_session_ticket", unique: true, where: "(ticket_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id", "visitor_id"], name: "idx_lucky_draw_entries_session_visitor", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id"], name: "index_lucky_draw_entries_on_lucky_draw_session_id"
+    t.index ["scanned_by_id"], name: "index_lucky_draw_entries_on_scanned_by_id"
+    t.index ["ticket_id"], name: "index_lucky_draw_entries_on_ticket_id"
+    t.index ["visitor_id"], name: "index_lucky_draw_entries_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "lucky_draw_entries_exactly_one_participant"
+  end
+
   create_table "lucky_draw_sessions", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "title", null: false
@@ -2281,6 +2297,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_09_060000) do
   add_foreign_key "invalid_participants", "lucky_draw_sessions"
   add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
+  add_foreign_key "lucky_draw_entries", "lucky_draw_sessions"
+  add_foreign_key "lucky_draw_entries", "tickets", on_delete: :cascade
+  add_foreign_key "lucky_draw_entries", "users", column: "scanned_by_id", on_delete: :nullify
+  add_foreign_key "lucky_draw_entries", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
   add_foreign_key "lucky_draw_sessions", "users", column: "created_by_id"
   add_foreign_key "pass_bundles", "events"

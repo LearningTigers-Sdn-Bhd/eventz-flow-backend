@@ -26,7 +26,7 @@ module V1
         end
 
         participants = exclude_null_names(participants)
-        participants = filter_scanned(participants) if @session.scanned_only
+        participants = filter_scanned(participants) if @session.scanned_only || @session.scanned_source == 'entries'
 
         success_response(
           data: participants.map { |p| format_participant_response(p) },
@@ -122,6 +122,8 @@ module V1
       # "ticket" reads the first check-in (check_in_at); "scan_log" reads every
       # scan (reprints are not attendance). No range means any day.
       def filter_scanned(participants)
+        return filter_entries(participants) if @session.scanned_source == 'entries'
+
         participants = participants.where(checked_in: true)
         return participants unless @session.scanned_from || @session.scanned_to
 
@@ -131,6 +133,12 @@ module V1
         scans = ScanLog.where(event_id: @event.id, scannable_type: participants.klass.name, scanned_at: range)
                        .where.not(source: :reprint)
         participants.where(id: scans.select(:scannable_id))
+      end
+
+      # Entry scan: only people scanned into this draw, day range ignored (entry is the qualifier).
+      def filter_entries(participants)
+        column = participants.klass == Ticket ? :ticket_id : :visitor_id
+        participants.where(id: @session.lucky_draw_entries.select(column))
       end
 
       def exclude_null_names(participants)

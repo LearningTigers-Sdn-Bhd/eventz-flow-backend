@@ -4,6 +4,7 @@ class LuckyDrawSession < ApplicationRecord
   belongs_to :created_by, class_name: 'User', optional: true
   has_many :gifts, dependent: :destroy
   has_many :invalid_participants, dependent: :destroy
+  has_many :lucky_draw_entries, dependent: :destroy
 
   # --- Active Storage ---
   has_one_attached :logo, dependent: :purge_later
@@ -15,7 +16,8 @@ class LuckyDrawSession < ApplicationRecord
   # scanned_source: where "scanned" is read from when a day range is set
   #   ticket   - the ticket/visitor's first check-in (check_in_at)
   #   scan_log - any scan in the range (multi-scan events)
-  SCANNED_SOURCES = %w[ticket scan_log].freeze
+  #   entries  - only tickets scanned at the lucky draw booth (lucky_draw_entries)
+  SCANNED_SOURCES = %w[ticket scan_log entries].freeze
 
   # --- Validations ---
   validates :scanned_source, inclusion: { in: SCANNED_SOURCES }
