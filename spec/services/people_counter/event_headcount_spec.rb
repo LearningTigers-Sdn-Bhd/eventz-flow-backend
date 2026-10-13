@@ -30,6 +30,19 @@ RSpec.describe PeopleCounter::EventHeadcount do
     expect(client).to have_received(:venue_totals).with(1, from: event.start_date, to: event.end_date)
   end
 
+  it "keeps exact level text separate and counts only working halls in totals" do
+    hall_b.update!(floor: "level 1")
+    hall_c.update!(floor: "Level 1 ")
+    hall_d.update!(floor: "Level 1")
+
+    levels = result[:levels].index_by { |level| level[:floor] }
+    expect(levels.keys).to contain_exactly("Level 1", "level 1", "Level 1 ")
+    expect(levels["Level 1"]).to include(inside_now: 40, capacity: 100, in_today: 60, out_today: 20,
+                                         in_event: 100, out_event: 10, halls: 2, halls_counted: 1)
+    expect(levels["level 1"]).to include(inside_now: 10, capacity: 50, halls: 1, halls_counted: 1)
+    expect(levels["Level 1 "]).to include(inside_now: 0, capacity: 200, halls: 1, halls_counted: 1)
+  end
+
   it "marks a hall without a counter as unlinked with empty figures" do
     row = result[:halls].find { |h| h[:name] == "Hall D" }
     expect(row).to include(status: "unlinked", inside_now: nil, in_event: nil)

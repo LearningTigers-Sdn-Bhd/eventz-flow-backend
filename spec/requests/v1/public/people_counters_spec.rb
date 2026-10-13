@@ -5,10 +5,17 @@ require 'rails_helper'
 RSpec.describe 'V1 Public PeopleCounters', type: :request do
   let(:headcount) do
     { configured: true, generated_at: '2026-10-13T10:00:00+08:00',
-      event: { inside_now: 172, capacity: 200, in_today: 900, out_today: 700 },
-      levels: [{ floor: 'Level 1', inside_now: 172, capacity: 200, in_today: 900 }],
-      halls: [{ id: 5, name: 'Main Hall', floor: 'Level 1', status: 'ok', inside_now: 172, capacity: 200,
-                in_today: 900, out_today: 700, in_event: 3000, out_event: 2800 }] }
+      event: { inside_now: 200, capacity: 320, in_today: 900, out_today: 700, halls: 3, halls_counted: 2 },
+      levels: [
+        { floor: 'Level 1', inside_now: 172, capacity: 200, in_today: 900, halls: 1, halls_counted: 1 },
+        { floor: 'Level 2', inside_now: 28, capacity: 120, in_today: 10, halls: 2, halls_counted: 1 }
+      ],
+      halls: [
+        { id: 5, name: 'Main Hall', floor: 'Level 1', status: 'ok', inside_now: 172, capacity: 200,
+          in_today: 900, out_today: 700, in_event: 3000, out_event: 2800 },
+        { id: 6, name: 'Hall B', floor: 'Level 2', status: 'ok', inside_now: 28, capacity: 120 },
+        { id: 7, name: 'Hall C', floor: 'Level 2', status: 'unlinked', inside_now: nil, capacity: nil }
+      ] }
   end
   let!(:event) { create(:event, status: :published, title: 'Big Expo', use_people_counter: true) }
   let(:url) { "/v1/public/events/#{event.slug}/people_counter" }
@@ -19,10 +26,41 @@ RSpec.describe 'V1 Public PeopleCounters', type: :request do
     get url
 
     expect(response).to have_http_status(:ok)
-    expect(json_response).to include('event_title' => 'Big Expo', 'inside_now' => 172, 'capacity' => 200)
-    expect(json_response['halls']).to eq([{ 'name' => 'Main Hall', 'floor' => 'Level 1', 'status' => 'ok',
-                                            'inside_now' => 172, 'capacity' => 200 }])
+    expect(json_response).to include('event_title' => 'Big Expo', 'level' => nil, 'inside_now' => 200, 'capacity' => 320,
+                                     'halls_counted' => 2, 'halls_total' => 3)
+    expect(json_response['levels'].map { |l| l['floor'] }).to eq(['Level 1', 'Level 2'])
+    expect(json_response['halls'].first).to eq('name' => 'Main Hall', 'floor' => 'Level 1', 'status' => 'ok',
+                                               'inside_now' => 172, 'capacity' => 200)
     expect(response.headers['Cache-Control']).to include('no-store')
+  end
+
+  describe 'one level' do
+    it "shows that level's total and only its halls" do
+      get url, params: { level: 'Level 2' }
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response).to include('level' => 'Level 2', 'inside_now' => 28, 'capacity' => 120,
+                                       'halls_counted' => 1, 'halls_total' => 2)
+      expect(json_response['levels'].map { |l| l['floor'] }).to eq(['Level 2'])
+      expect(json_response['halls'].map { |h| h['name'] }).to eq(['Hall B', 'Hall C'])
+    end
+
+    it 'is a 404 for a level the event does not have' do
+      get url, params: { level: 'Level 9' }
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'matches level text exactly, including case and spaces' do
+      ['level 2', 'Level 2 '].each do |level|
+        get url, params: { level: level }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    it 'treats a blank level as the whole event' do
+      get url, params: { level: '' }
+      expect(json_response).to include('level' => nil, 'inside_now' => 200)
+    end
   end
 
   it 'leaves out traffic totals and ids' do
