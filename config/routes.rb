@@ -90,6 +90,8 @@ Rails.application.routes.draw do
         end
         # Public check-in display settings
         resource :check_in_display, only: [:show], controller: 'check_in_displays'
+        # Live crowd numbers for a screen at the door (published events only)
+        resource :people_counter, only: [:show], controller: 'people_counters'
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
@@ -273,6 +275,17 @@ Rails.application.routes.draw do
       end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
+      resources :event_halls, only: %i[index show create update destroy] do
+        get :headcount, on: :collection
+        get :analytics, on: :collection
+        get :daily, on: :collection
+        get :analytics_export, on: :collection
+      end
+      # People counter: the event's link to the counter service (org owners) and its venues
+      resource :people_counter_connection, only: %i[show update destroy] do
+        post :test
+      end
+      get 'people_counter/venues', to: 'people_counter_venues#index'
       resources :booth_plans, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'

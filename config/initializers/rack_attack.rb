@@ -98,6 +98,12 @@ class Rack::Attack
     req.ip if req.path == '/v1/public/feedback_responses' && req.post?
   end
 
+  # 9c. Public big-screen people counter: a screen polls every few seconds, so allow
+  # plenty, but cap scraping per IP.
+  throttle('public_people_counter/ip', limit: 120, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{\A/v1/public/events/[^/]+/people_counter\z})
+  end
+
   # 10. Public Registration Document Uploads (storage flooding)
   # 5 documents per registration × a few retries
   throttle('public_upload/ip', limit: 20, period: 1.hour) do |req|
