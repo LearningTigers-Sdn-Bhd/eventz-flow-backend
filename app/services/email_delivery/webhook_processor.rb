@@ -5,7 +5,8 @@ class EmailDelivery::WebhookProcessor
     'email.sent' => 'sent',
     'email.delivered' => 'delivered',
     'email.bounced' => 'bounced',
-    'email.complained' => 'complained'
+    'email.complained' => 'complained',
+    'email.suppressed' => 'suppressed'
   }.freeze
 
   def self.call(event)
