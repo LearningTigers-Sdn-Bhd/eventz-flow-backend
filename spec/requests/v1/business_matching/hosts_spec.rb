@@ -362,6 +362,26 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(access.business_matching_event_id).to eq(session.id.to_s)
     end
 
+    it "reuses the active code for the same session and exposes it read-only via GET" do
+      get "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+          params: { business_matching_event_id: session.id.to_s }, headers: auth_headers(admin)
+      expect(json_response['token']).to be_nil
+
+      post "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+           params: { business_matching_event_id: session.id.to_s }, headers: auth_headers(admin)
+      code = json_response['token']
+      expect(code.length).to eq(8)
+
+      post "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+           params: { business_matching_event_id: session.id.to_s }, headers: auth_headers(admin)
+      expect(json_response['token']).to eq(code)
+
+      get "/v1/business_matching/events/#{event.id}/hosts/invite_link",
+          params: { business_matching_event_id: session.id.to_s }, headers: auth_headers(admin)
+      expect(json_response['token']).to eq(code)
+      expect(ShortLink.count).to eq(1)
+    end
+
     it "rejects a non-admin" do
       post "/v1/business_matching/events/#{event.id}/hosts/invite_link",
            params: { business_matching_event_id: session.id.to_s },

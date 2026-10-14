@@ -175,6 +175,8 @@ Rails.application.routes.draw do
     patch 'auth/password', to: 'authentication#password_update'
     post 'auth/register_invited_vendor', to: 'authentication#register_invited_vendor'
     get 'auth/check_account', to: 'authentication#check_account'
+    # Vendor invite verify without an event id: the short code carries it.
+    get 'vendor_invitations/verify', to: 'vendor_invitations#verify'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
     resources :email_deliveries, only: %i[index show] do
       post :resend, on: :member
@@ -569,6 +571,7 @@ Rails.application.routes.draw do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
+          get 'invite_link', to: 'hosts#show_invite_link', on: :collection
           post 'invite_link', to: 'hosts#invite_link', on: :collection
           post 'send_invite_email', to: 'hosts#send_invite_email', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection

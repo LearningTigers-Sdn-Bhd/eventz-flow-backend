@@ -142,11 +142,24 @@ module V1
         render json: { errors: e.message }, status: :internal_server_error
       end
 
+      # GET /v1/business_matching/events/:event_id/hosts/invite_link
+      # Staff-only, read-only. Returns the session's active invite code, or nil.
+      def show_invite_link
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_hosts?
+
+        bm_event_id = params[:business_matching_event_id]
+        return render json: { error: 'Business Matching Event ID is required' }, status: :bad_request unless bm_event_id.present?
+
+        render json: { token: BusinessHostInviteToken.find(event_id: event.id, business_matching_event_id: bm_event_id) }, status: :ok
+      end
+
       # POST /v1/business_matching/events/:event_id/hosts/invite_link
-      # Staff-only. Mints an opaque, signed token that encodes which session
-      # the invite is for — the shareable link carries only this token, not
-      # the raw event/session IDs, so it can't be hand-edited to attach a
-      # host to a different session than the one they were actually invited to.
+      # Staff-only. Returns the session's active short invite code, creating it
+      # if needed. The link carries only this code, not the raw event/session
+      # IDs, so it can't be hand-edited to attach a host to a different session.
       def invite_link
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
@@ -178,7 +191,7 @@ module V1
 
         token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_event_id)
         frontend_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
-        invite_url = "#{frontend_url}/invite/host?token=#{CGI.escape(token)}"
+        invite_url = "#{frontend_url}/invite/host/#{token}"
 
         # Deliver host invitation email via BookingMailer with AuditedDelivery
         custom_message = params[:message].presence

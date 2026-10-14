@@ -235,4 +235,22 @@ RSpec.describe 'Vendor Invitations', type: :request, openapi_spec: 'v1/swagger.y
       end
     end
   end
+
+  describe 'short vendor invite links' do
+    let(:event) { create(:event) }
+    let(:link) { VendorInviteToken.issue(event_id: event.id, organizer_id: 1) }
+
+    it 'verifies a short code without an event id in the path' do
+      get '/v1/vendor_invitations/verify', params: { token: link.code }
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig('data', 'event', 'id')).to eq(event.id)
+    end
+
+    it 'rejects an unknown code on the event-less route' do
+      get '/v1/vendor_invitations/verify', params: { token: 'nope1234' }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end
