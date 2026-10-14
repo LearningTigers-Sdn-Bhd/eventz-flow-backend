@@ -17,6 +17,8 @@ class Event < ApplicationRecord
 
   # Core Event Resources
   has_many :event_locations, dependent: :destroy, inverse_of: :event
+  has_many :event_halls, dependent: :destroy, inverse_of: :event
+  has_one :people_counter_connection, dependent: :destroy, inverse_of: :event
   has_many :ticket_types, dependent: :destroy
   has_many :registration_forms, dependent: :destroy
   has_many :vehicle_registrations, dependent: :destroy

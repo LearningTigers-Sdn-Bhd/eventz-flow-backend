@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_13_080000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -393,6 +393,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_event_exhibition_contractors_on_event_id", unique: true
     t.index ["exhibition_contractor_profile_id"], name: "idx_on_exhibition_contractor_profile_id_13ae474f9f"
+  end
+
+  create_table "event_halls", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.string "floor"
+    t.bigint "counter_venue_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["counter_venue_id"], name: "index_event_halls_on_counter_venue_id"
+    t.index ["event_id", "name"], name: "index_event_halls_on_event_id_and_name", unique: true
+    t.index ["event_id"], name: "index_event_halls_on_event_id"
   end
 
   create_table "event_leads", force: :cascade do |t|
@@ -826,6 +839,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
     t.boolean "require_unique_membership_numbers", default: true, null: false
     t.boolean "use_feedback", default: false, null: false
     t.integer "rfid_attendance_percent", default: 80, null: false
+    t.boolean "use_rfid", default: false, null: false
+    t.boolean "use_people_counter", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1347,6 +1362,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
+  end
+
+  create_table "people_counter_connections", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "base_url", null: false
+    t.text "api_key", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_people_counter_connections_on_event_id", unique: true
   end
 
   create_table "plan_objects", force: :cascade do |t|
@@ -2193,6 +2217,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
   add_foreign_key "event_email_settings", "events"
   add_foreign_key "event_exhibition_contractors", "events"
   add_foreign_key "event_exhibition_contractors", "exhibition_contractor_profiles"
+  add_foreign_key "event_halls", "events"
   add_foreign_key "event_leads", "event_vendors"
   add_foreign_key "event_leads", "users", column: "scanned_by_id", on_delete: :nullify
   add_foreign_key "event_location_members", "event_locations"
@@ -2310,6 +2335,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_010000) do
   add_foreign_key "pass_bundles", "users", column: "created_by_id"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
+  add_foreign_key "people_counter_connections", "events"
   add_foreign_key "plan_objects", "plans"
   add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"

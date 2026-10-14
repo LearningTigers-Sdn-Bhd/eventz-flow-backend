@@ -735,6 +735,37 @@ RSpec.describe 'V1::Events', type: :request do
     end
   end
 
+  describe 'RFID and People Counter toggles' do
+    let(:event) do
+      create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
+        create(:event_assignment, role: :event_admin, event: record, user: organizer_user)
+      end
+    end
+
+    it 'starts both off for a new event' do
+      expect(event.use_rfid).to be(false)
+      expect(event.use_people_counter).to be(false)
+    end
+
+    it 'saves both toggles and returns them' do
+      put "/v1/events/#{event.id}",
+          params: { event: { use_rfid: true, use_people_counter: true } },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json['use_rfid']).to be(true)
+      expect(json['use_people_counter']).to be(true)
+
+      put "/v1/events/#{event.id}",
+          params: { event: { use_rfid: false } },
+          headers: auth_headers(organizer_user),
+          as: :json
+      expect(json['use_rfid']).to be(false)
+      expect(json['use_people_counter']).to be(true)
+    end
+  end
+
   describe 'wish wall style settings API' do
     let(:event) do
       create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
