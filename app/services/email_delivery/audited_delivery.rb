@@ -106,6 +106,7 @@ class EmailDelivery::AuditedDelivery
       mailer_name: @mailer_name,
       mailer_action: @mailer_action,
       status: 'skipped',
+      event_id: safe_event_id,
       related: @related,
       metadata: @metadata.merge(skipped_reason: 'event_email_setting_disabled')
     )
@@ -127,6 +128,7 @@ class EmailDelivery::AuditedDelivery
       },
       subject: message&.subject,
       status: 'queued',
+      event_id: safe_event_id,
       related: @related,
       metadata: @metadata
     )
@@ -164,6 +166,14 @@ class EmailDelivery::AuditedDelivery
   end
 
   private
+
+  # Denormalised onto the row so per-event email lists are one indexed lookup.
+  # Must never block sending, so a resolve failure just leaves it NULL.
+  def safe_event_id
+    resolve_event&.id
+  rescue StandardError
+    nil
+  end
 
   def build_message_delivery
     @mailer_name.constantize.public_send(@mailer_action, *@args)

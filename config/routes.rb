@@ -564,6 +564,7 @@ Rails.application.routes.draw do
         resource :host_profile, only: [:show, :update], controller: 'hosts'
         resource :tags, only: [:show, :update], controller: 'tags'
         resource :defaults, only: [:show, :update], controller: 'event_defaults'
+        resources :host_invitations, only: [:index]
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
           patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection

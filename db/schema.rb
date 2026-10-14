@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_13_080000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_14_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -336,7 +336,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_13_080000) do
     t.jsonb "metadata", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "event_id"
     t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["event_id", "mailer_action", "created_at"], name: "index_email_deliveries_on_event_action_created"
     t.index ["mailer_name", "mailer_action"], name: "index_email_deliveries_on_mailer_name_and_mailer_action"
     t.index ["provider_message_id"], name: "index_email_deliveries_on_provider_message_id", unique: true, where: "(provider_message_id IS NOT NULL)"
     t.index ["recipient"], name: "index_email_deliveries_on_recipient"
