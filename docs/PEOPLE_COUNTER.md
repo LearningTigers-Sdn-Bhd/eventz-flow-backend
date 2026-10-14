@@ -80,6 +80,32 @@ connection changes):
 - The payload carries `configured`: false when the event has no connection and no
   server-wide fallback, so the panel can say "not set up" instead of "unreachable".
 
+## Big screen (public display)
+
+`GET /v1/public/events/:event_slug/people_counter` feeds the page
+`/event/<slug>/big-screen` that runs on a TV at the venue. No login. It answers
+only when the event is `published` and has `use_people_counter` on; anything else
+is a plain 404. It exposes inside-now and capacity only (no traffic totals, no
+ids), is `no-store`, and is rate limited per IP.
+
+Scope is chosen in the URL, and the panel's Live counts tab has a copy/open link
+for each:
+
+| URL | Shows |
+|-----|-------|
+| `/big-screen` | whole event: total, every level and hall |
+| `/big-screen?level=Level 2` | that level's total and its halls |
+| `/big-screen?hall=Main Hall` | that hall only (add `&level=` if two levels share a hall name) |
+
+- Names match ignoring case and extra spaces; the response carries the real name.
+- A level or hall the event doesn't have is a 404.
+- A hall without a working counter returns `inside_now: null`; the page says so
+  instead of showing 0.
+- The page refreshes every 10 s. If a refresh fails it keeps the last numbers,
+  says how old they are, and dims after a minute. It also asks the screen to stay
+  awake, offers a fullscreen button, and reloads itself every 6 hours (only when
+  the server answers) so a long-running TV picks up new releases.
+
 ## Known limits
 
 - The window is whole days, not exact start/end times: back-to-back events in

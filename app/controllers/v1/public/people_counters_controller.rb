@@ -8,7 +8,10 @@ module V1
     # nothing about traffic or tickets. Anything else is a plain 404.
     #
     # `?level=Level 2` narrows the page to one level: its total and its halls only,
-    # for a screen at that level's entrance. A level that doesn't exist is a 404.
+    # for a screen at that level's entrance. `?hall=Main Hall` narrows it to one
+    # hall (add `level` when two levels share a hall name), for a screen at that
+    # hall's door. Names match ignoring case and extra spaces, so a retyped link
+    # still works. A level or hall that doesn't exist is a 404.
     class PeopleCountersController < ApplicationController
       skip_before_action :authenticate_user!
       skip_before_action :require_verified_email!
@@ -18,7 +21,7 @@ module V1
         event = Event.friendly.find(params[:event_slug])
         return head :not_found unless event.published? && event.use_people_counter?
 
-        body = payload(event, params[:level].presence)
+        body = payload(event, params[:level].presence, params[:hall].presence)
         return head :not_found unless body
 
         response.headers['Cache-Control'] = 'no-store'
@@ -29,24 +32,36 @@ module V1
 
       private
 
-      # The whole event, or one level of it. Nil when the asked-for level has no halls.
-      def payload(event, level)
+      # The whole event, one level of it, or one hall. Nil when the asked-for level or hall isn't there.
+      def payload(event, level, hall_name)
         data = PeopleCounter::EventHeadcount.new(event).call
         total = data[:event]
         levels = data[:levels]
         halls = data[:halls]
+        hall = nil
 
         if level
-          total = levels.find { |l| l[:floor] == level }
+          total = levels.find { |l| l[:floor] && same_name?(l[:floor], level) }
           return nil unless total
 
+          level = total[:floor]
           levels = [total]
           halls = halls.select { |h| h[:floor] == level }
+        end
+
+        if hall_name
+          hall = halls.find { |h| same_name?(h[:name], hall_name) }
+          return nil unless hall
+
+          total = hall.merge(halls: 1, halls_counted: hall[:status] == 'ok' ? 1 : 0)
+          levels = []
+          halls = [hall]
         end
 
         {
           event_title: event.title,
           level: level,
+          hall: hall&.dig(:name),
           configured: data[:configured],
           inside_now: total[:inside_now],
           capacity: total[:capacity],
@@ -56,6 +71,10 @@ module V1
           halls: halls.map { |h| h.slice(:name, :floor, :status, :inside_now, :capacity) },
           generated_at: data[:generated_at]
         }
+      end
+
+      def same_name?(name, asked)
+        name.to_s.squish.casecmp?(asked.to_s.squish)
       end
     end
   end

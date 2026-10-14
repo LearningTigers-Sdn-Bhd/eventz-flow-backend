@@ -50,16 +50,48 @@ RSpec.describe 'V1 Public PeopleCounters', type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
-    it 'matches level text exactly, including case and spaces' do
-      ['level 2', 'Level 2 '].each do |level|
+    it 'matches level text ignoring case and extra spaces, and answers with the real name' do
+      ['level 2', ' Level   2 '].each do |level|
         get url, params: { level: level }
-        expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:ok)
+        expect(json_response).to include('level' => 'Level 2', 'inside_now' => 28)
       end
     end
 
     it 'treats a blank level as the whole event' do
       get url, params: { level: '' }
       expect(json_response).to include('level' => nil, 'inside_now' => 200)
+    end
+  end
+
+  describe 'one hall' do
+    it "shows only that hall's figures" do
+      get url, params: { hall: 'hall b' }
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response).to include('hall' => 'Hall B', 'level' => nil, 'inside_now' => 28, 'capacity' => 120,
+                                       'halls_counted' => 1, 'halls_total' => 1, 'levels' => [])
+      expect(json_response['halls'].map { |h| h['name'] }).to eq(['Hall B'])
+    end
+
+    it 'can be narrowed by level too' do
+      get url, params: { level: 'Level 1', hall: 'Hall B' }
+      expect(response).to have_http_status(:not_found)
+
+      get url, params: { level: 'Level 2', hall: 'Hall B' }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'has no figures for a hall without a working counter' do
+      get url, params: { hall: 'Hall C' }
+
+      expect(json_response).to include('hall' => 'Hall C', 'inside_now' => nil, 'halls_counted' => 0)
+      expect(json_response['halls'].first['status']).to eq('unlinked')
+    end
+
+    it 'is a 404 for a hall the event does not have' do
+      get url, params: { hall: 'Hall Z' }
+      expect(response).to have_http_status(:not_found)
     end
   end
 
