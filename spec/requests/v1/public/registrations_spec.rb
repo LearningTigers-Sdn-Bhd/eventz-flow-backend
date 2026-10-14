@@ -812,17 +812,40 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(created_ticket.status).to eq('purchased')
       end
 
-      it 'keeps ticket pending when it belongs to a group checkout' do
+      it 'marks rm0 group ticket as paid when no paid leader ticket is waiting on payment' do
         post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
           registered_by_email: 'leader@example.com'
         )
 
         expect(response).to have_http_status(:created)
         json = JSON.parse(response.body)
-        expect(json['data']['payment_status']).to eq('pending')
+        expect(json['data']['payment_status']).to eq('paid')
 
         created_ticket = Ticket.order(created_at: :desc).first
-        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.status).to eq('purchased')
+      end
+
+      it 'keeps rm0 group member pending while the leader still owes payment' do
+        paid_leader_ticket_type = create(:ticket_type, event: event, price: 6000, status: :published, hidden: false)
+        create(
+          :ticket,
+          event: event,
+          ticket_type: paid_leader_ticket_type,
+          attendee_name: 'Leader',
+          attendee_email: 'leader@example.com',
+          registered_by_email: 'leader@example.com',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          attendee_email: 'member-new@example.com',
+          registered_by_email: 'leader@example.com'
+        )
+
+        expect(response).to have_http_status(:created)
+        expect(JSON.parse(response.body)['data']['payment_status']).to eq('pending')
+        expect(Ticket.order(created_at: :desc).first.status).to eq('pending_payment')
       end
 
       it 'marks rm0 group member as paid when leader is already paid' do

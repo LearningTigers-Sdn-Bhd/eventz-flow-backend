@@ -986,17 +986,21 @@ module V1
         event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX)
       end
 
+      # Free (RM0) tickets are paid at registration. The one exception is a
+      # group member whose leader still owes money on a priced ticket: they
+      # wait until the leader pays. A fully free group has nothing to wait for.
       def auto_paid_ticket?(event:, ticket:, ticket_type:)
         return false unless ticket_type.current_price.zero?
-        return true if ticket.registered_by_email.blank?
 
         leader_email = ticket.registered_by_email.to_s.strip.downcase
-        return false if leader_email.blank?
+        return true if leader_email.blank?
 
-        event.tickets
-             .where(payment_status: :paid, status: :purchased)
-             .where('LOWER(attendee_email) = ? OR LOWER(registered_by_email) = ?', leader_email, leader_email)
-             .exists?
+        !event.tickets
+              .joins(:ticket_type)
+              .where('ticket_types.price > 0')
+              .where.not(payment_status: :paid)
+              .where('LOWER(tickets.attendee_email) = ?', leader_email)
+              .exists?
       end
 
       def apply_bundle_payment_state!(ticket:, bundle:)
