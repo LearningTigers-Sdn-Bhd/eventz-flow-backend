@@ -234,7 +234,7 @@ module V1
       end
 
       begin
-        payload = Rails.application.message_verifier(:vendor_invite).verify(token)
+        payload = VendorInviteToken.verify(token)
         payload = payload.with_indifferent_access if payload.is_a?(Hash)
       rescue ActiveSupport::MessageVerifier::InvalidSignature
         return error_response(
@@ -468,7 +468,7 @@ module V1
 
       # Decode and verify the invitation token
       begin
-        payload = Rails.application.message_verifier(:vendor_invite).verify(token)
+        payload = VendorInviteToken.verify(token)
         payload = payload.with_indifferent_access if payload.respond_to?(:with_indifferent_access)
       rescue ActiveSupport::MessageVerifier::InvalidSignature
         return error_response(

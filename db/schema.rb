@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_14_020000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_14_050000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1833,6 +1833,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_14_020000) do
     t.index ["scannable_type", "scannable_id", "scanned_at"], name: "idx_scan_logs_on_scannable"
   end
 
+  create_table "short_links", force: :cascade do |t|
+    t.string "code", null: false
+    t.string "kind", null: false
+    t.bigint "event_id", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_short_links_on_code", unique: true
+    t.index ["event_id", "kind"], name: "index_short_links_on_event_id_and_kind"
+    t.index ["event_id"], name: "index_short_links_on_event_id"
+  end
+
   create_table "sponsors", force: :cascade do |t|
     t.bigint "group_id", null: false
     t.string "name", null: false
@@ -2388,6 +2401,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_14_020000) do
   add_foreign_key "scan_logs", "event_locations"
   add_foreign_key "scan_logs", "events"
   add_foreign_key "scan_logs", "users", column: "scanned_by_id"
+  add_foreign_key "short_links", "events"
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "table_assignments", "plan_objects"

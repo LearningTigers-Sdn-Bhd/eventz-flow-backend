@@ -2,7 +2,7 @@
 module V1
   class VendorInvitationsController < ApplicationController
     skip_before_action :authenticate_user!, only: [:verify]
-    before_action :set_event
+    before_action :set_event, if: -> { params[:event_id].present? }
 
     # POST /v1/events/:event_id/vendor_invitations/generate_link
     def generate_link
@@ -14,30 +14,23 @@ module V1
         current_user.id
       end
 
-      payload = { event_id: @event.id, organizer_id: organizer_id, exp: 7.days.from_now.to_i }
+      group_id = Group.find_by(id: params[:group_id])&.id if params[:group_id].present?
 
-      # Add group_id to the payload if provided
-      if params[:group_id].present?
-        group = Group.find_by(id: params[:group_id])
-        if group
-          payload[:group_id] = group.id
-        end
-      end
+      link = VendorInviteToken.issue(event_id: @event.id, organizer_id: organizer_id, group_id: group_id)
+      token = link.code
 
-      token = Rails.application.message_verifier(:vendor_invite).generate(payload)
-
-      invite_url = "#{ENV.fetch('REDIRECT_BASE_URL', 'http://localhost:3001')}/vendor-signup?token=#{token}"
+      invite_url = "#{ENV.fetch('REDIRECT_BASE_URL', 'http://localhost:3001')}/vendor-signup/#{token}"
 
       success_response(
         data: {
           invite_url: invite_url,
           token: token,
-          expires_at: Time.at(payload[:exp]).iso8601,
+          expires_at: link.expires_at.iso8601,
           event: {
             id: @event.id,
             title: @event.title
           },
-          group_id: payload[:group_id],
+          group_id: group_id,
           organizer_id: organizer_id
         },
         message: 'Invitation link generated successfully'
@@ -57,7 +50,7 @@ module V1
       end
 
       begin
-        payload = Rails.application.message_verifier(:vendor_invite).verify(token)
+        payload = VendorInviteToken.verify(token)
         payload = payload.with_indifferent_access if payload.is_a?(Hash)
       rescue ActiveSupport::MessageVerifier::InvalidSignature
         return error_response(
