@@ -45,8 +45,8 @@ RSpec.describe 'V1::EmailDeliveries', type: :request do
       other_event = create(:event)
       event_ticket = create(:ticket, event: event)
       other_ticket = create(:ticket, event: other_event)
-      matching_delivery = create(:email_delivery, related: event_ticket)
-      create(:email_delivery, related: other_ticket)
+      matching_delivery = create(:email_delivery, related: event_ticket, event_id: event.id)
+      create(:email_delivery, related: other_ticket, event_id: other_event.id)
 
       get '/v1/email_deliveries', params: { event_id: event.id }, headers: headers
 

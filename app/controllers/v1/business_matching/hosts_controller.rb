@@ -186,7 +186,9 @@ module V1
           mailer_name: 'BookingMailer',
           mailer_action: 'host_invitation_email',
           args: [email, event.id, session_title, invite_url, current_user.full_name, custom_message],
-          event: event
+          related: session,
+          event: event,
+          metadata: { business_matching_event_id: bm_event_id.to_s, invited_by_id: current_user.id }
         )
 
         render json: {
