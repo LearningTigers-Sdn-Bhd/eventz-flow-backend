@@ -35,7 +35,7 @@ module V1
 
       # Optional params preview a change (rows_to_purge) without saving it.
       setting = EmailLogSetting.current
-      setting.assign_attributes(params.permit(:retention_days, :protected_retention_days))
+      setting.assign_attributes(settings_params)
       return render json: { errors: setting.errors.full_messages }, status: :unprocessable_content unless setting.valid?
 
       render json: { data: serialize_settings(setting) }, status: :ok
@@ -45,7 +45,7 @@ module V1
       authorize EmailDelivery, :update_settings?
 
       setting = EmailLogSetting.current
-      if setting.update(params.permit(:retention_days, :protected_retention_days))
+      if setting.update(settings_params)
         render json: { data: serialize_settings(setting) }, status: :ok
       else
         render json: { errors: setting.errors.full_messages }, status: :unprocessable_content
@@ -79,8 +79,13 @@ module V1
       {
         retention_days: setting.retention_days,
         protected_retention_days: setting.protected_retention_days,
+        purge_enabled: setting.purge_enabled,
         rows_to_purge: setting.purgeable.count
       }
+    end
+
+    def settings_params
+      params.permit(:retention_days, :protected_retention_days, :purge_enabled)
     end
 
     def serialize_delivery(delivery)

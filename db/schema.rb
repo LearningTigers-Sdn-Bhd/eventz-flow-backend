@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -230,60 +230,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.bigint "active_plan_id"
     t.string "seating_announcement_template"
     t.integer "seating_plan_duration"
-    t.jsonb "elevenlabs_settings", default: {}
-    t.jsonb "voice_rules", default: []
-    t.string "script_tone"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
-  end
-
-  create_table "cloned_voices", force: :cascade do |t|
-    t.bigint "event_id"
-    t.bigint "creator_id", null: false
-    t.string "elevenlabs_id"
-    t.string "name", null: false
-    t.integer "status", default: 0, null: false
-    t.jsonb "settings", default: {}
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.bigint "owner_id", null: false
-    t.index ["creator_id"], name: "index_cloned_voices_on_creator_id"
-    t.index ["elevenlabs_id"], name: "index_cloned_voices_on_elevenlabs_id", unique: true
-    t.index ["event_id"], name: "index_cloned_voices_on_event_id"
-    t.index ["owner_id"], name: "index_cloned_voices_on_owner_id"
-  end
-
-  create_table "credit_deductions", force: :cascade do |t|
-    t.bigint "event_id"
-    t.string "channel", null: false
-    t.integer "credits", null: false
-    t.string "recipient"
-    t.integer "status", default: 0, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.bigint "owner_id", null: false
-    t.index ["event_id"], name: "index_credit_deductions_on_event_id"
-    t.index ["owner_id"], name: "index_credit_deductions_on_owner_id"
-  end
-
-  create_table "credit_transactions", force: :cascade do |t|
-    t.bigint "credit_wallet_id", null: false
-    t.integer "transaction_type", null: false
-    t.integer "amount", null: false
-    t.integer "balance_after", null: false
-    t.string "description"
-    t.jsonb "metadata", default: {}
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["credit_wallet_id"], name: "index_credit_transactions_on_credit_wallet_id"
-  end
-
-  create_table "credit_wallets", force: :cascade do |t|
-    t.integer "balance", default: 0, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.bigint "owner_id", null: false
-    t.index ["owner_id"], name: "index_credit_wallets_on_owner_id", unique: true
   end
 
   create_table "custom_field_quotas", force: :cascade do |t|
@@ -352,6 +300,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.integer "protected_retention_days", default: 1825, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "purge_enabled", default: false, null: false
     t.check_constraint "protected_retention_days >= 30 AND protected_retention_days <= 3650", name: "chk_email_log_settings_protected_range"
     t.check_constraint "protected_retention_days >= retention_days", name: "chk_email_log_settings_protected_gte_retention"
     t.check_constraint "retention_days >= 30 AND retention_days <= 3650", name: "chk_email_log_settings_retention_range"
@@ -503,7 +452,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -839,8 +788,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.boolean "business_matching_public_booking_enabled", default: true, null: false
     t.date "business_matching_public_booking_cutoff_date"
     t.jsonb "exhibitor_labels_data", default: {}
-    t.boolean "business_matching_auto_approve_bookings", default: false, null: false
     t.string "registration_path_template"
+    t.boolean "business_matching_auto_approve_bookings", default: false, null: false
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
@@ -1990,8 +1939,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.string "role"
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
-    t.boolean "waiting_list", default: false, null: false
     t.bigint "vehicle_registration_id"
+    t.boolean "waiting_list", default: false, null: false
     t.boolean "allow_multiple_tickets_per_email", default: false, null: false
     t.uuid "registration_batch_id"
     t.boolean "require_unique_membership_numbers", default: true, null: false
@@ -2226,13 +2175,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
-  add_foreign_key "cloned_voices", "events"
-  add_foreign_key "cloned_voices", "users", column: "creator_id"
-  add_foreign_key "cloned_voices", "users", column: "owner_id"
-  add_foreign_key "credit_deductions", "events"
-  add_foreign_key "credit_deductions", "users", column: "owner_id"
-  add_foreign_key "credit_transactions", "credit_wallets"
-  add_foreign_key "credit_wallets", "users", column: "owner_id"
   add_foreign_key "custom_field_quotas", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"

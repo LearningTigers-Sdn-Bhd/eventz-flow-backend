@@ -4,7 +4,9 @@ RSpec.describe EmailLogSetting do
   describe '.current' do
     it 'creates the singleton with defaults once' do
       expect { described_class.current }.to change(described_class, :count).by(1)
-      expect(described_class.current).to have_attributes(retention_days: 730, protected_retention_days: 1825)
+      expect(described_class.current).to have_attributes(
+        retention_days: 730, protected_retention_days: 1825, purge_enabled: false
+      )
       expect(described_class.count).to eq(1)
     end
   end
