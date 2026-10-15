@@ -19,9 +19,9 @@ RSpec.describe 'V1::ResourcesCategories', type: :request, openapi_spec: 'v1/swag
   # ============================================================
   # Test Users and Setup
   # ============================================================
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:visitor) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:visitor) { create(:user, role: :member) }
   let!(:resource_category) { create(:resource_category, name: "Corporate Events", description: "Business events") }
   let!(:deleted_resource_category) { create(:resource_category, name: "Deleted Category", deleted_at: 1.day.ago) }
 

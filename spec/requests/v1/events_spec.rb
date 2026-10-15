@@ -14,6 +14,7 @@ EVENT_SCHEMA = {
     description: { type: :string, example: 'Event description.' },
     status: { type: :string, example: 'draft' },
     multiple_scans: { type: :boolean, example: false },
+    allow_multiple_tickets_per_email: { type: :boolean, example: false },
     start_date: { type: :string, format: :date_time },
     end_date: { type: :string, format: :date_time },
     location: { type: :string, example: 'New York City' },
@@ -407,6 +408,21 @@ RSpec.describe 'V1::Events', type: :request do
         let(:id) { 99_999 }
         run_test!
       end
+
+      # 7. Success (Private event viewable by a business matching admin assigned to it)
+      response '200', 'Private event viewable by a business matching admin' do
+        let(:bm_admin_user) { create(:user, :member) }
+        let(:bm_admin_token) { JwtService.generate_tokens(bm_admin_user)[:access_token] }
+        let(:Authorization) { "Bearer #{bm_admin_token}" }
+        let(:id) { event_private.id }
+
+        before do
+          create(:event_assignment, role: :business_matching_admin, event: event_private, user: bm_admin_user)
+        end
+
+        schema EVENT_SCHEMA
+        run_test!
+      end
     end
 
     # --- PUT - Update ---
@@ -443,6 +459,7 @@ RSpec.describe 'V1::Events', type: :request do
             event: {
               title: 'New Title',
               enable_exhibitor_management: true,
+              allow_multiple_tickets_per_email: true,
               use_sponsorship: true,
               use_wedding: true,
               auto_approve_wishes: true,
@@ -462,6 +479,7 @@ RSpec.describe 'V1::Events', type: :request do
         run_test! do |response|
           json = JSON.parse(response.body)
           expect(json['enable_exhibitor_management']).to be true
+          expect(json['allow_multiple_tickets_per_email']).to be true
           expect(json['use_sponsorship']).to be true
           expect(json['use_wedding']).to be true
           expect(json['auto_approve_wishes']).to be true
@@ -714,6 +732,37 @@ RSpec.describe 'V1::Events', type: :request do
 
         expect(response).to have_http_status(:ok)
       end
+    end
+  end
+
+  describe 'RFID and People Counter toggles' do
+    let(:event) do
+      create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
+        create(:event_assignment, role: :event_admin, event: record, user: organizer_user)
+      end
+    end
+
+    it 'starts both off for a new event' do
+      expect(event.use_rfid).to be(false)
+      expect(event.use_people_counter).to be(false)
+    end
+
+    it 'saves both toggles and returns them' do
+      put "/v1/events/#{event.id}",
+          params: { event: { use_rfid: true, use_people_counter: true } },
+          headers: auth_headers(organizer_user),
+          as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json['use_rfid']).to be(true)
+      expect(json['use_people_counter']).to be(true)
+
+      put "/v1/events/#{event.id}",
+          params: { event: { use_rfid: false } },
+          headers: auth_headers(organizer_user),
+          as: :json
+      expect(json['use_rfid']).to be(false)
+      expect(json['use_people_counter']).to be(true)
     end
   end
 

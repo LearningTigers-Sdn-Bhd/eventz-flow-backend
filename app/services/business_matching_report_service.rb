@@ -15,12 +15,23 @@ class BusinessMatchingReportService
 
     Rails.logger.info "DEBUG REPORT: Grouped bookings keys: #{grouped_bookings.keys.inspect}"
 
+    used_names = Set.new
+
     grouped_bookings.each_with_index do |(group_title, bookings), index|
       next if bookings.empty?
 
       # Sheet name limited to 31 chars
-      sheet_name = group_title.to_s.gsub(/[^0-9a-zA-Z \-_]/, '').truncate(31)
-      sheet_name = "Sheet#{index + 1}" if sheet_name.blank?
+      base_name = group_title.to_s.gsub(/[^0-9a-zA-Z \-_]/, '')
+      base_name = "Sheet" if base_name.blank?
+      
+      sheet_name = base_name.truncate(31)
+      counter = 1
+      while used_names.include?(sheet_name)
+        suffix = "_#{counter}"
+        sheet_name = "#{base_name.truncate(31 - suffix.length)}#{suffix}"
+        counter += 1
+      end
+      used_names.add(sheet_name)
       
       wb.add_worksheet(name: sheet_name) do |sheet|
         sheet.add_row headers
@@ -58,7 +69,10 @@ class BusinessMatchingReportService
   end
 
   def headers
-    ["Name", "Email", "Phone", "Date & Time", "Status", "Attendance", "Comment", "Potential Deal Value"]
+    [
+      "Name", "Email", "Phone", "Date & Time", "Status", "Attendance", "Comment",
+      "Description", "Sourcing Intent", "Capabilities", "Potential Deal Value"
+    ]
   end
 
   def row_data(booking)
@@ -70,6 +84,9 @@ class BusinessMatchingReportService
       booking[:status],
       booking[:attendance],
       booking[:host_comment],
+      booking[:booker_description],
+      booking[:booker_sourcing_intent],
+      booking[:booker_capabilities],
       booking[:potential_deal_value]
     ]
   end

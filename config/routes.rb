@@ -7,8 +7,10 @@ Rails.application.routes.draw do
     mount LetterOpenerWeb::Engine, at: '/letter_opener'
   end
 
-  # Rswag Documentation Endpoints
-  if defined?(Rswag)
+  # Rswag Documentation Endpoints — local (development/test) only. Using
+  # Rails.env.local? rather than !production? so staging (which runs in the
+  # production env or a staging env) does NOT expose the API schema (audit #10).
+  if defined?(Rswag) && Rails.env.local?
     mount Rswag::Ui::Engine => '/api-docs'
     mount Rswag::Api::Engine => '/api-docs'
   end
@@ -19,23 +21,89 @@ Rails.application.routes.draw do
   # API Namespace V1
   # ====================================================================
   namespace :v1 do
+    # --- RfiDex device API -------------------------------------------------
+    # The event for every one of these comes from the event-scoped `rfid` API
+    # key, never from the URL, so no path carries an event id. Answers are the
+    # unwrapped shapes `rfidex-core` defines.
+    namespace :rfid do
+      post 'stations/heartbeat', to: 'stations#heartbeat'
+      get 'cache', to: 'cache#show'
+      get 'tickets/search', to: 'tickets#search'
+      post 'desk_scans', to: 'desk_scans#create'
+      post 'bindings', to: 'bindings#create'
+      get 'bindings/lookup', to: 'bindings#lookup'
+      post 'observations', to: 'observations#create'
+    end
+
+    # --- RfiDex staff API ---------------------------------------------------
+    # Signed-in users only (never API keys), same event path the panel uses.
+    # `report.xlsx` sits under the literal `/v1/events/:event_id/rfid` prefix.
+    scope 'events/:event_id/rfid', controller: 'rfid_management', as: 'event_rfid' do
+      get 'summary', action: :summary
+      get 'stations', action: :stations
+      patch 'stations/:id', action: :update_station
+      delete 'stations/:id', action: :destroy_station
+      get 'bindings', action: :bindings
+      patch 'bindings/:id', action: :update_binding
+      delete 'bindings/:id', action: :destroy_binding
+      get 'report.xlsx', action: :report_xlsx
+      get 'report_fields', action: :report_fields
+      get 'guest_visits', action: :guest_visits
+      get 'visits', action: :visits
+      get 'display_activity', action: :display_activity
+      post 'visits/manual_exit_all', action: :manual_exit_all
+      delete 'visits/manual_exit_all', action: :undo_manual_exit_all
+      post 'visits/:id/manual_exit', action: :manual_exit
+      delete 'visits/:id', action: :destroy_visit
+      delete 'guest_visits/:ticket_id', action: :destroy_guest_visits
+      post 'visits/manual_entry', action: :manual_entry
+      get 'missed_scans', action: :missed_scans
+      get 'flow', action: :flow
+      get 'sessions', action: :sessions
+      post 'sessions', action: :create_session
+      get 'sessions/:id/attendees', action: :session_attendees
+      patch 'sessions/:id', action: :update_session
+      delete 'sessions/:id', action: :destroy_session
+      get 'eligibility', action: :eligibility
+      get 'eligibility/fields', action: :eligibility_fields
+      get 'attendance_check', action: :attendance_check
+      post 'attendance_check/notify', action: :notify_attendance_check
+      post 'eligibility/bulk_override', action: :bulk_cert_override
+      post 'eligibility/:ticket_id/override', action: :grant_cert_override
+      delete 'eligibility/:ticket_id/override', action: :revoke_cert_override
+      get 'anomalies', action: :anomalies
+      post 'anomalies/dismiss', action: :dismiss_anomalies
+      delete 'anomalies', action: :destroy_anomalies
+      patch 'settings', action: :update_settings
+    end
+
     # Public endpoints (No authentication required)
     namespace :public do
       post 'resend/webhook', to: 'resend_webhooks#create'
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
+        get :business_matching_booking_status, on: :member
         # Public check-in endpoint - scoped to event
-        resource :check_in, only: %i[show create], controller: 'check_ins'
+        resource :check_in, only: %i[show create], controller: 'check_ins' do
+          post :reprint
+        end
         # Public check-in display settings
         resource :check_in_display, only: [:show], controller: 'check_in_displays'
+        # Live crowd numbers for a screen at the door (published events only)
+        resource :people_counter, only: [:show], controller: 'people_counters'
       end
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
+      post 'feedback_responses', to: 'feedback_responses#create'
       # Public seating plans
       resources :plans, only: %i[show]
       # Public booking details
       resources :bookings, only: [:show]
+
+      # No-login exhibitor kit team member self-service (link keyed by kit public_id)
+      get 'exhibitor_kits/:public_id/team_members', to: 'exhibitor_team_members#show'
+      patch 'exhibitor_kits/:public_id/team_members', to: 'exhibitor_team_members#update'
 
       # Public registration for walk-ins
       post 'payments/webhook', to: 'payments#webhook'
@@ -49,22 +117,29 @@ Rails.application.routes.draw do
         post 'exhibitor_bookings/batch', to: 'exhibitor_bookings#create_batch'
         get 'exhibitor_booths', to: 'exhibitor_booths#index'
         post 'exhibitor_vouchers/preview', to: 'exhibitor_vouchers#preview'
-        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update]
+        resources :exhibitor_bookings, param: :public_id, only: %i[index show create update destroy]
+        delete 'exhibitor_bookings/:public_id/purge', to: 'exhibitor_bookings#purge'
         post 'exhibitor_bookings/:public_id/payment_order', to: 'exhibitor_payments#create_order'
         post 'exhibitor_bookings/:public_id/payment_verifications', to: 'exhibitor_payments#verify'
         post 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#create'
         delete 'exhibitor_bookings/:public_id/payment_proof', to: 'exhibitor_payment_proofs#destroy'
         get 'registration_forms', to: 'registrations#registration_forms'
+        get 'feedback_form', to: 'feedback_forms#show'
         get 'ticket_types', to: 'registrations#ticket_types'
         get 'registration_status', to: 'registrations#registration_status'
+        get 'registration_lookup', to: 'registrations#registration_lookup'
+        patch 'registrations/:public_id', to: 'registrations#update'
         get 'pass_bundles/:token', to: 'registrations#pass_bundle'
         get 'ticket_rsvp/:token', to: 'ticket_rsvps#show'
         post 'ticket_rsvp/:token/confirm', to: 'ticket_rsvps#confirm'
         post 'ticket_rsvp/:token/decline', to: 'ticket_rsvps#decline'
         resources :tickets, only: [:show]
         get 'exhibitor_booth_prices', to: 'exhibitor_registrations#booth_prices'
+        get 'booth_plans', to: 'exhibitor_registrations#booth_plans'
         post 'exhibitor_ic_upload', to: 'exhibitor_ic_uploads#create'
         post 'customs_declaration_upload', to: 'customs_declaration_uploads#create'
+        post 'customs_duty_estimate_upload', to: 'customs_duty_estimate_uploads#create'
+        post 'indemnity_form_upload', to: 'indemnity_form_uploads#create'
         match 'register_exhibitor', to: 'exhibitor_registrations#gone', via: %i[post patch]
         get 'exhibitor_registration_status', to: 'exhibitor_registrations#gone'
         match 'exhibitor_payment_proof', to: 'exhibitor_registrations#gone', via: %i[post delete]
@@ -73,6 +148,7 @@ Rails.application.routes.draw do
         match 'payments/callback', to: 'payments#callback', via: %i[get post]
         post 'register', to: 'registrations#create'
         get 'field_availability', to: 'registrations#field_availability'
+        get 'vehicle_registration', to: 'registrations#vehicle_registration'
         post 'registration_uploads', to: 'registration_uploads#create'
         post 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#create'
         delete 'tickets/:public_id/payment_proof', to: 'ticket_payment_proofs#destroy'
@@ -99,8 +175,13 @@ Rails.application.routes.draw do
     patch 'auth/password', to: 'authentication#password_update'
     post 'auth/register_invited_vendor', to: 'authentication#register_invited_vendor'
     get 'auth/check_account', to: 'authentication#check_account'
+    # Vendor invite verify without an event id: the short code carries it.
+    get 'vendor_invitations/verify', to: 'vendor_invitations#verify'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
     resources :email_deliveries, only: %i[index show] do
+      get :summary, on: :collection
+      get :settings, on: :collection
+      patch :settings, action: :update_settings, on: :collection
       post :resend, on: :member
     end
 
@@ -135,13 +216,20 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
+      resources :activity_logs, only: :index, controller: 'events/activity_logs' do
+        collection do
+          delete :clear, action: :destroy_all
+        end
+      end
       member do
         delete :force_delete
         patch :restore
+        get :sidebar_context
       end
       resources :ticket_types, only: %i[index show create update destroy] do
         resources :price_tiers, controller: 'ticket_type_price_tiers'
       end
+      resources :scan_logs, only: %i[index]
       resources :plans, shallow: true do
         resources :plan_objects, only: %i[create destroy] do
           collection do
@@ -160,6 +248,7 @@ Rails.application.routes.draw do
           end
         end
         post :auto_distribute, on: :member
+        post :sync_table_numbers, on: :member
         get :export, on: :member
       end
       resources :tickets, only: %i[index show create update destroy] do
@@ -168,12 +257,18 @@ Rails.application.routes.draw do
           patch :cancel_ticket
           patch :restore
           post :resend_confirmation_email
+          post :resend_feedback_email
+          patch :accept_waiting_list
+        end
+        collection do
+          patch :bulk_update_ticket_type
+          patch :bulk_archive
+          delete :bulk_delete
         end
       end
 
       # E-Certificates
-      resource :certificate_template, only: %i[show create update destroy],
-                                      controller: 'certificate_templates'
+      resources :certificate_templates, only: %i[index show create update destroy]
       resources :certificates, only: [] do
         collection do
           post :send_batch
@@ -185,9 +280,39 @@ Rails.application.routes.draw do
       end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
+      resources :event_halls, only: %i[index show create update destroy] do
+        get :headcount, on: :collection
+        get :analytics, on: :collection
+        get :daily, on: :collection
+        get :analytics_export, on: :collection
+      end
+      # People counter: the event's link to the counter service (org owners) and its venues
+      resource :people_counter_connection, only: %i[show update destroy] do
+        post :test
+      end
+      get 'people_counter/venues', to: 'people_counter_venues#index'
+      resources :booth_plans, only: %i[index show create update destroy]
       resources :registration_forms, only: %i[index show create update destroy] do
         resource :rsvp_setting, only: %i[show update], controller: 'registration_form_rsvp_settings'
       end
+      resources :vehicle_registrations, only: %i[index update destroy] do
+        member do
+          patch :move_group
+          patch :sync_base
+          patch :archive
+          patch :restore
+        end
+      end
+      resource :feedback_form, only: %i[show create update], controller: 'feedback_forms' do
+        get :summary
+        get :responses
+      end
+      get 'feedback_form/comments', to: 'feedback_reports#comments'
+      get 'feedback_form/non_responders', to: 'feedback_reports#non_responders'
+      post 'feedback_form/remind', to: 'feedback_reports#remind'
+      get 'feedback_form/export_data', to: 'feedback_reports#export_data'
+      get 'feedback_form/ai_summary', to: 'feedback_reports#ai_summary'
+      post 'feedback_form/ai_summary', to: 'feedback_reports#create_ai_summary'
       resources :exhibitor_booth_prices, only: %i[index create]
       resources :exhibitor_packages, only: %i[index create]
       resources :exhibitor_vouchers, only: %i[index create]
@@ -214,6 +339,7 @@ Rails.application.routes.draw do
       end
 
       resources :vendors, controller: 'event_vendors', only: %i[index create update destroy] do
+        collection { post :batch }
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
@@ -229,6 +355,7 @@ Rails.application.routes.draw do
           patch 'application/reject', to: 'ticket_applications#reject'
           post 'application/resend_rsvp', to: 'ticket_applications#resend_rsvp'
           patch 'application/approve_rsvp', to: 'ticket_applications#approve_rsvp'
+          patch 'application/revert', to: 'ticket_applications#revert'
         end
       end
 
@@ -266,9 +393,17 @@ Rails.application.routes.draw do
       resources :exhibitor_kits, only: %i[index show create update destroy] do
         get :ic_copy, on: :member
         get :customs_declaration, on: :member
+        get :customs_duty_estimate, on: :member
+        get :indemnity_form, on: :member
+        collection do
+          get :export
+          get :import_template
+          post :import
+        end
         member do
           post :submit_order
           post :reject_payment_proof
+          post :resync_team_members
           delete :permanently_delete
           delete :force_delete
         end
@@ -314,6 +449,7 @@ Rails.application.routes.draw do
             end
           end
           resources :participants, only: [:index], controller: 'lucky_draw_participants'
+          resources :entries, only: %i[index create], controller: 'lucky_draw_entries'
           resources :invalid_participants, only: %i[index create destroy] do
             member do
               post :notify
@@ -394,6 +530,31 @@ Rails.application.routes.draw do
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
 
+      # Host/staff approval of a pending booking (authenticated)
+      patch 'bookings/:id/approve', to: 'bookings#approve'
+
+      # Public booking view and reschedule (no auth — booking ID is UUID)
+      get 'bookings/:id/public', to: 'bookings#public_show'
+      patch 'bookings/:id/reschedule', to: 'bookings#reschedule'
+      patch 'bookings/:id/cancel', to: 'bookings#cancel'
+
+      # Session and Availability CRUD
+      resources :sessions, only: [:create, :update, :destroy] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
+        resources :availabilities, only: [:index, :create]
+      end
+
+      # Attendee Matchmaking Portal
+      resource :portal, only: [:show, :update] do
+        get :matches, on: :member
+        get :tags, on: :member
+        post :bookings, to: 'portals#create_booking', on: :member
+        put 'bookings/:id/respond', to: 'portals#respond_booking', on: :member
+      end
+
       scope 'events/:business_matching_event_id' do
         resources :availability, only: [:index]
         get 'availability/:date/slots', to: 'availability#show_slots'
@@ -405,18 +566,33 @@ Rails.application.routes.draw do
       end
 
       scope 'events/:event_id' do
+        resource :host_profile, only: [:show, :update], controller: 'hosts'
+        resource :tags, only: [:show, :update], controller: 'tags'
+        resource :defaults, only: [:show, :update], controller: 'event_defaults'
+        resources :host_invitations, only: [:index]
         resources :hosts, only: [:index] do
           get ':host_user_id/availability', to: 'hosts#show_availability', on: :collection
+          patch ':host_user_id/profile', to: 'hosts#admin_update', on: :collection
           post 'join', to: 'hosts#join', on: :collection
+          get 'invite_link', to: 'hosts#show_invite_link', on: :collection
+          post 'invite_link', to: 'hosts#invite_link', on: :collection
+          post 'send_invite_email', to: 'hosts#send_invite_email', on: :collection
           post 'create_and_assign', to: 'hosts#create_and_assign', on: :collection
+          post 'link_exhibitor', to: 'hosts#link_exhibitor', on: :collection
           delete 'remove', to: 'hosts#remove', on: :collection
         end
       end
+
+      # No IDs in the path or params on purpose — the token is the only way
+      # in, so a hand-typed URL can't be used to self-attach as a host.
+      post 'host_invites/accept', to: 'hosts#accept_invite'
     end
 
     # Event Leads (exhibitor lead capture — replaces visitor stamps)
     scope 'events/:event_id' do
-      resources :event_leads, only: %i[index create update], path: 'event-leads'
+      resources :event_leads, only: %i[index create update], path: 'event-leads' do
+        get 'export', on: :collection
+      end
     end
     post 'event-leads/scan', to: 'event_leads#scan'
     get 'event-leads/recent', to: 'event_leads#recent'
@@ -480,6 +656,14 @@ Rails.application.routes.draw do
       get :me, on: :collection
     end
 
+    resources :ai_integrations, only: %i[index create update destroy] do
+      get :available_models, on: :member
+      resources :ai_models, only: %i[create update destroy] do
+        post :import, on: :collection
+        patch :set_default, on: :member
+      end
+    end
+
     # Vendor dashboard
     get 'vendor/dashboard', to: 'vendor_dashboard#index'
 
@@ -536,9 +720,18 @@ Rails.application.routes.draw do
           get 'total_scanned_visitors',   to: 'event_analytics#total_scanned_visitors'
           get 'total_unscanned_visitors', to: 'event_analytics#total_unscanned_visitors'
           get 'total_amount_price',       to: 'event_analytics#total_amount_price'
+          get 'exhibitor_analytics',      to: 'event_analytics#exhibitor_analytics'
           get 'mall_live_feed',           to: 'event_analytics#mall_live_feed'
           get 'time_series',              to: 'event_analytics#time_series'
           get 'hourly_breakdown_by_day',  to: 'event_analytics#hourly_breakdown_by_day'
+          get 'recent_scans',             to: 'event_analytics#recent_scans'
+          get 'custom_field_keys',        to: 'event_analytics#custom_field_keys'
+          get 'custom_field_breakdown',   to: 'event_analytics#custom_field_breakdown'
+          get 'custom_field_names',       to: 'event_analytics#custom_field_names'
+          put 'custom_field_quota',       to: 'event_analytics#set_custom_field_quota'
+          delete 'custom_field_quota',    to: 'event_analytics#destroy_custom_field_quota'
+          put 'custom_field_list',        to: 'event_analytics#set_custom_field_list'
+          get 'ticket_type_breakdown',    to: 'event_analytics#ticket_type_breakdown'
         end
       end
     end
@@ -643,5 +836,10 @@ Rails.application.routes.draw do
       post :assign, on: :member
     end
     resources :exhibitor_zones, only: %i[update destroy]
+
+    namespace :superadmin do
+      get 'system_activity', to: 'system_activity#index'
+      post 'system_activity/:id/analyze', to: 'system_activity#analyze'
+    end
   end
 end

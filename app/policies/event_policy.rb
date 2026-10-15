@@ -30,8 +30,39 @@ class EventPolicy < ApplicationPolicy
       user.is_event_team_member?(record) ||
       user.is_event_vendor?(record) ||
       user.exhibition_contractor_for?(record) ||
-      user.is_business_host?(record)
+      user.is_business_host?(record) ||
+      user.is_business_matching_admin?(record)
     )
+  end
+
+  def sidebar_context?
+    show?
+  end
+
+  def view_activity_log?
+    return false if user.blank? || record.blank?
+    return true if user.is_org_owner?
+
+    EventAssignment.exists?(event_id: record.id, user_id: user.id)
+  end
+
+  # Only Org Owner may permanently clear the activity log
+  # RFID destructive actions (delete stations/bindings/readings, edit a
+  # binding, dismiss anomalies): org owner only.
+  def rfid_admin?
+    return false if user.blank? || record.blank?
+    user.is_org_owner?
+  end
+
+  def clear_activity_log?
+    return false if user.blank? || record.blank?
+    user.is_org_owner?
+  end
+
+  # AI summaries of feedback comments send attendee text to a third-party
+  # provider and cost money, so only the org owner can trigger one.
+  def summarize_feedback?
+    user.present? && user.is_org_owner?
   end
 
   # Can update if:
@@ -70,6 +101,9 @@ class EventPolicy < ApplicationPolicy
 
     # Allow if user is staff/organizer
     return true if user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) || user.is_event_team_member?(record)
+
+    # Allow if user is scoped to Business Matching for this event
+    return true if user.is_business_matching_admin?(record)
 
     # Allow if user is a business host
     return true if user.is_business_host?(record)
@@ -115,9 +149,26 @@ class EventPolicy < ApplicationPolicy
     user.is_event_vendor?(record)
   end
 
+  # Staff who may create/update/delete Business Matching sessions and set
+  # their date range — broader than manage_business_hosts? (which is host
+  # roster only) because it also covers the session record itself.
+  def manage_business_matching_sessions?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) ||
+      user.is_event_team_member?(record) || user.is_business_matching_admin?(record)
+  end
+
   def manage_business_hosts?
     return false if user.blank? || record.blank?
-    user.is_org_owner? || user.is_event_admin?(record)
+    user.is_org_owner? || user.is_event_admin?(record) || user.is_business_matching_admin?(record)
+  end
+
+  # Only Org Owner, Organizer, Event Admin, or Business Matching Admin may
+  # curate the offering/interest tag list that business hosts pick from.
+  # Business hosts may only select from this list, never create their own tags.
+  def manage_business_matching_tags?
+    return false if user.blank? || record.blank?
+    user.is_org_owner? || user.is_organizer? || user.is_event_admin?(record) || user.is_business_matching_admin?(record)
   end
 
   # ============================================================
@@ -138,25 +189,17 @@ class EventPolicy < ApplicationPolicy
       # Org Owner: See ALL events regardless of status and visibility
       return scope.all if actual_user.is_org_owner?
 
-      # For vendors: See only events they are assigned to (as event_vendor)
-      if actual_user.vendor?
-        vendor_event_ids = actual_user.event_vendor_assignments.pluck(:event_id)
-        return scope.where(id: vendor_event_ids, visibility: true).distinct
+      # For all other users: gather all events they are assigned to across any role
+      assigned_event_ids = []
+      assigned_event_ids += actual_user.event_assignments.pluck(:event_id)
+      assigned_event_ids += actual_user.event_vendor_assignments.pluck(:event_id)
+      assigned_event_ids += actual_user.business_host_assignments.pluck(:event_id)
+      if actual_user.exhibition_contractor_profile.present?
+        assigned_event_ids += actual_user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
       end
+      assigned_event_ids.uniq!
 
-      # For exhibition contractors: See only events they are assigned to
-      if actual_user.exhibition_contractor?
-        return scope.none unless actual_user.exhibition_contractor_profile.present?
-
-        assigned_event_ids = actual_user.exhibition_contractor_profile.event_exhibition_contractors.pluck(:event_id)
-        return scope.where(id: assigned_event_ids, visibility: true).distinct
-      end
-
-      # Organizer/Member: See only events they are assigned to
-      assigned_event_ids = actual_user.event_assignments.pluck(:event_id)
-
-      scope.where(id: assigned_event_ids, visibility: true)
-           .distinct
+      scope.where(id: assigned_event_ids).distinct
     end
   end
 end

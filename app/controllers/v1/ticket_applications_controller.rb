@@ -24,6 +24,18 @@ module V1
       end
     end
 
+    def revert
+      authorize @ticket, :destroy?
+
+      result = TicketApplicationReviewService.new(@application, reviewer: current_user)
+                                              .revert_to_pending!(confirm_manual_refund: ActiveModel::Type::Boolean.new.cast(params[:confirm_manual_refund]))
+      if result.success?
+        render json: ticket_payload, status: :ok
+      else
+        render json: { error: result.error }, status: :unprocessable_content
+      end
+    end
+
     def resend_rsvp
       authorize @ticket, :update?
 
@@ -66,7 +78,7 @@ module V1
 
     def ticket_payload
       @ticket.reload.as_json(
-        methods: %i[payment_method transaction_id payment_screenshot_url],
+        methods: %i[payment_method transaction_id payment_screenshot_url registration_documents_data vehicle_registration_data],
         include: {
           ticket_type: { only: %i[id name price] },
           ticket_application: {

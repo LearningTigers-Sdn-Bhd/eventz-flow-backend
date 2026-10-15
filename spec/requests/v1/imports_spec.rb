@@ -529,6 +529,41 @@ RSpec.describe 'V1::Imports', type: :request do
       expect(ticket.payment_status).to eq('paid')
     end
 
+    it 'reports which events exist vs would be created in the events summary' do
+      file = build_excel([
+        ['Existing Event User', '', '', organizer_event.title, 'GA', '', '', 'paid', 'false'],
+        ['New Event User', '', '', 'Brand New Event 2099', 'GA', '', '', 'paid', 'false']
+      ])
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: true }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      events = JSON.parse(response.body).dig('data', 'events')
+      expect(events).to be_an(Array)
+
+      existing = events.find { |e| e['title'] == organizer_event.title }
+      expect(existing['exists']).to be true
+      expect(existing['row_count']).to eq(1)
+
+      new_event = events.find { |e| e['title'] == 'Brand New Event 2099' }
+      expect(new_event['exists']).to be false
+      expect(new_event['row_count']).to eq(1)
+    end
+
+    it 'does not create events or ticket types during a dry-run' do
+      file = build_excel([
+        ['New Event User', '', '', 'Dry Run Only Event', 'DryRunType', '', '', 'paid', 'false']
+      ])
+
+      expect do
+        post '/v1/imports/tickets', params: { file: file, dry_run: true }, headers: { 'Authorization' => auth_header }
+        expect(response).to have_http_status(:ok)
+      end.not_to change(Event, :count)
+
+      expect(Event.find_by(title: 'Dry Run Only Event')).to be_nil
+      expect(TicketType.find_by(name: 'DryRunType')).to be_nil
+    end
+
     it 'does not downgrade from paid' do
       ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
       ticket = organizer_event.tickets.create!(ticket_type: ga, attendee_name: 'No Downgrade User', attendee_email: '', attendee_phone: '', status: :purchased, payment_status: :paid, checked_in: false)
@@ -641,6 +676,85 @@ RSpec.describe 'V1::Imports', type: :request do
       updated_item = json['data']['updated']['data'].first
       expect(updated_item['changed_fields']).to be_an(Array)
       expect(updated_item['changed_fields']).to include('custom_fields_data')
+    end
+
+    it 'does not erase a stored custom field when the reimported cell is blank (EF-308)' do
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      organizer_event.update!(labels_data: { 'role' => 'Role' })
+      ticket = organizer_event.tickets.create!(
+        ticket_type: ga,
+        attendee_name: 'Blank Cell User',
+        attendee_email: '',
+        attendee_phone: '',
+        status: :purchased,
+        payment_status: :pending,
+        checked_in: false,
+        custom_fields_data: { 'role' => 'Speaker' }
+      )
+
+      # Reimport with the Role cell left blank -> stored value must survive.
+      file = build_excel_with_custom_columns(
+        [['Blank Cell User', '', '', organizer_event.title, 'GA', '', '', 'pending', 'false', '']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.custom_fields_data['role']).to eq('Speaker')
+    end
+
+    it 'still updates a custom field when the reimported cell has a new value' do
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      organizer_event.update!(labels_data: { 'role' => 'Role' })
+      ticket = organizer_event.tickets.create!(
+        ticket_type: ga,
+        attendee_name: 'New Value User',
+        attendee_email: '',
+        attendee_phone: '',
+        status: :purchased,
+        payment_status: :pending,
+        checked_in: false,
+        custom_fields_data: { 'role' => 'Speaker' }
+      )
+
+      file = build_excel_with_custom_columns(
+        [['New Value User', '', '', organizer_event.title, 'GA', '', '', 'pending', 'false', 'Panelist']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.custom_fields_data['role']).to eq('Panelist')
+    end
+
+    it 'clears a stored custom field on blank when overwrite_blank_custom_fields=true' do
+      ga = organizer_event.ticket_types.create!(name: 'GA', price: 0, quantity: 1000, status: :draft)
+      organizer_event.update!(labels_data: { 'role' => 'Role' })
+      ticket = organizer_event.tickets.create!(
+        ticket_type: ga,
+        attendee_name: 'Overwrite Blank User',
+        attendee_email: '',
+        attendee_phone: '',
+        status: :purchased,
+        payment_status: :pending,
+        checked_in: false,
+        custom_fields_data: { 'role' => 'Speaker' }
+      )
+
+      file = build_excel_with_custom_columns(
+        [['Overwrite Blank User', '', '', organizer_event.title, 'GA', '', '', 'pending', 'false', '']],
+        custom_columns: ['Role']
+      )
+
+      post '/v1/imports/tickets', params: { file: file, dry_run: false, overwrite_blank_custom_fields: true }, headers: { 'Authorization' => auth_header }
+
+      expect(response).to have_http_status(:ok)
+      ticket.reload
+      expect(ticket.custom_fields_data['role']).to eq('')
     end
 
     it 'includes changed_fields for both payment_status and custom_fields_data when both change' do

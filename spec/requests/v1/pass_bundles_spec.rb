@@ -46,6 +46,23 @@ RSpec.describe 'V1::PassBundles', type: :request do
       )
       expect(json.first['bundle_link']).to include("/register/delegate?bundle=#{bundle.token}")
     end
+
+    it 'uses the event registration_path_template when set' do
+      event.update!(registration_path_template: '/luncheon-talk-registration?form=delegate')
+      bundle = create(
+        :pass_bundle,
+        event: event,
+        registration_form: registration_form,
+        ticket_type: ticket_type
+      )
+
+      get "/v1/events/#{event.id}/pass_bundles", headers: headers
+
+      json = JSON.parse(response.body)
+      expect(json.first['bundle_link']).to eq(
+        "#{event.normalized_public_registration_url}/luncheon-talk-registration?form=delegate&bundle=#{bundle.token}"
+      )
+    end
   end
 
   describe 'POST /v1/events/:event_id/pass_bundles' do
@@ -71,6 +88,30 @@ RSpec.describe 'V1::PassBundles', type: :request do
       expect(json['name']).to eq('Microsoft')
       expect(json['payment_status']).to eq('sponsored')
       expect(PassBundle.last.created_by).to eq(organizer)
+    end
+
+    it 'links a table plan_object when provided' do
+      plan = create(:plan, event: event)
+      table = create(:plan_object, :table, plan: plan)
+
+      post "/v1/events/#{event.id}/pass_bundles",
+           params: {
+             pass_bundle: {
+               name: 'SESB',
+               pass_limit: table.capacity,
+               registration_form_id: registration_form.id,
+               ticket_type_id: ticket_type.id,
+               payment_mode: 'free',
+               payment_status: 'sponsored',
+               status: 'active',
+               plan_object_id: table.id
+             }
+           },
+           headers: headers
+
+      expect(response).to have_http_status(:created)
+      json = JSON.parse(response.body)
+      expect(json['plan_object']).to include('id' => table.id, 'label' => table.label)
     end
 
     it 'rejects users without event update access' do

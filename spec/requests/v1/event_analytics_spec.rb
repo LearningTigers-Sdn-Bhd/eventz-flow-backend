@@ -16,11 +16,38 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
   # --- Setup Event and Tickets ---
   let(:event) { create(:event, status: :published) }
   let(:ticket_type) { create(:ticket_type, event: event, price: 50.00) }
+  let(:ticket_created_at) { event.start_date + 1.hour }
 
-  # Create tickets with different statuses and check-in states
-  let!(:purchased_tickets) { create_list(:ticket, 5, event: event, ticket_type: ticket_type, status: :purchased) }
-  let!(:scanned_tickets) { create_list(:ticket, 3, event: event, ticket_type: ticket_type, status: :scanned, checked_in: true) }
-  let!(:refunded_tickets) { create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded) }
+  # Create paid, pending, and ineligible tickets on the same RM50 ticket type.
+  let!(:purchased_tickets) do
+    create_list(:ticket, 5, :paid, event: event, ticket_type: ticket_type,
+                                 status: :purchased, created_at: ticket_created_at)
+  end
+  let!(:scanned_tickets) do
+    create_list(:ticket, 3, :paid, event: event, ticket_type: ticket_type,
+                                 status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                                 created_at: ticket_created_at)
+  end
+  let!(:pending_ticket) do
+    create(:ticket, :pending_payment, event: event, ticket_type: ticket_type, checked_in: true,
+                                     created_at: ticket_created_at)
+  end
+  let!(:legacy_pending_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :purchased,
+                    payment_status: :pending, created_at: ticket_created_at)
+  end
+  let!(:failed_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :purchased,
+                    payment_status: :failed, created_at: ticket_created_at)
+  end
+  let!(:refunded_tickets) do
+    create_list(:ticket, 2, event: event, ticket_type: ticket_type, status: :refunded,
+                             payment_status: :refunded_payment, created_at: ticket_created_at)
+  end
+  let!(:canceled_ticket) do
+    create(:ticket, event: event, ticket_type: ticket_type, status: :canceled,
+                    payment_status: :pending, created_at: ticket_created_at)
+  end
 
   # Assign users to event
   before do
@@ -38,7 +65,9 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       response '200', 'Total tickets retrieved successfully' do
         schema type: :object,
                properties: {
-                 totalTickets: { type: :integer }
+                 totalTickets: { type: :integer },
+                 paidTickets: { type: :integer },
+                 pendingTickets: { type: :integer }
                }
 
         let(:event_id) { event.id }
@@ -46,7 +75,9 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalTickets']).to eq(8) # 5 purchased + 3 scanned (excludes refunded)
+          expect(data['totalTickets']).to eq(10)
+          expect(data['paidTickets']).to eq(8)
+          expect(data['pendingTickets']).to eq(2)
         end
       end
 
@@ -108,9 +139,58 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalUnscannedTickets']).to eq(5) # 8 total - 3 scanned
+          expect(data['totalUnscannedTickets']).to eq(5)
         end
       end
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/total_tickets — totalVisitors' do
+    let(:visitor_ticket_type) { create(:ticket_type, event: event, name: 'Visitor', price: 0) }
+    let!(:scanned_visitor_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: visitor_ticket_type,
+                      status: :scanned, checked_in: true, check_in_at: ticket_created_at,
+                      created_at: ticket_created_at)
+    end
+    let!(:unscanned_visitor_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: visitor_ticket_type,
+                      status: :purchased, checked_in: false, created_at: ticket_created_at)
+    end
+
+    before do
+      # 3 scan events total for the one scanned ticket: its original check-in
+      # plus 2 re-entries.
+      create_list(:scan_log, 3, event: event, scannable: scanned_visitor_ticket,
+                                 scanned_at: ticket_created_at + 1.hour)
+    end
+
+    it 'counts registered visitor tickets (scanned and unscanned) by default' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(2)
+    end
+
+    it 'counts unscanned tickets plus every re-entry scan when include_multi_scans is true' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { include_multi_scans: true },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      # 1 unscanned ticket (never generates a ScanLog) + 3 scan events for the
+      # other ticket = 4. Must NOT be 3 (dropping the unscanned ticket) or 2
+      # (ignoring re-entries).
+      expect(JSON.parse(response.body)['totalVisitors']).to eq(4)
+    end
+
+    it 'excludes tickets registered outside the requested date range' do
+      get "/v1/events/#{event.id}/metrics/total_tickets",
+          params: { start_date: (ticket_created_at + 1.day).to_date.to_s,
+                    end_date: (ticket_created_at + 2.days).to_date.to_s },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      data = JSON.parse(response.body)
+      expect(data['totalTickets']).to eq(0)
+      expect(data['totalVisitors']).to eq(0)
     end
   end
 
@@ -210,7 +290,8 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
       response '200', 'Total sales amount retrieved successfully' do
         schema type: :object,
                properties: {
-                 totalAmountPrice: { type: :integer, description: 'Amount in cents' }
+                 totalAmountPrice: { type: :integer, description: 'Amount in cents' },
+                 pendingAmountPrice: { type: :integer, description: 'Amount in cents' }
                }
 
         let(:event_id) { event.id }
@@ -218,7 +299,172 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
 
         run_test! do |response|
           data = JSON.parse(response.body)
-          expect(data['totalAmountPrice']).to eq(40000) # 8 tickets * 50.00 * 100 cents
+          expect(data['totalAmountPrice']).to eq(40000)
+          expect(data['pendingAmountPrice']).to eq(10000)
+        end
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/metrics/exhibitor_analytics' do
+    get 'Get exhibitor or vendor analytics for an event' do
+      tags 'Event Analytics'
+      produces 'application/json'
+      parameter name: :event_id, in: :path, type: :integer, description: 'Event ID'
+      parameter name: 'Authorization', in: :header, type: :string, description: 'Bearer token'
+
+      response '200', 'Exhibitor analytics retrieved successfully' do
+        schema type: :object,
+               properties: {
+                 mode: { type: :string, enum: %w[exhibitor vendor] },
+                 totalPartners: { type: :integer },
+                 paidPartners: { type: :integer },
+                 depositPartners: { type: :integer },
+                 unpaidPartners: { type: :integer },
+                 collectedRevenue: { type: :number },
+                 pendingRevenue: { type: :number },
+                 breakdown: { type: :array, items: { type: :object } },
+                 vendorMetrics: { type: :object }
+               }
+
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+
+          shell_zone = create(:exhibitor_zone, event: event, zone: 'zone_shell')
+          raw_zone = create(:exhibitor_zone, event: event, zone: 'zone_raw')
+          shell_scheme = create(:exhibitor_booth_price, event: event,
+                                exhibitor_zone: shell_zone, booth_type: 'shell_scheme',
+                                label: 'Shell Scheme', price: 1000)
+          raw_space = create(:exhibitor_booth_price, event: event,
+                             exhibitor_zone: raw_zone, booth_type: 'raw_space',
+                             label: 'Raw Space', price: 750)
+
+          paid_exhibitor = create(:exhibitor, event: event)
+          paid_kit = create(:exhibitor_kit, event_vendor: paid_exhibitor,
+                            exhibitor_booth_price: shell_scheme, booth_type: 'shell_scheme',
+                            booth_quantity: 2, amount_paid: 2000, price_snapshot: 1000,
+                            payment_status: :paid, booking_status: :paid)
+          create(:exhibitor_registration_payment, exhibitor_kit: paid_kit,
+                 amount: 2000, status: 'paid')
+
+          unpaid_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: unpaid_exhibitor,
+                 exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
+                 amount_paid: 750, price_snapshot: 750,
+                 payment_status: :unpaid, booking_status: :active)
+
+          waived_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: waived_exhibitor,
+                 exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
+                 amount_paid: 750, price_snapshot: 750,
+                 payment_status: :waived, booking_status: :active)
+
+          sponsored_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: sponsored_exhibitor,
+                 exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
+                 amount_paid: 750, price_snapshot: 750,
+                 payment_status: :sponsored, booking_status: :active)
+
+          deposit_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: deposit_exhibitor,
+                 exhibitor_booth_price: raw_space, booth_type: 'raw_space', booth_quantity: 1,
+                 amount_paid: 300, price_snapshot: 750,
+                 payment_status: :deposit, booking_status: :active)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+
+          expect(data['mode']).to eq('exhibitor')
+          expect(data['totalPartners']).to eq(5)
+          expect(data['paidPartners']).to eq(3)
+          expect(data['depositPartners']).to eq(1)
+          expect(data['unpaidPartners']).to eq(1)
+          expect(data['collectedRevenue']).to eq(2300.0)
+          expect(data['pendingRevenue']).to eq(1200.0)
+
+          breakdown = data['breakdown'].index_by { |row| row['label'] }
+          expect(breakdown['Shell Scheme']).to include(
+            'zone' => 'zone_shell',
+            'bookedQuantity' => 2,
+            'paidQuantity' => 2,
+            'depositQuantity' => 0,
+            'unpaidQuantity' => 0,
+            'collectedRevenue' => 2000.0,
+            'pendingRevenue' => 0.0
+          )
+          expect(breakdown['Raw Space']).to include(
+            'zone' => 'zone_raw',
+            'bookedQuantity' => 4,
+            'paidQuantity' => 2,
+            'depositQuantity' => 1,
+            'unpaidQuantity' => 1,
+            'collectedRevenue' => 300.0,
+            'pendingRevenue' => 1200.0
+          )
+        end
+      end
+
+      response '200', 'Vendor analytics retrieved for non-exhibitor events' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          event.update!(use_exhibitor_kit: false)
+          create(:merchant, event: event)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+
+          expect(data['mode']).to eq('vendor')
+          expect(data['totalPartners']).to eq(1)
+          expect(data['vendorMetrics']).to include(
+            'totalLeads' => 0,
+            'voucherSales' => 0.0,
+            'voucherRedemptions' => 0
+          )
+          expect(data['breakdown']).to eq([])
+        end
+      end
+
+      response '200', 'Exhibitor breakdown rows have unique identifiers' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+
+          first_zone = create(:exhibitor_zone, event: event, zone: 'zone_first')
+          second_zone = create(:exhibitor_zone, event: event, zone: 'zone_second')
+          first_price = create(:exhibitor_booth_price, event: event,
+                               exhibitor_zone: first_zone, booth_type: 'shell_scheme',
+                               label: 'Standard Booth', price: 1000)
+          second_price = create(:exhibitor_booth_price, event: event,
+                                exhibitor_zone: second_zone, booth_type: 'shell_scheme',
+                                label: 'Standard Booth', price: 1200)
+
+          first_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: first_exhibitor,
+                 exhibitor_booth_price: first_price, booth_type: 'shell_scheme',
+                 booth_quantity: 1, amount_paid: 1000, price_snapshot: 1000,
+                 payment_status: :unpaid, booking_status: :active)
+          second_exhibitor = create(:exhibitor, event: event)
+          create(:exhibitor_kit, event_vendor: second_exhibitor,
+                 exhibitor_booth_price: second_price, booth_type: 'shell_scheme',
+                 booth_quantity: 1, amount_paid: 1200, price_snapshot: 1200,
+                 payment_status: :unpaid, booking_status: :active)
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          keys = data['breakdown'].map { |row| row['breakdownKey'] }
+
+          expect(keys).to all(be_a(String))
+          expect(keys.uniq.length).to eq(keys.length)
         end
       end
     end
@@ -354,8 +600,114 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
           expect(data['metric']).to eq('tickets')
           expect(data['group_by']).to eq('day')
           expect(data['data']).to be_an(Array)
+          expect(data['data'].sum { |point| point['value'] }).to eq(10)
           expect(data['start_date']).to be_present
           expect(data['end_date']).to be_present
+        end
+      end
+
+      response '200', 'Excludes pending ticket revenue from the time series' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'revenue' }
+        let(:group_by) { 'day' }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(40000)
+        end
+      end
+
+      response '200', 'Returns exhibitor booth revenue time series, separate from ticket revenue' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_revenue' }
+        let(:group_by) { 'day' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          kit = create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                       booth_quantity: 1, amount_paid: 1000, price_snapshot: 1000,
+                       payment_status: :paid, booking_status: :paid, created_at: ticket_created_at)
+          create(:exhibitor_registration_payment, exhibitor_kit: kit,
+                 amount: 1000, status: 'paid', paid_at: ticket_created_at)
+
+          deposit_exhibitor = create(:exhibitor, event: event)
+          # travel_to so the payment_recorded_at auto-stamped by the model callback lands
+          # inside the query range, same as created_at above.
+          travel_to(ticket_created_at) do
+            create(:exhibitor_kit, event_vendor: deposit_exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 300, price_snapshot: 1000,
+                   payment_status: :deposit, booking_status: :active, created_at: ticket_created_at)
+
+            # Marked paid directly (e.g. admin manual update) with no ExhibitorRegistrationPayment
+            # ever created - must still show up via the amount_paid fallback, same as the KPI does.
+            no_payment_record_exhibitor = create(:exhibitor, event: event)
+            create(:exhibitor_kit, event_vendor: no_payment_record_exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 800, price_snapshot: 1000,
+                   payment_status: :paid, booking_status: :paid, created_at: ticket_created_at)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(2100)
+        end
+      end
+
+      response '200', 'Includes exhibitor bookings made outside the ticket registration window under all_time' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_bookings' }
+        let(:date_mode) { 'all_time' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          # Booked well before any ticket registration, outside the ticket-derived window.
+          travel_to(event.start_date - 30.days) do
+            create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 1000, price_snapshot: 1000,
+                   payment_status: :unpaid, booking_status: :active)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_bookings')
+          expect(data['data'].sum { |point| point['value'] }).to eq(1)
+        end
+      end
+
+      response '200', 'Includes deposit revenue recorded after the event ended under all_time' do
+        let(:event_id) { event.id }
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:metric) { 'exhibitor_revenue' }
+        let(:date_mode) { 'all_time' }
+
+        before do
+          event.update!(use_exhibitor_kit: true)
+          booth_price = create(:exhibitor_booth_price, event: event, price: 1000)
+          exhibitor = create(:exhibitor, event: event)
+          # No ExhibitorRegistrationPayment record exists at all, so the range can't fall back to
+          # a paid_at - it must pick up the deposit kit's own payment_recorded_at, even though
+          # that's well after the event's own end_date.
+          travel_to(event.end_date + 30.days) do
+            create(:exhibitor_kit, event_vendor: exhibitor, exhibitor_booth_price: booth_price,
+                   booth_quantity: 1, amount_paid: 300, price_snapshot: 1000,
+                   payment_status: :deposit, booking_status: :active)
+          end
+        end
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['metric']).to eq('exhibitor_revenue')
+          expect(data['data'].sum { |point| point['value'] }).to eq(300)
         end
       end
 
@@ -446,5 +798,321 @@ RSpec.describe 'V1::EventAnalytics', type: :request do
         run_test!
       end
     end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/ticket_type_breakdown' do
+    it 'returns count-only breakdown grouped by ticket type name' do
+      get "/v1/events/#{event.id}/metrics/ticket_type_breakdown",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      row = data['data'].find { |r| r['value'] == ticket_type.name }
+      expect(row['count']).to eq(10)
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/ticket_type_breakdown",
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/custom_field_keys' do
+    let!(:agensi_ticket) do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN PERTAHANAN',
+                                                    'kategori' => 'Kerajaan Negeri Sabah',
+                                                    'car_registration_number' => 'ABC1234' })
+    end
+
+    it 'auto-detects distinct keys, excluding server-reserved keys' do
+      get "/v1/events/#{event.id}/metrics/custom_field_keys",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      expect(data['keys']).to include('nama_agensi', 'kategori')
+      expect(data['keys']).not_to include('car_registration_number')
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/custom_field_keys",
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/custom_field_names' do
+    before do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Ali',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN A', 'kategori' => 'K1' })
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Abu',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN A', 'kategori' => 'K1' })
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased, attendee_name: 'Siti',
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN B', 'kategori' => 'K2' })
+    end
+
+    def names_for(params)
+      get "/v1/events/#{event.id}/metrics/custom_field_names",
+          params: params, headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      JSON.parse(response.body)['data'].transform_values { |list| list.pluck('name') }
+    end
+
+    it 'lists attendee names grouped by the field value, sorted by name' do
+      expect(names_for(field_key: 'nama_agensi', group_by: 'kategori', group_value: 'K1')).to eq('JABATAN A' => %w[Abu Ali])
+      expect(names_for(field_key: 'nama_agensi').slice('JABATAN A', 'JABATAN B'))
+        .to eq('JABATAN A' => %w[Abu Ali], 'JABATAN B' => %w[Siti])
+    end
+
+    it 'narrows to one value and one group_by value' do
+      expect(names_for(field_key: 'nama_agensi', value: 'JABATAN B')).to eq('JABATAN B' => %w[Siti])
+      expect(names_for(field_key: 'nama_agensi', group_by: 'kategori', group_value: 'K1').keys).to eq(['JABATAN A'])
+    end
+
+    it 'rejects an unsafe field_key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_names",
+          params: { field_key: "x'; drop" }, headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/metrics/custom_field_breakdown' do
+    let!(:agensi_ticket_a) do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN PERTAHANAN' })
+    end
+    let!(:agensi_ticket_b) do
+      create_list(:ticket, 2, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                                    created_at: ticket_created_at,
+                                    custom_fields_data: { 'nama_agensi' => 'KEMENTERIAN KESIHATAN' })
+    end
+
+    it 'returns count-only breakdown grouped by the given jsonb key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:ok)
+      data = JSON.parse(response.body)
+      expect(data['fieldKey']).to eq('nama_agensi')
+      counts = data['data'].index_by { |row| row['value'] }
+      expect(counts['KEMENTERIAN PERTAHANAN']['count']).to eq(1)
+      expect(counts['KEMENTERIAN KESIHATAN']['count']).to eq(2)
+    end
+
+    it 'orders positioned rows first by position, then the rest by count' do
+      create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                             created_at: ticket_created_at,
+                             custom_fields_data: { 'nama_agensi' => 'JABATAN AIR' })
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN AIR', quota: 5, position: 2)
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'KEMENTERIAN PERTAHANAN',
+                               quota: 5, position: 1)
+
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      values = JSON.parse(response.body)['data'].map { |row| row['value'] }
+      expect(values.first(2)).to eq(['KEMENTERIAN PERTAHANAN', 'JABATAN AIR'])
+    end
+
+    it 'lists master-list agencies with no tickets as zero-count rows' do
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN KOSONG', quota: 3, position: 1)
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'TANPA KUOTA', position: 2)
+
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      rows = JSON.parse(response.body)['data']
+      expect(rows.first(2)).to eq([
+                                    { 'value' => 'JABATAN KOSONG', 'count' => 0, 'quota' => 3,
+                                      'registered' => 0, 'remaining' => 3 },
+                                    { 'value' => 'TANPA KUOTA', 'count' => 0 }
+                                  ])
+    end
+
+    describe 'PUT custom_field_list' do
+      def put_list(items, group_value: 'KERAJAAN NEGERI SABAH')
+        put "/v1/events/#{event.id}/metrics/custom_field_list",
+            params: { field_key: 'nama_agensi', group_value: group_value, items: items },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+      end
+
+      it 'stores the list in order with quotas, keeping quotas it does not override' do
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN B', quota: 7)
+
+        put_list([{ value: 'JABATAN A', quota: 10 }, { value: 'JABATAN B' }, { value: ' JABATAN A ' }])
+
+        expect(response).to have_http_status(:ok)
+        rows = CustomFieldQuota.where(event: event).order(:position).pluck(:value, :quota, :position, :group_value)
+        expect(rows).to eq([['JABATAN A', 10, 1, 'KERAJAAN NEGERI SABAH'],
+                            ['JABATAN B', 7, 2, 'KERAJAAN NEGERI SABAH']])
+      end
+
+      it 'drops values missing from a re-import, keeping only their quota' do
+        put_list([{ value: 'JABATAN A', quota: 10 }, { value: 'JABATAN B' }])
+        put_list([{ value: 'JABATAN C' }])
+
+        expect(CustomFieldQuota.where(event: event).pluck(:value, :position, :quota))
+          .to contain_exactly(['JABATAN A', nil, 10], ['JABATAN C', 1, nil])
+      end
+
+      it 'clears a quota sent as null' do
+        put_list([{ value: 'JABATAN A', quota: 10 }])
+        put "/v1/events/#{event.id}/metrics/custom_field_list",
+            params: { field_key: 'nama_agensi', group_value: 'KERAJAAN NEGERI SABAH',
+                      items: [{ value: 'JABATAN A', quota: nil }] }.to_json,
+            headers: { 'Authorization' => "Bearer #{organizer_token}", 'Content-Type' => 'application/json' }
+
+        expect(CustomFieldQuota.find_by(value: 'JABATAN A').quota).to be_nil
+      end
+
+      it 'rejects an invalid quota without saving anything' do
+        put_list([{ value: 'JABATAN A', quota: 5 }, { value: 'JABATAN B', quota: 'abc' }])
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(CustomFieldQuota.where(event: event)).to be_empty
+      end
+
+      it 'requires group_value' do
+        put_list([{ value: 'JABATAN A' }], group_value: '')
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    it 'keeps a master-list row when its quota is cleared' do
+      CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'JABATAN KOSONG', quota: 3, position: 1)
+
+      delete "/v1/events/#{event.id}/metrics/custom_field_quota",
+             params: { field_key: 'nama_agensi', value: 'JABATAN KOSONG' },
+             headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(CustomFieldQuota.find_by(value: 'JABATAN KOSONG').quota).to be_nil
+    end
+
+    it 'rejects a missing field_key' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    context 'with group_by' do
+      let!(:kementerian_ticket) do
+        create(:ticket, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                               created_at: ticket_created_at,
+                               custom_fields_data: { 'kategori' => 'Kementerian',
+                                                      'nama_agensi' => 'Kementerian Kewangan' })
+      end
+      let!(:jabatan_tickets) do
+        create_list(:ticket, 2, :paid, event: event, ticket_type: ticket_type, status: :purchased,
+                                      created_at: ticket_created_at,
+                                      custom_fields_data: { 'kategori' => 'Jabatan',
+                                                             'nama_agensi' => 'Jabatan Pertanian' })
+      end
+
+      it 'nests field_key counts under group_by, each with a subtotal' do
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: 'kategori' },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        expect(response).to have_http_status(:ok)
+        data = JSON.parse(response.body)
+        expect(data['groupBy']).to eq('kategori')
+        groups = data['groups'].index_by { |g| g['group'] }
+
+        jabatan = groups['Jabatan']
+        expect(jabatan['total']).to eq(2)
+        expect(jabatan['rows'].first).to eq('value' => 'Jabatan Pertanian', 'count' => 2)
+
+        kementerian = groups['Kementerian']
+        expect(kementerian['total']).to eq(1)
+        expect(kementerian['rows'].first).to eq('value' => 'Kementerian Kewangan', 'count' => 1)
+      end
+
+      it 'adds unregistered master-list agencies under their group, even a group with no tickets' do
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'Jabatan Air',
+                                 group_value: 'Jabatan', position: 1)
+        CustomFieldQuota.create!(event: event, field_key: 'nama_agensi', value: 'PBT Kosong',
+                                 group_value: 'PBT', position: 2)
+
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: 'kategori' },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        groups = JSON.parse(response.body)['groups'].index_by { |g| g['group'] }
+        expect(groups['Jabatan']['rows'].map { |r| r['value'] }).to eq(['Jabatan Air', 'Jabatan Pertanian'])
+        expect(groups['Jabatan']['total']).to eq(2)
+        expect(groups['PBT']).to eq('group' => 'PBT', 'rows' => [{ 'value' => 'PBT Kosong', 'count' => 0 }],
+                                    'total' => 0)
+      end
+
+      it 'rejects a group_by with unsafe characters' do
+        get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+            params: { field_key: 'nama_agensi', group_by: "kategori'; DROP TABLE tickets;--" },
+            headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    it 'rejects a field_key with unsafe characters' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: "nama'; DROP TABLE tickets;--" },
+          headers: { 'Authorization' => "Bearer #{organizer_token}" }
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it 'forbids insufficient permissions' do
+      get "/v1/events/#{event.id}/metrics/custom_field_breakdown",
+          params: { field_key: 'nama_agensi' },
+          headers: { 'Authorization' => "Bearer #{member_token}" }
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+end
+
+RSpec.describe 'Exhibitor analytics catalog transparency', type: :request do
+  let(:event) { create(:event, status: :published, use_exhibitor_kit: true) }
+  let(:organizer) { create(:user, :organizer) }
+  let(:headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}" } }
+
+  before do
+    create(:event_assignment, event: event, user: organizer, role: :event_admin)
+  end
+
+  it 'includes unbooked booth prices and all configured filter options' do
+    priced_zone = create(:exhibitor_zone, event: event, zone: 'Priced Zone')
+    create(:exhibitor_zone, event: event, zone: 'Unpriced Zone')
+    create(:exhibitor_booth_price, event: event, exhibitor_zone: priced_zone,
+                                   label: 'Unbooked Booth', booth_type: 'shell_scheme', price: 4000)
+
+    get "/v1/events/#{event.id}/metrics/exhibitor_analytics", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    data = response.parsed_body
+    empty_row = data.fetch('breakdown').find { |row| row['label'] == 'Unbooked Booth' }
+
+    expect(empty_row).to include(
+      'zone' => 'Priced Zone',
+      'bookedQuantity' => 0,
+      'paidQuantity' => 0,
+      'unpaidQuantity' => 0,
+      'collectedRevenue' => 0.0,
+      'pendingRevenue' => 0.0
+    )
+    expect(data.fetch('filterOptions')).to include(
+      'zones' => include('Priced Zone', 'Unpriced Zone'),
+      'boothPricing' => include('Unbooked Booth')
+    )
   end
 end

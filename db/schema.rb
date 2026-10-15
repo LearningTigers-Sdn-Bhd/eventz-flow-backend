@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,6 +42,26 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "ai_integrations", force: :cascade do |t|
+    t.string "provider", null: false
+    t.string "api_url", null: false
+    t.text "api_key", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["provider"], name: "index_ai_integrations_on_provider", unique: true
+  end
+
+  create_table "ai_models", force: :cascade do |t|
+    t.bigint "ai_integration_id", null: false
+    t.string "model_id", null: false
+    t.string "display_name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "is_default", default: false, null: false
+    t.index ["ai_integration_id", "model_id"], name: "index_ai_models_on_ai_integration_id_and_model_id", unique: true
+    t.index ["ai_integration_id"], name: "index_ai_models_on_ai_integration_id"
+  end
+
   create_table "api_keys", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "name"
@@ -52,11 +72,24 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "updated_at", null: false
     t.bigint "event_id"
     t.string "scope", default: "read_only", null: false
+    t.string "key_prefix"
     t.index ["event_id"], name: "index_api_keys_on_event_id"
     t.index ["key_hash"], name: "index_api_keys_on_key_hash", unique: true
+    t.index ["key_prefix"], name: "idx_api_keys_key_prefix", unique: true, where: "(key_prefix IS NOT NULL)"
     t.index ["last_used_at"], name: "index_api_keys_on_last_used_at"
     t.index ["scope"], name: "index_api_keys_on_scope"
     t.index ["user_id"], name: "index_api_keys_on_user_id"
+  end
+
+  create_table "booth_plans", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "position"], name: "index_booth_plans_on_event_id_and_position"
+    t.index ["event_id"], name: "index_booth_plans_on_event_id"
   end
 
   create_table "business_host_assignments", force: :cascade do |t|
@@ -65,8 +98,99 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.string "business_matching_event_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "tags_editable_override"
+    t.boolean "hours_editable_override"
     t.index ["event_id"], name: "index_business_host_assignments_on_event_id"
     t.index ["user_id"], name: "index_business_host_assignments_on_user_id"
+  end
+
+  create_table "business_matching_availabilities", force: :cascade do |t|
+    t.bigint "business_matching_session_id", null: false
+    t.bigint "host_user_id"
+    t.date "day", null: false
+    t.string "start_time", null: false
+    t.string "end_time", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "business_matching_participant_id"
+    t.index ["business_matching_participant_id"], name: "index_bm_availabilities_on_participant_id"
+    t.index ["business_matching_session_id", "host_user_id", "day"], name: "idx_bm_availabilities_unique"
+    t.index ["business_matching_session_id"], name: "index_bm_availabilities_on_bm_session_id"
+    t.index ["host_user_id"], name: "index_business_matching_availabilities_on_host_user_id"
+  end
+
+  create_table "business_matching_bookings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.bigint "business_matching_session_id", null: false
+    t.bigint "host_user_id"
+    t.string "name", null: false
+    t.string "email", null: false
+    t.string "phone", null: false
+    t.date "booking_date", null: false
+    t.string "booking_time", null: false
+    t.integer "duration", default: 30, null: false
+    t.string "status", default: "Pending", null: false
+    t.string "payment_status", default: "Pending", null: false
+    t.string "attendance"
+    t.text "host_comment"
+    t.decimal "potential_deal_value", precision: 12, scale: 2, default: "0.0"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "requester_participant_id"
+    t.bigint "receiver_participant_id"
+    t.text "booker_description"
+    t.text "booker_sourcing_intent"
+    t.text "booker_capabilities"
+    t.index ["business_matching_session_id"], name: "index_bm_bookings_on_bm_session_id"
+    t.index ["host_user_id", "booking_date", "booking_time"], name: "index_bm_bookings_host_time_unique", unique: true, where: "((status)::text <> 'Cancelled'::text)"
+    t.index ["host_user_id"], name: "index_business_matching_bookings_on_host_user_id"
+    t.index ["receiver_participant_id", "booking_date", "booking_time"], name: "index_bm_bookings_receiver_time_unique", unique: true, where: "((status)::text <> 'Cancelled'::text)"
+    t.index ["receiver_participant_id"], name: "index_bm_bookings_on_receiver_participant_id"
+    t.index ["requester_participant_id"], name: "index_bm_bookings_on_requester_participant_id"
+  end
+
+  create_table "business_matching_participants", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "registerable_type", null: false
+    t.bigint "registerable_id", null: false
+    t.string "magic_token", null: false
+    t.jsonb "profile_data", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "registerable_type", "registerable_id"], name: "index_bm_participants_uniqueness", unique: true
+    t.index ["event_id"], name: "index_business_matching_participants_on_event_id"
+    t.index ["magic_token"], name: "index_business_matching_participants_on_magic_token", unique: true
+    t.index ["registerable_type", "registerable_id"], name: "index_business_matching_participants_on_registerable"
+  end
+
+  create_table "business_matching_reminder_logs", force: :cascade do |t|
+    t.uuid "business_matching_booking_id", null: false
+    t.string "reminder_type", default: "1_hour", null: false
+    t.string "status", default: "sent"
+    t.datetime "sent_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["business_matching_booking_id", "reminder_type"], name: "index_bm_reminder_logs_on_booking_and_type", unique: true
+  end
+
+  create_table "business_matching_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "title", null: false
+    t.integer "slot_duration", default: 30, null: false
+    t.string "location"
+    t.string "admin_email"
+    t.string "admin_wa_number"
+    t.string "start_time", default: "09:00", null: false
+    t.string "end_time", default: "17:00", null: false
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.date "start_date", null: false
+    t.date "end_date", null: false
+    t.boolean "tags_editable", default: true, null: false
+    t.boolean "hours_editable"
+    t.datetime "archived_at"
+    t.index ["archived_at"], name: "index_business_matching_sessions_on_archived_at"
+    t.index ["event_id"], name: "index_business_matching_sessions_on_event_id"
   end
 
   create_table "certificate_templates", force: :cascade do |t|
@@ -78,7 +202,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.jsonb "fields", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["event_id"], name: "index_certificate_templates_on_event_id", unique: true
+    t.boolean "require_feedback", default: false, null: false
+    t.string "name", default: "Default", null: false
+    t.bigint "ticket_type_ids", default: [], null: false, array: true
+    t.jsonb "auto_send_filter", default: {}, null: false
+    t.index ["event_id"], name: "index_certificate_templates_on_event_id"
     t.index ["status"], name: "index_certificate_templates_on_status"
   end
 
@@ -102,8 +230,73 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.bigint "active_plan_id"
     t.string "seating_announcement_template"
     t.integer "seating_plan_duration"
+    t.jsonb "elevenlabs_settings", default: {}
+    t.jsonb "voice_rules", default: []
+    t.string "script_tone"
     t.index ["active_plan_id"], name: "index_check_in_displays_on_active_plan_id"
     t.index ["event_id"], name: "index_check_in_displays_on_event_id", unique: true
+  end
+
+  create_table "cloned_voices", force: :cascade do |t|
+    t.bigint "event_id"
+    t.bigint "creator_id", null: false
+    t.string "elevenlabs_id"
+    t.string "name", null: false
+    t.integer "status", default: 0, null: false
+    t.jsonb "settings", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["creator_id"], name: "index_cloned_voices_on_creator_id"
+    t.index ["elevenlabs_id"], name: "index_cloned_voices_on_elevenlabs_id", unique: true
+    t.index ["event_id"], name: "index_cloned_voices_on_event_id"
+    t.index ["owner_id"], name: "index_cloned_voices_on_owner_id"
+  end
+
+  create_table "credit_deductions", force: :cascade do |t|
+    t.bigint "event_id"
+    t.string "channel", null: false
+    t.integer "credits", null: false
+    t.string "recipient"
+    t.integer "status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["event_id"], name: "index_credit_deductions_on_event_id"
+    t.index ["owner_id"], name: "index_credit_deductions_on_owner_id"
+  end
+
+  create_table "credit_transactions", force: :cascade do |t|
+    t.bigint "credit_wallet_id", null: false
+    t.integer "transaction_type", null: false
+    t.integer "amount", null: false
+    t.integer "balance_after", null: false
+    t.string "description"
+    t.jsonb "metadata", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["credit_wallet_id"], name: "index_credit_transactions_on_credit_wallet_id"
+  end
+
+  create_table "credit_wallets", force: :cascade do |t|
+    t.integer "balance", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "owner_id", null: false
+    t.index ["owner_id"], name: "index_credit_wallets_on_owner_id", unique: true
+  end
+
+  create_table "custom_field_quotas", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "field_key", null: false
+    t.string "value", null: false
+    t.integer "quota"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "position"
+    t.string "group_value"
+    t.index ["event_id", "field_key", "value"], name: "index_custom_field_quotas_on_event_field_value", unique: true
+    t.index ["event_id"], name: "index_custom_field_quotas_on_event_id"
   end
 
   create_table "custom_requests", force: :cascade do |t|
@@ -143,13 +336,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.jsonb "metadata", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "event_id"
     t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["event_id", "mailer_action", "created_at"], name: "index_email_deliveries_on_event_action_created"
     t.index ["mailer_name", "mailer_action"], name: "index_email_deliveries_on_mailer_name_and_mailer_action"
     t.index ["provider_message_id"], name: "index_email_deliveries_on_provider_message_id", unique: true, where: "(provider_message_id IS NOT NULL)"
     t.index ["recipient"], name: "index_email_deliveries_on_recipient"
     t.index ["related_type", "related_id"], name: "index_email_deliveries_on_related"
     t.index ["resend_of_id"], name: "index_email_deliveries_on_resend_of_id"
     t.index ["status"], name: "index_email_deliveries_on_status"
+  end
+
+  create_table "email_log_settings", force: :cascade do |t|
+    t.integer "retention_days", default: 730, null: false
+    t.integer "protected_retention_days", default: 1825, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.check_constraint "protected_retention_days >= 30 AND protected_retention_days <= 3650", name: "chk_email_log_settings_protected_range"
+    t.check_constraint "protected_retention_days >= retention_days", name: "chk_email_log_settings_protected_gte_retention"
+    t.check_constraint "retention_days >= 30 AND retention_days <= 3650", name: "chk_email_log_settings_retention_range"
   end
 
   create_table "email_verifications", force: :cascade do |t|
@@ -181,6 +386,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.string "payment_receipt_email"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "emails_enabled", default: true, null: false
+    t.jsonb "disabled_categories", default: [], null: false
+    t.jsonb "business_matching_ticket_type_ids", default: [], null: false
+    t.boolean "thank_you_include_feedback", default: false, null: false
+    t.string "business_matching_sender_name"
+    t.string "business_matching_host_invite_subject"
+    t.text "business_matching_host_invite_message"
+    t.string "business_matching_host_label"
+    t.integer "thank_you_delay_minutes", default: 120, null: false
     t.index ["event_id"], name: "index_event_email_settings_on_event_id", unique: true
   end
 
@@ -191,6 +405,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_event_exhibition_contractors_on_event_id", unique: true
     t.index ["exhibition_contractor_profile_id"], name: "idx_on_exhibition_contractor_profile_id_13ae474f9f"
+  end
+
+  create_table "event_halls", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.string "floor"
+    t.bigint "counter_venue_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["counter_venue_id"], name: "index_event_halls_on_counter_venue_id"
+    t.index ["event_id", "name"], name: "index_event_halls_on_event_id_and_name", unique: true
+    t.index ["event_id"], name: "index_event_halls_on_event_id"
   end
 
   create_table "event_leads", force: :cascade do |t|
@@ -585,15 +812,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.boolean "use_business_matching", default: false
     t.string "business_matching_webhook_url"
     t.boolean "use_sponsorship", default: false
+    t.boolean "use_seat_ticketing", default: false, null: false
     t.boolean "reminders_enabled", default: true
     t.boolean "reminder_7_day", default: true
     t.boolean "reminder_1_day", default: true
-    t.boolean "use_seat_ticketing", default: false, null: false
     t.jsonb "booth_types", default: []
     t.boolean "use_wedding", default: false, null: false
     t.integer "extra_guest_limit"
-    t.boolean "use_event_leads", default: false, null: false
     t.boolean "auto_approve_wishes", default: false, null: false
+    t.boolean "use_event_leads", default: false, null: false
     t.boolean "enable_exhibitor_management", default: false, null: false
     t.string "public_registration_url"
     t.string "venue_name"
@@ -602,6 +829,30 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.boolean "use_api_access", default: false, null: false
     t.boolean "use_certificate", default: false, null: false
     t.integer "exhibitor_reservation_ttl_hours"
+    t.jsonb "business_matching_offering_tags", default: [], null: false
+    t.jsonb "business_matching_interest_tags", default: [], null: false
+    t.date "business_matching_default_start_date"
+    t.date "business_matching_default_end_date"
+    t.jsonb "business_matching_default_hours", default: [{"end_time" => "17:00", "start_time" => "09:00"}], null: false
+    t.boolean "business_matching_hours_editable_default", default: true, null: false
+    t.integer "business_matching_default_slot_duration", default: 30, null: false
+    t.boolean "business_matching_public_booking_enabled", default: true, null: false
+    t.date "business_matching_public_booking_cutoff_date"
+    t.jsonb "exhibitor_labels_data", default: {}
+    t.boolean "business_matching_auto_approve_bookings", default: false, null: false
+    t.string "registration_path_template"
+    t.boolean "allow_multiple_tickets_per_email", default: false, null: false
+    t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
+    t.integer "multiple_scan_mode", default: 0, null: false
+    t.datetime "thank_you_sent_at"
+    t.boolean "vehicles_enabled", default: false, null: false
+    t.string "rfid_mode", default: "bind", null: false
+    t.boolean "rfid_require_check_in", default: false, null: false
+    t.boolean "require_unique_membership_numbers", default: true, null: false
+    t.boolean "use_feedback", default: false, null: false
+    t.integer "rfid_attendance_percent", default: 80, null: false
+    t.boolean "use_rfid", default: false, null: false
+    t.boolean "use_people_counter", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -755,6 +1006,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.string "currency", default: "MYR", null: false
     t.integer "lock_version", default: 0, null: false
     t.bigint "exhibitor_package_id"
+    t.datetime "payment_recorded_at"
     t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
@@ -781,7 +1033,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.integer "quota"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["event_id", "name"], name: "index_exhibitor_packages_on_event_id_and_name", unique: true
+    t.index ["event_id", "exhibitor_booth_price_id", "name"], name: "index_exhibitor_packages_on_event_booth_price_and_name", unique: true
     t.index ["event_id"], name: "index_exhibitor_packages_on_event_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_packages_on_exhibitor_booth_price_id"
   end
@@ -890,6 +1142,78 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["type", "created_at"], name: "index_export_logs_on_type_and_created_at"
   end
 
+  create_table "feedback_ai_summaries", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.bigint "ai_model_id"
+    t.bigint "generated_by_id"
+    t.string "status", default: "queued", null: false
+    t.string "model_name_used"
+    t.jsonb "filters", default: {}, null: false
+    t.jsonb "content"
+    t.text "error"
+    t.integer "responses_count", default: 0, null: false
+    t.integer "comments_count", default: 0, null: false
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_model_id"], name: "index_feedback_ai_summaries_on_ai_model_id"
+    t.index ["feedback_form_id", "created_at"], name: "index_feedback_ai_summaries_on_feedback_form_id_and_created_at"
+    t.index ["feedback_form_id"], name: "index_feedback_ai_summaries_on_feedback_form_id"
+    t.index ["generated_by_id"], name: "index_feedback_ai_summaries_on_generated_by_id"
+  end
+
+  create_table "feedback_answers", force: :cascade do |t|
+    t.bigint "feedback_response_id", null: false
+    t.bigint "feedback_question_id", null: false
+    t.text "answer_text"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_question_id"], name: "index_feedback_answers_on_feedback_question_id"
+    t.index ["feedback_response_id"], name: "index_feedback_answers_on_feedback_response_id"
+  end
+
+  create_table "feedback_forms", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "display_mode", default: 0, null: false
+    t.jsonb "pages_metadata", default: [], null: false
+    t.string "thank_you_title"
+    t.text "thank_you_message"
+    t.index ["event_id"], name: "index_feedback_forms_on_event_id", unique: true
+  end
+
+  create_table "feedback_questions", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.string "question_text", null: false
+    t.integer "question_type", null: false
+    t.jsonb "options"
+    t.boolean "required", default: false, null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "placeholder"
+    t.string "hint_text"
+    t.integer "page_number", default: 1, null: false
+    t.jsonb "routing_rules", default: [], null: false
+    t.index ["feedback_form_id"], name: "index_feedback_questions_on_feedback_form_id"
+  end
+
+  create_table "feedback_responses", force: :cascade do |t|
+    t.bigint "feedback_form_id", null: false
+    t.bigint "ticket_id"
+    t.datetime "submitted_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_form_id", "ticket_id"], name: "index_feedback_responses_on_feedback_form_id_and_ticket_id", unique: true
+    t.index ["feedback_form_id"], name: "index_feedback_responses_on_feedback_form_id"
+    t.index ["ticket_id"], name: "index_feedback_responses_on_ticket_id"
+  end
+
   create_table "gift_winners", force: :cascade do |t|
     t.bigint "gift_id", null: false
     t.bigint "ticket_id"
@@ -964,6 +1288,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "lucky_draw_entries", force: :cascade do |t|
+    t.bigint "lucky_draw_session_id", null: false
+    t.bigint "ticket_id"
+    t.bigint "visitor_id"
+    t.bigint "scanned_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lucky_draw_session_id", "ticket_id"], name: "idx_lucky_draw_entries_session_ticket", unique: true, where: "(ticket_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id", "visitor_id"], name: "idx_lucky_draw_entries_session_visitor", unique: true, where: "(visitor_id IS NOT NULL)"
+    t.index ["lucky_draw_session_id"], name: "index_lucky_draw_entries_on_lucky_draw_session_id"
+    t.index ["scanned_by_id"], name: "index_lucky_draw_entries_on_scanned_by_id"
+    t.index ["ticket_id"], name: "index_lucky_draw_entries_on_ticket_id"
+    t.index ["visitor_id"], name: "index_lucky_draw_entries_on_visitor_id"
+    t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "lucky_draw_entries_exactly_one_participant"
+  end
+
   create_table "lucky_draw_sessions", force: :cascade do |t|
     t.bigint "event_id", null: false
     t.string "title", null: false
@@ -973,6 +1313,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.boolean "use_gifts", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "created_by_id"
+    t.boolean "scanned_only", default: false, null: false
+    t.date "scanned_from"
+    t.date "scanned_to"
+    t.string "scanned_source", default: "ticket", null: false
+    t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
     t.index ["event_id"], name: "index_lucky_draw_sessions_on_event_id"
@@ -998,10 +1344,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "expires_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "plan_object_id"
     t.index ["created_by_id"], name: "index_pass_bundles_on_created_by_id"
     t.index ["event_id", "status"], name: "index_pass_bundles_on_event_id_and_status"
     t.index ["event_id", "token"], name: "index_pass_bundles_on_event_id_and_token", unique: true
     t.index ["event_id"], name: "index_pass_bundles_on_event_id"
+    t.index ["plan_object_id"], name: "index_pass_bundles_on_plan_object_id"
     t.index ["registration_form_id"], name: "index_pass_bundles_on_registration_form_id"
     t.index ["ticket_type_id"], name: "index_pass_bundles_on_ticket_type_id"
     t.check_constraint "pass_limit >= 0", name: "chk_pass_bundles_pass_limit_non_negative"
@@ -1028,6 +1376,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["user_id"], name: "index_payment_details_on_user_id", unique: true
   end
 
+  create_table "people_counter_connections", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "base_url", null: false
+    t.text "api_key", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_people_counter_connections_on_event_id", unique: true
+  end
+
   create_table "plan_objects", force: :cascade do |t|
     t.bigint "plan_id", null: false
     t.integer "object_type"
@@ -1044,6 +1401,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "path"
+    t.string "table_number"
     t.index ["plan_id"], name: "index_plan_objects_on_plan_id"
   end
 
@@ -1189,6 +1547,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   end
 
   create_table "resource_leads", force: :cascade do |t|
+    t.bigint "resource_id", null: false
     t.string "email"
     t.string "name"
     t.string "phone"
@@ -1200,7 +1559,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.datetime "accessed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "resource_id", null: false
     t.index ["resource_id"], name: "index_resource_leads_on_resource_id"
   end
 
@@ -1263,6 +1621,156 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["user_id"], name: "index_resources_on_user_id"
   end
 
+  create_table "rfid_binding_operations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.uuid "operation_id", null: false
+    t.string "request_digest", null: false
+    t.jsonb "original_response", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "operation_id"], name: "idx_rfid_binding_ops_event_op", unique: true
+    t.index ["event_id"], name: "index_rfid_binding_operations_on_event_id"
+  end
+
+  create_table "rfid_bindings", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "ticket_public_id", null: false
+    t.string "ticket_name"
+    t.string "protocol", null: false
+    t.string "uid_raw_hex", null: false
+    t.string "tag_key", null: false
+    t.string "mode", null: false
+    t.integer "payload_version"
+    t.datetime "captured_at", null: false
+    t.datetime "recorded_at", null: false
+    t.datetime "revoked_at"
+    t.string "revocation_reason"
+    t.uuid "operation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "tag_key", "captured_at"], name: "idx_rfid_bindings_event_tag_capture"
+    t.index ["event_id", "tag_key"], name: "idx_rfid_active_tag", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["event_id", "ticket_id"], name: "idx_rfid_active_ticket", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["event_id"], name: "index_rfid_bindings_on_event_id"
+    t.index ["ticket_id"], name: "index_rfid_bindings_on_ticket_id"
+  end
+
+  create_table "rfid_corrections", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "actor_id"
+    t.bigint "entry_observation_id"
+    t.string "kind", null: false
+    t.datetime "exit_at"
+    t.string "reason", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "station_id"
+    t.jsonb "details", default: {}, null: false
+    t.bigint "ticket_id"
+    t.index ["actor_id"], name: "index_rfid_corrections_on_actor_id"
+    t.index ["entry_observation_id"], name: "index_rfid_corrections_on_entry_observation_id"
+    t.index ["event_id", "actor_id"], name: "idx_rfid_corrections_event_actor"
+    t.index ["event_id", "entry_observation_id"], name: "idx_rfid_corrections_event_entry"
+    t.index ["event_id", "ticket_id"], name: "idx_rfid_corrections_event_ticket"
+    t.index ["event_id"], name: "index_rfid_corrections_on_event_id"
+    t.index ["station_id"], name: "index_rfid_corrections_on_station_id"
+  end
+
+  create_table "rfid_desk_operations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.uuid "operation_id", null: false
+    t.string "request_digest", null: false
+    t.jsonb "original_response", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "operation_id"], name: "idx_rfid_desk_ops_event_op", unique: true
+    t.index ["event_id"], name: "index_rfid_desk_operations_on_event_id"
+  end
+
+  create_table "rfid_observations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "station_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "delivery_id", null: false
+    t.decimal "device_record_seq", precision: 20
+    t.string "role", null: false
+    t.string "protocol", null: false
+    t.string "uid_raw_hex", null: false
+    t.string "tag_key", null: false
+    t.string "payload_hex"
+    t.uuid "payload_public_id"
+    t.datetime "captured_at", null: false
+    t.datetime "recorded_at", null: false
+    t.jsonb "device_metadata", default: {}, null: false
+    t.string "outcome", null: false
+    t.jsonb "anomalies", default: [], null: false
+    t.jsonb "original_response", null: false
+    t.string "request_digest", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "dismissed_at"
+    t.index ["event_id", "outcome"], name: "idx_rfid_obs_event_outcome"
+    t.index ["event_id", "tag_key", "captured_at"], name: "idx_rfid_obs_event_tag_capture"
+    t.index ["event_id"], name: "index_rfid_observations_on_event_id"
+    t.index ["station_id", "delivery_id"], name: "idx_rfid_obs_station_delivery", unique: true
+    t.index ["station_id", "device_record_seq"], name: "idx_rfid_obs_station_seq"
+    t.index ["station_id"], name: "index_rfid_observations_on_station_id"
+    t.index ["ticket_id"], name: "index_rfid_observations_on_ticket_id"
+  end
+
+  create_table "rfid_sessions", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.datetime "starts_at", null: false
+    t.datetime "ends_at", null: false
+    t.boolean "mandatory", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "starts_at"], name: "index_rfid_sessions_on_event_id_and_starts_at"
+    t.index ["event_id"], name: "index_rfid_sessions_on_event_id"
+  end
+
+  create_table "rfid_stations", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "station_key", null: false
+    t.string "name"
+    t.string "kind", null: false
+    t.string "role"
+    t.string "uid_rule", default: "as_is", null: false
+    t.string "hw_model"
+    t.string "firmware"
+    t.string "app_version"
+    t.datetime "last_heartbeat_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "station_key"], name: "idx_rfid_stations_event_key", unique: true
+    t.index ["event_id"], name: "index_rfid_stations_on_event_id"
+  end
+
+  create_table "rfid_visits", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "ticket_id"
+    t.uuid "ticket_public_id", null: false
+    t.string "ticket_name"
+    t.bigint "entry_observation_id"
+    t.bigint "exit_observation_id"
+    t.datetime "entry_at", null: false
+    t.datetime "exit_at"
+    t.boolean "manual", default: false, null: false
+    t.jsonb "anomalies", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "correction_id"
+    t.index ["correction_id"], name: "index_rfid_visits_on_correction_id"
+    t.index ["entry_observation_id"], name: "idx_rfid_visits_entry_observation", unique: true
+    t.index ["entry_observation_id"], name: "index_rfid_visits_on_entry_observation_id"
+    t.index ["event_id", "ticket_id", "entry_at"], name: "idx_rfid_visits_event_ticket_entry"
+    t.index ["event_id"], name: "index_rfid_visits_on_event_id"
+    t.index ["exit_observation_id"], name: "index_rfid_visits_on_exit_observation_id"
+    t.index ["ticket_id"], name: "index_rfid_visits_on_ticket_id"
+  end
+
   create_table "roulette_assigns", force: :cascade do |t|
     t.bigint "roulette_session_id", null: false
     t.bigint "user_id", null: false
@@ -1315,6 +1823,37 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["ticket_id"], name: "index_roulette_winners_on_ticket_id"
     t.index ["visitor_id"], name: "index_roulette_winners_on_visitor_id"
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "roulette_winners_exactly_one_participant"
+  end
+
+  create_table "scan_logs", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "scannable_type", null: false
+    t.bigint "scannable_id", null: false
+    t.bigint "event_location_id"
+    t.bigint "scanned_by_id"
+    t.datetime "scanned_at", null: false
+    t.integer "source", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "operation_id"
+    t.index ["event_id", "scanned_at"], name: "index_scan_logs_on_event_id_and_scanned_at"
+    t.index ["event_id"], name: "index_scan_logs_on_event_id"
+    t.index ["event_location_id"], name: "index_scan_logs_on_event_location_id"
+    t.index ["operation_id"], name: "idx_scan_logs_operation_id", unique: true, where: "(operation_id IS NOT NULL)"
+    t.index ["scannable_type", "scannable_id", "scanned_at"], name: "idx_scan_logs_on_scannable"
+  end
+
+  create_table "short_links", force: :cascade do |t|
+    t.string "code", null: false
+    t.string "kind", null: false
+    t.bigint "event_id", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_short_links_on_code", unique: true
+    t.index ["event_id", "kind"], name: "index_short_links_on_event_id_and_kind"
+    t.index ["event_id"], name: "index_short_links_on_event_id"
   end
 
   create_table "sponsors", force: :cascade do |t|
@@ -1451,9 +1990,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.string "role"
     t.string "registered_by_email"
     t.bigint "pass_bundle_id"
+    t.boolean "waiting_list", default: false, null: false
     t.bigint "vehicle_registration_id"
-    t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL))"
-    t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL))"
+    t.boolean "allow_multiple_tickets_per_email", default: false, null: false
+    t.uuid "registration_batch_id"
+    t.boolean "require_unique_membership_numbers", default: true, null: false
+    t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
+    t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL) AND (require_unique_membership_numbers = true))"
+    t.index "event_id, lower((custom_fields_data ->> 'no_ic'::text))", name: "idx_tickets_unique_no_ic", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'no_ic'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
     t.index ["deleted_at"], name: "index_tickets_on_deleted_at"
     t.index ["event_id", "attendee_email_norm"], name: "idx_tickets_event_email_norm", where: "(attendee_email_norm IS NOT NULL)"
     t.index ["event_id", "attendee_phone_norm"], name: "idx_tickets_event_phone_norm", where: "(attendee_phone_norm IS NOT NULL)"
@@ -1463,10 +2007,35 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.index ["event_id"], name: "index_tickets_on_event_id"
     t.index ["pass_bundle_id"], name: "index_tickets_on_pass_bundle_id"
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
+    t.index ["registration_batch_id"], name: "index_tickets_on_registration_batch_id"
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
     t.index ["vehicle_registration_id"], name: "index_tickets_on_vehicle_registration_id"
+    t.index ["waiting_list"], name: "index_tickets_on_waiting_list"
+  end
+
+  create_table "user_activities", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "category", default: "general", null: false
+    t.string "action_name", null: false
+    t.string "http_method", null: false
+    t.string "path", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "created_at", null: false
+    t.bigint "event_id"
+    t.string "result", default: "success", null: false
+    t.string "error_message"
+    t.jsonb "ai_diagnosis"
+    t.datetime "ai_diagnosed_at"
+    t.index ["category"], name: "index_user_activities_on_category"
+    t.index ["created_at"], name: "index_user_activities_on_created_at"
+    t.index ["event_id", "category"], name: "index_user_activities_on_event_id_and_category"
+    t.index ["event_id", "created_at"], name: "index_user_activities_on_event_id_and_created_at"
+    t.index ["user_id", "created_at"], name: "index_user_activities_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_user_activities_on_user_id"
   end
 
   create_table "user_sessions", force: :cascade do |t|
@@ -1515,8 +2084,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
     t.string "normalized_plate", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
     t.index ["base_ticket_type_id"], name: "index_vehicle_registrations_on_base_ticket_type_id"
-    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true
+    t.index ["deleted_at"], name: "index_vehicle_registrations_on_deleted_at"
+    t.index ["event_id", "normalized_plate"], name: "idx_vehicle_registrations_event_plate", unique: true, where: "(deleted_at IS NULL)"
     t.index ["event_id"], name: "index_vehicle_registrations_on_event_id"
     t.index ["registration_form_id"], name: "index_vehicle_registrations_on_registration_form_id"
   end
@@ -1636,13 +2207,33 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "ai_models", "ai_integrations"
   add_foreign_key "api_keys", "events"
   add_foreign_key "api_keys", "users"
+  add_foreign_key "booth_plans", "events"
   add_foreign_key "business_host_assignments", "events"
   add_foreign_key "business_host_assignments", "users"
+  add_foreign_key "business_matching_availabilities", "business_matching_participants"
+  add_foreign_key "business_matching_availabilities", "business_matching_sessions"
+  add_foreign_key "business_matching_availabilities", "users", column: "host_user_id"
+  add_foreign_key "business_matching_bookings", "business_matching_participants", column: "receiver_participant_id"
+  add_foreign_key "business_matching_bookings", "business_matching_participants", column: "requester_participant_id"
+  add_foreign_key "business_matching_bookings", "business_matching_sessions"
+  add_foreign_key "business_matching_bookings", "users", column: "host_user_id"
+  add_foreign_key "business_matching_participants", "events"
+  add_foreign_key "business_matching_reminder_logs", "business_matching_bookings"
+  add_foreign_key "business_matching_sessions", "events"
   add_foreign_key "certificate_templates", "events"
   add_foreign_key "check_in_displays", "events"
   add_foreign_key "check_in_displays", "plans", column: "active_plan_id"
+  add_foreign_key "cloned_voices", "events"
+  add_foreign_key "cloned_voices", "users", column: "creator_id"
+  add_foreign_key "cloned_voices", "users", column: "owner_id"
+  add_foreign_key "credit_deductions", "events"
+  add_foreign_key "credit_deductions", "users", column: "owner_id"
+  add_foreign_key "credit_transactions", "credit_wallets"
+  add_foreign_key "credit_wallets", "users", column: "owner_id"
+  add_foreign_key "custom_field_quotas", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"
@@ -1651,6 +2242,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "event_email_settings", "events"
   add_foreign_key "event_exhibition_contractors", "events"
   add_foreign_key "event_exhibition_contractors", "exhibition_contractor_profiles"
+  add_foreign_key "event_halls", "events"
   add_foreign_key "event_leads", "event_vendors"
   add_foreign_key "event_leads", "users", column: "scanned_by_id", on_delete: :nullify
   add_foreign_key "event_location_members", "event_locations"
@@ -1735,6 +2327,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "exhibitor_vouchers", "exhibitor_packages"
   add_foreign_key "exhibitor_zones", "events"
   add_foreign_key "export_logs", "events"
+  add_foreign_key "feedback_ai_summaries", "ai_models", on_delete: :nullify
+  add_foreign_key "feedback_ai_summaries", "feedback_forms"
+  add_foreign_key "feedback_ai_summaries", "users", column: "generated_by_id", on_delete: :nullify
+  add_foreign_key "feedback_answers", "feedback_questions"
+  add_foreign_key "feedback_answers", "feedback_responses"
+  add_foreign_key "feedback_forms", "events"
+  add_foreign_key "feedback_questions", "feedback_forms"
+  add_foreign_key "feedback_responses", "feedback_forms"
+  add_foreign_key "feedback_responses", "tickets", on_delete: :nullify
   add_foreign_key "gift_winners", "gifts"
   add_foreign_key "gift_winners", "tickets", on_delete: :cascade
   add_foreign_key "gift_winners", "visitors", on_delete: :cascade
@@ -1746,13 +2347,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "invalid_participants", "lucky_draw_sessions"
   add_foreign_key "invalid_participants", "tickets", on_delete: :cascade
   add_foreign_key "invalid_participants", "visitors", on_delete: :cascade
+  add_foreign_key "lucky_draw_entries", "lucky_draw_sessions"
+  add_foreign_key "lucky_draw_entries", "tickets", on_delete: :cascade
+  add_foreign_key "lucky_draw_entries", "users", column: "scanned_by_id", on_delete: :nullify
+  add_foreign_key "lucky_draw_entries", "visitors", on_delete: :cascade
   add_foreign_key "lucky_draw_sessions", "events"
+  add_foreign_key "lucky_draw_sessions", "users", column: "created_by_id"
   add_foreign_key "pass_bundles", "events"
+  add_foreign_key "pass_bundles", "plan_objects"
   add_foreign_key "pass_bundles", "registration_forms"
   add_foreign_key "pass_bundles", "ticket_types"
   add_foreign_key "pass_bundles", "users", column: "created_by_id"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_details", "users"
+  add_foreign_key "people_counter_connections", "events"
   add_foreign_key "plan_objects", "plans"
   add_foreign_key "plans", "events"
   add_foreign_key "printing_services", "item_categories"
@@ -1772,6 +2380,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "resources", "resource_media_types"
   add_foreign_key "resources", "resource_topics"
   add_foreign_key "resources", "users"
+  add_foreign_key "rfid_binding_operations", "events", on_delete: :cascade
+  add_foreign_key "rfid_bindings", "events", on_delete: :cascade
+  add_foreign_key "rfid_bindings", "tickets", on_delete: :nullify
+  add_foreign_key "rfid_corrections", "events", on_delete: :cascade
+  add_foreign_key "rfid_corrections", "rfid_observations", column: "entry_observation_id"
+  add_foreign_key "rfid_corrections", "rfid_stations", column: "station_id", on_delete: :nullify
+  add_foreign_key "rfid_corrections", "tickets", on_delete: :cascade
+  add_foreign_key "rfid_corrections", "users", column: "actor_id", on_delete: :nullify
+  add_foreign_key "rfid_desk_operations", "events", on_delete: :cascade
+  add_foreign_key "rfid_observations", "events", on_delete: :cascade
+  add_foreign_key "rfid_observations", "rfid_stations", column: "station_id"
+  add_foreign_key "rfid_observations", "tickets", on_delete: :nullify
+  add_foreign_key "rfid_sessions", "events", on_delete: :cascade
+  add_foreign_key "rfid_stations", "events", on_delete: :cascade
+  add_foreign_key "rfid_visits", "events", on_delete: :cascade
+  add_foreign_key "rfid_visits", "rfid_corrections", column: "correction_id", on_delete: :cascade
+  add_foreign_key "rfid_visits", "rfid_observations", column: "entry_observation_id"
+  add_foreign_key "rfid_visits", "rfid_observations", column: "exit_observation_id"
+  add_foreign_key "rfid_visits", "tickets", on_delete: :nullify
   add_foreign_key "roulette_assigns", "roulette_sessions"
   add_foreign_key "roulette_assigns", "users"
   add_foreign_key "roulette_prizes", "roulette_sessions"
@@ -1781,6 +2408,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "roulette_winners", "roulette_sessions"
   add_foreign_key "roulette_winners", "tickets", on_delete: :cascade
   add_foreign_key "roulette_winners", "visitors", on_delete: :cascade
+  add_foreign_key "scan_logs", "event_locations"
+  add_foreign_key "scan_logs", "events"
+  add_foreign_key "scan_logs", "users", column: "scanned_by_id"
+  add_foreign_key "short_links", "events"
   add_foreign_key "sponsors", "groups"
   add_foreign_key "sponsors", "users", column: "created_by_id"
   add_foreign_key "table_assignments", "plan_objects"
@@ -1799,6 +2430,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_31_090000) do
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
   add_foreign_key "tickets", "vehicle_registrations"
+  add_foreign_key "user_activities", "users"
   add_foreign_key "user_sessions", "users"
   add_foreign_key "users", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "vehicle_registrations", "events"

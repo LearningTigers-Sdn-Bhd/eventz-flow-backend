@@ -33,13 +33,28 @@ app/
 ├── serializers/      # jsonapi-serializer classes
 ├── jobs/             # Sidekiq jobs
 ├── channels/         # ActionCable (frontend uses @rails/actioncable)
-└── mailers/          # email via Resend gem
+└── mailers/          # email via the Resend gem (Resend or MillionSend, see Email provider)
 
 spec/                 # mirrors app/: models, requests/v1, policies, services, jobs
                       # FactoryBot factories in spec/factories, Faker for data
 ```
 
 Key gems and their roles: `pundit` (authorization), `jwt` + `bcrypt` (auth), `jsonapi-serializer` (responses), `pagy` v43 (pagination — see `pagy-43-docs.md` in repo root), `rack-attack` (rate limiting), `rack-cors` (CORS), `friendly_id` (slugs), `caxlsx`/`roo` (Excel), `prawn` + `rqrcode` (PDF/QR), `image_processing` + libvips (Active Storage variants).
+
+## Email provider (Resend or MillionSend)
+
+MillionSend speaks the Resend API, so the `resend` gem sends through either one and switching is env-only (no code change, rollback = put the old values back):
+
+| Env var | Purpose |
+|---------|---------|
+| `RESEND_API_KEY` | API key of the active provider (`ms_...` for MillionSend) |
+| `RESEND_BASE_URL` | Provider API base, **with trailing slash**; unset = Resend. Read by the gem at load time |
+| `RESEND_WEBHOOK_SECRET` | Webhook signing secret (`resend.webhook_secret` in credentials overrides it) |
+| `EMAIL_PROVIDER` | Label stored on `EmailDelivery.provider` (`resend` default, `millionsend`) |
+| `MAIL_FROM` | Bare default From address; must be on a domain verified with the provider (default `notifications@updates.eventzflow.com`) |
+
+- Webhooks post to `POST /v1/public/resend/webhook` for either provider. MillionSend has no `email.suppressed` event: a send to a suppressed address is rejected up front and recorded as `suppressed`.
+- Email Log retention is stored in `EmailLogSetting` (editable by org owners in the panel); `PurgeOldEmailDeliveriesJob` deletes expired rows nightly at 3:30.
 
 ## Auth model (must stay consistent with frontend)
 

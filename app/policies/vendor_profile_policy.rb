@@ -13,24 +13,25 @@ class VendorProfilePolicy < ApplicationPolicy
     user.org_owner? ||
       record.vendor_id == user.id ||
       (user.organizer? && record.vendor.created_by_id == user.id) ||
-      event_admin_for_vendor?
+      event_staff_for_vendor?
   end
 
   def update?
     return false unless record.vendor&.vendor?
 
-    # Editing remains limited to vendor owners and creator-based admin flows
+    # Vendor owners, the creator, and staff on a shared event
     user.org_owner? ||
       record.vendor_id == user.id ||
-      (user.organizer? && record.vendor.created_by_id == user.id)
+      (user.organizer? && record.vendor.created_by_id == user.id) ||
+      event_staff_for_vendor?
   end
 
   private
 
-  def event_admin_for_vendor?
-    EventVendor.joins(:event)
-               .where(vendor_id: record.vendor_id)
-               .where(event: user.event_assignments.where(role: EventAssignment.roles[:event_admin]).select(:event_id))
+  # Any event assignment counts, matching VendorPolicy's shared-event team rule.
+  def event_staff_for_vendor?
+    EventVendor.where(vendor_id: record.vendor_id)
+               .where(event_id: user.event_assignments.select(:event_id))
                .exists?
   end
 end

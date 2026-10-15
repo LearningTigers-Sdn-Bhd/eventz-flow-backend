@@ -93,6 +93,33 @@ RSpec.describe User, type: :model do
 			expect(exhibition_contractor_user.is_exhibition_contractor?).to be true
 			expect(member_user.is_exhibition_contractor?).to be false
 		end
+
+		describe '#only_business_matching_admin?' do
+			let(:bm_admin_user) { create(:user, :member) }
+			let(:event) { create(:event) }
+
+			it 'is true for a member whose only standing is business_matching_admin' do
+				create(:event_assignment, event: event, user: bm_admin_user, role: :business_matching_admin)
+				expect(bm_admin_user.only_business_matching_admin?).to be true
+				expect(bm_admin_user.business_matching_admin_event_ids).to eq([event.id])
+			end
+
+			it 'is false for an org owner even with a business_matching_admin assignment' do
+				create(:event_assignment, event: event, user: org_owner_user, role: :business_matching_admin)
+				expect(org_owner_user.only_business_matching_admin?).to be false
+			end
+
+			it 'is false if the user also holds event_admin on any event' do
+				create(:event_assignment, event: event, user: bm_admin_user, role: :business_matching_admin)
+				other_event = create(:event)
+				create(:event_assignment, event: other_event, user: bm_admin_user, role: :event_admin)
+				expect(bm_admin_user.only_business_matching_admin?).to be false
+			end
+
+			it 'is false with no business_matching_admin assignment at all' do
+				expect(member_user.only_business_matching_admin?).to be false
+			end
+		end
 	end
 end
 end

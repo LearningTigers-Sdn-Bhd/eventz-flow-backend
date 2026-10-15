@@ -1,0 +1,26 @@
+<%= @days_until == 1 ? "See You Tomorrow!" : "Event Reminder" %>
+
+Hi <%= @tickets.first.attendee_name %>,
+
+<%= @event.title %> is coming up <%= @days_until == 1 ? 'tomorrow' : "in #{@days_until} days" %>.
+
+EVENT DETAILS
+-------------
+Event: <%= @event.title %>
+Date: <%= @event.start_date.strftime("%B %d, %Y") %>
+<% if @event.event_locations.any? %>
+Venue: <%= @event.event_locations.first.name %>
+<% end %>
+<% ticket_types_uniform = @tickets.map(&:ticket_type_id).uniq.one? %>
+<% if ticket_types_uniform %>Ticket Type: <%= @tickets.first.ticket_type.name %>
+<% end %>
+
+YOUR TICKETS (<%= @tickets.size %>)
+<% @tickets.each_with_index do |ticket, index| %>
+<%= index + 1 %>. <%= ticket.attendee_name %><% unless ticket_types_uniform %> (<%= ticket.ticket_type.name %>)<% end %> — Ticket ID: <%= ticket.public_id %>
+<% end %>
+
+QR codes are attached to this email, one per attendee. Have these ready for check-in. We look forward to seeing you!
+
+---
+This email was sent by EventzFlow

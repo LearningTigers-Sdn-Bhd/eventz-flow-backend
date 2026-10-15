@@ -61,6 +61,17 @@ RSpec.describe 'V1::Authentication', type: :request do
         expect(json_response['data']).to have_key('session_id')
         expect(response_signed_cookies['refresh_token']).to be_present
       end
+
+      it "flags a pure business matching admin so the frontend can skip the generic dashboard" do
+        event = create(:event)
+        create(:event_assignment, event: event, user: user, role: :business_matching_admin)
+
+        post '/v1/auth/login', params: { email: 'test@example.com', password: 'password' }
+
+        expect(response).to have_http_status(:ok)
+        expect(json_response['data']['user']['is_pure_business_matching_admin']).to eq(true)
+        expect(json_response['data']['user']['business_matching_admin_event_ids']).to eq([event.id.to_s])
+      end
     end
 
     context 'with invalid credentials' do
@@ -69,6 +80,34 @@ RSpec.describe 'V1::Authentication', type: :request do
 
         expect(response).to have_http_status(:unauthorized)
         expect(response_signed_cookies['refresh_token']).to be_nil
+      end
+
+      # Account-enumeration guard (audit #5). Unknown email, wrong password and
+      # inactive account must be indistinguishable — same status, same body.
+      it 'returns an identical response for unknown email, wrong password and inactive account' do
+        create(:user, email: 'inactive@example.com', password: 'password',
+                      password_confirmation: 'password', status: :inactive)
+
+        post '/v1/auth/login', params: { email: 'nobody@example.com', password: 'password' }
+        unknown_email = [response.status, response.body]
+
+        post '/v1/auth/login', params: { email: 'test@example.com', password: 'wrong_password' }
+        wrong_password = [response.status, response.body]
+
+        post '/v1/auth/login', params: { email: 'inactive@example.com', password: 'password' }
+        inactive_account = [response.status, response.body]
+
+        expect(unknown_email).to eq(wrong_password)
+        expect(inactive_account).to eq(wrong_password)
+        expect(json_response['message']).to eq('Invalid email or password')
+      end
+
+      # Timing guard: the dummy digest burned on the no-account path must cost the
+      # same as a real one, or response latency still reveals which emails exist.
+      it 'builds the dummy password digest at the same bcrypt cost as a real user' do
+        dummy_cost = BCrypt::Password.new(V1::AuthenticationController.dummy_password_digest).cost
+
+        expect(dummy_cost).to eq(BCrypt::Password.new(user.password_digest).cost)
       end
     end
   end

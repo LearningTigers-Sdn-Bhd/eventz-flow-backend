@@ -35,8 +35,12 @@ FactoryBot.define do
 		end
 
 		# Trait for exhibitor users
+		# "exhibitor" isn't a real role in production — every registration path
+		# creates vendor-role users; Exhibitor vs Merchant comes from the
+		# EventVendor STI type. This trait mirrors that: pair it with an
+		# `:exhibitor` EventVendor factory record for the relevant event.
 		trait :exhibitor do
-			role { :exhibitor }
+			role { :vendor }
 		end
 		
 		# created_by is optional (NULL for self-registered users)

@@ -13,8 +13,15 @@ RSpec.describe ExhibitorTeamMember, type: :model do
   it { should belong_to(:exhibitor_kit) }
   it { should belong_to(:attendee).optional }
   it { should validate_presence_of(:full_name) }
-  it { should validate_presence_of(:email) }
-  it { should validate_presence_of(:phone) }
+
+  # Email/phone are intentionally optional for fast on-site registration during
+  # a busy queue — format is still checked when a value is given.
+  it { should allow_value('').for(:email) }
+  it { should allow_value(nil).for(:email) }
+  it { should_not allow_value('not-an-email').for(:email) }
+  it { should allow_value('').for(:phone) }
+  it { should allow_value(nil).for(:phone) }
+  it { should_not allow_value('not a phone number!').for(:phone) }
 
   describe 'ticket attendee sync' do
     before do

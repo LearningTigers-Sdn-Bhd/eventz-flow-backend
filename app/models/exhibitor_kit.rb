@@ -1,4 +1,20 @@
 class ExhibitorKit < ApplicationRecord
+  # custom_fields_data doubles as internal bookkeeping storage for a few flows
+  # (dedup fingerprints, batch tracking, in-flight payment method choice) alongside
+  # genuine admin/vendor-submitted custom form fields. Anything that treats
+  # custom_fields_data as "the custom fields the admin/exhibitor filled in" — the
+  # import template's column list, the import's write path — must exclude these keys.
+  SYSTEM_CUSTOM_FIELD_KEYS = [
+    PublicExhibitorBookingService::FINGERPRINT_KEY, # dedup fingerprint on public bookings
+    EventVendorBatchService::FINGERPRINT_FIELD,      # dedup fingerprint on admin batch bookings
+    EventVendorBatchService::BATCH_KEY_FIELD,        # admin batch grouping key
+    ExhibitorKitImportService::FINGERPRINT_KEY,      # dedup fingerprint on Excel import bookings
+    'booking_batch_id',                              # batch grouping id, written by both booking flows
+    'payment_option',                                # in-flight payment method choice, cleared on settle
+    'zone',                                           # booth zone snapshot at booking time, derived data
+    'is_booth_manager'                                # internal team-member-role flag, not a form field
+  ].freeze
+
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
   belongs_to :exhibitor_package, optional: true
@@ -15,6 +31,8 @@ class ExhibitorKit < ApplicationRecord
   has_one_attached :payment_proof, dependent: :purge_later
   has_one_attached :ic_copy, dependent: :purge_later
   has_one_attached :customs_declaration_form, dependent: :purge_later
+  has_one_attached :customs_duty_estimate, dependent: :purge_later
+  has_one_attached :indemnity_form, dependent: :purge_later
 
   accepts_nested_attributes_for :exhibitor_team_members, allow_destroy: true
   accepts_nested_attributes_for :exhibitor_kit_items, allow_destroy: true
@@ -24,8 +42,26 @@ class ExhibitorKit < ApplicationRecord
   delegate :event, to: :event_vendor
 
   validates :booth_type, presence: true
-  enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3 }
+  enum :payment_status, { unpaid: 0, paid: 1, waived: 2, sponsored: 3, deposit: 4 }
+  MONEY_STATUSES = %w[paid waived sponsored deposit].freeze
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
+  scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
+
+  # Counts toward "paid" for reporting purposes: actually paid, or excused from payment
+  # (waived/sponsored). Shared by analytics and export so both agree on what "settled" means.
+  def settled?
+    paid? || waived? || sponsored?
+  end
+
+  # Revenue this booking represents (booth price * quantity), falling back to whatever
+  # was actually recorded as paid when no price snapshot exists (e.g. legacy bookings).
+  def booking_value
+    quantity = [booth_quantity.to_i, 1].max
+    unit_price = price_snapshot.to_d
+    return amount_paid.to_d if unit_price.zero? && amount_paid.present?
+
+    unit_price * quantity
+  end
   validates :public_id, uniqueness: true
   validates :idempotency_key, uniqueness: { scope: :event_vendor_id }, allow_nil: true
 
@@ -43,6 +79,7 @@ class ExhibitorKit < ApplicationRecord
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
   before_save :remove_payment_option_when_payment_is_settled
+  before_save :stamp_payment_recorded_at, if: :will_save_change_to_payment_status?
   after_save :sync_booth_status, if: :saved_change_to_booking_status?
   before_validation :set_public_id
   after_commit :send_registration_received_email, on: :create, if: :should_send_registration_received_email?
@@ -50,6 +87,16 @@ class ExhibitorKit < ApplicationRecord
   after_commit :sync_registration_payment_status, if: :just_marked_paid?
   after_commit :revert_booking_status_when_unpaid, if: :just_marked_unpaid?
   after_commit :reconcile_team_member_tickets, if: :should_reconcile_team_member_tickets?
+
+  def destroy_with_event_vendor_cleanup!
+    vendor_assignment = event_vendor
+
+    vendor_assignment.with_lock do
+      destroy!
+      vendor_assignment.reload
+      vendor_assignment.destroy! if vendor_assignment.exhibitor_kits.none? && vendor_assignment.event_leads.none?
+    end
+  end
 
   # --- Team Member Limit Methods ---
 
@@ -143,6 +190,13 @@ class ExhibitorKit < ApplicationRecord
 
   def revert_booking_status_when_unpaid
     update!(booking_status: :active)
+  end
+
+  # Fires only on an actual payment_status transition (not on every save, so editing an
+  # unrelated field like company name never shifts this) - the analytics revenue trend uses
+  # this instead of updated_at so its date doesn't drift when the kit is later edited.
+  def stamp_payment_recorded_at
+    self.payment_recorded_at = MONEY_STATUSES.include?(payment_status) ? Time.current : nil
   end
 
   def remove_payment_option_when_payment_is_settled

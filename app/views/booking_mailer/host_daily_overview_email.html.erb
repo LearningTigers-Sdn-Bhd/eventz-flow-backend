@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <style>
+    <%= render 'booking_mailer/shared_styles' %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Today's Business Matching Sessions</h2>
+    </div>
+    <div class="content">
+      <p>Hi <%= @host.full_name %>,</p>
+      <p>
+        You have <strong><%= @session_count %></strong>
+        business matching <%= @session_count == 1 ? 'session' : 'sessions' %> today,
+        <%= @date.strftime('%A, %B %d, %Y') %>.
+      </p>
+
+      <% @event_groups.each do |group| %>
+        <h3><%= group[:event_title] %></h3>
+        <div class="details">
+          <% group[:bookings].sort_by { |b| Time.zone.parse(b.booking_time) }.each do |booking| %>
+            <div class="session-row">
+              <p><strong><%= booking.booking_time %></strong> &mdash; <%= booking.name %></p>
+              <p style="margin: 0; color: #777; font-size: 0.9em;"><%= booking.email %></p>
+            </div>
+          <% end %>
+        </div>
+        <a href="<%= group[:dashboard_url] %>" class="button">View <%= group[:event_title] %> on EventzFlow</a>
+      <% end %>
+
+      <p>Log in to EventzFlow to see full session details, contact info, and notes.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

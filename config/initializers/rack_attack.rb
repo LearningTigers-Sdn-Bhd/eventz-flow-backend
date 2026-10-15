@@ -6,10 +6,19 @@ class Rack::Attack
     '127.0.0.1' == req.ip || '::1' == req.ip
   end
 
+  RFID_PATH = '/v1/rfid'
+
   # 2. General IP Limit (Prevent DoS)
   # Limit all requests to 300 per minute per IP
   throttle('req/ip', limit: 300, period: 1.minute) do |req|
-    req.ip unless req.path.start_with?('/assets', '/active_storage')
+    req.ip unless req.path.start_with?('/assets', '/active_storage', RFID_PATH)
+  end
+
+  # RfiDex stations (desks and gates) share the venue's public IP with staff
+  # and phones, so they must not compete for the general limit above. Every
+  # request still needs a valid API key; this only caps a flood per IP.
+  throttle('rfid/ip', limit: 2000, period: 1.minute) do |req|
+    req.ip if req.path.start_with?(RFID_PATH)
   end
 
   # 3. Login Protection (Brute Force)
@@ -19,6 +28,17 @@ class Rack::Attack
       # Normalize email
       req.params['email'].to_s.downcase.gsub(/\s+/, "")
     end
+  end
+
+  # 3b. Account-Existence Enumeration (audit #6)
+  # check_account reveals whether an email/phone is registered. Two layers:
+  #   - hourly cap stays generous for real signups behind a shared office/NAT IP
+  #   - per-minute burst cap stops a script scraping a list at machine speed
+  throttle('check_account/ip', limit: 30, period: 1.hour) do |req|
+    req.ip if req.path == '/v1/auth/check_account' && req.get?
+  end
+  throttle('check_account/burst', limit: 3, period: 1.minute) do |req|
+    req.ip if req.path == '/v1/auth/check_account' && req.get?
   end
 
   # 4. Login Protection (IP based fallback)
@@ -54,19 +74,34 @@ class Rack::Attack
   end
 
   # 8. Public Registration Protection (Walk-in spam)
-  # Limit public registration to 5 per hour per IP
-  throttle("public_registration/ip", limit: 5, period: 1.hour) do |req|
+  # Limit public registration to 40 per hour per IP.
+  # Group bookings submit one POST per attendee (see submitGroupRegistrations
+  # in the panel frontend), so this must comfortably clear the largest
+  # supported group size plus retries, not just a single walk-in registrant.
+  throttle("public_registration/ip", limit: 40, period: 1.hour) do |req|
     if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
       req.ip
     end
   end
 
   # 9. Public Registration by Email (prevent same email spam)
-  # Limit by email to 3 per hour per email
-  throttle("public_registration/email", limit: 3, period: 1.hour) do |req|
+  # Limit by email to 40 per hour per email (see rationale above; a group
+  # leader's own attendee_email can also appear as one of the attendees).
+  throttle("public_registration/email", limit: 40, period: 1.hour) do |req|
     if req.path.match?(/\/v1\/public\/events\/.*\/register/) && req.post?
       req.params['attendee_email'].presence
     end
+  end
+
+  # 9b. Public feedback submissions (no auth; anonymous responses allowed)
+  throttle('public_feedback/ip', limit: 20, period: 1.hour) do |req|
+    req.ip if req.path == '/v1/public/feedback_responses' && req.post?
+  end
+
+  # 9c. Public big-screen people counter: a screen polls every few seconds, so allow
+  # plenty, but cap scraping per IP.
+  throttle('public_people_counter/ip', limit: 120, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{\A/v1/public/events/[^/]+/people_counter\z})
   end
 
   # 10. Public Registration Document Uploads (storage flooding)
@@ -77,45 +112,35 @@ class Rack::Attack
     end
   end
 
-  throttle('exhibitor_ic_upload/ip', limit: 10, period: 1.hour) do |req|
+  throttle('exhibitor_ic_upload/ip', limit: 50, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_ic_upload}) && req.post?
   end
 
-  throttle('customs_declaration_upload/ip', limit: 10, period: 1.hour) do |req|
+  throttle('customs_declaration_upload/ip', limit: 50, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/customs_declaration_upload}) && req.post?
   end
 
-  throttle('exhibitor_access_request/ip', limit: 10, period: 1.hour) do |req|
+  throttle('exhibitor_access_request/ip', limit: 50, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
   end
 
-  throttle('exhibitor_access_request/email', limit: 3, period: 1.hour) do |req|
+  throttle('exhibitor_access_request/email', limit: 30, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_requests$}) && req.post?
       Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
     end
   end
 
-  throttle('exhibitor_email_status/ip', limit: 20, period: 1.hour) do |req|
-    req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
-  end
-
-  throttle('exhibitor_email_status/email', limit: 5, period: 1.hour) do |req|
-    if req.path.match?(%r{/v1/public/events/.*/exhibitor_email_status$}) && req.post?
-      Digest::SHA256.hexdigest(req.params['email'].to_s.strip.downcase)
-    end
-  end
-
-  throttle('exhibitor_access_session/ip', limit: 20, period: 1.hour) do |req|
+  throttle('exhibitor_access_session/ip', limit: 100, period: 1.hour) do |req|
     req.ip if req.path.match?(%r{/v1/public/events/.*/exhibitor_access_sessions$}) && req.post?
   end
 
-  throttle('public_exhibitor_booking/ip', limit: 30, period: 1.hour) do |req|
+  throttle('public_exhibitor_booking/ip', limit: 100, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
       req.ip
     end
   end
 
-  throttle('public_exhibitor_booking/session', limit: 20, period: 1.hour) do |req|
+  throttle('public_exhibitor_booking/session', limit: 100, period: 1.hour) do |req|
     if req.path.match?(%r{/v1/public/events/.*/exhibitor_bookings}) && %w[POST PATCH].include?(req.request_method)
       Digest::SHA256.hexdigest(req.get_header('HTTP_AUTHORIZATION').to_s)
     end
@@ -135,18 +160,32 @@ class Rack::Attack
     end
   end
 
+  # 13. AI Integration Probing (authenticated SSRF-shaped surface: fetches a
+  # user-supplied URL server-side). Caps abuse independent of the general
+  # req/ip throttle above.
+  throttle('ai_available_models/ip', limit: 20, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{/v1/ai_integrations/\d+/available_models}) && req.get?
+  end
+
+  throttle('ai_error_analysis/ip', limit: 20, period: 1.minute) do |req|
+    req.ip if req.path.match?(%r{/v1/superadmin/system_activity/\d+/analyze}) && req.post?
+  end
+
   # Response for throttled requests
-  self.throttled_responder = lambda do |env|
-    match_data = env['rack.attack.match_data']
-    now = match_data[:epoch_time]
+  self.throttled_responder = lambda do |req|
+    match_data = (req.respond_to?(:env) ? req.env['rack.attack.match_data'] : nil) ||
+      (req.respond_to?(:get_header) ? req.get_header('rack.attack.match_data') : nil) || {}
+    now = match_data[:epoch_time] || Time.now.to_i
+    period = match_data[:period] || 60
+    limit = match_data[:limit] || 0
 
     headers = {
-      'RateLimit-Limit' => match_data[:limit].to_s,
+      'RateLimit-Limit' => limit.to_s,
       'RateLimit-Remaining' => '0',
-      'RateLimit-Reset' => (now + (match_data[:period] - now % match_data[:period])).to_s,
+      'RateLimit-Reset' => (now + (period - (now % period))).to_s,
       'Content-Type' => 'application/json'
     }
 
-    [429, headers, [{ message: 'Too many requests. Please try again later.', status: :too_many_requests }.to_json]]
+    [429, headers, [{ message: 'Too many requests. Please try again later.', status: 'too_many_requests' }.to_json]]
   end
 end

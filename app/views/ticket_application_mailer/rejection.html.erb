@@ -32,16 +32,16 @@
 
         <p class="message">
           Thank you for applying to <strong><%= @event.title %></strong>.
-          After careful review, we are unable to accept your delegate application at this time due to limited capacity.
+          Unfortunately, your application was not successful this time.
         </p>
 
         <div class="info-box">
-          <p class="info-title">Application Status</p>
-          <p class="info-text">Not selected in the current intake</p>
+          <p class="info-title">Reason</p>
+          <p class="info-text"><%= @rejection_reason %></p>
         </div>
 
         <p class="message">
-          We truly appreciate your interest in being part of the summit and thank you for your understanding.
+          We truly appreciate your interest in being part of <strong><%= @event.title %></strong> and thank you for your understanding.
           <% if @contact_email.present? %>
             For assistance, you may contact us at
             <a href="mailto:<%= @contact_email %>" style="color: #2563eb; text-decoration: none; font-weight: bold;"><%= @contact_email %></a>.

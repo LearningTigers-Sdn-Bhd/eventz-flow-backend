@@ -43,6 +43,24 @@ RSpec.describe EmailDelivery::AuditedDelivery do
       expect(delivery.failure_reason).to eq('provider_daily_limit')
       expect(delivery.next_retry_at).to be_present
     end
+
+    it 'marks the audit row suppressed when the provider rejects a suppressed recipient' do
+      message_delivery = TicketMailer.confirmation_email(ticket)
+      allow(TicketMailer).to receive(:confirmation_email).with(ticket).and_return(message_delivery)
+      allow(message_delivery).to receive(:deliver_now)
+        .and_raise(Resend::Error::InvalidRequestError.new('All recipients are suppressed', 422, {}))
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [ticket],
+        related: ticket
+      )
+
+      expect(delivery.status).to eq('suppressed')
+      expect(delivery.suppressed_at).to be_present
+      expect(delivery.failed_at).to be_nil
+    end
   end
 
   describe '.deliver_later' do
@@ -97,6 +115,113 @@ RSpec.describe EmailDelivery::AuditedDelivery do
           mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
         )
       end.to change(EmailDelivery, :count).by(1)
+    end
+  end
+
+  describe '.send_delay (provider rate-limit spacing)' do
+    # Stands in for the Redis Lua script: hands out consecutive slots.
+    def fake_slots(start, spacing)
+      next_slot = start
+      conn = double('redis')
+      allow(conn).to receive(:call) do
+        slot = next_slot
+        next_slot += spacing
+        slot.to_s
+      end
+      allow(Sidekiq).to receive(:redis).and_yield(conn)
+    end
+
+    it 'spaces a burst one slot apart and gives the first email no delay' do
+      fake_slots(Time.current.to_f, described_class::SEND_SPACING)
+
+      delays = Array.new(3) { described_class.send_delay }
+      expect(delays[0]).to be_nil
+      expect(delays[1]).to be_within(0.2).of(described_class::SEND_SPACING)
+      expect(delays[2]).to be_within(0.2).of(described_class::SEND_SPACING * 2)
+    end
+
+    it 'schedules the job for later when a slot is not free yet' do
+      allow(described_class).to receive(:send_delay).and_return(1.5)
+      clear_enqueued_jobs
+
+      described_class.deliver_later(
+        mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
+      )
+
+      expect(enqueued_jobs.last[:at]).to be > Time.current.to_f
+    end
+
+    it 'fails open (no delay) when Redis is down' do
+      allow(Sidekiq).to receive(:redis).and_raise(RedisClient::CannotConnectError)
+
+      expect(described_class.send_delay).to be_nil
+    end
+  end
+
+  describe 'event email toggles' do
+    let(:exhibitor_kit) { create(:exhibitor_kit) }
+    let(:event) { exhibitor_kit.event_vendor.event }
+
+    it 'does not send (and does not even call the mailer) when the specific category is disabled' do
+      event.create_event_email_setting!(disabled_categories: ['exhibitor_registration_received'])
+
+      expect(ExhibitorRegistrationMailer).not_to receive(:registration_received_email)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'registration_received_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('skipped')
+    end
+
+    it 'still sends a category NOT in disabled_categories for the same event' do
+      event.create_event_email_setting!(disabled_categories: ['exhibitor_registration_received'])
+      message_delivery = ExhibitorRegistrationMailer.payment_confirmed_email(exhibitor_kit)
+      allow(ExhibitorRegistrationMailer).to receive(:payment_confirmed_email).and_return(message_delivery)
+      allow(message_delivery).to receive(:deliver_now)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'payment_confirmed_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('sent')
+    end
+
+    it 'blocks every category once the master switch (emails_enabled) is off, even ones not in disabled_categories' do
+      event.create_event_email_setting!(emails_enabled: false, disabled_categories: [])
+
+      expect(ExhibitorRegistrationMailer).not_to receive(:payment_confirmed_email)
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'ExhibitorRegistrationMailer',
+        mailer_action: 'payment_confirmed_email',
+        args: [exhibitor_kit],
+        related: exhibitor_kit
+      )
+
+      expect(delivery.status).to eq('skipped')
+    end
+
+    it 'via deliver_later: master switch off skips without enqueuing EmailDeliveryJob' do
+      event.create_event_email_setting!(emails_enabled: false)
+      clear_enqueued_jobs
+
+      expect do
+        described_class.deliver_later(
+          mailer_name: 'ExhibitorRegistrationMailer',
+          mailer_action: 'registration_received_email',
+          args: [exhibitor_kit],
+          related: exhibitor_kit
+        )
+      end.not_to have_enqueued_job(EmailDeliveryJob)
+
+      expect(EmailDelivery.last.status).to eq('skipped')
     end
   end
 end

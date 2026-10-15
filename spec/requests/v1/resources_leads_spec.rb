@@ -75,9 +75,9 @@ RSpec.describe 'V1::ResourcesLeads', type: :request, openapi_spec: 'v1/swagger.y
   # ============================================================
   # Test Users and Setup
   # ============================================================
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:visitor) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:visitor) { create(:user, role: :member) }
 
   # Create test resources
   let!(:gated_resource) { create(:resource, is_gated: true, status: :published, title: 'Gated Resource 1') }

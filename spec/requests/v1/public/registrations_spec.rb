@@ -32,6 +32,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data'].first['original_price'].to_f).to eq(100.0)
       expect(json['data'].first['current_tier']).to be_nil
       expect(json['data'].first['custom_fields_data']['company_name']).to eq('text')
+      expect(json['data'].first['allow_multiple_tickets_per_email']).to be false
     end
 
     context 'with active price tier' do
@@ -57,7 +58,7 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
     context 'when quantity is limited' do
       before { ticket_type.update!(quantity: 2) }
 
-      it 'calculates remaining_slots using paid tickets only' do
+      it 'calculates remaining_slots using paid and pending tickets' do
         create(
           :ticket,
           event: event,
@@ -80,7 +81,33 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
 
         expect(response).to have_http_status(:ok)
         json = JSON.parse(response.body)
-        expect(json['data'].first['remaining_slots']).to eq(1)
+        expect(json['data'].first['remaining_slots']).to eq(0)
+      end
+
+      it 'excludes canceled and refunded tickets from the count' do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'canceled@example.com',
+          status: :canceled,
+          payment_status: :paid
+        )
+
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'refunded@example.com',
+          status: :refunded,
+          payment_status: :paid
+        )
+
+        get "/v1/public/events/#{event.slug}/ticket_types"
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json['data'].first['remaining_slots']).to eq(2)
       end
     end
   end
@@ -240,8 +267,27 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       expect(json['data']['pending_tickets'].find do |t|
         t['public_id'] == pending_ticket.public_id
       end['registered_by_email']).to eq('leader@example.com')
+      expect(json['data']['pending_tickets'].find do |t|
+        t['public_id'] == pending_ticket.public_id
+      end['payment_proof_uploaded']).to be(false)
       expect(json['data']['pending_tickets'].map { |t| t['public_id'] }).not_to include(other_form_ticket.public_id)
       expect(json['data']['paid_tickets'].map { |t| t['public_id'] }).to include(paid_ticket.public_id)
+    end
+
+    it 'reports when a pending ticket already has payment proof' do
+      payment = pending_ticket.create_ticket_payment!(amount: ticket_type.current_price, status: :pending)
+      payment.payment_proof.attach(fixture_file_upload('test_image.png', 'image/png'))
+
+      get "/v1/public/events/#{event.slug}/registration_status", params: {
+        email: 'john@example.com',
+        form_slug: 'delegate'
+      }
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      pending = json['data']['pending_tickets'].find { |ticket| ticket['public_id'] == pending_ticket.public_id }
+
+      expect(pending['payment_proof_uploaded']).to be(true)
     end
 
     it 'returns 422 when email is blank' do
@@ -321,7 +367,202 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
       }
     end
 
+    context 'when the ticket type is sold out' do
+      before { ticket_type.update!(quantity: 1) }
+
+      it 'rejects registration even via direct API call, bypassing any frontend check' do
+        create(
+          :ticket,
+          event: event,
+          ticket_type: ticket_type,
+          attendee_email: 'first@example.com',
+          status: :purchased,
+          payment_status: :paid
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['code']).to eq('ticket_sold_out')
+      end
+    end
+
+    context 'when attendees_payload bundles more than one attendee' do
+      it 'creates one ticket per attendee and returns all their public_ids' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(2)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be true
+        expect(json['data']['group_public_ids'].size).to eq(2)
+        expect(json['data']['group_public_ids'].first).to eq(json['data']['public_id'])
+        expect(Ticket.find_by(attendee_email: 'jane@example.com')).to be_present
+      end
+
+      it 'rejects and creates nothing when an extra attendee is missing required fields' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['success']).to be false
+        expect(json['errors']).to include(a_string_matching(/name, email, and phone/))
+      end
+
+      it 'stamps the same registration_batch_id on the primary ticket and every sibling' do
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        primary = Ticket.find_by(attendee_email: 'john@example.com')
+        sibling = Ticket.find_by(attendee_email: 'jane@example.com')
+
+        expect(primary.registration_batch_id).to be_present
+        expect(primary.registration_batch_id).to eq(primary.public_id)
+        expect(sibling.registration_batch_id).to eq(primary.registration_batch_id)
+      end
+
+      it 'sends one batched pending-payment email when siblings share the same email' do
+        allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+        params = valid_params.merge(
+          attendee_email: 'shared@example.com',
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'shared@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'shared@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'group_payment_pending_email')
+        ).once
+        expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'payment_pending_email')
+        )
+      end
+
+      context 'with a free ticket type (auto-paid)' do
+        before { ticket_type.update!(price: 0) }
+
+        def group_params(emails)
+          valid_params.merge(
+            attendee_email: emails.first,
+            attendees_payload: emails.each_with_index.map do |email, i|
+              { attendee_name: "Guest #{i}", attendee_email: email, attendee_phone: "01234567#{i}0" }
+            end.to_json
+          )
+        end
+
+        it 'sends one batched confirmation when the whole group shares an email' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register", params: group_params(%w[a@example.com] * 3)
+
+          expect(response).to have_http_status(:created)
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'group_confirmation_email')).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'confirmation_email'))
+        end
+
+        it 'keeps one confirmation per ticket when emails differ' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register", params: group_params(%w[a@example.com b@example.com])
+
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'confirmation_email')).twice
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later)
+            .with(hash_including(mailer_action: 'group_confirmation_email'))
+        end
+      end
+
+      it 'sends separate pending-payment emails when siblings use distinct emails' do
+        allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: params
+
+        expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'payment_pending_email')
+        ).twice
+        expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+          hash_including(mailer_action: 'group_payment_pending_email')
+        )
+      end
+
+      it 'rejects when the ticket type does not have enough seats for the whole group' do
+        ticket_type.update!(quantity: 1)
+        params = valid_params.merge(
+          attendees_payload: [
+            { attendee_name: 'John Doe', attendee_email: 'john@example.com', attendee_phone: '0123456789' },
+            { attendee_name: 'Jane Doe', attendee_email: 'jane@example.com', attendee_phone: '0198765432' }
+          ].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['code']).to eq('ticket_sold_out')
+      end
+    end
+
+    context 'when attendees_payload has only one attendee' do
+      it 'registers normally (single-attendee payloads are unaffected)' do
+        params = valid_params.merge(
+          attendees_payload: [{ attendee_name: 'John Doe', attendee_email: 'john@example.com' }].to_json
+        )
+
+        expect do
+          post "/v1/public/events/#{event.slug}/register", params: params
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+      end
+    end
+
     context 'when registration form delegate approval is enabled' do
+      # The approval workflow reviews free (RM0) tickets only — paid tickets
+      # on the same form stay on the normal payment-proof flow.
+      before { ticket_type.update!(price: 0) }
+
       let!(:interested_form) do
         form = create(:registration_form, event: event, name: 'Interested Delegate', slug: 'interested-delegate')
         form.ticket_types << ticket_type
@@ -361,6 +602,116 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Your ticket for')
       end
 
+      context 'when the form mixes free and paid ticket types' do
+        let!(:free_ticket_type) do
+          create(
+            :ticket_type,
+            event: event,
+            name: 'Included 2nd Person',
+            price: 0,
+            status: :published,
+            hidden: false
+          )
+        end
+
+        before do
+          # Parent context zeroes the shared ticket type for the approval
+          # specs; restore it here so this context has a genuinely paid
+          # ticket type alongside the free one.
+          ticket_type.update!(price: 100.00)
+          interested_form.ticket_types << free_ticket_type
+        end
+
+        it 'routes free tickets through approval review' do
+          perform_enqueued_jobs do
+            expect do
+              post "/v1/public/events/#{event.slug}/register",
+                   params: valid_params.merge(
+                     form_slug: interested_form.slug,
+                     ticket_type_id: free_ticket_type.id,
+                     attendee_email: 'included@example.com'
+                   )
+            end.to change(Ticket, :count).by(1)
+              .and change(TicketApplication, :count).by(1)
+          end
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+
+          expect(created_ticket.status).to eq('pending_payment')
+          expect(created_ticket.payment_status).to eq('pending')
+          expect(created_ticket.ticket_application.review_status).to eq('pending_review')
+          expect(ActionMailer::Base.deliveries.last.subject).to include('Application received for')
+        end
+
+        it 'keeps paid tickets on the normal payment flow' do
+          perform_enqueued_jobs do
+            expect do
+              post "/v1/public/events/#{event.slug}/register",
+                   params: valid_params.merge(
+                     form_slug: interested_form.slug,
+                     attendee_email: 'paying@example.com'
+                   )
+            end.to change(Ticket, :count).by(1)
+              .and change(TicketApplication, :count).by(0)
+          end
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+
+          expect(created_ticket.status).to eq('pending_payment')
+          expect(created_ticket.payment_status).to eq('pending')
+          expect(created_ticket.ticket_application).to be_nil
+          expect(ActionMailer::Base.deliveries.map(&:subject).join(' ')).not_to include('Application received for')
+        end
+
+        it 'sends the payment pending email for paid tickets' do
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(
+                 form_slug: interested_form.slug,
+                 attendee_email: 'paying@example.com'
+               )
+
+          expect(response).to have_http_status(:created)
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_name: 'TicketMailer', mailer_action: 'payment_pending_email')
+          )
+        end
+
+        it 'still blocks re-registration for previously rejected free-ticket applicants' do
+          rejected_ticket = create(
+            :ticket,
+            event: event,
+            ticket_type: free_ticket_type,
+            attendee_email: 'included@example.com',
+            status: :canceled,
+            payment_status: :pending
+          )
+          create(
+            :ticket_application,
+            ticket: rejected_ticket,
+            registration_form: interested_form,
+            review_status: :rejected,
+            rejection_reason: 'Not eligible'
+          )
+
+          expect do
+            post "/v1/public/events/#{event.slug}/register",
+                 params: valid_params.merge(
+                   form_slug: interested_form.slug,
+                   ticket_type_id: free_ticket_type.id,
+                   attendee_email: 'included@example.com'
+                 )
+          end.not_to change(Ticket, :count)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          json = JSON.parse(response.body)
+          expect(json['message']).to include('application was not selected in this intake')
+        end
+      end
+
       it 'blocks re-registration for previously rejected applicants on the same form' do
         rejected_ticket = create(
           :ticket,
@@ -386,6 +737,49 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(response).to have_http_status(:unprocessable_content)
         json = JSON.parse(response.body)
         expect(json['message']).to include('application was not selected in this intake')
+      end
+    end
+
+    context 'when the registration form is on waiting_list status' do
+      let!(:waiting_list_form) do
+        form = create(:registration_form, event: event, name: 'Waiting List Form', slug: 'waiting-list-form', status: :waiting_list)
+        form.ticket_types << ticket_type
+        form
+      end
+
+      it 'creates a waiting-list ticket instead of rejecting the registration' do
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: waiting_list_form.slug)
+        end.to change(Ticket, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json['data']['waiting_list']).to eq(true)
+
+        created_ticket = Ticket.order(created_at: :desc).first
+        expect(created_ticket.waiting_list).to eq(true)
+        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.payment_status).to eq('pending')
+      end
+    end
+
+    context 'when the registration form is closed' do
+      let!(:closed_form) do
+        form = create(:registration_form, event: event, name: 'Closed Form', slug: 'closed-form', status: :closed)
+        form.ticket_types << ticket_type
+        form
+      end
+
+      it 'rejects the registration without creating a ticket' do
+        expect do
+          post "/v1/public/events/#{event.slug}/register",
+               params: valid_params.merge(form_slug: closed_form.slug)
+        end.not_to change(Ticket, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        json = JSON.parse(response.body)
+        expect(json['message']).to eq('Registration is closed for this form')
       end
     end
 
@@ -418,17 +812,40 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
         expect(created_ticket.status).to eq('purchased')
       end
 
-      it 'keeps ticket pending when it belongs to a group checkout' do
+      it 'marks rm0 group ticket as paid when no paid leader ticket is waiting on payment' do
         post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
           registered_by_email: 'leader@example.com'
         )
 
         expect(response).to have_http_status(:created)
         json = JSON.parse(response.body)
-        expect(json['data']['payment_status']).to eq('pending')
+        expect(json['data']['payment_status']).to eq('paid')
 
         created_ticket = Ticket.order(created_at: :desc).first
-        expect(created_ticket.status).to eq('pending_payment')
+        expect(created_ticket.status).to eq('purchased')
+      end
+
+      it 'keeps rm0 group member pending while the leader still owes payment' do
+        paid_leader_ticket_type = create(:ticket_type, event: event, price: 6000, status: :published, hidden: false)
+        create(
+          :ticket,
+          event: event,
+          ticket_type: paid_leader_ticket_type,
+          attendee_name: 'Leader',
+          attendee_email: 'leader@example.com',
+          registered_by_email: 'leader@example.com',
+          status: :pending_payment,
+          payment_status: :pending
+        )
+
+        post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+          attendee_email: 'member-new@example.com',
+          registered_by_email: 'leader@example.com'
+        )
+
+        expect(response).to have_http_status(:created)
+        expect(JSON.parse(response.body)['data']['payment_status']).to eq('pending')
+        expect(Ticket.order(created_at: :desc).first.status).to eq('pending_payment')
       end
 
       it 'marks rm0 group member as paid when leader is already paid' do
@@ -905,6 +1322,40 @@ RSpec.describe 'V1::Public::Registrations', type: :request do
 
         expect(response).to have_http_status(:unprocessable_content)
         expect(JSON.parse(response.body)['message']).to eq('This bundle link is not valid for the selected pass.')
+      end
+
+      context 'when the bundle has a table linked' do
+        let!(:plan) { create(:plan, event: event) }
+        let!(:table) { create(:plan_object, :table, plan: plan, capacity: 2) }
+
+        before { pass_bundle.update!(plan_object: table) }
+
+        it 'auto-assigns the created ticket to the bundle table' do
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+            form_slug: 'delegate',
+            bundle: pass_bundle.token
+          )
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+          assignment = TableAssignment.find_by(ticket: created_ticket)
+          expect(assignment).to be_present
+          expect(assignment.plan_object).to eq(table)
+        end
+
+        it 'still creates the ticket when the table is already full' do
+          create(:table_assignment, plan_object: table, ticket: create(:ticket, event: event, ticket_type: ticket_type))
+          create(:table_assignment, plan_object: table, ticket: create(:ticket, event: event, ticket_type: ticket_type))
+
+          post "/v1/public/events/#{event.slug}/register", params: valid_params.merge(
+            form_slug: 'delegate',
+            bundle: pass_bundle.token
+          )
+
+          expect(response).to have_http_status(:created)
+          created_ticket = Ticket.order(created_at: :desc).first
+          expect(TableAssignment.exists?(ticket: created_ticket)).to be(false)
+        end
       end
     end
   end

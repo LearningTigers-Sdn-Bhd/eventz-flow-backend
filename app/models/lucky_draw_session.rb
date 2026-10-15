@@ -1,8 +1,10 @@
 class LuckyDrawSession < ApplicationRecord
   # --- Associations ---
   belongs_to :event
+  belongs_to :created_by, class_name: 'User', optional: true
   has_many :gifts, dependent: :destroy
   has_many :invalid_participants, dependent: :destroy
+  has_many :lucky_draw_entries, dependent: :destroy
 
   # --- Active Storage ---
   has_one_attached :logo, dependent: :purge_later
@@ -11,10 +13,18 @@ class LuckyDrawSession < ApplicationRecord
   # --- JSONB Attribute ---
   # draw_styles structure: { style: "wheel|slot|box", theme: "wireframe|colorful|cartoon" }
 
+  # scanned_source: where "scanned" is read from when a day range is set
+  #   ticket   - the ticket/visitor's first check-in (check_in_at)
+  #   scan_log - any scan in the range (multi-scan events)
+  #   entries  - only tickets scanned at the lucky draw booth (lucky_draw_entries)
+  SCANNED_SOURCES = %w[ticket scan_log entries].freeze
+
   # --- Validations ---
+  validates :scanned_source, inclusion: { in: SCANNED_SOURCES }
   validates :event_id, presence: true
   validates :title, presence: true
   validate :validate_draw_styles_structure
+  validate :validate_scanned_range
   validate :acceptable_logo
   validate :acceptable_background_image
 
@@ -31,6 +41,12 @@ class LuckyDrawSession < ApplicationRecord
   end
 
   private
+
+  def validate_scanned_range
+    return unless scanned_from && scanned_to && scanned_from > scanned_to
+
+    errors.add(:scanned_to, 'must be on or after scanned_from')
+  end
 
   def acceptable_logo
     return unless logo.attached?

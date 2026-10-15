@@ -40,3 +40,49 @@ RSpec.describe 'V1::BusinessMatching::Bookings', type: :request do
     end
   end
 end
+
+RSpec.describe 'V1::BusinessMatching::Bookings#generate_report', type: :request do
+  let(:organizer) { create(:user, role: :organizer) }
+  let(:event) { create(:event, user: organizer) }
+
+  def auth_header(user)
+    { 'Authorization' => "Bearer #{JwtService.generate_tokens(user)[:access_token]}" }
+  end
+
+  before do
+    allow_any_instance_of(BusinessMatchingService).to receive(:fetch_all_bookings)
+      .and_return(BaseService::ServiceResult.new(success: true, data: { bookings: [] }))
+  end
+
+  it 'uses a general, event-scoped filename for an admin download' do
+    post "/v1/business_matching/events/#{event.id}/report", headers: auth_header(organizer)
+
+    expect(response).to have_http_status(:ok)
+    disposition = response.headers['Content-Disposition']
+    expect(disposition).to include('business_matching_export')
+    expect(disposition).to include(event.title.parameterize(separator: '_'))
+  end
+
+  it 'uses a host-specific filename for a business host download' do
+    host = create(:user, role: :member, full_name: 'Jamie Host')
+    BusinessHostAssignment.create!(event: event, user: host, business_matching_event_id: '1')
+
+    post "/v1/business_matching/events/#{event.id}/report", headers: auth_header(host)
+
+    expect(response).to have_http_status(:ok)
+    disposition = response.headers['Content-Disposition']
+    expect(disposition).to include('jamie_host')
+  end
+
+  it 'generates a unique filename on each download' do
+    post "/v1/business_matching/events/#{event.id}/report", headers: auth_header(organizer)
+    first_disposition = response.headers['Content-Disposition']
+
+    travel 2.seconds do
+      post "/v1/business_matching/events/#{event.id}/report", headers: auth_header(organizer)
+    end
+    second_disposition = response.headers['Content-Disposition']
+
+    expect(first_disposition).not_to eq(second_disposition)
+  end
+end

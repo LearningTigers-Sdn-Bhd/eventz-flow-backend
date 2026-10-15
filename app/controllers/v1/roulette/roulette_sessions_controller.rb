@@ -8,7 +8,7 @@ module V1
       def index
         authorize @event, :show?
 
-        @sessions = @event.roulette_sessions.ordered
+        @sessions = policy_scope(@event.roulette_sessions).ordered
 
         success_response(
           data: @sessions.map { |s| format_session_response(s) },

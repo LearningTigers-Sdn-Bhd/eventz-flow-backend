@@ -4,13 +4,22 @@ require Rails.root.join('app/services/jwt_service')
 require Rails.root.join('app/services/authentication_service')
 
 class ApplicationController < ActionController::API
+	# Backfills the outcome (success/failed) onto the activity log row that
+	# authenticate_user! creates further down the chain. Registered first (and
+	# as an around_action with `ensure`) so it still runs even when some other
+	# before_action halts the chain early by rendering directly — a common
+	# pattern here (e.g. "record not found" guards) that an after_action would
+	# silently miss, since Rails skips after_actions when an earlier filter
+	# already rendered the response.
+	around_action :finalize_activity_log_result
+
 	# --- ActionController Extensions ---
 	include ActionController::Cookies
 	include ActionController::MimeResponds
 
 	# --- Pundit Authorization ---
 	include Pundit::Authorization
-	
+
 	# --- Pagy Pagination ---
 	include Pagy::Method
 
@@ -111,6 +120,27 @@ class ApplicationController < ActionController::API
 		record.errors.map do |error|
 			{ field: error.attribute.to_s, message: error.message }
 		end
+	end
+
+	def finalize_activity_log_result
+		yield
+	ensure
+		record_activity_log_result
+	end
+
+	def record_activity_log_result
+		return unless @current_user_activity
+		return if response.status < 400 # default column value is already 'success' — nothing to write
+
+		body = begin
+			JSON.parse(response.body)
+		rescue JSON::ParserError, TypeError
+			{}
+		end
+		error_message = (body['message'] || body['error']).to_s.presence&.truncate(250)
+		@current_user_activity.update_columns(result: 'failed', error_message: error_message)
+	rescue StandardError => e
+		Rails.logger.warn("finalize_activity_log_result failed: #{e.message}")
 	end
 
 	# Request logging

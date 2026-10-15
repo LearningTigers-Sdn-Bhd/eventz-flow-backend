@@ -5,7 +5,11 @@ class RegistrationForm < ApplicationRecord
   has_many :pass_bundles, dependent: :restrict_with_error
   has_one :registration_form_rsvp_setting, dependent: :destroy
 
-  enum :status, { active: 0, inactive: 1 }
+  # active: open for normal registration.
+  # waiting_list: closed to normal registration, but submissions are still
+  # accepted and stored as pending/waiting-list tickets.
+  # closed: rejects new registrations outright, no waiting list.
+  enum :status, { active: 0, waiting_list: 1, closed: 2 }
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: { scope: :event_id }

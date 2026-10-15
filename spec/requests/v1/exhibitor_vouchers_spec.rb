@@ -63,5 +63,15 @@ RSpec.describe 'V1::ExhibitorVouchers', type: :request do
       expect(response.parsed_body['error']).to eq('A redeemed voucher cannot be deleted')
       expect(ExhibitorVoucher.exists?(voucher.id)).to be(true)
     end
+
+    it 'lets an org owner delete a redeemed voucher' do
+      voucher = create(:exhibitor_voucher, :redeemed, event: event)
+      org_owner = create(:user, role: :org_owner)
+
+      delete "/v1/exhibitor_vouchers/#{voucher.id}", headers: auth_headers(org_owner)
+
+      expect(response).to have_http_status(:no_content)
+      expect(ExhibitorVoucher.exists?(voucher.id)).to be(false)
+    end
   end
 end

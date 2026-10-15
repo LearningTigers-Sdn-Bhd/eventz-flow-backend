@@ -10,7 +10,7 @@ module V1
       # Fetches a ticket or visitor by public_id or id for roulette feature
       # Supports both public_id (UUID) and internal id (integer)
       def show
-        authorize @event, :show?
+        authorize @session, :show?
 
         # Determine if event uses tickets or visitors
         if @event.use_ticket
@@ -37,6 +37,12 @@ module V1
           return
         end
 
+        # Exhibitors only draw from their own captured leads, not the whole event
+        if @participant.nil? && exhibitor_scoped?
+          render json: { error: 'Participant not found in your leads' }, status: :not_found
+          return
+        end
+
         # Participant belongs to current event, return success
         success_response(
           data: format_participant_response(@participant, participant_type),
@@ -57,35 +63,42 @@ module V1
       end
 
       def authorize_event
-        authorize @event, :show?
+        authorize @session, :show?
       end
 
-      # Find ticket by public_id (UUID) or id (integer) - ONLY within current event
+      # Exhibitors draw from their own captured leads only, everyone else (admins) from the full event
+      def exhibitor_scoped?
+        current_user.exhibitor_for?(@event)
+      end
+
+      def own_event_vendor
+        @own_event_vendor ||= EventVendor.find_by(event_id: @event.id, vendor_id: current_user.id)
+      end
+
+      # Find ticket by public_id (UUID) or id (integer) - within current event,
+      # scoped to the exhibitor's own captured leads when applicable
       def find_ticket(identifier)
-        # Try public_id first (UUID format)
-        ticket = Ticket.where(event_id: @event.id)
-                       .includes(:ticket_type, :event, :scanned_by)
-                       .find_by(public_id: identifier)
-        return ticket if ticket
+        scope = Ticket.where(event_id: @event.id).includes(:ticket_type, :event, :scanned_by)
+        scope = scope_to_leads(scope, 'Ticket') if exhibitor_scoped?
 
-        # Fallback to internal id
-        Ticket.where(event_id: @event.id)
-              .includes(:ticket_type, :event, :scanned_by)
-              .find_by(id: identifier)
+        scope.find_by(public_id: identifier) || scope.find_by(id: identifier)
       end
 
-      # Find visitor by public_id (UUID) or id (integer) - ONLY within current event
+      # Find visitor by public_id (UUID) or id (integer) - within current event,
+      # scoped to the exhibitor's own captured leads when applicable
       def find_visitor(identifier)
-        # Try public_id first (UUID format)
-        visitor = Visitor.where(event_id: @event.id)
-                         .includes(:event, :scanned_by)
-                         .find_by(public_id: identifier)
-        return visitor if visitor
+        scope = Visitor.where(event_id: @event.id).includes(:event, :scanned_by)
+        scope = scope_to_leads(scope, 'Visitor') if exhibitor_scoped?
 
-        # Fallback to internal id
-        Visitor.where(event_id: @event.id)
-               .includes(:event, :scanned_by)
-               .find_by(id: identifier)
+        scope.find_by(public_id: identifier) || scope.find_by(id: identifier)
+      end
+
+      def scope_to_leads(scope, leadable_type)
+        return scope.none unless own_event_vendor
+
+        lead_ids = EventLead.where(event_vendor_id: own_event_vendor.id, leadable_type: leadable_type)
+                             .pluck(:leadable_id)
+        scope.where(id: lead_ids)
       end
 
       # Find ticket globally (across all events) - used only for error message distinction

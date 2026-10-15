@@ -68,9 +68,17 @@ RSpec.describe 'V1::ApiKeys', type: :request do
   let!(:organizer_user) { create(:user, :organizer) }
   let!(:member_user) { create(:user, :member) }
 
-  let(:org_owner_token) { JwtService.generate_tokens(org_owner)[:access_token] }
-  let(:organizer_token) { JwtService.generate_tokens(organizer_user)[:access_token] }
-  let(:member_token) { JwtService.generate_tokens(member_user)[:access_token] }
+  def org_owner_token
+    JwtService.generate_tokens(org_owner)[:access_token]
+  end
+
+  def organizer_token
+    JwtService.generate_tokens(organizer_user)[:access_token]
+  end
+
+  def member_token
+    JwtService.generate_tokens(member_user)[:access_token]
+  end
 
   # Setup existing API keys for testing
   let!(:org_owner_api_key) do

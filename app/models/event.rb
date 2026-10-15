@@ -13,18 +13,25 @@ class Event < ApplicationRecord
   has_many :staff, through: :event_assignments, source: :user
 
   has_many :business_host_assignments, dependent: :destroy # Added association
+  has_many :short_links, dependent: :destroy
+  has_many :business_matching_sessions, dependent: :destroy
 
   # Core Event Resources
   has_many :event_locations, dependent: :destroy, inverse_of: :event
+  has_many :event_halls, dependent: :destroy, inverse_of: :event
+  has_one :people_counter_connection, dependent: :destroy, inverse_of: :event
   has_many :ticket_types, dependent: :destroy
   has_many :registration_forms, dependent: :destroy
+  has_many :vehicle_registrations, dependent: :destroy
   has_many :pass_bundles, dependent: :destroy
   has_many :tickets, dependent: :destroy
   has_many :event_vendors, dependent: :destroy
   has_many :exhibitors, -> { where(type: 'Exhibitor') }, class_name: 'Exhibitor', inverse_of: :event
+  has_many :exhibitor_kits, through: :exhibitors
   has_many :public_exhibitor_access_sessions, dependent: :destroy
   has_many :merchants, -> { where(type: 'Merchant') }, class_name: 'Merchant', inverse_of: :event
   has_many :visitors, dependent: :destroy
+  has_many :scan_logs, dependent: :destroy
   has_many :wishes, dependent: :destroy
   has_one :wish_wall_setting, dependent: :destroy
   has_many :vouchers, dependent: :destroy
@@ -37,14 +44,29 @@ class Event < ApplicationRecord
   has_many :exhibitor_vouchers, dependent: :destroy
   has_many :exhibitor_booths, dependent: :destroy
   has_many :exhibitor_zones, dependent: :destroy
+  has_many :booth_plans, dependent: :destroy, inverse_of: :event
   has_many :lucky_draw_sessions, dependent: :destroy
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
+  has_many :custom_field_quotas, dependent: :destroy
+  has_one :feedback_form, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
-  has_one :certificate_template, dependent: :destroy
+  has_many :certificate_templates, dependent: :destroy
   has_one :check_in_display, dependent: :destroy
   has_one :event_payment_gateway, dependent: :destroy
+
+  # The template with no ticket types assigned: used for every ticket whose
+  # ticket type has no template of its own.
+  def certificate_template
+    certificate_templates.find { |t| t.ticket_type_ids.empty? }
+  end
+
+  # The template a ticket's certificate is rendered from: the one assigned to
+  # its ticket type, else the default. May be nil (no template configured).
+  def certificate_template_for(ticket)
+    certificate_templates.find { |t| t.ticket_type_ids.include?(ticket.ticket_type_id) } || certificate_template
+  end
 
   # --- Sponsorships ---
   has_many :event_sponsorship_tiers, dependent: :destroy
@@ -55,12 +77,24 @@ class Event < ApplicationRecord
   has_many :event_seating_groups, dependent: :destroy
   has_many :api_keys, dependent: :nullify
 
+  # RFID history. No `dependent:` here on purpose: the foreign keys cascade in
+  # PostgreSQL, so Event#delete stays one delete instead of a destroy chain
+  # whose order could trip over the observation references.
+  has_many :rfid_stations, class_name: 'Rfid::Station'
+  has_many :rfid_bindings, class_name: 'Rfid::Binding'
+  has_many :rfid_observations, class_name: 'Rfid::Observation'
+  has_many :rfid_visits, class_name: 'Rfid::Visit'
+  has_many :rfid_sessions, class_name: 'Rfid::Session', dependent: :delete_all
+  has_many :rfid_corrections, class_name: 'Rfid::Correction'
+
   # --- Reminders ---
   has_many :event_reminder_logs, dependent: :destroy
 
   # --- Callbacks ---
+  after_update :sync_membership_uniqueness, if: :saved_change_to_require_unique_membership_numbers?
   after_commit :send_webhook_notification, on: %i[create update]
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
+  after_update :sync_custom_labels_to_exhibitor_kits, if: :saved_change_to_exhibitor_labels_data?
 
   accepts_nested_attributes_for :event_email_setting, update_only: true
   accepts_nested_attributes_for :wish_wall_setting, update_only: true
@@ -76,19 +110,61 @@ class Event < ApplicationRecord
             format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: 'must be a valid URL' },
             allow_blank: true
   validate :end_date_must_be_after_start_date
+  validate :memberships_unique_before_enabling
 
   def normalized_public_registration_url
     public_registration_url.to_s.strip.chomp('/')
   end
 
+  # Path (relative to normalized_public_registration_url) for a given registration
+  # form slug. Defaults to the generic "/register/:slug" convention; events whose
+  # microsite uses a different route layout (e.g. sie2026's fixed per-form pages)
+  # can override via registration_path_template.
+  def registration_path_for(form_slug)
+    template = registration_path_template.to_s.strip
+    return "/register/#{form_slug}" if template.blank?
+
+    template.include?('{slug}') ? template.gsub('{slug}', form_slug.to_s) : template
+  end
+
   # --- Enums ---
   enum :status, { draft: 0, published: 1, cancelled: 2, completed: 3 }
   enum :payment_status, { unpaid: 0, paid: 1, waived: 2 }
+  enum :multiple_scan_mode, { unlimited: 0, per_location: 1, per_day: 2 }, prefix: :scan_mode
+
+  # --- RFID ---
+  # `write` only changes the event's mode: RfiDex refuses physical writes until
+  # the P4 hardware acceptance passes, so this cannot make a desk write a tag.
+  RFID_MODES = %w[bind write].freeze
+  validates :rfid_mode, inclusion: { in: RFID_MODES }
 
   # --- Soft Delete Scopes ---
   default_scope { where(deleted_at: nil) }
   scope :with_deleted, -> { unscope(where: :deleted_at) }
   scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
+
+  # Organizers often leave the end time at the date picker's 00:00 default,
+  # which would mark the event over as soon as its last day starts. A
+  # midnight end (app time zone) therefore means "end of that day".
+  EFFECTIVE_END_SQL = <<~SQL.squish.freeze
+    CASE WHEN (events.end_date AT TIME ZONE 'UTC' AT TIME ZONE '#{Time.find_zone!(Rails.application.config.time_zone).tzinfo.identifier}')::time = '00:00'
+    THEN events.end_date + INTERVAL '1 day' ELSE events.end_date END
+  SQL
+
+  scope :ended_between, lambda { |from, to|
+    where("#{EFFECTIVE_END_SQL} >= :from AND #{EFFECTIVE_END_SQL} <= :to", from:, to:)
+  }
+  scope :ended_before, ->(time) { where("#{EFFECTIVE_END_SQL} < ?", time) }
+
+  def effective_end_date
+    return if end_date.nil?
+
+    end_date == end_date.beginning_of_day ? end_date + 1.day : end_date
+  end
+
+  def ended?
+    effective_end_date.present? && effective_end_date < Time.current
+  end
 
   # --- Scopes for specific event staff roles ---
 
@@ -99,6 +175,16 @@ class Event < ApplicationRecord
   has_many :team_members, -> { where(event_assignments: { role: :event_team_member }) },
            through: :event_assignments,
            source: :user
+
+  # Public self-service Business Matching booking is closed once the admin
+  # toggles it off, OR once the cutoff date has passed (if one is set) —
+  # admin/staff can still create bookings directly either way.
+  def business_matching_public_booking_open?
+    return false unless business_matching_public_booking_enabled
+
+    business_matching_public_booking_cutoff_date.blank? ||
+      Date.current <= business_matching_public_booking_cutoff_date
+  end
 
   def waived_fees?
     # This assumes 'waived' is a payment_status enum value,
@@ -171,7 +257,8 @@ class Event < ApplicationRecord
       'poster_url' => poster_url,
       'payment_receipt_email' => event_email_setting&.payment_receipt_email,
       'event_email_setting' => event_email_setting&.as_json(except: %i[id event_id created_at updated_at]),
-      'wish_wall_setting' => wish_wall_setting_payload
+      'wish_wall_setting' => wish_wall_setting_payload,
+      'ended' => ended?
     )
   end
 
@@ -238,7 +325,48 @@ class Event < ApplicationRecord
     end
   end
 
+  # Sync custom label keys to exhibitor kits when exhibitor_labels_data changes.
+  # Same rename-by-position logic as sync_custom_labels_to_attendees, kept as a
+  # separate bucket/callback since exhibitor custom fields are also written by
+  # the public exhibitor registration microsite (a hardcoded key on that side,
+  # not driven by this schema) — mixing them into labels_data would rename keys
+  # the microsite doesn't know about.
+  def sync_custom_labels_to_exhibitor_kits
+    old_labels, new_labels = saved_change_to_exhibitor_labels_data
+    old_labels ||= {}
+    new_labels ||= {}
+
+    old_keys = old_labels.keys
+    new_keys = new_labels.keys
+
+    key_mapping = {}
+    old_keys.each_with_index do |old_key, index|
+      new_key = new_keys[index]
+      key_mapping[old_key] = new_key if new_key.present? && old_key != new_key
+    end
+
+    return if key_mapping.empty?
+
+    exhibitor_kits.find_each do |kit|
+      update_custom_fields_keys(kit, key_mapping)
+    end
+  end
+
   private
+
+  def memberships_unique_before_enabling
+    return unless require_unique_membership_numbers? && will_save_change_to_require_unique_membership_numbers?
+
+    duplicates = tickets.where.not(status: :canceled)
+                        .where("NULLIF(custom_fields_data->>'membership_no', '') IS NOT NULL")
+                        .group(Arel.sql("lower(custom_fields_data->>'membership_no')"))
+                        .having('COUNT(*) > 1').limit(1).count
+    errors.add(:base, 'Resolve duplicate membership numbers before requiring unique memberships') if duplicates.any?
+  end
+
+  def sync_membership_uniqueness
+    Ticket.unscoped.where(event_id: id).update_all(require_unique_membership_numbers: require_unique_membership_numbers?)
+  end
 
   # Update custom_fields_data keys based on the mapping
   def update_custom_fields_keys(record, key_mapping)

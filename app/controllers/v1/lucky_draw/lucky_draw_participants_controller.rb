@@ -8,7 +8,7 @@ module V1
 
       # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/participants
       def index
-        authorize @event, :show?
+        authorize @session, :show?
 
         # Build base query based on event's ticket/visitor system
         participants = build_participants_query
@@ -26,6 +26,7 @@ module V1
         end
 
         participants = exclude_null_names(participants)
+        participants = filter_scanned(participants) if @session.scanned_only || @session.scanned_source == 'entries'
 
         success_response(
           data: participants.map { |p| format_participant_response(p) },
@@ -44,17 +45,29 @@ module V1
       end
 
       def authorize_event
-        authorize @event, :show?
+        authorize @session, :show?
       end
 
       def build_participants_query
-        if @event.use_ticket
-          # Event uses ticket system - return tickets
-          Ticket.where(event_id: @event.id)
-        else
-          # Event uses visitor system - return visitors
-          Visitor.where(event_id: @event.id)
-        end
+        leadable_type = @event.use_ticket ? 'Ticket' : 'Visitor'
+        base = leadable_type == 'Ticket' ? Ticket : Visitor
+        scope = base.where(event_id: @event.id)
+
+        # Exhibitors draw from their own captured leads only, not the whole event's attendees
+        return scope.where(id: own_lead_ids(leadable_type)) if current_user.exhibitor_for?(@event)
+
+        scope
+      end
+
+      def own_event_vendor
+        @own_event_vendor ||= EventVendor.find_by(event_id: @event.id, vendor_id: current_user.id)
+      end
+
+      def own_lead_ids(leadable_type)
+        return [] unless own_event_vendor
+
+        EventLead.where(event_vendor_id: own_event_vendor.id, leadable_type: leadable_type)
+                 .pluck(:leadable_id)
       end
 
       def filter_by_type(participants)
@@ -103,6 +116,29 @@ module V1
         else
           participants.where.not(id: invalid_visitor_ids)
         end
+      end
+
+      # Scanned-only pool: checked_in, and with a day range, a scan inside it.
+      # "ticket" reads the first check-in (check_in_at); "scan_log" reads every
+      # scan (reprints are not attendance). No range means any day.
+      def filter_scanned(participants)
+        return filter_entries(participants) if @session.scanned_source == 'entries'
+
+        participants = participants.where(checked_in: true)
+        return participants unless @session.scanned_from || @session.scanned_to
+
+        range = @session.scanned_from&.in_time_zone..@session.scanned_to&.in_time_zone&.end_of_day
+        return participants.where(check_in_at: range) unless @session.scanned_source == 'scan_log'
+
+        scans = ScanLog.where(event_id: @event.id, scannable_type: participants.klass.name, scanned_at: range)
+                       .where.not(source: :reprint)
+        participants.where(id: scans.select(:scannable_id))
+      end
+
+      # Entry scan: only people scanned into this draw, day range ignored (entry is the qualifier).
+      def filter_entries(participants)
+        column = participants.klass == Ticket ? :ticket_id : :visitor_id
+        participants.where(id: @session.lucky_draw_entries.select(column))
       end
 
       def exclude_null_names(participants)

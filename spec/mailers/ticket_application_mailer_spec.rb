@@ -41,11 +41,23 @@ RSpec.describe TicketApplicationMailer, type: :mailer do
   describe '#rejection' do
     let(:mail) { described_class.rejection(application) }
 
-    it 'uses polite limited-seats wording' do
+    it 'falls back to polite limited-seats wording when no reason given' do
       expect(mail.to).to eq(['aina@example.com'])
       expect(mail.subject).to eq('Application update for Sabah Impact Summit')
       expect(mail.body.encoded).to include('unable to accept your delegate application')
       expect(mail.body.encoded).to include('limited capacity')
+    end
+
+    context 'when admin supplied a rejection reason' do
+      let(:application) do
+        create(:ticket_application, ticket: ticket, registration_form: registration_form,
+                                     rejection_reason: 'Missing required accreditation documents.')
+      end
+
+      it 'shows the admin-written reason instead of the default' do
+        expect(mail.body.encoded).to include('Missing required accreditation documents.')
+        expect(mail.body.encoded).not_to include('limited capacity')
+      end
     end
   end
 end

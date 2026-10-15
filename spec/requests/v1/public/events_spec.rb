@@ -45,4 +45,34 @@ RSpec.describe 'V1::Public::Events', type: :request do
       expect(json.dig('data', 'wish_wall_setting', 'background_image_url')).to include('/rails/active_storage/blobs/')
     end
   end
+
+  describe 'GET /v1/public/events/:slug/business_matching_booking_status' do
+    it 'is open by default (enabled, no cutoff date)' do
+      event = create(:event, status: :published)
+
+      get "/v1/public/events/#{event.slug}/business_matching_booking_status", as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json['enabled']).to eq(true)
+      expect(json['cutoff_date']).to be_nil
+      expect(json['is_open']).to eq(true)
+    end
+
+    it 'is closed once disabled' do
+      event = create(:event, status: :published, business_matching_public_booking_enabled: false)
+
+      get "/v1/public/events/#{event.slug}/business_matching_booking_status", as: :json
+
+      expect(json['is_open']).to eq(false)
+    end
+
+    it 'is closed once the cutoff date has passed, even if still enabled' do
+      event = create(:event, status: :published, business_matching_public_booking_cutoff_date: Date.current - 1)
+
+      get "/v1/public/events/#{event.slug}/business_matching_booking_status", as: :json
+
+      expect(json['enabled']).to eq(true)
+      expect(json['is_open']).to eq(false)
+    end
+  end
 end

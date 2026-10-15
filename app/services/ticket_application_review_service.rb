@@ -55,6 +55,32 @@ class TicketApplicationReviewService
     Result.new(success: true, application: @application)
   end
 
+  def revert_to_pending!(confirm_manual_refund: false)
+    return Result.new(success: false, application: @application, error: 'Application is not approved') unless @application.approved?
+    return Result.new(success: false, application: @application, error: 'Ticket already checked in, cannot revert') if @ticket.scanned?
+
+    if gateway_paid? && !confirm_manual_refund
+      return Result.new(success: false, application: @application, error: 'Ticket was paid via payment gateway. Refund it first, then confirm.')
+    end
+
+    TicketApplication.transaction do
+      @application.update!(
+        review_status: :pending_review,
+        reviewed_by: nil,
+        reviewed_at: nil,
+        rsvp_status: :not_sent,
+        rsvp_token_digest: nil,
+        rsvp_sent_at: nil,
+        rsvp_expires_at: nil,
+        rsvp_confirmed_at: nil
+      )
+      @ticket.update!(status: :pending_payment, payment_status: :pending)
+      @ticket.ticket_payment&.update!(status: 'refunded') if @ticket.ticket_payment&.status == 'paid'
+    end
+
+    Result.new(success: true, application: @application)
+  end
+
   def resend_rsvp!
     return Result.new(success: false, application: @application, error: 'Application is not approved') unless @application.approved?
     return Result.new(success: false, application: @application, error: 'RSVP already confirmed') if @application.confirmed?
@@ -112,6 +138,11 @@ class TicketApplicationReviewService
 
   def rsvp_required?
     @setting&.enabled? && @setting&.rsvp_required?
+  end
+
+  def gateway_paid?
+    payment = @ticket.ticket_payment
+    payment.present? && payment.status == 'paid' && payment.gateway.present?
   end
 
   def send_rsvp!

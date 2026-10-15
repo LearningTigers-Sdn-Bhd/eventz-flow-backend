@@ -27,7 +27,7 @@ module V1
       authorize @exhibitor_voucher
 
       @exhibitor_voucher.with_lock do
-        if @exhibitor_voucher.redeemed?
+        if @exhibitor_voucher.redeemed? && !current_user.org_owner?
           return render json: { error: 'A redeemed voucher cannot be deleted' },
                         status: :unprocessable_content
         end

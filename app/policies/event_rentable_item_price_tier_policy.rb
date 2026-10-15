@@ -29,7 +29,7 @@ class EventRentableItemPriceTierPolicy < ApplicationPolicy
       elsif user.exhibition_contractor? && user.exhibition_contractor_profile.present?
         scope.joins(event_rentable_item: { event: :event_exhibition_contractors })
              .where(event_exhibition_contractors: { exhibition_contractor_profile_id: user.exhibition_contractor_profile.id })
-      elsif user.exhibitor? # Insert this block
+      elsif user.vendor? # exhibitor is not a real role; type: 'Exhibitor' below does the filtering
         scope.joins(event_rentable_item: [:rentable_item, { event: :event_vendors }]) # Join through event_rentable_item to rentable_item and event_vendors
              .where(event_vendors: { vendor_id: user.id, type: 'Exhibitor' }) # Filter for Exhibitor type EventVendors and user
              .where(rentable_items: { status: RentableItem.statuses[:active] }) # Filter by active status of RentableItem

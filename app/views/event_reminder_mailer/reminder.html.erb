@@ -2,68 +2,87 @@
 <html>
 <head>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #059669; color: white; padding: 20px; text-align: center; }
-    .content { padding: 20px; background: #f9fafb; }
-    .countdown { text-align: center; font-size: 48px; font-weight: bold; color: #059669; padding: 20px; }
-    .ticket-info { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
-    .ticket-info table { width: 100%; }
-    .ticket-info td { padding: 8px 0; }
-    .ticket-info td:first-child { font-weight: bold; width: 120px; }
-    .qr-section { text-align: center; padding: 20px; background: white; border-radius: 8px; margin: 15px 0; }
-    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f0f4f8; margin: 0; padding: 0; }
+    .wrapper { padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #047857, #059669); color: white; padding: 40px 30px; text-align: center; }
+    .header .countdown { font-size: 40px; font-weight: bold; letter-spacing: -0.5px; margin: 0 0 4px; }
+    .header p { margin: 0; font-size: 16px; opacity: 0.9; }
+    .content { padding: 32px 30px; }
+    .greeting { font-size: 16px; margin-bottom: 16px; }
+    .message { font-size: 15px; color: #555; margin-bottom: 24px; line-height: 1.7; }
+    .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #059669; margin-bottom: 12px; }
+    .ticket-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .ticket-info table { width: 100%; border-collapse: collapse; }
+    .ticket-info td { padding: 8px 0; font-size: 14px; vertical-align: top; }
+    .ticket-info td:first-child { font-weight: bold; color: #374151; width: 130px; }
+    .ticket-info td:last-child { color: #555; }
+    @media only screen and (max-width: 480px) {
+      .ticket-info td { display: block !important; width: 100% !important; }
+      .ticket-info td:first-child { padding-bottom: 0 !important; }
+      .ticket-info td:last-child { padding-top: 2px !important; padding-bottom: 14px !important; }
+    }
+    .qr-section { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 28px 20px; margin-bottom: 24px; }
+    .qr-section h3 { margin: 0 0 8px; font-size: 16px; color: #047857; }
+    .qr-section p { margin: 0 0 16px; font-size: 14px; color: #666; }
+    .qr-section img { border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-radius: 4px; }
+    .closing { font-size: 15px; color: #555; line-height: 1.7; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; padding: 20px 30px; font-size: 12px; color: #999; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1><%= @days_until == 1 ? "See You Tomorrow!" : "Event Reminder" %></h1>
-    </div>
-
-    <div class="content">
-      <p>Hi <%= @ticket.attendee_name %>,</p>
-
-      <div class="countdown">
-        <%= @days_until %> day<%= @days_until > 1 ? 's' : '' %> to go!
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <p class="countdown"><%= @days_until %> day<%= @days_until > 1 ? 's' : '' %> to go</p>
+        <p><%= @days_until == 1 ? "See you tomorrow!" : "Event Reminder" %></p>
       </div>
 
-      <p><%= @event.title %> is coming up <%= @days_until == 1 ? 'tomorrow' : "in #{@days_until} days" %>. Here's a reminder of your ticket details:</p>
+      <div class="content">
+        <p class="greeting">Hi <strong><%= @ticket.attendee_name %></strong>,</p>
 
-      <div class="ticket-info">
-        <table>
-          <tr>
-            <td>Event:</td>
-            <td><%= @event.title %></td>
-          </tr>
-          <tr>
-            <td>Date:</td>
-            <td><%= @event.start_date.strftime("%B %d, %Y") %></td>
-          </tr>
-          <% if @event.event_locations.any? %>
-          <tr>
-            <td>Venue:</td>
-            <td><%= @event.event_locations.first.name %></td>
-          </tr>
-          <% end %>
-          <tr>
-            <td>Ticket Type:</td>
-            <td><%= @ticket.ticket_type.name %></td>
-          </tr>
-        </table>
+        <p class="message">
+          <strong><%= @event.title %></strong> is coming up <%= @days_until == 1 ? 'tomorrow' : "in #{@days_until} days" %>.
+          Here's a reminder of your ticket details — have your QR code ready for check-in.
+        </p>
+
+        <div class="section-title">Event Details</div>
+        <div class="ticket-info">
+          <table>
+            <tr>
+              <td>Event:</td>
+              <td><%= @event.title %></td>
+            </tr>
+            <tr>
+              <td>Date:</td>
+              <td><%= @event.start_date.strftime("%B %d, %Y") %></td>
+            </tr>
+            <% if @event.event_locations.any? %>
+            <tr>
+              <td>Venue:</td>
+              <td><%= @event.event_locations.first.name %></td>
+            </tr>
+            <% end %>
+            <tr>
+              <td>Ticket Type:</td>
+              <td><%= @ticket.ticket_type.name %></td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="section-title">Your Entry QR Code</div>
+        <div class="qr-section">
+          <h3>Scan at Check-In</h3>
+          <p>Please present this QR code at the registration counter</p>
+          <%= image_tag attachments['qr_code.png'].url, alt: "QR Code", width: 200, height: 200 %>
+        </div>
+
+        <p class="closing">We look forward to seeing you there!</p>
       </div>
 
-      <div class="qr-section">
-        <h3>Your QR Code</h3>
-        <p>Have this ready for check-in:</p>
-        <%= image_tag attachments['qr_code.png'].url, alt: "QR Code", width: 200, height: 200 %>
+      <div class="footer">
+        <p>This is an automated reminder from EventzFlow. Please do not reply to this email.</p>
       </div>
-
-      <p>We look forward to seeing you!</p>
-    </div>
-
-    <div class="footer">
-      <p>This email was sent by EventzFlow</p>
     </div>
   </div>
 </body>

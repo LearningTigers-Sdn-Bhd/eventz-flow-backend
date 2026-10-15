@@ -34,6 +34,7 @@ class User < ApplicationRecord
   # Session Management
   has_many :user_sessions, dependent: :destroy
   has_many :active_sessions, -> { active }, class_name: 'UserSession'
+  has_many :user_activities, dependent: :destroy
 
   # 0. USER CREATION TRACKING
   belongs_to :created_by, class_name: 'User', optional: true
@@ -128,15 +129,52 @@ class User < ApplicationRecord
 
   # --- Event-Specific Role Helper Methods ---
 
+  # Memoized per user instance so repeated role checks against the same event
+  # (policy show? chain, sidebar_permissions, etc.) share one query instead of
+  # each hitting event_assignments separately.
+  def event_assignment_roles_for(event)
+    return [] unless event.present?
+    @event_assignment_roles_by_event ||= {}
+    @event_assignment_roles_by_event[event.id] ||= event_assignments.where(event_id: event.id).pluck(:role)
+  end
+
   def is_event_admin?(event)
-    return false unless event.present?
-    # Use enum value from EventAssignment class directly for robustness
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_admin])
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:event_admin])
   end
 
   def is_event_team_member?(event)
-    return false unless event.present?
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:event_team_member])
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:event_team_member])
+  end
+
+  def is_business_matching_admin?(event)
+    event_assignment_roles_for(event).include?(EventAssignment.roles[:business_matching_admin])
+  end
+
+  # Event ids where this user holds the business_matching_admin role.
+  def business_matching_admin_event_ids
+    event_assignments.where(role: EventAssignment.roles[:business_matching_admin]).pluck(:event_id)
+  end
+
+  # True if this user's ONLY standing on the platform is business_matching_admin
+  # for one or more events — no org-level staff role, no full event-admin/team
+  # standing anywhere. Used to hide the generic app nav/dashboard and send them
+  # straight into Business Matching instead.
+  def only_business_matching_admin?
+    return false if is_org_owner_or_organizer?
+    return false if business_matching_admin_event_ids.empty?
+
+    !event_assignments.where(
+      role: [EventAssignment.roles[:event_admin], EventAssignment.roles[:event_team_member]]
+    ).exists?
+  end
+
+  # Standard user payload returned by auth/profile endpoints.
+  def public_json
+    slice(:id, :full_name, :email, :role, :phone).merge(
+      email_verified: email_verified?,
+      is_pure_business_matching_admin: only_business_matching_admin?,
+      business_matching_admin_event_ids: business_matching_admin_event_ids.map(&:to_s)
+    )
   end
 
   def is_event_staff?(event)
@@ -152,9 +190,21 @@ class User < ApplicationRecord
     event_vendor_assignments.exists?(event_id: event.id)
   end
 
+  # "exhibitor" is not a real User#role in practice (every registration path
+  # creates vendor-role users) — Exhibitor vs Merchant is decided per-event
+  # via the EventVendor STI type (see EventVendorService.determine_vendor_type).
+  # Use this instead of the dead role-based #exhibitor? check.
+  def exhibitor_for?(event)
+    return false unless event.present?
+
+    event_vendor_assignments.exists?(event_id: event.id, type: 'Exhibitor')
+  end
+
   def is_business_host?(event)
     return false unless event.present?
-    event_assignments.exists?(event_id: event.id, role: EventAssignment.roles[:business_host])
+    exhibitor? ||
+      event_assignment_roles_for(event).include?(EventAssignment.roles[:business_host]) ||
+      business_host_assignments.exists?(event_id: event.id)
   end
 
   # --- Group Role Helper Methods ---

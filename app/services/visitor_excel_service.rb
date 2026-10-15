@@ -7,7 +7,7 @@ class VisitorExcelService
   # @param full [Boolean] If true, include full record data in response
   # @param no_label [Boolean] If true, map custom fields to sequential "Label N" keys
   # @return [Hash] { created: {count, data}, updated: {count, data}, skipped: {count, data}, duplicates_in_file: {count, data}, errors: {count, data} }
-  def self.import(file, dry_run: false, full: false, no_label: false)
+  def self.import(file, dry_run: false, full: false, no_label: false, overwrite_blank_custom_fields: false)
     # Reset cache at start of each import to avoid stale data
     @visitors_cache = {}
 
@@ -16,7 +16,8 @@ class VisitorExcelService
       updated: { count: 0, data: [] },
       skipped: { count: 0, data: [] },
       duplicates_in_file: { count: 0, data: [] },
-      errors: { count: 0, data: [] }
+      errors: { count: 0, data: [] },
+      events: []
     }
 
     begin
@@ -91,6 +92,25 @@ class VisitorExcelService
         end
       end
 
+      # Per-event breakdown for the preview (same contract as the ticket import):
+      # distinct Event Title values, whether each already exists or would create a
+      # new draft event, and the row count per title. A title that doesn't exactly
+      # match an existing event creates a new draft event on import, so surfacing
+      # >1 new event here lets the user catch inconsistent Event Title values
+      # before committing. Read-only.
+      event_titles_in_file = candidates.each_value.map { |entry| entry[:attrs][:event_title] }.reject(&:blank?)
+      unless event_titles_in_file.empty?
+        existing_titles = Event.where(title: event_titles_in_file.uniq).pluck(:title).to_set
+        counts = event_titles_in_file.tally
+        results[:events] = event_titles_in_file.uniq.map do |title|
+          {
+            title: title,
+            exists: existing_titles.include?(title),
+            row_count: counts[title]
+          }
+        end
+      end
+
       # Group candidates by event and process
       events_cache = {}
       candidates.each_value do |entry|
@@ -107,7 +127,7 @@ class VisitorExcelService
         existing = find_existing_visitor(attrs, visitors_lookup)
 
         if existing
-          process_existing_visitor(existing, attrs, event, results, dry_run, full)
+          process_existing_visitor(existing, attrs, event, results, dry_run, full, overwrite_blank_custom_fields)
         else
           create_new_visitor(attrs, event, results, dry_run, full)
         end
@@ -250,11 +270,12 @@ class VisitorExcelService
   end
 
   # Process an existing visitor (update if more complete or has changes)
-  def self.process_existing_visitor(existing, attrs, event, results, dry_run, full)
+  def self.process_existing_visitor(existing, attrs, event, results, dry_run, full, overwrite_blank_custom_fields = false)
     existing_score = visitor_completeness_score(existing)
     new_score = row_completeness_score(attrs)
     changed_fields = detect_changes(existing, attrs)
-    merged_custom = merge_custom_fields(existing.custom_fields_data, attrs[:custom_fields_data], event.labels_data)
+    merged_custom = merge_custom_fields(existing.custom_fields_data, attrs[:custom_fields_data], event.labels_data,
+                                        overwrite_blank: overwrite_blank_custom_fields)
     custom_fields_changed = merged_custom != (existing.custom_fields_data || {})
 
     # Update if: more complete data OR same completeness but has actual changes
@@ -309,12 +330,20 @@ class VisitorExcelService
     results[:created][:data] << build_record_data(visitor, attrs, true) # Always include data for created
   end
 
-  # Merge custom fields with event labels schema
-  def self.merge_custom_fields(existing_fields, new_fields, labels_data)
+  # Merge custom fields with event labels schema. A blank incoming value keeps
+  # the stored one by default (same EF-308 rule as tickets) — pass
+  # overwrite_blank: true to let blank cells clear the field on a deliberate reset.
+  def self.merge_custom_fields(existing_fields, new_fields, labels_data, overwrite_blank: false)
     base_keys = preferred_label_keys(labels_data)
     base = base_keys.index_with { |_k| '' }
 
-    merged = base.merge(existing_fields.to_h).merge(new_fields.to_h)
+    merged = base.merge(existing_fields.to_h).merge(new_fields.to_h) do |_key, old_val, new_val|
+      if !overwrite_blank && new_val.to_s.strip.empty?
+        old_val
+      else
+        new_val
+      end
+    end
     sanitize_custom_fields(merged, labels_data)
   end
 

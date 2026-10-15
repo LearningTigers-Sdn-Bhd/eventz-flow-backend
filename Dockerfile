@@ -18,13 +18,18 @@ ENV RAILS_ENV="production" \
 FROM base as build
 
 # Install packages needed to build gems
-RUN apt-get update -qq && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libpq-dev libvips pkg-config libyaml-dev libffi-dev
 
-# Install application gems
+# Install application gems. Only the downloaded .gem cache is cache-mounted
+# (not the whole BUNDLE_PATH) so installed gems still land in the image layer
+# for the later `COPY --from=build`.
 COPY Gemfile Gemfile.lock ./
-RUN bundle install && \
-    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
+RUN --mount=type=cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install && \
+    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
     bundle exec bootsnap precompile --gemfile
 
 # Copy application code
@@ -38,9 +43,10 @@ RUN bundle exec bootsnap precompile app/ lib/
 FROM base
 
 # Install packages needed for deployment
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libvips postgresql-client tini && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update -qq && \
+    apt-get install --no-install-recommends -y curl libvips postgresql-client tini
 
 # Copy built artifacts: gems, application
 COPY --from=build /usr/local/bundle /usr/local/bundle

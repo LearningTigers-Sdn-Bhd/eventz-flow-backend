@@ -5,7 +5,8 @@ class EmailDelivery::WebhookProcessor
     'email.sent' => 'sent',
     'email.delivered' => 'delivered',
     'email.bounced' => 'bounced',
-    'email.complained' => 'complained'
+    'email.complained' => 'complained',
+    'email.suppressed' => 'suppressed'
   }.freeze
 
   def self.call(event)
@@ -17,6 +18,8 @@ class EmailDelivery::WebhookProcessor
   end
 
   def call
+    return log_account_alert if account_alert?
+
     delivery = EmailDelivery.find_by(provider_message_id: provider_message_id)
     return unless delivery
 
@@ -28,6 +31,17 @@ class EmailDelivery::WebhookProcessor
   end
 
   private
+
+  # Account-level MillionSend events (reputation/quota). They carry no email
+  # id, so they can't update a row; log loudly so a paused account is noticed.
+  def account_alert?
+    @event[:type].to_s.start_with?('deliverability.', 'quota.')
+  end
+
+  def log_account_alert
+    level = @event[:type].end_with?('.warning') ? :warn : :error
+    Rails.logger.public_send(level, "[EmailDelivery::WebhookProcessor] #{@event[:type]}: #{@event[:data].to_json}")
+  end
 
   def provider_message_id
     @event.dig(:data, :email_id) || @event.dig(:data, :id)

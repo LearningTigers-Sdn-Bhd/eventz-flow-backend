@@ -74,9 +74,9 @@ PAGINATION_SCHEMA = {
 RSpec.describe "V1::Resources", type: :request do
 
   # Users
-  let(:org_owner) { create(:user, role: :org_owner) }
-  let(:writer) { create(:user, role: :member) }
-  let(:regular_user) { create(:user, role: :member) }
+  let!(:org_owner) { create(:user, role: :org_owner) }
+  let!(:writer) { create(:user, role: :member) }
+  let!(:regular_user) { create(:user, role: :member) }
   before { create(:resource_write_permission, user: writer) }
 
   # Shared Dependencies

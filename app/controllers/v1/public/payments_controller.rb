@@ -401,6 +401,7 @@ module V1
         Ticket.transaction do
           tickets_to_mark.each do |t|
             t.lock!
+            t.suppress_confirmation_email = true if tickets_to_mark.size > 1
 
             if borneo_conference_upgrade_payment?(event:, ticket: t, payment_entity:)
               mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
@@ -412,6 +413,23 @@ module V1
             next if t.paid? && t.purchased?
 
             mark_ticket_paid!(ticket: t, payment_id:, gateway_response:, payment_entity:)
+          end
+        end
+
+        if tickets_to_mark.size > 1
+          # Borneo upgrade tickets get their own confirmation_email below via
+          # upgraded_tickets — exclude them here or that address gets both.
+          (tickets_to_mark - upgraded_tickets).group_by(&:attendee_email).each_value do |recipient_tickets|
+            next if recipient_tickets.first.attendee_email.blank?
+
+            representative = recipient_tickets.first
+            EmailDelivery::AuditedDelivery.deliver_later(
+              mailer_name: 'TicketMailer',
+              mailer_action: 'group_confirmation_email',
+              args: [representative],
+              related: representative,
+              dedupe: true
+            )
           end
         end
 
@@ -511,6 +529,18 @@ module V1
       end
 
       def pending_payment_batch_tickets(ticket:, event:, registered_by_email:, payment_entity: nil)
+        # Group submissions are tied by registration_batch_id — scope to
+        # exactly this submission's tickets. Falls back to the old
+        # email+ticket_type match only for tickets predating the batch id
+        # (nil column, single-ticket submissions with no siblings to find).
+        if ticket.registration_batch_id.present?
+          return event.tickets.where(
+            registration_batch_id: ticket.registration_batch_id,
+            payment_status: %i[pending failed],
+            status: :pending_payment
+          ).to_a
+        end
+
         scope = event.tickets.where(
           registered_by_email: registered_by_email,
           payment_status: %i[pending failed],

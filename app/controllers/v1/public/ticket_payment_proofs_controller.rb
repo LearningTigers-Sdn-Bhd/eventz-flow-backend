@@ -30,17 +30,24 @@ module V1
                         status: :unprocessable_content
         end
 
-        payment = ticket.ticket_payment || ticket.create_ticket_payment!(
-          amount: ticket.ticket_type&.current_price || 0,
-          status: 'pending'
+        # Uploaded once as a Blob so group bookings (one price/proof covering
+        # N tickets, see RegistrationsController#create's group_public_ids)
+        # can attach the SAME blob to every sibling's payment below instead
+        # of re-reading the tempfile (which EOFs after the first #attach) or
+        # storing N duplicate copies of one screenshot.
+        blob = ActiveStorage::Blob.create_and_upload!(
+          io: file, filename: file.original_filename, content_type: file.content_type
         )
 
-        payment.payment_proof.attach(file)
-        payment.update!(
-          payment_method: 'bank_transfer',
-          status: 'pending',
-          payment_screenshot_url: url_for(payment.payment_proof)
-        )
+        payment = attach_proof(ticket: ticket, blob: blob)
+
+        sibling_public_ids = Array(params[:sibling_public_ids]).map(&:to_s) - [ticket.public_id]
+        sibling_public_ids.each do |sibling_public_id|
+          sibling_ticket = ticket.event.tickets.find_by(public_id: sibling_public_id)
+          next unless sibling_ticket && sibling_ticket.payment_status.in?(%w[pending failed])
+
+          attach_proof(ticket: sibling_ticket, blob: blob)
+        end
 
         render json: {
           success: true,
@@ -94,6 +101,21 @@ module V1
         end
 
         ticket
+      end
+
+      def attach_proof(ticket:, blob:)
+        payment = ticket.ticket_payment || ticket.create_ticket_payment!(
+          amount: ticket.ticket_type&.current_price || 0,
+          status: 'pending'
+        )
+
+        payment.payment_proof.attach(blob)
+        payment.update!(
+          payment_method: 'bank_transfer',
+          status: 'pending',
+          payment_screenshot_url: url_for(payment.payment_proof)
+        )
+        payment
       end
     end
   end

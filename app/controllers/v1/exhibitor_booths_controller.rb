@@ -39,10 +39,11 @@ module V1
       end
       booths.each { |booth| authorize booth, :create? }
 
-      ExhibitorBooth.transaction { booths.each(&:save!) }
-      render json: booths.map { |booth| serialize(booth) }, status: :created
-    rescue ActiveRecord::RecordInvalid => e
-      render json: e.record.errors, status: :unprocessable_content
+      created = booths.select(&:save)
+      skipped_count = booths.size - created.size
+
+      render json: { booths: created.map { |booth| serialize(booth) }, skipped_count: skipped_count },
+        status: :created
     end
 
     def update
@@ -76,6 +77,11 @@ module V1
 
       if kit.event.id != @booth.event_id
         return render json: { errors: ['Exhibitor kit does not belong to this event'] },
+          status: :unprocessable_content
+      end
+
+      if kit.exhibitor_booth_price_id.present? && kit.exhibitor_booth_price_id != @booth.exhibitor_booth_price_id
+        return render json: { errors: ["Booth does not match the kit's booth price"] },
           status: :unprocessable_content
       end
 

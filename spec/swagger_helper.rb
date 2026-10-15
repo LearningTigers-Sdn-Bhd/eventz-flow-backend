@@ -29,6 +29,13 @@ RSpec.configure do |config|
             type: :http,
             scheme: :bearer,
             bearerFormat: :JWT
+          },
+          # RfiDex sends the raw event-scoped device key (never a Bearer token)
+          # in the Authorization header.
+          apiKeyAuth: {
+            type: :apiKey,
+            name: 'Authorization',
+            in: :header
           }
         },
         schemas: {

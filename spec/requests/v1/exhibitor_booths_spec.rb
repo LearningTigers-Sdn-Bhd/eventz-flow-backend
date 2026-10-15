@@ -48,7 +48,7 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
       expect(event.exhibitor_booths.pluck(:number)).to contain_exactly('S045', 'S046', 'S047')
     end
 
-    it 'creates nothing when one number is a duplicate' do
+    it 'skips duplicate numbers and creates the rest' do
       create(:exhibitor_booth, event: event, exhibitor_booth_price: price, number: 'S045')
 
       post "/v1/events/#{event.id}/exhibitor_booths/bulk",
@@ -56,8 +56,9 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
                                       numbers: %w[S048 S045] } },
         headers: request_headers, as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(event.exhibitor_booths.count).to eq(1)
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body['skipped_count']).to eq(1)
+      expect(event.exhibitor_booths.pluck(:number)).to contain_exactly('S045', 'S048')
     end
   end
 
@@ -92,6 +93,33 @@ RSpec.describe 'V1::ExhibitorBooths', type: :request do
       expect(response).to have_http_status(:ok)
       expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: kit.id)
       expect(kit.reload.booth_number).to eq('S045')
+    end
+
+    it 'assigns a booth matching the kit own booth price' do
+      priced_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: nil,
+        exhibitor_booth_price: price)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: priced_kit.id } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(booth.reload).to have_attributes(status: 'booked', exhibitor_kit_id: priced_kit.id)
+    end
+
+    it 'rejects a booth from a different price tier than the kit was billed at' do
+      other_price = create(:exhibitor_booth_price, event: event, exhibitor_zone: zone)
+      priced_kit = create(:exhibitor_kit, event_vendor: exhibitor, booth_number: nil,
+        exhibitor_booth_price: other_price)
+
+      post "/v1/exhibitor_booths/#{booth.id}/assign",
+        params: { exhibitor_booth: { exhibitor_kit_id: priced_kit.id } },
+        headers: request_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['errors']).to include("Booth does not match the kit's booth price")
+      expect(booth.reload).to have_attributes(status: 'available', exhibitor_kit_id: nil)
+      expect(priced_kit.reload.booth_number).to be_nil
     end
 
     it 'rejects a booth booked by a different kit without changing state' do

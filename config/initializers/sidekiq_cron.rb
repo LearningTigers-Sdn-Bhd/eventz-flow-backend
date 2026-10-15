@@ -7,9 +7,21 @@ Rails.application.config.after_initialize do
     )
 
     Sidekiq::Cron::Job.create(
+      name: 'Send post-event thank you emails - every 10 minutes',
+      cron: '*/10 * * * *',
+      class: 'SendThankYouEmailsJob'
+    )
+
+    Sidekiq::Cron::Job.create(
       name: 'Cleanup expired sessions - daily at 3am',
       cron: '0 3 * * *',
       class: 'CleanupExpiredSessionsJob'
+    )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Purge old email deliveries - daily at 3:30am',
+      cron: '30 3 * * *',
+      class: 'PurgeOldEmailDeliveriesJob'
     )
 
     Sidekiq::Cron::Job.create(
@@ -40,6 +52,18 @@ Rails.application.config.after_initialize do
       name: 'Purge unattached blobs - daily at 4am',
       cron: '0 4 * * *',
       class: 'PurgeUnattachedBlobsJob'
+    )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send business matching session reminders - every 10 minutes',
+      cron: '*/10 * * * *',
+      class: 'BusinessMatchingSessionReminderJob'
+    )
+
+    Sidekiq::Cron::Job.create(
+      name: 'Send business matching host daily overview - daily at 7am',
+      cron: '0 7 * * *',
+      class: 'BusinessMatchingHostDailyOverviewJob'
     )
   end
 end

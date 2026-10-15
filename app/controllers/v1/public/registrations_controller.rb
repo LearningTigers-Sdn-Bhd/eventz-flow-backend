@@ -43,7 +43,7 @@ module V1
           email: email
         )
         if form_slug.present?
-          form = event.registration_forms.active.find_by(slug: form_slug)
+          form = event.registration_forms.find_by(slug: form_slug)
           tickets = tickets.where(ticket_type_id: registration_status_ticket_type_ids(event:, form:)) if form
         end
 
@@ -88,6 +88,48 @@ module V1
             blocked_message: blocked_upgrade_ticket.present? ? 'You already have an unpaid exhibitor registration. Please complete that payment first before registering for conference.' : nil
           }
         }
+      end
+
+      def registration_lookup
+        event = Event.friendly.find(params[:event_slug])
+        return render_registration_closed unless event.published?
+
+        ticket = RegistrationLookupService.new(
+          event: event, plate: params[:plate], email: params[:email]
+        ).call
+
+        return render_lookup_not_found unless ticket
+        return render_form_closed if ticket.vehicle_registration.registration_form.closed?
+
+        render json: { success: true, data: serialize_edit_ticket(ticket) }
+      end
+
+      def update
+        event = Event.friendly.find(params[:event_slug])
+        return render_registration_closed unless event.published?
+
+        lookup_ticket = RegistrationLookupService.new(
+          event: event, plate: params[:plate], email: params[:email]
+        ).call
+        return render_lookup_not_found unless lookup_ticket && lookup_ticket.public_id == params[:public_id]
+        return render_form_closed if lookup_ticket.vehicle_registration.registration_form.closed?
+
+        result = RegistrationUpdateService.new(
+          event: event,
+          plate: params[:plate],
+          email: params[:email],
+          public_id: params[:public_id],
+          attributes: edit_params,
+          documents: params[:documents] || {}
+        ).call
+
+        if result.success?
+          render json: { success: true, data: serialize_edit_ticket(result.ticket) }
+        elsif result.errors.include?(RegistrationUpdateService::NOT_FOUND_MESSAGE)
+          render_lookup_not_found
+        else
+          render json: { success: false, errors: result.errors }, status: :unprocessable_content
+        end
       end
 
       def pass_bundle
@@ -160,7 +202,8 @@ module V1
           return render json: { success: false, message: 'Value is required' }, status: :unprocessable_content
         end
 
-        taken = event.tickets
+        enforce_uniqueness = key != 'membership_no' || event.require_unique_membership_numbers?
+        taken = enforce_uniqueness && event.tickets
                      .where.not(status: :canceled)
                      .where('lower(custom_fields_data->>?) = ?', key, value.downcase)
                      .exists?
@@ -169,6 +212,54 @@ module V1
           success: true,
           data: { key: key, value: value, available: !taken }
         }
+      end
+
+      def vehicle_registration
+        event = Event.friendly.find(params[:event_slug])
+        form = event.registration_forms.active.find_by(slug: params[:form_slug])
+        return render json: { success: false, message: 'Registration form not found' }, status: :not_found unless form
+
+        plate = VehicleRegistration.normalize_plate(params[:plate])
+        if plate.blank?
+          return render json: { success: false, message: 'Car plate number is required' },
+                        status: :unprocessable_content
+        end
+
+        rules = VehicleRegistrationRules.new(form)
+        vehicle = VehicleRegistration.includes(:registration_form, :base_ticket_type)
+                                     .find_by(event: event, normalized_plate: plate)
+        vehicle ||= VehicleRegistrationLegacyAdopter.call(event: event, normalized_plate: plate)
+
+        if vehicle && vehicle.registration_form_id != form.id
+          return render json: {
+            success: true,
+            data: {
+              status: 'wrong_form',
+              plate: plate,
+              occupancy: vehicle.active_tickets.count,
+              capacity: VehicleRegistrationRules.new(vehicle.registration_form).capacity,
+              registered_form_slug: vehicle.registration_form.slug,
+              registered_form_name: vehicle.registration_form.name,
+              allowed_ticket_type_ids: []
+            }
+          }
+        end
+
+        render json: {
+          success: true,
+          data: {
+            status: rules.status(vehicle),
+            plate: plate,
+            occupancy: vehicle&.active_tickets&.count || 0,
+            capacity: rules.capacity,
+            registered_form_slug: vehicle&.registration_form&.slug,
+            registered_form_name: vehicle&.registration_form&.name,
+            allowed_ticket_type_ids: rules.allowed_ticket_types(vehicle).pluck(:id),
+            registered_roles: vehicle&.active_tickets&.pluck(:role) || []
+          }
+        }
+      rescue VehicleRegistrationRules::UnsupportedForm => e
+        render json: { success: false, message: e.message }, status: :unprocessable_content
       end
 
       def create
@@ -186,12 +277,19 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.active.find_by(slug: params[:form_slug])
+          form = event.registration_forms.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
               message: 'Registration form not found'
             }, status: :not_found
+          end
+
+          if form.closed?
+            return render json: {
+              success: false,
+              message: 'Registration is closed for this form'
+            }, status: :unprocessable_content
           end
 
           allowed_ticket_type_ids = form.ticket_type_ids
@@ -206,6 +304,44 @@ module V1
         end
 
         ticket_type = available_ticket_types.find(params[:ticket_type_id])
+        unless ticket_type.available_for_purchase?
+          return render json: {
+            success: false,
+            code: 'ticket_sold_out',
+            message: 'This ticket type is sold out'
+          }, status: :unprocessable_content
+        end
+
+        if form.nil? && vehicle_registration_ticket_type?(event: event, ticket_type: ticket_type)
+          return render json: {
+            success: false,
+            message: 'Registration form is required for this vehicle ticket'
+          }, status: :unprocessable_content
+        end
+
+        group_attendees, attendees_error = parse_group_attendees
+        if attendees_error
+          return render json: {
+            success: false,
+            errors: [attendees_error]
+          }, status: :unprocessable_content
+        end
+
+        if group_attendees.present? && VehicleRegistrationRules.supported?(form)
+          return render json: {
+            success: false,
+            errors: ['Group registration is not supported for this form']
+          }, status: :unprocessable_content
+        end
+
+        if group_attendees.present? && !ticket_type_has_capacity?(ticket_type: ticket_type, seats_needed: 1 + group_attendees.size)
+          return render json: {
+            success: false,
+            code: 'ticket_sold_out',
+            message: 'This ticket type does not have enough seats left for this group size'
+          }, status: :unprocessable_content
+        end
+
         bundle = resolve_pass_bundle(event:, form:, ticket_type:)
         return if performed?
         approval_enabled = delegate_approval_enabled_for_form?(form)
@@ -215,6 +351,20 @@ module V1
           return render json: {
             success: false,
             message: 'Your application was not selected in this intake. Thank you for your interest.'
+          }, status: :unprocessable_content
+        end
+
+        if (terms_error = terms_agreement_error(form: form))
+          return render json: {
+            success: false,
+            errors: [terms_error]
+          }, status: :unprocessable_content
+        end
+
+        if (documents_error = required_documents_error(form: form))
+          return render json: {
+            success: false,
+            errors: [documents_error]
           }, status: :unprocessable_content
         end
 
@@ -233,8 +383,14 @@ module V1
           ticket = event.tickets.new(registration_params)
           ticket.ticket_type = ticket_type
           ticket.pass_bundle = bundle if bundle.present?
+          ticket.waiting_list = form&.waiting_list? || false
 
-          if approval_enabled
+          # Approval review applies to free (RM0) tickets only — e.g. an
+          # included co-driver seat the organizer wants to vet first. Paid
+          # tickets on the same form keep the normal payment-proof flow:
+          # they must not get a TicketApplication either (its presence
+          # suppresses the payment-pending email downstream).
+          if ticket.waiting_list || (approval_enabled && ticket_type.current_price.zero?)
             ticket.status = 'pending_payment'
             ticket.payment_status = 'pending'
           elsif bundle.present?
@@ -249,6 +405,7 @@ module V1
         end
 
         apply_indemnity!(ticket)
+        apply_terms_agreement!(ticket, form: form)
 
         begin
           RegistrationDocumentAttacher.new(event: event, ticket: ticket, documents: params[:documents] || {}).call
@@ -256,8 +413,79 @@ module V1
           return render json: { success: false, message: e.message }, status: :unprocessable_content
         end
 
+        sibling_tickets = []
+
+        # One shared inbox for the whole group → one batched email instead of
+        # one per seat. Mixed addresses keep per-ticket emails (sibling_passes
+        # would otherwise put everyone's QR in every inbox).
+        batch_emails = group_attendees.present? &&
+                       [ticket.attendee_email, *group_attendees.pluck(:attendee_email)].uniq.one?
+        ticket.suppress_confirmation_email = true if batch_emails
+
         begin
-          saved = ticket.save
+          saved = ActiveRecord::Base.transaction do
+            result = if VehicleRegistrationRules.supported?(form)
+                       VehicleRegistrationAssignment.new(
+                         event: event,
+                         form: form,
+                         ticket: ticket,
+                         plate: params[:vehicle_plate]
+                       ).save
+                     else
+                       ticket.save
+                     end
+            raise ActiveRecord::Rollback unless result
+
+            # Batch id ties every ticket from this submission together —
+            # payment confirmation scopes to it instead of email+ticket_type,
+            # which wrongly swept up an unrelated later submission by the
+            # same registrant. Reuse the primary ticket's own public_id
+            # rather than minting a new uuid.
+            ticket.update_column(:registration_batch_id, ticket.public_id) if group_attendees.present?
+
+            # ponytail: group siblings get the same payment_status/waiting_list
+            # branch as the primary ticket, just no bundle/vehicle/document
+            # handling — group mode isn't offered alongside those flows.
+            group_attendees.each do |attendee|
+              sibling = event.tickets.new(
+                attendee_name: attendee[:attendee_name],
+                attendee_email: attendee[:attendee_email],
+                attendee_phone: attendee[:attendee_phone],
+                role: attendee[:role],
+                registered_by_email: registration_params[:registered_by_email].presence || ticket.attendee_email,
+                registration_batch_id: ticket.registration_batch_id
+              )
+              sibling.ticket_type = ticket_type
+              sibling.waiting_list = ticket.waiting_list
+              sibling.suppress_confirmation_email = batch_emails
+              sibling.status = ticket.status
+              sibling.payment_status = ticket.payment_status
+              # Family/group siblings (e.g. SIE visitor pax) share the head's
+              # company/address/nationality/etc — copy the whole submission
+              # onto each one. Exclude UNIQUE_CUSTOM_FIELD_KEYS only: fields
+              # like ic_passport_no/membership_no carry a per-event unique
+              # index (schema.rb) and duplicating them onto siblings would
+              # collide.
+              sibling.custom_fields_data = (ticket.custom_fields_data || {}).except(*Ticket::UNIQUE_CUSTOM_FIELD_KEYS)
+              apply_indemnity!(sibling)
+              apply_terms_agreement!(sibling, form: form)
+
+              unless sibling.save
+                @sibling_errors = sibling.errors.full_messages
+                raise ActiveRecord::Rollback
+              end
+
+              sibling_tickets << sibling
+            end
+
+            true
+          end
+        rescue VehicleRegistrationAssignment::Error => e
+          return render json: {
+            success: false,
+            code: 'vehicle_registration_conflict',
+            message: e.message
+          }, status: :unprocessable_content
         rescue ActiveRecord::RecordNotUnique
           # The model validation races under concurrent submits; the partial
           # unique index does not. Same message either way.
@@ -269,15 +497,20 @@ module V1
 
         if saved
           handle_ticket_application!(registration_form: form, ticket: ticket)
+          assign_bundle_table!(ticket: ticket, bundle: bundle) if bundle.present?
+          send_batched_payment_pending_notifications([ticket, *sibling_tickets])
+          send_group_confirmation(ticket) if batch_emails && ticket.paid? && ticket.purchased?
 
           render json: {
             success: true,
-            data: serialize_ticket(ticket, ticket.ticket_type)
+            data: serialize_ticket(ticket, ticket.ticket_type).merge(
+              group_public_ids: [ticket.public_id, *sibling_tickets.map(&:public_id)]
+            )
           }, status: :created
         else
           render json: {
             success: false,
-            errors: ticket.errors.full_messages
+            errors: @sibling_errors || ticket.errors.full_messages
           }, status: :unprocessable_content
         end
       end
@@ -290,7 +523,7 @@ module V1
 
         # Filter by form_slug if provided
         if params[:form_slug].present?
-          form = event.registration_forms.active.find_by(slug: params[:form_slug])
+          form = event.registration_forms.find_by(slug: params[:form_slug])
           unless form
             return render json: {
               success: false,
@@ -307,7 +540,6 @@ module V1
 
         ticket_types = available_ticket_types.map do |tt|
           rule = rule_by_ticket_type_id[tt.id]
-          sold_count = tt.tickets.where(payment_status: :paid).where.not(status: %i[canceled refunded]).count
 
           {
             id: tt.id,
@@ -315,13 +547,15 @@ module V1
             price: tt.current_price,
             original_price: tt.price,
             current_tier: tt.active_tier&.label,
-            available: tt.quantity.nil? || sold_count < tt.quantity,
-            remaining_slots: tt.quantity.nil? ? nil : [tt.quantity - sold_count, 0].max,
+            tier_ends_at: tt.active_tier&.ends_at,
+            available: tt.available_for_purchase?,
+            remaining_slots: tt.remaining_quantity,
             custom_fields_data: tt.custom_fields_data,
             custom_labels_data: rule&.custom_labels_data || [],
             registration_mode: rule&.registration_mode || 'single',
             min_attendees: rule&.min_attendees || 1,
-            max_attendees: rule&.max_attendees
+            max_attendees: rule&.max_attendees,
+            allow_multiple_tickets_per_email: event.allow_multiple_tickets_per_email
           }
         end
 
@@ -329,6 +563,51 @@ module V1
       end
 
       private
+
+      # `attendees_payload` (group registration mode) is [primary, *extra_attendees].
+      # The primary entry is already handled by registration_params / the main
+      # ticket build — this returns just the extra attendees (index 1..) plus
+      # any validation error, so the caller can create one Ticket per extra seat.
+      def parse_group_attendees
+        raw = params[:attendees_payload]
+        return [[], nil] if raw.blank?
+
+        parsed = raw.is_a?(String) ? JSON.parse(raw) : raw
+        return [[], nil] unless parsed.is_a?(Array) && parsed.size > 1
+
+        extras = parsed.drop(1).map do |entry|
+          {
+            attendee_name: entry['attendee_name'].to_s.strip,
+            attendee_email: entry['attendee_email'].to_s.strip.downcase,
+            attendee_phone: entry['attendee_phone'].to_s.strip,
+            role: entry['role'].to_s.strip.presence
+          }
+        end
+
+        if extras.any? { |a| a[:attendee_name].blank? || a[:attendee_email].blank? || a[:attendee_phone].blank? }
+          return [[], 'Each attendee needs a name, email, and phone number']
+        end
+
+        [extras, nil]
+      rescue JSON::ParserError
+        [[], 'Invalid attendees data']
+      end
+
+      # held_ticket_count (paid only) mirrors TicketType#available_for_purchase? —
+      # same looseness against concurrent pending submissions, just extended to
+      # check N seats instead of 1.
+      def ticket_type_has_capacity?(ticket_type:, seats_needed:)
+        return true if ticket_type.quantity.blank?
+
+        ticket_type.held_ticket_count + seats_needed <= ticket_type.quantity
+      end
+
+      def vehicle_registration_ticket_type?(event:, ticket_type:)
+        forms = event.registration_forms
+                     .joins(:registration_form_ticket_types)
+                     .where(registration_form_ticket_types: { ticket_type_id: ticket_type.id })
+        forms.any? { |form| VehicleRegistrationRules.supported?(form) }
+      end
 
       def registration_params
         permitted = params.permit(
@@ -348,8 +627,90 @@ module V1
         permitted
       end
 
+      def edit_params
+        permitted = params.permit(:attendee_name, :attendee_phone, :role, custom_fields_data: {})
+        permitted[:custom_fields_data] = permitted[:custom_fields_data].to_h if permitted[:custom_fields_data]
+        permitted
+      end
+
+      def render_lookup_not_found
+        render json: { success: false, message: RegistrationUpdateService::NOT_FOUND_MESSAGE }, status: :not_found
+      end
+
+      def render_registration_closed
+        render json: { success: false, message: 'Registration is not open for this event' }, status: :unprocessable_content
+      end
+
+      def render_form_closed
+        render json: { success: false, message: 'Registration is closed for this form' }, status: :unprocessable_content
+      end
+
+      def serialize_edit_ticket(ticket)
+        vehicle = ticket.vehicle_registration
+        {
+          public_id: ticket.public_id,
+          form_slug: vehicle.registration_form.slug,
+          form_name: vehicle.registration_form.name,
+          attendee_name: ticket.attendee_name,
+          attendee_phone: ticket.attendee_phone,
+          role: ticket.role,
+          ticket_type_id: ticket.ticket_type_id,
+          ticket_type_name: ticket.ticket_type.name,
+          custom_fields_data: ticket.custom_fields_data || {},
+          plate: vehicle.plate,
+          registered_roles: vehicle.active_tickets.where.not(id: ticket.id).pluck(:role),
+          documents: serialize_documents(ticket)
+        }
+      end
+
       def indemnity_params
         params.fetch(:indemnity, {}).permit(:accepted, :method, :signed_name)
+      end
+
+      def terms_agreement_params
+        terms = params[:terms_agreement]
+        return ActionController::Parameters.new unless terms.respond_to?(:permit)
+
+        terms.permit(
+          :accepted,
+          :method,
+          :acknowledged_name,
+          :terms_version
+        )
+      end
+
+      def terms_agreement_error(form:)
+        vehicle_form = vehicle_registration_form?(form)
+        if params[:terms_agreement].blank?
+          return vehicle_form ? 'Registration terms must be accepted' : nil
+        end
+
+        agreement = terms_agreement_params
+        return 'Registration terms must be accepted' unless ActiveModel::Type::Boolean.new.cast(agreement[:accepted])
+        return 'A full legal name is required for the terms acknowledgement' if agreement[:acknowledged_name].to_s.strip.blank?
+        return 'Registration terms version is required' if agreement[:terms_version].to_s.strip.blank?
+        if vehicle_form && agreement[:method].to_s != VehicleRegistrationRules::TERMS_METHOD
+          return 'A typed-name terms acknowledgement is required'
+        end
+        if vehicle_form && agreement[:terms_version].to_s.strip != VehicleRegistrationRules::TERMS_VERSION
+          return 'This registration uses an outdated terms version'
+        end
+
+        nil
+      end
+
+      def required_documents_error(form:)
+        return unless vehicle_registration_form?(form)
+
+        provided_keys = params[:documents].respond_to?(:keys) ? params[:documents].keys.map(&:to_s) : []
+        missing_keys = VehicleRegistrationRules::REQUIRED_DOCUMENT_KEYS - provided_keys
+        return if missing_keys.empty?
+
+        "Registration requires these documents: #{missing_keys.join(', ')}"
+      end
+
+      def vehicle_registration_form?(form)
+        VehicleRegistrationRules.supported?(form)
       end
 
       def apply_indemnity!(ticket)
@@ -365,6 +726,22 @@ module V1
         )
       end
 
+      def apply_terms_agreement!(ticket, form:)
+        return unless ActiveModel::Type::Boolean.new.cast(terms_agreement_params[:accepted])
+
+        vehicle_form = vehicle_registration_form?(form)
+
+        ticket.custom_fields_data = (ticket.custom_fields_data || {}).merge(
+          '_terms_agreement' => {
+            'accepted' => true,
+            'method' => vehicle_form ? VehicleRegistrationRules::TERMS_METHOD : terms_agreement_params[:method].to_s.presence,
+            'acknowledged_name' => terms_agreement_params[:acknowledged_name].to_s.strip.presence,
+            'terms_version' => vehicle_form ? VehicleRegistrationRules::TERMS_VERSION : terms_agreement_params[:terms_version].to_s.strip.presence,
+            'accepted_at' => Time.current.utc.iso8601 # server clock, never client-supplied
+          }.compact
+        )
+      end
+
       def serialize_ticket(ticket, ticket_type)
         {
           ticket_id: ticket.id,
@@ -376,6 +753,7 @@ module V1
           ticket_type: ticket_type.name,
           price: ticket_type.current_price,
           payment_status: ticket.payment_status,
+          waiting_list: ticket.waiting_list,
           custom_fields_data: ticket.custom_fields_data,
           qr_code_data: ticket.public_id,
           documents: serialize_documents(ticket)
@@ -406,7 +784,9 @@ module V1
           ticket_type_id: ticket.ticket_type_id,
           price: ticket.ticket_type&.current_price || 0,
           payment_status: ticket.payment_status,
+          payment_proof_uploaded: ticket.ticket_payment&.payment_proof&.attached? || false,
           status: ticket.status,
+          waiting_list: ticket.waiting_list,
           created_at: ticket.created_at,
           custom_fields_data: ticket.custom_fields_data || {},
           qr_code_data: ticket.public_id
@@ -418,6 +798,13 @@ module V1
 
         setting = registration_form.registration_form_rsvp_setting
         return unless setting&.enabled?
+
+        # Approval workflow reviews free (RM0) tickets only; paid tickets on
+        # the same form stay on the payment-proof flow. Creating an
+        # application for them would also suppress their payment-pending
+        # email (send_payment_pending_notification skips tickets with an
+        # application).
+        return unless ticket.ticket_type.current_price.zero?
 
         application = ticket.ticket_application || ticket.create_ticket_application!(
           registration_form: registration_form,
@@ -433,6 +820,62 @@ module V1
             related: application
           )
         end
+      end
+
+      # One email per ticket covering "payment pending" regardless of whether
+      # proof is uploaded now or later — avoids a second send at upload time
+      # (spam risk). Skipped for waitlist/approval flows (they already get
+      # TicketApplicationMailer#acknowledgement) and exhibitor ticket types.
+      def send_payment_pending_notification(ticket)
+        return if ticket.paid? || ticket.waiting_list || ticket.ticket_application.present?
+        return if ticket.exhibitor_ticket_type? || ticket.attendee_email.blank?
+
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'TicketMailer',
+          mailer_action: 'payment_pending_email',
+          args: [ticket],
+          related: ticket,
+          dedupe: true
+        )
+      end
+
+      # Group submissions let each attendee use a different email, so siblings
+      # aren't grouped by registration_batch_id here — recipients who share
+      # an address get one batched email; everyone else gets their own,
+      # same as before.
+      def send_batched_payment_pending_notifications(tickets)
+        tickets.group_by(&:attendee_email).each_value do |recipient_tickets|
+          representative = recipient_tickets.first
+          next if representative.attendee_email.blank?
+          next if representative.paid? || representative.waiting_list || representative.ticket_application.present?
+          next if representative.exhibitor_ticket_type?
+
+          if recipient_tickets.size > 1
+            EmailDelivery::AuditedDelivery.deliver_later(
+              mailer_name: 'TicketMailer',
+              mailer_action: 'group_payment_pending_email',
+              args: [recipient_tickets],
+              related: representative,
+              dedupe: true
+            )
+          else
+            send_payment_pending_notification(representative)
+          end
+        end
+      end
+
+      # Counterpart to the per-ticket suppression above: auto-paid (free) group
+      # submissions get a single email carrying every QR.
+      def send_group_confirmation(ticket)
+        return if ticket.attendee_email.blank?
+
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'TicketMailer',
+          mailer_action: 'group_confirmation_email',
+          args: [ticket],
+          related: ticket,
+          metadata: { source: 'public_group_registration', event_id: ticket.event_id }
+        )
       end
 
       def delegate_approval_enabled_for_form?(form)
@@ -543,17 +986,21 @@ module V1
         event.slug.to_s.strip.downcase.start_with?(BorneoExpoTicketUpgradeService::BORNEO_EVENT_SLUG_PREFIX)
       end
 
+      # Free (RM0) tickets are paid at registration. The one exception is a
+      # group member whose leader still owes money on a priced ticket: they
+      # wait until the leader pays. A fully free group has nothing to wait for.
       def auto_paid_ticket?(event:, ticket:, ticket_type:)
         return false unless ticket_type.current_price.zero?
-        return true if ticket.registered_by_email.blank?
 
         leader_email = ticket.registered_by_email.to_s.strip.downcase
-        return false if leader_email.blank?
+        return true if leader_email.blank?
 
-        event.tickets
-             .where(payment_status: :paid, status: :purchased)
-             .where('LOWER(attendee_email) = ? OR LOWER(registered_by_email) = ?', leader_email, leader_email)
-             .exists?
+        !event.tickets
+              .joins(:ticket_type)
+              .where('ticket_types.price > 0')
+              .where.not(payment_status: :paid)
+              .where('LOWER(tickets.attendee_email) = ?', leader_email)
+              .exists?
       end
 
       def apply_bundle_payment_state!(ticket:, bundle:)
@@ -565,6 +1012,17 @@ module V1
           ticket.status = 'pending_payment'
           ticket.payment_status = 'pending'
         end
+      end
+
+      # Every ticket registered through a bundle link with a table attached
+      # inherits that table automatically. Table capacity/uniqueness is
+      # still enforced by TableAssignment's own validations — if the table
+      # is already full, the ticket itself still succeeds; it's just left
+      # unassigned for the organizer to sort out manually.
+      def assign_bundle_table!(ticket:, bundle:)
+        return if bundle.plan_object_id.blank?
+
+        TableAssignment.create(ticket: ticket, plan_object_id: bundle.plan_object_id)
       end
 
       def resolve_pass_bundle(event:, form:, ticket_type:)

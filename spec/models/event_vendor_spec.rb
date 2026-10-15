@@ -47,6 +47,23 @@ RSpec.describe EventVendor, type: :model do
     end
   end
 
+  describe 'Exhibitor active booking scope' do
+    let(:event) { create(:event) }
+    let!(:active_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+    let!(:paid_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+    let!(:cancelled_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+    let!(:exhibitor_without_kit) { create(:exhibitor, event: event) }
+
+    before do
+      paid_exhibitor.exhibitor_kits.update_all(booking_status: ExhibitorKit.booking_statuses[:paid])
+      cancelled_exhibitor.exhibitor_kits.update_all(booking_status: ExhibitorKit.booking_statuses[:cancelled])
+    end
+
+    it 'returns exhibitors with at least one active or paid kit' do
+      expect(Exhibitor.where(event: event).with_active_kit).to contain_exactly(active_exhibitor, paid_exhibitor)
+    end
+  end
+
   describe '.create_for_event' do
     let(:vendor) { create(:user, :vendor) }
 

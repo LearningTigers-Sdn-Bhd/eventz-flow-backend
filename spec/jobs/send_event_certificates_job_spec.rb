@@ -7,6 +7,7 @@ RSpec.describe SendEventCertificatesJob, type: :job do
   let!(:ticket_with_email) { create(:ticket, event: event, attendee_email: 'a@example.com') }
   let!(:ticket_checked_in) { create(:ticket, :checked_in, event: event, attendee_email: 'b@example.com') }
   let!(:ticket_no_email)   { create(:ticket, event: event, attendee_email: nil) }
+  let!(:ticket_waiting_list) { create(:ticket, event: event, attendee_email: 'c@example.com', waiting_list: true) }
 
   describe '#perform' do
     it 'enqueues a delivery per eligible ticket (all audience)' do
@@ -41,6 +42,16 @@ RSpec.describe SendEventCertificatesJob, type: :job do
       }.not_to have_enqueued_job(EmailDeliveryJob)
     end
 
+    it 'skips tickets whose own template is not ready, even if the default is' do
+      committee = create(:ticket_type, event: event)
+      create(:certificate_template, event: event, name: 'Jawatankuasa', ticket_type_ids: [committee.id]) # draft
+      create(:ticket, event: event, ticket_type: committee, attendee_email: 'd@example.com')
+
+      expect {
+        described_class.new.perform(event.id, 'all')
+      }.to have_enqueued_job(EmailDeliveryJob).exactly(2).times
+    end
+
     it 'does nothing when the event is missing' do
       expect {
         described_class.new.perform(-1, 'all')
@@ -48,10 +59,90 @@ RSpec.describe SendEventCertificatesJob, type: :job do
     end
   end
 
+  describe '.deliver_after_feedback' do
+    before { template.update!(require_feedback: true) }
+
+    it 'sends when the guest is qualified (or the event has no attendance rule)' do
+      allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(true)
+
+      expect { described_class.deliver_after_feedback(ticket_with_email) }
+        .to have_enqueued_job(EmailDeliveryJob).once
+    end
+
+    it 'holds the certificate back when the guest did not meet the mandatory sessions' do
+      allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(false)
+
+      expect { described_class.deliver_after_feedback(ticket_with_email) }
+        .not_to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    context 'with an auto-send filter' do
+      before do
+        allow_any_instance_of(Rfid::Attendance).to receive(:qualified?).and_return(true)
+        template.update!(auto_send_filter: { 'key' => 'category', 'values' => %w[2 3] })
+      end
+
+      it 'sends when the registration answer matches' do
+        ticket_with_email.update!(custom_fields_data: { 'category' => '2' })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .to have_enqueued_job(EmailDeliveryJob).once
+      end
+
+      it 'holds back when the registration answer does not match' do
+        ticket_with_email.update!(custom_fields_data: { 'category' => '5' })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .not_to have_enqueued_job(EmailDeliveryJob)
+      end
+    end
+  end
+
   describe '.recipient_scope' do
     it 'excludes blank-email tickets' do
       ids = described_class.recipient_scope(event, 'all').pluck(:id)
       expect(ids).to contain_exactly(ticket_with_email.id, ticket_checked_in.id)
+    end
+
+    it 'excludes waiting-list tickets' do
+      ids = described_class.recipient_scope(event, 'all').pluck(:id)
+      expect(ids).not_to include(ticket_waiting_list.id)
+    end
+
+    it 'limits the rfid_qualified audience to tickets that met the RFID session rules' do
+      allow(Rfid::Attendance).to receive(:qualified_ticket_ids).with(event).and_return([ticket_checked_in.id])
+
+      ids = described_class.recipient_scope(event, 'rfid_qualified').pluck(:id)
+
+      expect(ids).to eq([ticket_checked_in.id])
+    end
+
+    it 'limits the sessions_done audience to guests who met every mandatory session' do
+      allow(Rfid::Attendance).to receive(:sessions_done_ticket_ids).with(event).and_return([ticket_with_email.id])
+
+      ids = described_class.recipient_scope(event, 'sessions_done').pluck(:id)
+
+      expect(ids).to eq([ticket_with_email.id])
+    end
+
+    it 'sessions_or_feedback includes guests who met sessions or answered feedback' do
+      allow(Rfid::Attendance).to receive(:sessions_done_ticket_ids).with(event).and_return([ticket_with_email.id])
+      allow(described_class).to receive(:feedback_ticket_ids).with(event)
+                                                             .and_return(double(pluck: [ticket_checked_in.id]))
+
+      ids = described_class.recipient_scope(event, 'sessions_or_feedback').pluck(:id)
+
+      expect(ids).to contain_exactly(ticket_with_email.id, ticket_checked_in.id)
+    end
+
+    it 'skip_sent drops guests who already have a delivered certificate, on any audience' do
+      create(:email_delivery, related: ticket_with_email, mailer_name: 'CertificateMailer',
+                              mailer_action: 'certificate_email', status: 'delivered')
+
+      ids = described_class.recipient_scope(event, 'all', [], skip_sent: true).pluck(:id)
+
+      expect(ids).to contain_exactly(ticket_checked_in.id)
+      expect(described_class.recipient_scope(event, 'all').pluck(:id)).to include(ticket_with_email.id)
     end
 
     context 'unsent audience' do

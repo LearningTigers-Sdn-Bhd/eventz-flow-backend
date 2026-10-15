@@ -1,6 +1,23 @@
 require 'rails_helper'
 
 RSpec.describe Event, type: :model do
+  describe '#registration_path_for' do
+    it 'defaults to /register/:slug when no template is set' do
+      event = build(:event, registration_path_template: nil)
+      expect(event.registration_path_for('delegate')).to eq('/register/delegate')
+    end
+
+    it 'uses the template verbatim when it has no {slug} placeholder' do
+      event = build(:event, registration_path_template: '/luncheon-talk-registration?form=delegate')
+      expect(event.registration_path_for('delegate')).to eq('/luncheon-talk-registration?form=delegate')
+    end
+
+    it 'substitutes {slug} in the template when present' do
+      event = build(:event, registration_path_template: '/register/{slug}/custom')
+      expect(event.registration_path_for('delegate')).to eq('/register/delegate/custom')
+    end
+  end
+
   describe 'associations' do
     it { should have_many(:event_assignments).dependent(:destroy) }
     it { should have_many(:staff).through(:event_assignments) }
@@ -63,6 +80,18 @@ RSpec.describe Event, type: :model do
   describe 'enums' do
     it { should define_enum_for(:status).with_values(draft: 0, published: 1, cancelled: 2, completed: 3) }
     it { should define_enum_for(:payment_status).with_values(unpaid: 0, paid: 1, waived: 2) }
+  end
+
+  describe 'multiple_scan_mode' do
+    it 'defaults to unlimited' do
+      expect(create(:event).multiple_scan_mode).to eq('unlimited')
+    end
+
+    it 'exposes prefixed predicates' do
+      event = create(:event, multiple_scan_mode: :per_location)
+      expect(event.scan_mode_per_location?).to be true
+      expect(event.scan_mode_per_day?).to be false
+    end
   end
 
   describe 'soft delete scopes' do
@@ -249,6 +278,49 @@ RSpec.describe Event, type: :model do
         ticket.reload
         # The 'company' key remains in ticket data even though label was removed
         expect(ticket.custom_fields_data).to eq({ 'position' => 'Manager', 'company' => 'Acme' })
+      end
+    end
+  end
+
+  describe '#sync_custom_labels_to_exhibitor_kits' do
+    let(:event) { create(:event, exhibitor_labels_data: { 'product_description' => 'Product Description' }) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+
+    context 'when renaming a label' do
+      let!(:kit) do
+        create(:exhibitor_kit, event_vendor: exhibitor,
+                                custom_fields_data: { 'product_description' => 'Handmade soap' })
+      end
+
+      it 'updates exhibitor_kit custom_fields_data keys' do
+        event.update!(exhibitor_labels_data: { 'product_desc' => 'Product Desc' })
+
+        kit.reload
+        expect(kit.custom_fields_data).to eq({ 'product_desc' => 'Handmade soap' })
+      end
+    end
+
+    context 'when labels are not renamed' do
+      let!(:kit) do
+        create(:exhibitor_kit, event_vendor: exhibitor,
+                                custom_fields_data: { 'product_description' => 'Handmade soap' })
+      end
+
+      it 'does not change exhibitor_kit custom_fields_data' do
+        event.update!(exhibitor_labels_data: { 'product_description' => 'Product Description (v2)' })
+
+        kit.reload
+        expect(kit.custom_fields_data).to eq({ 'product_description' => 'Handmade soap' })
+      end
+    end
+
+    context 'when exhibitor_kit has empty custom_fields_data' do
+      let!(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, custom_fields_data: {}) }
+
+      it 'does not raise an error' do
+        expect do
+          event.update!(exhibitor_labels_data: { 'product_desc' => 'Product Desc' })
+        end.not_to raise_error
       end
     end
   end

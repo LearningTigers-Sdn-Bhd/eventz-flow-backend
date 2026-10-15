@@ -15,6 +15,14 @@ class PublicExhibitorBookingPolicy < ApplicationPolicy
     owned? && record.unpaid? && record.booking_active?
   end
 
+  def destroy?
+    owned? && record.unpaid? && record.booking_active?
+  end
+
+  def purge?
+    owned? && record.booking_cancelled?
+  end
+
   class Scope < ApplicationPolicy::Scope
     def resolve
       return scope.none unless user&.active?

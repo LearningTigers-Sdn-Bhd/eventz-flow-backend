@@ -41,6 +41,103 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'POST /v1/events/:event_id/exhibitor_kits/:id/resync_team_members' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true, use_ticket: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, company_name: 'Correct Co') }
+
+    it 'reapplies the kit company name to stale member tickets and reports the outcome' do
+      kit
+      member = kit.exhibitor_team_members.first
+      member.attendee.update!(custom_fields_data: member.attendee.custom_fields_data.to_h.merge('company' => 'Old Typo Co'))
+
+      post "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/resync_team_members", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      expect(body['updated'].map { |r| r['id'] }).to include(member.id)
+      expect(member.attendee.reload.custom_fields_data['company']).to eq('Correct Co')
+    end
+
+    it 'rejects a user with no authorization over the kit' do
+      other_user = create(:user)
+
+      post "/v1/events/#{event.id}/exhibitor_kits/#{kit.id}/resync_team_members", headers: auth_headers(other_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'GET /v1/events/:event_id/exhibitor_kits/export' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:member_user) { create(:user, :member) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let!(:kit) { create(:exhibitor_kit, event_vendor: create(:exhibitor, event: event)) }
+
+    it 'downloads a multi-sheet Excel workbook for an authorized organizer' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to eq(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+      expect(response.headers['Content-Disposition']).to include('.xlsx')
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      expect(workbook.sheets).to eq(['Summary', 'Registered Exhibitor', 'Exhibitor Crew'])
+      expect(workbook.sheet('Registered Exhibitor').cell(2, 1)).to eq(kit.company_name)
+      expect(workbook.sheet('Exhibitor Crew').cell(2, 1)).to eq(kit.company_name)
+      tempfile.close!
+    end
+
+    it 'downloads a CSV of registered exhibitor kits when format=csv' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", params: { format: 'csv' },
+                                                            headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Content-Type']).to include('text/csv')
+      expect(response.headers['Content-Disposition']).to include('.csv')
+
+      rows = CSV.parse(response.body)
+      expect(rows.first).to eq(ExhibitorKitReportRows::HEADERS)
+      expect(rows.second.first).to eq(kit.company_name)
+    end
+
+    it 'includes booth pricing tiers with zero bookings in the Summary breakdown' do
+      unbooked = create(:exhibitor_booth_price, event: event, label: 'Untouched Tier')
+
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      summary = workbook.sheet('Summary')
+      row = (1..summary.last_row).find { |r| summary.cell(r, 1) == unbooked.label }
+      expect(row).to be_present
+      expect(summary.cell(row, 3)).to eq(0) # Booked column
+      tempfile.close!
+    end
+
+    it 'rejects users without event management access' do
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(member_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'rejects export when exhibitor kits are not enabled for the event' do
+      disabled_event = create(:event, use_exhibitor_kit: false)
+
+      get "/v1/events/#{disabled_event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
   path '/v1/events/{event_id}/exhibitor_kits' do
     parameter name: 'event_id', in: :path, type: :string, description: 'ID of the event'
 
@@ -429,6 +526,39 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
     end
   end
 
+  describe 'GET /v1/events/:event_id/exhibitor_kits/:id batch voucher display' do
+    let(:admin_user) { create(:user, :org_owner) }
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:exhibitor) { create(:exhibitor, event: event) }
+    let(:voucher) { create(:exhibitor_voucher, event: event, discount_value: 10) }
+    let(:first_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+    let(:sibling_kit) do
+      create(:exhibitor_kit, event_vendor: exhibitor,
+        custom_fields_data: { 'booking_batch_id' => 'batch-1' })
+    end
+
+    it 'shows the shared voucher on every kit in the batch, not just the redeeming kit' do
+      voucher.update!(status: :redeemed, redeemed_by_exhibitor_kit: first_kit, redeemed_at: Time.current)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{sibling_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to eq(voucher.code)
+    end
+
+    it 'returns nil when the kit has no batch or voucher' do
+      solo_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/#{solo_kit.id}", headers: auth_headers(admin_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['exhibitor_voucher_code']).to be_nil
+    end
+  end
+
   describe 'DELETE /v1/events/:event_id/exhibitor_kits/:id' do
     let(:event) { create(:event, use_exhibitor_kit: true) }
     let(:organizer) { create(:user, :organizer) }
@@ -513,6 +643,25 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(false)
     end
 
+    it 'removes an empty exhibitor assignment after hard-deleting its final kit' do
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(EventVendor.exists?(exhibitor.id)).to be(false)
+    end
+
+    it 'keeps the exhibitor assignment when another kit remains' do
+      sibling_kit = create(:exhibitor_kit, event_vendor: exhibitor)
+
+      delete "/v1/events/#{event.id}/exhibitor_kits/#{exhibitor_kit.id}/force_delete",
+        headers: { 'Authorization' => "Bearer #{jwt_token(org_owner)}" }
+
+      expect(response).to have_http_status(:no_content)
+      expect(ExhibitorKit.exists?(sibling_kit.id)).to be(true)
+      expect(EventVendor.exists?(exhibitor.id)).to be(true)
+    end
+
     it 'nullifies the audit link when hard-deleting a kit that redeemed a voucher' do
       voucher = create(:exhibitor_voucher, event: event, status: :redeemed,
         redeemed_by_exhibitor_kit: exhibitor_kit, redeemed_at: Time.current)
@@ -543,6 +692,101 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(ExhibitorKit.exists?(exhibitor_kit.id)).to be(true)
+    end
+  end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import_template' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    get('download exhibitor kit import template') do
+      tags 'Exhibitor Kits'
+      produces 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      security [{ bearerAuth: [] }]
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+
+      response(200, 'template downloaded') do
+        let(:organizer) { create(:user, :organizer) }
+        let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+    end
+  end
+
+  path '/v1/events/{event_id}/exhibitor_kits/import' do
+    parameter name: :event_id, in: :path, type: :string, description: 'ID of the event'
+
+    post('import exhibitor kits from Excel') do
+      tags 'Exhibitor Kits'
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      security [{ bearerAuth: [] }]
+      parameter name: :file, in: :formData, type: :file, required: true,
+                description: 'Excel workbook created from the exhibitor kit import template'
+      parameter name: :dry_run, in: :query, type: :boolean, required: false,
+                description: 'Validate rows without persisting bookings'
+
+      let(:event) { create(:event, use_exhibitor_kit: true) }
+      let(:event_id) { event.id }
+      let(:organizer) { create(:user, :organizer) }
+      let(:Authorization) { "Bearer #{jwt_token(organizer)}" }
+      let(:zone) { create(:exhibitor_zone, event: event, zone: 'Hall A', quota: 10) }
+      let!(:booth_price) do
+        create(:exhibitor_booth_price, event: event, exhibitor_zone: zone,
+          booth_type: 'Standard', label: 'Standard 3x3', price: 500, quota: 5)
+      end
+      let(:file) do
+        require 'caxlsx'
+
+        package = Axlsx::Package.new
+        package.workbook.add_worksheet(name: 'Exhibitors') do |sheet|
+          sheet.add_row(ExhibitorKitImportTemplateService::FIXED_HEADERS)
+          sheet.add_row([
+            'swagger-vendor@example.com', 'Swagger Vendor', '0123456789', 'Acme', 'Addr',
+            'Jane', '0198765432', '', 'Standard', 'Hall A', 'Standard 3x3', '', nil, 1, 500, 'unpaid'
+          ])
+        end
+        tempfile = Tempfile.new(['import', '.xlsx'])
+        tempfile.binmode
+        package.serialize(tempfile.path)
+        tempfile.rewind
+        Rack::Test::UploadedFile.new(tempfile.path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      end
+
+      response(200, 'import completed') do
+        schema type: :object,
+               properties: {
+                 total: { type: :integer },
+                 created: { type: :object },
+                 skipped: { type: :object },
+                 errors: { type: :object }
+               },
+               required: %w[total created skipped errors]
+
+        run_test!
+      end
+
+      response(403, 'forbidden') do
+        let(:vendor) { create(:user, :vendor) }
+        let(:Authorization) { "Bearer #{jwt_token(vendor)}" }
+
+        run_test!
+      end
+
+      response(422, 'file is missing') do
+        let(:file) { nil }
+
+        run_test!
+      end
     end
   end
 end

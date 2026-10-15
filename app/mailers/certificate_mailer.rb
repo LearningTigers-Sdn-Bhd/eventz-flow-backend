@@ -2,7 +2,7 @@ class CertificateMailer < ApplicationMailer
   def certificate_email(ticket)
     @ticket = ticket
     @event = ticket.event
-    @template = @event.certificate_template
+    @template = @event.certificate_template_for(ticket)
     set_email_config
 
     pdf = CertificatePdfGenerator.new(@template, ticket).render
@@ -27,8 +27,8 @@ class CertificateMailer < ApplicationMailer
   end
 
   def sender_from
-    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    address = email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS
     name = email_setting&.sender_name.presence || @event.title
-    "#{name} <#{address}>"
+    format_sender(name, address)
   end
 end

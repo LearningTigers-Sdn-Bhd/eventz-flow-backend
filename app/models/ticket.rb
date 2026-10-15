@@ -4,18 +4,23 @@ class Ticket < ApplicationRecord
   # Custom-field keys that must be unique per event (backed by partial unique
   # indexes idx_tickets_unique_* — the validation is the readable message, the
   # index is the race-proof backstop).
-  UNIQUE_CUSTOM_FIELD_KEYS = %w[membership_no ic_passport_no].freeze
+  UNIQUE_CUSTOM_FIELD_KEYS = %w[membership_no ic_passport_no no_ic].freeze
 
   # Allowed document slots for public registration uploads.
   DOCUMENT_KEYS = %w[passport_copy photo_1 photo_2 indemnity_form signature].freeze
 
   # Server-written custom_fields_data keys — stripped from all client input.
-  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity].freeze
+  RESERVED_CUSTOM_FIELD_KEYS = %w[_indemnity _terms_agreement car_registration_number].freeze
 
   # --- Callbacks ---
   # Ensure public_id is set before any presence validations run on create.
   before_validation :set_public_id, on: :create
   before_validation :normalize_attendee_fields
+  before_validation :lock_event_membership_uniqueness
+  before_save :lock_event_membership_uniqueness
+  before_validation :mirror_event_multi_ticket_flag
+  after_update :sync_vehicle_registration_category, if: :saved_change_to_ticket_type_id?
+  after_destroy :destroy_orphaned_vehicle_registration, if: :vehicle_registration_id?
 
   # --- Associations ---
   # In modern Rails, belongs_to implies presence validation by default.
@@ -23,6 +28,7 @@ class Ticket < ApplicationRecord
   belongs_to :event
   belongs_to :ticket_type
   belongs_to :pass_bundle, optional: true
+  belongs_to :vehicle_registration, optional: true
   belongs_to :user, optional: true
   # belongs_to :order, optional: true
   belongs_to :scanned_by, class_name: 'User', foreign_key: 'scanned_by_id', optional: true
@@ -42,6 +48,7 @@ class Ticket < ApplicationRecord
   has_many :voucher_redemption_logs, as: :redeemer, dependent: :destroy
   has_many :event_leads, as: :leadable, dependent: :destroy
   has_many :event_reminder_logs, dependent: :destroy
+  has_many :scan_logs, as: :scannable, dependent: :destroy
   
   has_many_attached :registration_documents, dependent: :purge_later
 
@@ -96,6 +103,7 @@ class Ticket < ApplicationRecord
   after_commit :send_confirmation_email, if: :should_send_confirmation?
 
   attr_accessor :skip_webhooks
+  attr_accessor :suppress_confirmation_email
 
   # --- Class Methods ---
   def self.total_revenue_cents
@@ -134,18 +142,75 @@ class Ticket < ApplicationRecord
     end
   end
 
+  def exhibitor_ticket_type?
+    ticket_type&.name.to_s.match?(/exhibitor/i)
+  end
+
+  # Uploaded documents (IC/passport copy, selfie, etc.) for admin display.
+  def registration_documents_data
+    registration_documents.map do |attachment|
+      {
+        key: attachment.blob.metadata['document_key'],
+        filename: attachment.blob.filename.to_s,
+        url: Rails.application.routes.url_helpers.rails_blob_url(attachment, only_path: true)
+      }
+    end
+  end
+
+  # Which sub-form (e.g. Expedition A) the participant registered under, when
+  # the ticket is tied to a vehicle registration.
+  def vehicle_registration_data
+    return nil unless vehicle_registration
+
+    {
+      plate: vehicle_registration.plate,
+      registration_form_id: vehicle_registration.registration_form_id,
+      registration_form_name: vehicle_registration.registration_form&.name,
+      registration_form_slug: vehicle_registration.registration_form&.slug
+    }
+  end
+
   # --- Private Methods ---
   private
+
+  def sync_vehicle_registration_category
+    VehicleRegistrationTicketTypeSync.call(self)
+  end
+
+  # Hard-deleting the last ticket on a car would strand its row and keep the
+  # plate blocked. Unscoped: a soft-deleted ticket still owns the car. A car
+  # can be shared (driver + co-driver), so only the last reference cleans up.
+  def destroy_orphaned_vehicle_registration
+    return if Ticket.unscoped.where(vehicle_registration_id: vehicle_registration_id).exists?
+
+    VehicleRegistration.where(id: vehicle_registration_id).destroy_all
+  end
 
   def set_public_id
     # Generates a UUID only if it hasn't been set by the database or another source.
     self.public_id ||= SecureRandom.uuid
   end
 
-  def unique_custom_fields_within_event
+  def mirror_event_multi_ticket_flag
+    return if event.blank?
+
+    self.allow_multiple_tickets_per_email = event.allow_multiple_tickets_per_email?
+  end
+
+  # Hold a shared event-row lock through the save so a concurrent toggle cannot
+  # leave this ticket with an outdated flag outside the unique index.
+  def lock_event_membership_uniqueness
     return if event_id.blank?
 
+    self.require_unique_membership_numbers = Event.unscoped.where(id: event_id)
+                                                  .lock('FOR SHARE')
+                                                  .pick(:require_unique_membership_numbers)
+  end
+
+  def unique_custom_fields_within_event
+    return if event_id.blank?
     UNIQUE_CUSTOM_FIELD_KEYS.each do |key|
+      next if key == 'membership_no' ? !require_unique_membership_numbers? : allow_multiple_tickets_per_email?
       value = custom_fields_data.to_h[key].to_s.strip
       next if value.blank?
 
@@ -273,6 +338,12 @@ class Ticket < ApplicationRecord
       if event_type == 'ticket.scanned'
         payload[:ticket][:checked_in] = checked_in
         payload[:ticket][:check_in_at] = check_in_at&.iso8601
+        # Which app checked the guest in (`rfid_desk` for RfiDex). Read from
+        # the persisted scan, because a thread-local set in the controller is
+        # long gone by the time this after_commit callback runs. An import can
+        # set checked_in without any scan, and then there is no source to name.
+        source = scan_logs.order(:scanned_at, :id).first&.source
+        payload[:scan_source] = source if source.present?
       end
     end
 
@@ -294,6 +365,7 @@ class Ticket < ApplicationRecord
   end
 
   def should_send_confirmation?
+    return false if suppress_confirmation_email
     return false if attendee_email.blank?
 
     return true if previously_new_record? && paid? && purchased?
@@ -311,7 +383,11 @@ class Ticket < ApplicationRecord
     )
   end
 
-  # Helper method for delegation to handle creation of payment record on demand
+  # Helper method for delegation to handle creation of payment record on demand.
+  # Public (not under the `private` above) — TicketsController#attach_payment_proof!
+  # calls it directly to attach an admin-uploaded payment proof.
+  public
+
   def payment_record
     ticket_payment || build_ticket_payment(amount: ticket_type&.price || 0)
   end

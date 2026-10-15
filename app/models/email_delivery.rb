@@ -8,6 +8,7 @@ class EmailDelivery < ApplicationRecord
     bounced
     complained
     suppressed
+    skipped
   ].freeze
 
   TRANSIENT_FAILURE_REASONS = %w[
@@ -32,22 +33,16 @@ class EmailDelivery < ApplicationRecord
   scope :for_recipient, lambda { |recipient|
     recipient.present? ? where('recipient ILIKE ?', "%#{sanitize_sql_like(recipient)}%") : all
   }
-  scope :for_event, lambda { |event_id|
-    return all if event_id.blank?
+  scope :for_search, lambda { |query|
+    next all if query.blank?
 
-    ticket_ids = Ticket.where(event_id: event_id).select(:id)
-    ticket_application_ids = TicketApplication.joins(:ticket).where(tickets: { event_id: event_id }).select(:id)
-    exhibitor_kit_ids = ExhibitorKit.joins(:event_vendor).where(event_vendors: { event_id: event_id }).select(:id)
-
+    pattern = "%#{sanitize_sql_like(query)}%"
     where(
-      "(related_type = 'Ticket' AND related_id IN (?)) OR
-       (related_type = 'TicketApplication' AND related_id IN (?)) OR
-       (related_type = 'ExhibitorKit' AND related_id IN (?))",
-      ticket_ids,
-      ticket_application_ids,
-      exhibitor_kit_ids
+      'recipient ILIKE :q OR subject ILIKE :q OR mailer_name ILIKE :q OR mailer_action ILIKE :q OR provider_message_id ILIKE :q',
+      q: pattern
     )
   }
+  scope :for_event, ->(event_id) { event_id.present? ? where(event_id: event_id) : all }
   MAX_RETRY_COUNT = 3
 
   scope :retryable, -> { where(status: 'failed', failure_reason: TRANSIENT_FAILURE_REASONS).where('retry_count < ?', MAX_RETRY_COUNT) }

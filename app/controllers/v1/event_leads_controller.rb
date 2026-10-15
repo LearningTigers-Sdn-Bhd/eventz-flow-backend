@@ -159,6 +159,36 @@ module V1
       end
     end
 
+    # GET /v1/events/:event_id/event-leads/export
+    def export
+      event = Event.find_by(id: params[:event_id])
+      unless event
+        return render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
+      end
+
+      unless event.use_event_leads
+        return render json: { error: 'Forbidden', message: 'Event Leads feature is not enabled for this event.' }, status: :forbidden
+      end
+
+      authorize event, :index?, policy_class: EventLeadPolicy
+
+      base_leads = EventLead
+        .includes(:event_vendor, :scanned_by, leadable: [])
+        .joins("INNER JOIN event_vendors ON event_vendors.id = event_leads.event_vendor_id")
+        .where(event_vendors: { event_id: event.id })
+
+      leads = policy_scope(base_leads, policy_scope_class: EventLeadPolicy::Scope)
+        .order(created_at: :desc)
+
+      result = EventLeadExcelService.export(event, leads)
+      send_file(
+        result[:file_path],
+        filename: File.basename(result[:file_path]),
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        disposition: 'attachment'
+      )
+    end
+
     # GET /v1/event-leads/recent
     # Recent lead captures for current user across assigned events.
     def recent

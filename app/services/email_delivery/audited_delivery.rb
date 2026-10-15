@@ -5,27 +5,69 @@ class EmailDelivery::AuditedDelivery
   IN_FLIGHT_STATUSES = %w[queued sending sent delivered].freeze
   DEDUPE_WINDOW = 24.hours
 
-  def self.deliver_now(mailer_name:, mailer_action:, args:, related: nil, metadata: {}, dedupe: false)
-    new(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe:).deliver_now
+  # Resend allows ~2 API calls/second per team and rejects the rest (429), so a
+  # bulk send that enqueues thousands of jobs at once loses emails. Every
+  # deliver_later reserves the next free send slot in Redis, which spaces
+  # sends app-wide: concurrent bulk runs (certificates + thank-you cron) share
+  # the same queue of slots, and a lone email gets no delay. Calibration knob:
+  # lower EMAIL_SEND_SPACING_SECONDS if the Resend plan allows a higher rate.
+  SEND_SPACING = ENV.fetch('EMAIL_SEND_SPACING_SECONDS', '0.6').to_f
+  SLOT_KEY = 'email_delivery:next_send_slot'.freeze
+  # Label stored on each EmailDelivery row. MillionSend speaks the Resend API,
+  # so the switch is RESEND_BASE_URL + RESEND_API_KEY; set EMAIL_PROVIDER=millionsend
+  # alongside them so the Email page can tell old and new rows apart.
+  PROVIDER = ENV.fetch('EMAIL_PROVIDER', 'resend').freeze
+  # Atomically: slot = max(stored next slot, now); store slot + spacing; return slot.
+  SLOT_SCRIPT = <<~LUA.freeze
+    local slot = math.max(tonumber(redis.call('GET', KEYS[1]) or '0'), tonumber(ARGV[1]))
+    redis.call('SET', KEYS[1], tostring(slot + tonumber(ARGV[2])), 'EX', 86400)
+    return tostring(slot)
+  LUA
+
+  # Seconds to wait before this email's job may run (nil = run now). Fails open:
+  # if Redis is unreachable the email goes out immediately rather than not at all.
+  def self.send_delay
+    return nil unless SEND_SPACING.positive?
+
+    now = Time.current.to_f
+    slot = Sidekiq.redis { |conn| conn.call('EVAL', SLOT_SCRIPT, 1, SLOT_KEY, now, SEND_SPACING) }.to_f
+    delay = slot - now
+    delay > 0.05 ? delay : nil
+  rescue StandardError => e
+    Rails.logger.warn("[EmailDelivery::AuditedDelivery] send slot unavailable: #{e.message}")
+    nil
   end
 
-  def self.deliver_later(mailer_name:, mailer_action:, args:, related: nil, metadata: {}, dedupe: false)
-    instance = new(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe:)
+  def self.deliver_now(mailer_name:, mailer_action:, args:, related: nil, metadata: {}, dedupe: false, event: nil)
+    new(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe:, event:).deliver_now
+  end
+
+  def self.deliver_later(mailer_name:, mailer_action:, args:, related: nil, metadata: {}, dedupe: false, event: nil)
+    instance = new(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe:, event:)
     existing = instance.duplicate_in_flight
     return existing if existing
 
+    return instance.build_skipped_record if instance.disabled_by_event_settings?
+
     delivery = instance.build_record
-    EmailDeliveryJob.perform_later(delivery.id, mailer_name, mailer_action, args)
+    EmailDeliveryJob.set(wait: send_delay).perform_later(delivery.id, mailer_name, mailer_action, args)
+    EmailDelivery::VoucherFollowUp.enqueue_after(mailer_name, mailer_action, args)
+    EmailDelivery::BusinessMatchingFollowUp.enqueue_after(mailer_name, mailer_action, args)
     delivery
   end
 
-  def initialize(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe: false)
+  # `event:` is an explicit override for when `related` can't reach its event
+  # through an association (e.g. related is a User, or there's no related at
+  # all) — pass it whenever the caller already has the event in scope rather
+  # than relying on resolve_event's heuristics.
+  def initialize(mailer_name:, mailer_action:, args:, related:, metadata:, dedupe: false, event: nil)
     @mailer_name = mailer_name
     @mailer_action = mailer_action
     @args = args
     @related = related
     @metadata = metadata || {}
     @dedupe = dedupe
+    @event = event
   end
 
   # Returns an existing in-flight/sent delivery for the same (related, mailer,
@@ -42,12 +84,44 @@ class EmailDelivery::AuditedDelivery
       .first
   end
 
+  # True when the resolved event has this mailer/action's category disabled
+  # (or has all emails disabled). Mailers we can't attribute to an event
+  # (system mail like UserMailer, or a related record with no event path)
+  # are never gated — fail-open rather than silently dropping mail we can't
+  # confidently classify.
+  def disabled_by_event_settings?
+    event = resolve_event
+    return false unless event
+
+    setting = event.event_email_setting
+    return false unless setting
+
+    !setting.email_enabled?(@mailer_name, @mailer_action)
+  rescue StandardError => e
+    # This gate sits in front of every email the app sends — a bug here must
+    # never become a reason mail silently stops going out. Log and send.
+    Rails.logger.error("[EmailDelivery::AuditedDelivery] gating check failed for #{@mailer_name}##{@mailer_action}: #{e.message}")
+    false
+  end
+
+  def build_skipped_record
+    EmailDelivery.create!(
+      provider: PROVIDER,
+      mailer_name: @mailer_name,
+      mailer_action: @mailer_action,
+      status: 'skipped',
+      event_id: safe_event_id,
+      related: @related,
+      metadata: @metadata.merge(skipped_reason: 'event_email_setting_disabled')
+    )
+  end
+
   def build_record
     message_delivery = build_message_delivery
     message = message_delivery.respond_to?(:message) ? message_delivery.message : nil
 
     EmailDelivery.create!(
-      provider: 'resend',
+      provider: PROVIDER,
       mailer_name: @mailer_name,
       mailer_action: @mailer_action,
       recipient: Array(message&.to).first,
@@ -58,12 +132,15 @@ class EmailDelivery::AuditedDelivery
       },
       subject: message&.subject,
       status: 'queued',
+      event_id: safe_event_id,
       related: @related,
       metadata: @metadata
     )
   end
 
   def deliver_now(existing_delivery = nil)
+    return build_skipped_record if existing_delivery.nil? && disabled_by_event_settings?
+
     delivery = existing_delivery || build_record
     message_delivery = build_message_delivery
     message = message_delivery.respond_to?(:message) ? message_delivery.message : nil
@@ -82,9 +159,10 @@ class EmailDelivery::AuditedDelivery
     delivery
   rescue StandardError => e
     attrs = EmailDelivery::FailureClassifier.call(e)
+    suppressed = attrs[:failure_reason] == 'suppressed'
     delivery.update!(
-      status: 'failed',
-      failed_at: Time.current,
+      status: suppressed ? 'suppressed' : 'failed',
+      "#{suppressed ? 'suppressed' : 'failed'}_at": Time.current,
       last_error: attrs[:last_error],
       failure_reason: attrs[:failure_reason],
       next_retry_at: attrs[:next_retry_at]
@@ -94,7 +172,31 @@ class EmailDelivery::AuditedDelivery
 
   private
 
+  # Denormalised onto the row so per-event email lists are one indexed lookup.
+  # Must never block sending, so a resolve failure just leaves it NULL.
+  def safe_event_id
+    resolve_event&.id
+  rescue StandardError
+    nil
+  end
+
   def build_message_delivery
     @mailer_name.constantize.public_send(@mailer_action, *@args)
+  end
+
+  # Explicit `event:` wins. Otherwise covers every related type currently
+  # passed to AuditedDelivery (Event itself, Ticket, TicketApplication,
+  # ExhibitorKit, and anything else exposing #event). Widen this — or pass
+  # `event:` explicitly at the call site — if a new related type needs gating.
+  def resolve_event
+    return @event if @event
+
+    return @related if @related.is_a?(Event)
+    return @args.find { |a| a.is_a?(Event) } if @args.any? { |a| a.is_a?(Event) }
+    return @related.event if @related.respond_to?(:event)
+    return @related.event_vendor.event if @related.respond_to?(:event_vendor)
+    return @related.ticket.event if @related.respond_to?(:ticket)
+
+    nil
   end
 end

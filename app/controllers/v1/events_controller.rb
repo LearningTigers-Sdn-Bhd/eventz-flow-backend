@@ -1,5 +1,14 @@
+# frozen_string_literal: true
+
 module V1
   class EventsController < ApplicationController
+    SIDEBAR_EVENT_FIELDS = %w[
+      id title slug status start_date end_date use_ticket use_exhibitor_kit
+      use_seat_ticketing use_voucher use_certificate use_feedback use_business_matching
+      use_wedding use_api_access use_event_leads use_sponsorship use_rfid use_people_counter
+      allow_contractor_printing_services vehicles_enabled
+    ].freeze
+
     # Skip default authentication for the public `show` action, but try to authenticate if a token is present.
     skip_default_authentication only: [:show]
     prepend_before_action :authenticate_user_if_token_present, only: [:show]
@@ -34,6 +43,7 @@ module V1
         @events = @events.with_deleted
       end
       # Default: only non-archived events (handled by default_scope)
+      @events = @events.order(start_date: :desc)
 
       render json: @events, status: :ok
     end
@@ -42,6 +52,20 @@ module V1
     def show
       # @event is set and authorized by before_actions
       render json: @event, status: :ok
+    end
+
+    # GET /v1/events/:id/sidebar_context
+    def sidebar_context
+      events = policy_scope(Event)
+               .select(*SIDEBAR_EVENT_FIELDS)
+               .order(start_date: :desc)
+               .map { |event| sidebar_event_payload(event) }
+
+      render json: {
+        currentEvent: sidebar_event_payload(@event),
+        events: events,
+        permissions: sidebar_permissions
+      }, status: :ok
     end
 
     # POST /v1/events
@@ -103,6 +127,11 @@ module V1
       else
         render json: { errors: @event.errors.full_messages }, status: :unprocessable_content
       end
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.cause&.message&.include?('idx_tickets_unique_membership_no')
+
+      render json: { errors: ['Resolve duplicate membership numbers before requiring unique memberships'] },
+             status: :unprocessable_content
     end
 
     # DELETE /v1/events/:id
@@ -140,8 +169,12 @@ module V1
       authorize @event, :business_matching_events?
 
       begin
-        service_result = BusinessMatchingService.new(current_user).fetch_events(@event.id,
-                                                                                force_refresh: params[:force_refresh] == 'true')
+        service_result = BusinessMatchingService.new(current_user).fetch_events(
+          @event.id,
+          force_refresh: params[:force_refresh] == 'true',
+          archived_only: params[:archived] == 'true',
+          include_archived: params[:include_archived] == 'true'
+        )
 
         if service_result.success?
           data = service_result.data
@@ -182,6 +215,61 @@ module V1
 
     private
 
+    def sidebar_event_payload(event)
+      event.attributes.slice(*SIDEBAR_EVENT_FIELDS)
+    end
+
+    def sidebar_permissions
+      assignment_role = current_user.event_assignment_roles_for(@event).first
+      is_org_owner = current_user.org_owner?
+      is_organizer = current_user.organizer?
+      is_member = current_user.member?
+      is_vendor = current_user.vendor?
+      is_exhibition_contractor = current_user.exhibition_contractor?
+      is_event_admin = assignment_role == 'event_admin'
+      is_event_team_member = assignment_role == 'event_team_member'
+      is_business_host = assignment_role == 'business_host' ||
+                         current_user.business_host_assignments.exists?(event_id: @event.id)
+      is_business_matching_admin = assignment_role == 'business_matching_admin'
+      is_event_vendor = current_user.event_vendor_assignments.exists?(event_id: @event.id)
+      is_event_staff = assignment_role.present? && !is_vendor
+      can_manage_event = is_org_owner || is_event_admin
+      can_manage_event_staff = is_org_owner || is_organizer
+      can_manage_event_vendors = is_org_owner || is_event_admin
+      can_scan_tickets = is_org_owner || is_event_admin || is_event_team_member
+      can_scan_visitor_stamps = is_org_owner || is_event_admin || is_event_vendor
+
+      {
+        isLoading: false,
+        isOrgOwner: is_org_owner,
+        isOrganizer: is_organizer,
+        isMember: is_member,
+        isVendor: is_vendor,
+        isExhibitionContractor: is_exhibition_contractor,
+        isEventAdmin: is_event_admin,
+        isEventTeamMember: is_event_team_member,
+        isEventStaff: is_event_staff,
+        isEventVendor: is_event_vendor,
+        isBusinessHost: is_business_host,
+        isBusinessMatchingAdmin: is_business_matching_admin,
+        canManageEvent: can_manage_event,
+        canManageEventStaff: can_manage_event_staff,
+        canManageEventVendors: can_manage_event_vendors,
+        canViewAnalytics: can_manage_event,
+        canManageTickets: can_manage_event,
+        canScanTickets: can_scan_tickets,
+        canViewVisitors: can_scan_tickets,
+        canScanVisitorStamps: can_scan_visitor_stamps,
+        canEditVendorProfile: is_event_vendor,
+        canViewLeadAnalytics: is_event_vendor,
+        canManageBusinessMatching: is_org_owner || is_organizer || is_event_admin ||
+          is_event_team_member || is_business_matching_admin,
+        canViewVendorsTab: can_manage_event_vendors || is_event_vendor,
+        canViewVisitorsTab: !@event.use_ticket? && can_scan_tickets,
+        canViewLeadScannerTab: !@event.use_ticket? && can_scan_visitor_stamps
+      }
+    end
+
     # DRY principle: Find the event and handle 404
     def set_event
       # Use find_by! to automatically raise ActiveRecord::RecordNotFound, which
@@ -207,6 +295,9 @@ module V1
         :description,
         :status,
         :multiple_scans,
+        :multiple_scan_mode,
+        :allow_multiple_tickets_per_email,
+        :require_unique_membership_numbers,
         :start_date,
         :end_date,
         :venue_name,
@@ -221,16 +312,22 @@ module V1
         :allow_contractor_printing_services,
         :event_admin_id, # This will make assigned user as the event admin
         :use_business_matching,
+        :business_matching_linked_exhibitor_enabled,
         :use_voucher,
         :use_wedding,
         :auto_approve_wishes,
         :extra_guest_limit,
         :business_matching_webhook_url,
         :public_registration_url,
+        :registration_path_template,
         :use_sponsorship,
         :use_event_leads,
         :use_certificate,
+        :use_rfid,
+        :use_people_counter,
+        :use_feedback,
         :use_api_access,
+        :vehicles_enabled,
         :reminders_enabled,
         :reminder_7_day,
         :reminder_1_day,
@@ -243,8 +340,14 @@ module V1
         :wish_wall_background_image,
         :remove_wish_wall_background_image,
         labels_data: {}, # Allows JSONB hash updates
+        exhibitor_labels_data: {}, # Allows JSONB hash updates
         booth_types: [], # Allows JSONB array updates
-        event_email_setting_attributes: %i[sender_name sender_address contact_email payment_receipt_email],
+        event_email_setting_attributes: [
+          :sender_name, :sender_address, :contact_email, :payment_receipt_email,
+          :business_matching_sender_name, :business_matching_host_label,
+          :business_matching_host_invite_subject, :business_matching_host_invite_message,
+          :emails_enabled, :thank_you_include_feedback, :thank_you_delay_minutes, { disabled_categories: [], business_matching_ticket_type_ids: [] }
+        ],
         wish_wall_setting_attributes: %i[
           display_mode
           animation_shape
@@ -256,6 +359,14 @@ module V1
       ]
 
       permitted.delete(:slug) unless current_user&.org_owner?
+
+      unless current_user&.org_owner?
+        email_setting_permitted = permitted.find { |p| p.is_a?(Hash) && p.key?(:event_email_setting_attributes) }
+        email_setting_permitted&.[](:event_email_setting_attributes)&.reject! do |attr|
+          attr == :emails_enabled || (attr.is_a?(Hash) && attr.key?(:disabled_categories))
+        end
+      end
+
       params.require(:event).permit(*permitted)
     end
 

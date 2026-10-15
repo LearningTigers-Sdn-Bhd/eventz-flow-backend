@@ -23,6 +23,8 @@ module V1
       )
 
       if result.success?
+        capture_lead_for(@redeemer)
+
         success_response(
           data: result.data,
           message: 'Voucher redeemed successfully',
@@ -91,6 +93,22 @@ module V1
         message: 'Redeemer not found'
       }, status: :not_found
       return
+    end
+
+    # A successful redemption is proof the vendor met this attendee in person,
+    # so it doubles as a lead capture — no separate lead scan required.
+    # Never lets a lead-capture hiccup fail an already-successful voucher redemption.
+    def capture_lead_for(redeemer)
+      return unless redeemer.is_a?(Ticket) || redeemer.is_a?(Visitor)
+
+      event_vendor = EventVendor.find_by(event_id: @voucher.event_id, vendor_id: current_user.id)
+      return unless event_vendor
+
+      EventLead.find_or_create_by!(leadable: redeemer, event_vendor: event_vendor) do |lead|
+        lead.scanned_by = current_user
+      end
+    rescue StandardError => e
+      Rails.logger.error("Failed to capture lead from voucher redemption: #{e.message}")
     end
 
     def redemption_params

@@ -77,6 +77,16 @@ RSpec.describe 'V1::Certificates', type: :request do
       expect(data.first['certificate_status']).to be_nil
     end
 
+    it 'exposes filterable registration answers, trimmed' do
+      ticket.update!(payment_status: :paid, custom_fields_data: { 'category' => ' 2 ' })
+      create(:ticket, :paid, event: event, attendee_email: 'bob@example.com',
+                             custom_fields_data: { 'category' => '3' })
+
+      get "/v1/events/#{event.id}/certificates/participants", headers: org_owner_headers
+      data = JSON.parse(response.body)['data']
+      expect(data.map { |row| row['custom_fields'] }).to contain_exactly({ 'category' => '2' }, { 'category' => '3' })
+    end
+
     it 'reflects the latest certificate delivery status' do
       create(:email_delivery,
              related: ticket,
@@ -140,6 +150,16 @@ RSpec.describe 'V1::Certificates', type: :request do
         post "/v1/events/#{event.id}/certificates/send_one",
              params: { public_id: ticket.public_id }, headers: member_headers
         expect(response).to have_http_status(:forbidden)
+      end
+
+      it 'rejects a waiting-list ticket without sending anything' do
+        waiting_ticket = create(:ticket, event: event, attendee_email: 'waiting@example.com', waiting_list: true)
+
+        expect {
+          post "/v1/events/#{event.id}/certificates/send_one",
+               params: { public_id: waiting_ticket.public_id }, headers: org_owner_headers
+        }.not_to have_enqueued_job(EmailDeliveryJob)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
 

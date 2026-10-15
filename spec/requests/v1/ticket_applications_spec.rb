@@ -40,6 +40,33 @@ RSpec.describe 'V1::TicketApplications', type: :request do
     end
   end
 
+  describe 'PATCH /v1/events/:event_id/tickets/:ticket_id/application/revert' do
+    it 'reverts an approved, manually-paid application back to pending' do
+      application.update!(review_status: :approved)
+      ticket.update!(status: :purchased, payment_status: :paid)
+      create(:ticket_payment, ticket: ticket, status: 'paid', gateway: nil)
+
+      patch "/v1/events/#{event.id}/tickets/#{ticket.public_id}/application/revert", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json['ticket_application']['review_status']).to eq('pending_review')
+      expect(ticket.reload.status).to eq('pending_payment')
+      expect(ticket.payment_status).to eq('pending')
+    end
+
+    it 'returns unprocessable when ticket was paid via gateway and not confirmed' do
+      application.update!(review_status: :approved)
+      ticket.update!(status: :purchased, payment_status: :paid)
+      create(:ticket_payment, ticket: ticket, status: 'paid', gateway: 'razorpay')
+
+      patch "/v1/events/#{event.id}/tickets/#{ticket.public_id}/application/revert", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(application.reload.review_status).to eq('approved')
+    end
+  end
+
   describe 'POST /v1/events/:event_id/tickets/:ticket_id/application/resend_rsvp' do
     it 'resends RSVP for approved application' do
       application.update!(review_status: :approved, rsvp_status: :sent)

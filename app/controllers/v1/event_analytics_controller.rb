@@ -4,20 +4,37 @@ module V1
     before_action :set_event_and_authorize
 
     # GET /v1/events/:event_id/metrics/total_tickets
+    # Respects date_mode/start_date/end_date (registration-time filter) so the
+    # summary cards can match whatever range the Analytics Trends chart is showing.
+    # Pass include_multi_scans=true to count every re-entry scan (ScanLog rows)
+    # for totalVisitors instead of unique visitor tickets registered.
     def total_tickets
-      count = scoped_active_tickets.count
-      render json: { totalTickets: count }, status: :ok
+      range = build_date_range
+      render json: {
+        totalTickets: eligible_tickets.where(created_at: range).count,
+        paidTickets: paid_tickets.where(created_at: range).count,
+        pendingTickets: pending_tickets.where(created_at: range).count,
+        totalVisitors: total_visitors_count(range)
+      }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_scanned_tickets
+    # Pass include_multi_scans=true to count every re-entry scan (ScanLog rows)
+    # instead of unique checked-in tickets — only meaningful for events with
+    # multiple_scans enabled.
     def total_scanned_tickets
-      count = @event.tickets.checked_in.count
+      range = build_date_range
+      count = if include_multi_scans?
+                scan_logs_for(paid_tickets).where(scanned_at: range).count
+              else
+                paid_tickets.checked_in.where(check_in_at: range).count
+              end
       render json: { totalScannedTickets: count }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/total_unscanned_tickets
     def total_unscanned_tickets
-      count = @event.tickets.unscanned.count
+      count = paid_tickets.unscanned.where(created_at: build_date_range).count
       render json: { totalUnscannedTickets: count }, status: :ok
     end
 
@@ -29,7 +46,7 @@ module V1
 
     # GET /v1/events/:event_id/metrics/total_scanned_visitors
     def total_scanned_visitors
-      count = @event.visitors.checked_in.count
+      count = include_multi_scans? ? scan_logs_for(@event.visitors).count : @event.visitors.checked_in.count
       render json: { totalScannedVisitors: count }, status: :ok
     end
 
@@ -40,16 +57,47 @@ module V1
     end
 
     # GET /v1/events/:event_id/metrics/total_amount_price
+    # Ticket revenue respects date_mode/start_date/end_date; exhibitor revenue
+    # is always all-time (no registration-date filter applies to it here).
     def total_amount_price
-      ticket_revenue_cents = scoped_active_tickets.total_revenue_cents.to_i
-      exhibitor_revenue_cents = ExhibitorRegistrationPayment
+      range = build_date_range
+      paid_ticket_cents = paid_tickets.where(created_at: range).total_revenue_cents.to_i
+      pending_ticket_cents = pending_tickets.where(created_at: range).total_revenue_cents.to_i
+      paid_exhibitor_cents = ExhibitorRegistrationPayment
         .paid
         .joins(exhibitor_kit: :event_vendor)
         .where(event_vendors: { event_id: @event.id })
         .sum(:amount)
-      exhibitor_revenue_cents = (exhibitor_revenue_cents.to_d * 100).to_i
-      total = ticket_revenue_cents + exhibitor_revenue_cents
-      render json: { totalAmountPrice: total }, status: :ok
+      pending_exhibitor_cents = ExhibitorRegistrationPayment
+        .where(status: %w[pending submitted])
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .sum(:amount)
+
+      render json: {
+        totalAmountPrice: paid_ticket_cents + (paid_exhibitor_cents.to_d * 100).to_i,
+        pendingAmountPrice: pending_ticket_cents + (pending_exhibitor_cents.to_d * 100).to_i
+      }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/exhibitor_analytics
+    # Returns exhibitor kit sales when exhibitor kits are enabled, otherwise
+    # returns the event's merchant/vendor overview.
+    def exhibitor_analytics
+      payload = @event.use_exhibitor_kit? ? exhibitor_analytics_payload : vendor_analytics_payload
+      render json: payload, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/recent_scans?limit=5
+    # Last N ticket check-ins, ordered by scan time — queries ScanLog directly
+    # instead of pulling every ticket for the event and sorting client-side.
+    def recent_scans
+      logs = ScanLog.where(event: @event, scannable_type: 'Ticket')
+                     .includes(:scanned_by, :event_location, :scannable)
+                     .order(scanned_at: :desc)
+                     .limit(recent_scans_limit)
+
+      render json: { recentScans: logs.map { |log| serialize_recent_scan(log) } }, status: :ok
     end
 
     # GET /v1/events/:event_id/metrics/mall_live_feed
@@ -69,7 +117,8 @@ module V1
     # Flexible time-series analytics with hourly, daily, weekly, monthly grouping.
     #
     # Query params:
-    #   metric: tickets | scans | revenue | visitors | visitor_scans | leads | redemptions | redemption_value (required)
+    #   metric: tickets | scans | revenue | visitors | visitor_scans | leads | redemptions | redemption_value |
+    #           exhibitor_bookings | exhibitor_revenue (required)
     #   group_by: hour | day | week | month (optional, auto-detected from event duration)
     #   start_date: YYYY-MM-DD (optional, defaults to event.start_date)
     #   end_date: YYYY-MM-DD (optional, defaults to event.end_date)
@@ -78,7 +127,7 @@ module V1
       return render json: { error: 'metric parameter is required' }, status: :bad_request if metric.blank?
 
       group_by = params[:group_by].presence || auto_group_by
-      range = build_date_range
+      range = build_date_range_for_metric(metric)
 
       data = fetch_time_series_data(metric, range, group_by)
       return render json: { error: "Invalid metric: #{metric}" }, status: :bad_request if data.nil?
@@ -115,15 +164,497 @@ module V1
       }, status: :ok
     end
 
+    # GET /v1/events/:event_id/metrics/ticket_type_breakdown
+    # Count-only breakdown of tickets grouped by ticket type name.
+    def ticket_type_breakdown
+      data = eligible_tickets
+             .joins(:ticket_type)
+             .group('ticket_types.name')
+             .order('count_all DESC')
+             .count
+             .map { |name, count| { value: name, count: count } }
+
+      render json: { data: data }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/custom_field_keys
+    # Auto-detects the distinct custom_fields_data jsonb keys actually used by
+    # this event's tickets, so the panel can offer a dropdown instead of
+    # requiring the organizer to type a key from memory.
+    def custom_field_keys
+      excluded = Ticket::RESERVED_CUSTOM_FIELD_KEYS + Ticket::DOCUMENT_KEYS
+      keys = eligible_tickets
+             .pluck(Arel.sql('DISTINCT jsonb_object_keys(custom_fields_data)'))
+             .reject { |key| excluded.include?(key) }
+             .sort
+
+      render json: { keys: keys }, status: :ok
+    end
+
+    # GET /v1/events/:event_id/metrics/custom_field_breakdown
+    # Count-only breakdown of tickets grouped by a `custom_fields_data` jsonb key.
+    # Works for any event/custom field — no hardcoded field names.
+    #
+    # Query params:
+    #   field_key: jsonb key inside custom_fields_data (required, e.g. "nama_agensi")
+    #   group_by: optional second jsonb key to nest field_key's counts under
+    #             (e.g. "kategori" — mirrors the Kementerian/Jabatan-under-category
+    #             layout of the reference PDF report), each with its own subtotal.
+    def custom_field_breakdown
+      field_key = params[:field_key].to_s
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      group_by = params[:group_by].to_s.presence
+      if group_by && !valid_field_key?(group_by)
+        return render json: { error: 'group_by must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      excluded_ticket_type_ids = Array(params[:exclude_ticket_type_ids])
+                                 .filter_map { |id| Integer(id, exception: false) }
+                                 .select(&:positive?)
+                                 .uniq
+
+      if group_by
+        render json: {
+          fieldKey: field_key,
+          groupBy: group_by,
+          groups: fetch_nested_custom_field_breakdown(field_key, group_by, excluded_ticket_type_ids)
+        }, status: :ok
+      else
+        render json: {
+          fieldKey: field_key,
+          data: fetch_custom_field_breakdown(field_key, excluded_ticket_type_ids)
+        }, status: :ok
+      end
+    end
+
+    # GET /v1/events/:event_id/metrics/custom_field_names
+    # Attendee names behind a custom_field_breakdown row, for name-list PDFs.
+    # Same ticket scope as the breakdown, so the lists always add up to its counts.
+    #
+    # Query params:
+    #   field_key: jsonb key to list under (required, e.g. "nama_agensi")
+    #   value: only tickets with this field_key value (one agency); omit for all
+    #   group_by / group_value: only tickets whose group_by key equals group_value
+    #   exclude_ticket_type_ids[]: same as custom_field_breakdown
+    def custom_field_names
+      field_key = params[:field_key].to_s
+      group_by = params[:group_by].to_s.presence
+      unless valid_field_key?(field_key) && (group_by.nil? || valid_field_key?(group_by))
+        return render json: { error: 'field_key/group_by must be alphanumeric/underscore only' }, status: :bad_request
+      end
+
+      excluded_ticket_type_ids = Array(params[:exclude_ticket_type_ids])
+                                 .filter_map { |id| Integer(id, exception: false) }
+                                 .select(&:positive?)
+                                 .uniq
+      tickets = tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+      tickets = tickets.where("#{jsonb_field_sql(field_key)} = ?", params[:value].to_s) if params[:value].present?
+      if group_by && params[:group_value].present?
+        tickets = tickets.where("#{jsonb_field_sql(group_by)} = ?", params[:group_value].to_s)
+      end
+
+      rows = tickets.order(:attendee_name).pluck(
+        Arel.sql(jsonb_field_sql(field_key)), :attendee_name, :attendee_email, :attendee_phone
+      )
+      data = rows.group_by(&:first).transform_keys { |v| v.presence || 'Unspecified' }.transform_values do |list|
+        list.map { |(_, name, email, phone)| { name: name, email: email, phone: phone } }
+      end
+
+      render json: { data: data }, status: :ok
+    end
+
+    # PUT /v1/events/:event_id/metrics/custom_field_quota
+    # Upserts the registration quota for one field_key/value pair (e.g. an
+    # agency's allotted headcount). Informational only — never blocks registration.
+    def set_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+      quota = params[:quota]
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+      return render json: { error: 'quota parameter is required' }, status: :bad_request if quota.blank?
+
+      record = @event.custom_field_quotas.find_or_initialize_by(field_key: field_key, value: value)
+      record.quota = quota
+
+      if record.save
+        render json: { fieldKey: field_key, value: value, quota: record.quota }, status: :ok
+      else
+        render json: { error: record.errors.full_messages.join(', ') }, status: :unprocessable_entity
+      end
+    end
+
+    # DELETE /v1/events/:event_id/metrics/custom_field_quota
+    # Clears a previously set quota for one field_key/value pair, reverting
+    # that row back to a plain count in the breakdown.
+    def destroy_custom_field_quota
+      field_key = params[:field_key].to_s
+      value = params[:value].to_s
+
+      return render json: { error: 'field_key parameter is required' }, status: :bad_request if field_key.blank?
+      return render json: { error: 'value parameter is required' }, status: :bad_request if value.blank?
+
+      # Master-list rows (positioned) stay so the agency keeps its slot; only the quota is cleared.
+      rows = @event.custom_field_quotas.where(field_key: field_key, value: value)
+      rows.where.not(position: nil).update_all(quota: nil)
+      rows.where(position: nil).destroy_all
+      render json: { fieldKey: field_key, value: value }, status: :ok
+    end
+
+    # PUT /v1/events/:event_id/metrics/custom_field_list
+    # Replaces the ordered master list (e.g. a client's agency list) for one
+    # group_by value. Listed values get position 1..n; agencies with no tickets
+    # then show as zero-count rows in the breakdown. Values dropped from the
+    # list lose their slot but keep any quota.
+    #
+    # Body: { field_key, group_value, items: [{ value, quota? }] }
+    def set_custom_field_list
+      field_key = params[:field_key].to_s
+      group_value = params[:group_value].to_s.strip
+      unless valid_field_key?(field_key)
+        return render json: { error: 'field_key must be alphanumeric/underscore only' }, status: :bad_request
+      end
+      return render json: { error: 'group_value parameter is required' }, status: :bad_request if group_value.blank?
+
+      items = params.permit(items: %i[value quota]).fetch(:items, []).map do |item|
+        # quota key absent = keep the current quota; present but null = clear it.
+        parsed = { value: item[:value].to_s.strip }
+        parsed[:quota] = item[:quota].presence&.then { |q| Integer(q, exception: false) || q } if item.key?(:quota)
+        parsed
+      end.reject { |item| item[:value].blank? }.uniq { |item| item[:value] }
+
+      scope = @event.custom_field_quotas.where(field_key: field_key)
+      CustomFieldQuota.transaction do
+        scope.where(group_value: group_value).where.not(value: items.pluck(:value))
+             .update_all(position: nil, group_value: nil)
+        scope.where(position: nil, quota: nil).delete_all
+
+        items.each.with_index(1) do |item, position|
+          record = scope.find_or_initialize_by(value: item[:value])
+          record.assign_attributes(position: position, group_value: group_value)
+          record.quota = item[:quota] if item.key?(:quota)
+          record.save!
+        end
+      end
+
+      render json: { fieldKey: field_key, groupValue: group_value, count: items.size }, status: :ok
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
+    end
+
     private
+
+    def valid_field_key?(key)
+      key.match?(/\A[a-z0-9_]+\z/i)
+    end
+
+    def jsonb_field_sql(key)
+      ActiveRecord::Base.sanitize_sql_array(['custom_fields_data ->> ?', key])
+    end
+
+    def quotas_for(field_key)
+      @event.custom_field_quotas.where(field_key: field_key).index_by(&:value)
+    end
+
+    def with_quota(row, quotas)
+      quota = quotas[row[:value]]&.quota
+      return row unless quota
+
+      registered = row[:count]
+      row.merge(
+        quota: quota,
+        registered: registered,
+        remaining: [quota - registered, 0].max
+      )
+    end
+
+    def fetch_custom_field_breakdown(field_key, excluded_ticket_type_ids)
+      quotas = quotas_for(field_key)
+      tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+        .group(Arel.sql(jsonb_field_sql(field_key)))
+        .count
+        .map { |value, count| with_quota({ value: value.presence || 'Unspecified', count: count }, quotas) }
+        .then { |rows| sort_by_position(with_unregistered(rows, quotas.values), quotas) }
+    end
+
+    # Master-list agencies (positioned rows) with no tickets yet still get a
+    # zero-count row, so organizers can see who hasn't registered.
+    def with_unregistered(rows, master_rows)
+      seen = rows.to_set { |row| row[:value] }
+      missing = master_rows.select { |m| m.position && seen.exclude?(m.value) }
+      rows + missing.map { |m| with_quota({ value: m.value, count: 0 }, { m.value => m }) }
+    end
+
+    # Rows with an organizer-set position (the client's own agency list order)
+    # come first in that order; the rest follow by count, highest first.
+    def sort_by_position(rows, quotas)
+      rows.sort_by do |row|
+        position = quotas[row[:value]]&.position
+        position ? [0, position, 0] : [1, 0, -row[:count]]
+      end
+    end
+
+    def fetch_nested_custom_field_breakdown(field_key, group_by, excluded_ticket_type_ids)
+      quotas = quotas_for(field_key)
+      raw_counts = tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+                   .group(Arel.sql(jsonb_field_sql(group_by)), Arel.sql(jsonb_field_sql(field_key)))
+                   .count
+
+      grouped = raw_counts.each_with_object({}) do |((group_value, field_value), count), acc|
+        key = group_value.presence || 'Unspecified'
+        (acc[key] ||= []) << with_quota({ value: field_value.presence || 'Unspecified', count: count }, quotas)
+      end
+
+      quotas.each_value do |m|
+        grouped[m.group_value] ||= [] if m.position && m.group_value.present?
+      end
+
+      grouped.map do |group_value, rows|
+        master_rows = quotas.values.select { |m| m.group_value == group_value }
+        rows = sort_by_position(with_unregistered(rows, master_rows), quotas)
+        {
+          group: group_value,
+          rows: rows,
+          total: rows.sum { |row| row[:count] }
+        }
+      end.sort_by { |g| -g[:total] }
+    end
+
+    def tickets_for_custom_field_breakdown(excluded_ticket_type_ids)
+      tickets = eligible_tickets
+      return tickets if excluded_ticket_type_ids.empty?
+
+      tickets.where.not(ticket_type_id: excluded_ticket_type_ids)
+    end
 
     def set_event_and_authorize
       @event = Event.find(params[:event_id])
       authorize @event, :analytics?
     end
 
-    def scoped_active_tickets
-      @event.tickets.where(status: [Ticket.statuses[:purchased], Ticket.statuses[:scanned]])
+    def eligible_tickets
+      @event.tickets.where(
+        status: Ticket.statuses.values_at(:purchased, :scanned, :pending_payment),
+        payment_status: Ticket.payment_statuses.values_at(:paid, :pending)
+      )
+    end
+
+    def paid_tickets
+      eligible_tickets.where(payment_status: :paid)
+    end
+
+    # true when the caller asked to count every re-entry scan (ScanLog rows)
+    # instead of unique checked-in tickets/visitors.
+    def include_multi_scans?
+      ActiveModel::Type::Boolean.new.cast(params[:include_multi_scans])
+    end
+
+    def scan_logs_for(scannable_relation)
+      ScanLog.where(event: @event, scannable: scannable_relation)
+    end
+
+    def pending_tickets
+      eligible_tickets.where(payment_status: :pending)
+    end
+
+    # Mirrors Ticket#exhibitor_ticket_type? — name-based match, no dedicated
+    # category column on ticket_types yet.
+    def visitor_tickets
+      eligible_tickets.joins(:ticket_type).where('ticket_types.name ILIKE ?', '%visitor%')
+    end
+
+    # Registered visitor tickets by default; with include_multi_scans, every
+    # visitor counts regardless of scan status, PLUS every re-entry scan -
+    # i.e. unscanned tickets (never scanned, so no ScanLog to count them) plus
+    # every scan event (a scanned ticket's first entry and any re-entries).
+    def total_visitors_count(range)
+      if include_multi_scans?
+        visitor_tickets.unscanned.where(created_at: range).count +
+          scan_logs_for(visitor_tickets).where(scanned_at: range).count
+      else
+        visitor_tickets.where(created_at: range).count
+      end
+    end
+
+    def recent_scans_limit
+      (params[:limit] || 5).to_i.clamp(1, 50)
+    end
+
+    def serialize_recent_scan(log)
+      ticket = log.scannable
+      {
+        id: log.id.to_s,
+        ticketHolder: ticket&.attendee_name,
+        email: ticket&.attendee_email,
+        location: log.event_location&.name || 'General Access',
+        scannedBy: log.scanned_by&.full_name || 'Auto Check-in',
+        timestamp: log.scanned_at&.iso8601,
+        status: 'scanned'
+      }
+    end
+
+    def exhibitor_kits_for_analytics
+      ExhibitorKit
+        .joins(:event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+        .merge(ExhibitorKit.active_or_paid)
+        .includes(:event_vendor, :exhibitor_booth_price, :exhibitor_package,
+                  :exhibitor_registration_payment)
+    end
+
+    def exhibitor_analytics_payload
+      kits = exhibitor_kits_for_analytics.to_a
+      partner_ids = kits.map(&:event_vendor_id).uniq
+      paid_partner_ids = kits.select { |kit| settled_exhibitor_kit?(kit) }
+                            .map(&:event_vendor_id).uniq
+      deposit_partner_ids = kits.select(&:deposit?).map(&:event_vendor_id).uniq - paid_partner_ids
+
+      {
+        mode: 'exhibitor',
+        totalPartners: partner_ids.size,
+        paidPartners: paid_partner_ids.size,
+        depositPartners: deposit_partner_ids.size,
+        unpaidPartners: partner_ids.size - paid_partner_ids.size - deposit_partner_ids.size,
+        bookedBooths: booth_count(kits),
+        paidBooths: booth_count(kits.select { |kit| settled_exhibitor_kit?(kit) }),
+        depositBooths: booth_count(kits.select(&:deposit?)),
+        unpaidBooths: booth_count(kits.select(&:unpaid?)),
+        collectedRevenue: exhibitor_collected_revenue(kits),
+        pendingRevenue: exhibitor_pending_revenue(kits),
+        breakdown: exhibitor_breakdown(kits),
+        filterOptions: exhibitor_filter_options,
+        vendorMetrics: vendor_metrics
+      }
+    end
+
+    def booth_count(kits)
+      kits.sum { |kit| [kit.booth_quantity.to_i, 1].max }
+    end
+
+    def vendor_analytics_payload
+      {
+        mode: 'vendor',
+        totalPartners: @event.event_vendors.count,
+        paidPartners: 0,
+        depositPartners: 0,
+        unpaidPartners: 0,
+        bookedBooths: 0,
+        paidBooths: 0,
+        depositBooths: 0,
+        unpaidBooths: 0,
+        collectedRevenue: 0.0,
+        pendingRevenue: 0.0,
+        breakdown: [],
+        vendorMetrics: vendor_metrics
+      }
+    end
+
+    def vendor_metrics
+      event_leads = EventLead.joins(:event_vendor)
+                            .where(event_vendors: { event_id: @event.id })
+
+      voucher_redemptions = VoucherRedemptionLog.for_event(@event)
+
+      {
+        totalLeads: event_leads.count,
+        voucherSales: voucher_redemptions.sum(:transaction_net_amount).to_d.round(2).to_f,
+        voucherRedemptions: voucher_redemptions.count
+      }
+    end
+
+    def exhibitor_filter_options
+      {
+        zones: @event.exhibitor_zones.order(:zone, :id).pluck(:zone),
+        boothPricing: @event.exhibitor_booth_prices.order(:label, :id).pluck(:label).uniq
+      }
+    end
+
+    def settled_exhibitor_kit?(kit)
+      kit.settled?
+    end
+
+    def exhibitor_collected_revenue(kits)
+      settled_revenue = kits.select(&:paid?).sum do |kit|
+        payment = kit.exhibitor_registration_payment
+        next payment.amount.to_d if payment&.status == 'paid'
+        next kit.amount_paid.to_d if payment.nil?
+
+        0.to_d
+      end
+      deposit_revenue = kits.select(&:deposit?).sum { |kit| kit.amount_paid.to_d }
+
+      (settled_revenue + deposit_revenue).round(2).to_f
+    end
+
+    def exhibitor_pending_revenue(kits)
+      unpaid_pending = kits.select(&:unpaid?).sum(&:booking_value)
+      deposit_pending = kits.select(&:deposit?).sum { |kit| kit.booking_value - kit.amount_paid.to_d }
+
+      (unpaid_pending + deposit_pending).round(2).to_f
+    end
+
+    def exhibitor_breakdown(kits)
+      kits_by_key = kits.group_by do |kit|
+        [kit.exhibitor_booth_price_id, kit.exhibitor_package_id,
+         kit.exhibitor_booth_price&.label || kit.booth_type]
+      end
+
+      rows = kits_by_key.map do |_key, grouped_kits|
+        first_kit = grouped_kits.first
+        booth_price = first_kit.exhibitor_booth_price
+        package = first_kit.exhibitor_package
+        paid_kits = grouped_kits.select { |kit| settled_exhibitor_kit?(kit) }
+        deposit_kits = grouped_kits.select(&:deposit?)
+        unpaid_kits = grouped_kits.select(&:unpaid?)
+
+        {
+          breakdownKey: [
+            first_kit.exhibitor_booth_price_id || 'booth-type',
+            first_kit.exhibitor_package_id || 'base-package',
+            first_kit.booth_type || 'unknown'
+          ].join(':'),
+          label: booth_price&.label || first_kit.booth_type.to_s.humanize,
+          zone: booth_price&.zone,
+          boothType: booth_price&.booth_type || first_kit.booth_type,
+          packageLabel: package&.name,
+          bookedQuantity: grouped_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          paidQuantity: paid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          depositQuantity: deposit_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          unpaidQuantity: unpaid_kits.sum { |kit| [kit.booth_quantity.to_i, 1].max },
+          collectedRevenue: exhibitor_collected_revenue(grouped_kits),
+          pendingRevenue: exhibitor_pending_revenue(grouped_kits)
+        }
+      end
+
+      booked_price_ids = kits_by_key.keys.map(&:first).compact.uniq
+      unbooked_price_rows = @event.exhibitor_booth_prices.includes(:exhibitor_zone)
+        .to_a
+        .reject { |booth_price| booked_price_ids.include?(booth_price.id) }
+        .map do |booth_price|
+          {
+            breakdownKey: [booth_price.id, 'base-package', booth_price.booth_type || 'unknown'].join(':'),
+            label: booth_price.label,
+            zone: booth_price.zone,
+            boothType: booth_price.booth_type,
+            packageLabel: nil,
+            bookedQuantity: 0,
+            paidQuantity: 0,
+            depositQuantity: 0,
+            unpaidQuantity: 0,
+            collectedRevenue: 0.0,
+            pendingRevenue: 0.0
+          }
+        end
+
+      (rows + unbooked_price_rows).sort_by { |entry| [entry[:label], entry[:zone].to_s, entry[:packageLabel].to_s] }
     end
 
     def count_shoppers_today
@@ -239,12 +770,11 @@ module V1
     def find_earliest_date_for_metric(metric)
       case metric
       when 'scans'
-        # For ticket scans, use earliest check_in_at
-        earliest = @event.tickets.checked_in.minimum(:check_in_at)
+        # For ticket scans, use earliest scan (all scan events when multi-scans included, else first check-in)
+        earliest = include_multi_scans? ? scan_logs_for(paid_tickets).minimum(:scanned_at) : @event.tickets.checked_in.minimum(:check_in_at)
         earliest&.to_date || @event.start_date.to_date
       when 'visitor_scans'
-        # For visitor scans, use earliest check_in_at
-        earliest = @event.visitors.checked_in.minimum(:check_in_at)
+        earliest = include_multi_scans? ? scan_logs_for(@event.visitors).minimum(:scanned_at) : @event.visitors.checked_in.minimum(:check_in_at)
         earliest&.to_date || @event.start_date.to_date
       when 'leads'
         # For leads, use earliest lead created_at
@@ -256,6 +786,19 @@ module V1
         # For redemptions, use earliest redemption_timestamp
         earliest = VoucherRedemptionLog.for_event(@event).minimum(:redemption_timestamp)
         earliest&.to_date || @event.start_date.to_date
+      when 'exhibitor_bookings'
+        earliest = exhibitor_kits_for_analytics.minimum(:created_at)
+        earliest&.to_date || @event.start_date.to_date
+      when 'exhibitor_revenue'
+        # Deposit kits (and paid kits without a payment record) contribute to collected revenue
+        # via amount_paid/payment_recorded_at rather than an ExhibitorRegistrationPayment -
+        # without this, the range could exclude their money entirely and fall back to the
+        # event's own dates, which may not cover when those kits were actually recorded.
+        payment_earliest = exhibitor_registration_payments_for_analytics.minimum(:paid_at)
+        kit_earliest = exhibitor_kits_for_analytics.where(payment_status: %i[paid deposit])
+                                                    .minimum(:payment_recorded_at)
+        earliest = [payment_earliest, kit_earliest].compact.min
+        earliest&.to_date || @event.start_date.to_date
       else
         # For tickets, visitors, revenue - use earliest registration
         find_earliest_registration_date
@@ -265,10 +808,10 @@ module V1
     def find_latest_date_for_metric(metric)
       case metric
       when 'scans'
-        latest = @event.tickets.checked_in.maximum(:check_in_at)
+        latest = include_multi_scans? ? scan_logs_for(paid_tickets).maximum(:scanned_at) : @event.tickets.checked_in.maximum(:check_in_at)
         latest&.to_date || @event.end_date.to_date
       when 'visitor_scans'
-        latest = @event.visitors.checked_in.maximum(:check_in_at)
+        latest = include_multi_scans? ? scan_logs_for(@event.visitors).maximum(:scanned_at) : @event.visitors.checked_in.maximum(:check_in_at)
         latest&.to_date || @event.end_date.to_date
       when 'leads'
         latest = EventLead.joins(:event_vendor)
@@ -283,6 +826,15 @@ module V1
         latest&.to_date || @event.end_date.to_date
       when 'visitors'
         latest = @event.visitors.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'exhibitor_bookings'
+        latest = exhibitor_kits_for_analytics.maximum(:created_at)
+        latest&.to_date || @event.end_date.to_date
+      when 'exhibitor_revenue'
+        payment_latest = exhibitor_registration_payments_for_analytics.maximum(:paid_at)
+        kit_latest = exhibitor_kits_for_analytics.where(payment_status: %i[paid deposit])
+                                                  .maximum(:payment_recorded_at)
+        latest = [payment_latest, kit_latest].compact.max
         latest&.to_date || @event.end_date.to_date
       else
         @event.end_date.to_date
@@ -320,17 +872,25 @@ module V1
     def fetch_time_series_data(metric, range, group_by)
       case metric
       when 'tickets'
-        scoped_active_tickets.time_series_count(:created_at, range: range, group_by: group_by)
+        eligible_tickets.time_series_count(:created_at, range: range, group_by: group_by)
       when 'scans'
-        @event.tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        if include_multi_scans?
+          scan_logs_for(paid_tickets).time_series_count(:scanned_at, range: range, group_by: group_by)
+        else
+          paid_tickets.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        end
       when 'revenue'
-        scoped_active_tickets
+        paid_tickets
           .joins(:ticket_type)
           .time_series_sum(:created_at, '(ticket_types.price * 100.0)', range: range, group_by: group_by)
       when 'visitors'
         @event.visitors.time_series_count(:created_at, range: range, group_by: group_by)
       when 'visitor_scans'
-        @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        if include_multi_scans?
+          scan_logs_for(@event.visitors).time_series_count(:scanned_at, range: range, group_by: group_by)
+        else
+          @event.visitors.checked_in.time_series_count(:check_in_at, range: range, group_by: group_by)
+        end
       when 'leads'
         EventLead.joins(:event_vendor)
                  .where(event_vendors: { event_id: @event.id })
@@ -341,6 +901,66 @@ module V1
       when 'redemption_value'
         VoucherRedemptionLog.for_event(@event)
                             .time_series_sum(:redemption_timestamp, :discount_applied_value, range: range, group_by: group_by)
+      when 'exhibitor_bookings'
+        exhibitor_kits_for_analytics
+          .where(created_at: range)
+          .send(groupdate_method(group_by), :created_at)
+          .count
+          .map { |period, value| { period: format_time_series_period(period, group_by), value: value } }
+      when 'exhibitor_revenue'
+        settled_by_period = exhibitor_registration_payments_for_analytics
+          .where(paid_at: range)
+          .send(groupdate_method(group_by), :paid_at)
+          .sum(:amount)
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        # Deposit kits never create an ExhibitorRegistrationPayment (that only happens once a kit
+        # is fully settled), so their amount_paid would otherwise be invisible in this trend even
+        # though it counts toward Collected Revenue. payment_recorded_at only moves when
+        # payment_status itself changes (unlike updated_at, which bumps on any unrelated edit).
+        deposit_by_period = exhibitor_kits_for_analytics
+          .where(payment_status: :deposit, payment_recorded_at: range)
+          .send(groupdate_method(group_by), :payment_recorded_at)
+          .sum(:amount_paid)
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        # Same gap for kits marked paid without ever creating a payment record (e.g. admin set
+        # payment_status manually) - Collected Revenue already falls back to amount_paid for
+        # these (see exhibitor_collected_revenue), so the trend needs to match or it undercounts.
+        paid_without_payment_by_period = exhibitor_kits_for_analytics
+          .where(payment_status: :paid, payment_recorded_at: range)
+          .where.missing(:exhibitor_registration_payment)
+          .send(groupdate_method(group_by), :payment_recorded_at)
+          .sum(:amount_paid)
+          .transform_keys { |period| format_time_series_period(period, group_by) }
+
+        periods = settled_by_period.keys | deposit_by_period.keys | paid_without_payment_by_period.keys
+        periods.map do |period|
+          {
+            period: period,
+            value: settled_by_period[period].to_f + deposit_by_period[period].to_f +
+                   paid_without_payment_by_period[period].to_f
+          }
+        end
+      end
+    end
+
+    def exhibitor_registration_payments_for_analytics
+      ExhibitorRegistrationPayment
+        .paid
+        .joins(exhibitor_kit: :event_vendor)
+        .where(event_vendors: { event_id: @event.id })
+    end
+
+    def groupdate_method(group_by)
+      { 'hour' => :group_by_hour, 'day' => :group_by_day, 'week' => :group_by_week, 'month' => :group_by_month }.fetch(group_by)
+    end
+
+    def format_time_series_period(period, group_by)
+      case group_by
+      when 'hour'  then period.strftime('%Y-%m-%d %H:00')
+      when 'week', 'day' then period.strftime('%Y-%m-%d')
+      when 'month' then period.strftime('%Y-%m')
       end
     end
 
@@ -373,13 +993,13 @@ module V1
     def build_scope_for_metric(metric)
       case metric
       when 'tickets'
-        scoped_active_tickets
+        eligible_tickets
       when 'scans'
-        @event.tickets.checked_in
+        include_multi_scans? ? scan_logs_for(paid_tickets) : paid_tickets.checked_in
       when 'visitors'
         @event.visitors
       when 'visitor_scans'
-        @event.visitors.checked_in
+        include_multi_scans? ? scan_logs_for(@event.visitors) : @event.visitors.checked_in
       when 'leads'
         EventLead.joins(:event_vendor).where(event_vendors: { event_id: @event.id })
       when 'redemptions'
@@ -390,7 +1010,7 @@ module V1
     def timestamp_column_for_metric(metric)
       case metric
       when 'scans', 'visitor_scans'
-        :check_in_at
+        include_multi_scans? ? :scanned_at : :check_in_at
       when 'redemptions'
         :redemption_timestamp
       else

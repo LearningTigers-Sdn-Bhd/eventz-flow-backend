@@ -10,7 +10,9 @@ module V1
       authorize @event, :show?
 
       merchants = @event.event_vendors.merchants.includes(:vendor)
-      exhibitors = @event.event_vendors.exhibitors.includes(
+      exhibitors = @event.exhibitors
+      exhibitors = exhibitors.with_active_kit if @event.use_exhibitor_kit?
+      exhibitors = exhibitors.includes(
         :vendor,
         exhibitor_kits: [
           :exhibitor_team_members,
@@ -50,6 +52,30 @@ module V1
       else
         render json: { error: 'Validation Error', errors: result.errors },
                status: :unprocessable_content
+      end
+    end
+
+    # POST /v1/events/:event_id/vendors/batch
+    def batch
+      event_vendor = @event.exhibitors.build
+      authorize event_vendor, :create?, policy_class: EventVendorPolicy
+
+      idempotency_key = request.headers['Idempotency-Key']
+      if idempotency_key.blank?
+        return render_batch_error(['Idempotency key is required'])
+      end
+
+      result = EventVendorBatchService.create(
+        event: @event,
+        params: batch_vendor_params,
+        current_user: current_user,
+        idempotency_key: idempotency_key
+      )
+
+      if result.success?
+        render json: format_event_vendor(load_batch_event_vendor(result.data.id)), status: :created
+      else
+        render_batch_error(result.errors)
       end
     end
 
@@ -145,6 +171,55 @@ module V1
       )
     end
 
+    def batch_vendor_params
+      params.require(:vendor).permit(
+        :vendor_id, :redirect_url, :poster_url, :qr_url,
+        exhibitor: %i[
+          company_name name_on_fascia pic_full_name pic_contact_number pic_email_address
+          special_requirements
+        ],
+        booths: %i[
+          exhibitor_booth_price_id exhibitor_package_id voucher_code booth_type booth_number
+        ]
+      )
+    end
+
+    def load_batch_event_vendor(id)
+      EventVendor.includes(
+        :vendor,
+        event: %i[event_payment_gateway exhibitor_team_member_limit],
+        exhibitor_kits: [
+          :exhibitor_booth_price,
+          :exhibitor_package,
+          :exhibitor_team_members,
+          :exhibitor_kit_items,
+          :exhibitor_kit_printings,
+          :custom_requests,
+          :exhibitor_team_member_payments,
+          { ic_copy_attachment: :blob },
+          { customs_declaration_form_attachment: :blob },
+          { customs_duty_estimate_attachment: :blob },
+          { indemnity_form_attachment: :blob },
+          { exhibitor_registration_payment: { payment_proof_attachment: :blob } },
+          { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } } },
+          { exhibitor_kit_printings: { printing_service: { image_attachment: :blob } } },
+          { exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
+        ]
+      ).find(id)
+    end
+
+    def render_batch_error(errors)
+      errors = Array(errors)
+      render json: { error: 'Validation Error', errors: errors }, status: batch_error_status(errors)
+    end
+
+    def batch_error_status(errors)
+      return :conflict if errors.include?('Idempotency key conflicts with a different batch')
+      return :not_found if errors.any? { |error| error.match?(/\A(Vendor not found|Couldn't find Exhibitor(?:BoothPrice|Package) with)/) }
+
+      :unprocessable_content
+    end
+
     def format_event_vendor(event_vendor)
       response = {
         id: event_vendor.id,
@@ -192,6 +267,7 @@ module V1
 
       {
         id: exhibitor_kit.id,
+        public_id: exhibitor_kit.public_id,
         event_vendor_id: exhibitor_kit.event_vendor_id,
         created_at: exhibitor_kit.created_at,
         updated_at: exhibitor_kit.updated_at,
@@ -218,6 +294,11 @@ module V1
         payment_proof_status: exhibitor_kit.exhibitor_registration_payment&.status || 'pending',
         payment_note: exhibitor_kit.exhibitor_registration_payment&.note || exhibitor_kit.payment_note,
         amount_paid: exhibitor_kit.amount_paid,
+        booth_quantity: exhibitor_kit.booth_quantity,
+        price_snapshot: exhibitor_kit.price_snapshot,
+        # Booth price x quantity for this kit. Sent so the panel's bulk payment
+        # action can pre-fill amount_paid per kit without re-deriving the price.
+        booking_value: exhibitor_kit.booking_value,
         indemnity_link: exhibitor_kit.indemnity_link,
         exhibitor_booth_price_id: exhibitor_kit.exhibitor_booth_price_id,
         exhibitor_booth_price_label: exhibitor_kit.exhibitor_booth_price&.label,
@@ -228,6 +309,8 @@ module V1
         custom_fields_data: exhibitor_kit.custom_fields_data,
         ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         customs_declaration_uploaded: exhibitor_kit.customs_declaration_form.attached?,
+        customs_duty_estimate_uploaded: exhibitor_kit.customs_duty_estimate.attached?,
+        indemnity_form_uploaded: exhibitor_kit.indemnity_form.attached?,
         exhibitor_team_members: exhibitor_kit.exhibitor_team_members.as_json(only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id
                                                                                       created_at updated_at]),
         team_member_count: exhibitor_kit.team_member_count,

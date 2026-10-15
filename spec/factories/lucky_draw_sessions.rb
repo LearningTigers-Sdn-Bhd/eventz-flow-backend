@@ -5,5 +5,6 @@ FactoryBot.define do
     draw_date { Date.today }
     draw_styles { { style: "wheel", theme: "wireframe" } }
     use_gifts { false }
+    scanned_only { false }
   end
 end

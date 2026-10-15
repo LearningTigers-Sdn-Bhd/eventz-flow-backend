@@ -1,119 +1,335 @@
 require 'caxlsx'
 require 'roo'
 
+# Exports an event's tickets as an Excel workbook.
+#
+# Sheet 1 ("Tickets") is the reimportable source of truth: same column order
+# TicketExcelService.import has always expected (Attendee Name .. Review
+# Status, then labels) - only cell *styling* changed, never structure, so a
+# round-trip export -> edit -> import keeps working unchanged. Every sheet
+# after it (Entry Timeline, per ticket-type detail tabs, Summary) is a
+# report-only view built for humans, never read back by #import.
 class TicketExcelService
+  BRAND_NAVY = 'FF1F2A44'
+  BRAND_BLUE = 'FF2766EC'
+  LIGHT_GRAY = 'FFF3F4F6'
+  BORDER_GRAY = 'FFD1D5DB'
+  TEXT_DARK = 'FF111827'
+  TEXT_MUTED = 'FF6B7280'
+  WHITE = 'FFFFFFFF'
+
+  FLAT_HEADERS = [
+    'Attendee Name', 'Attendee Email', 'Attendee Phone', 'Event Title',
+    'Ticket Type', 'Role', 'Public ID', 'QR Code', 'Payment Status',
+    'Checked In', 'Created At', 'Review Status'
+  ].freeze
+
+  DETAIL_HEADERS = [
+    'Attendee Name', 'Attendee Email', 'Attendee Phone', 'Role', 'Public ID',
+    'Payment Status', 'Checked In', 'Check-in At', 'Check-in Location',
+    'Checked In By', 'Created At', 'Review Status'
+  ].freeze
+
   # Export tickets to Excel file
   # @param event_id [Integer] The event ID to export tickets for
+  # @param ticket_type_id [Integer, nil] restrict to one ticket type; nil exports all types
   # @return [Hash] { file_path: String, export_log: ExportLog }
-  def self.export(event_id, from: nil, to: nil)
-    event = Event.find(event_id)
-    tickets = event.tickets.includes(:ticket_type, :event, :ticket_application)
-    tickets = tickets.where('created_at >= ?', from.beginning_of_day) if from.present?
-    tickets = tickets.where('created_at <= ?', to.end_of_day) if to.present?
+  def self.export(event_id, from: nil, to: nil, ticket_type_id: nil)
+    new(event_id, from: from, to: to, ticket_type_id: ticket_type_id).export
+  end
 
-    # Create exports directory if it doesn't exist
+  def initialize(event_id, from:, to:, ticket_type_id:)
+    @event = Event.find(event_id)
+    @from = from
+    @to = to
+    @ticket_type_id = ticket_type_id
+  end
+
+  def export
+    tickets = scoped_tickets.to_a
+    label_keys, label_display = label_schema(tickets)
+
+    package = Axlsx::Package.new(author: 'EventzFlow')
+    define_styles(package)
+
+    build_flat_sheet(package, tickets, label_keys, label_display)
+    # Rescans only exist for events that allow them - showing the timeline
+    # otherwise would just repeat the single check-in already on each ticket row.
+    build_scan_history_sheet(package, tickets) if @event.multiple_scans?
+    build_detail_sheets(package, tickets)
+    build_summary_sheet(package, tickets)
+
+    # Tickets must stay physical sheet 0 (#import blindly reads sheet(0)), but
+    # Summary is what a human should see first - so open the file on it via
+    # the workbook's "active tab" rather than reordering sheets.
+    summary_index = package.workbook.worksheets.index { |ws| ws.name == 'Summary' }
+    package.workbook.views << Axlsx::WorkbookView.new(active_tab: summary_index)
+
     exports_dir = Rails.root.join('storage', 'exports')
     FileUtils.mkdir_p(exports_dir)
-
-    # Generate filename with timestamp
     timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
-    filename = "tickets-#{event_id}-#{timestamp}.xlsx"
-    file_path = exports_dir.join(filename)
+    file_path = exports_dir.join("tickets-#{@event.id}-#{timestamp}.xlsx")
+    package.serialize(file_path.to_s)
 
-    # Get label keys from event.labels_data (these will become columns)
-    # Prefer sequential "Label N" keys when present
-    label_keys = self.preferred_label_keys(event.labels_data)
+    export_log = ExportLog.create!(event_id: @event.id, type: 'ticket-list', sheet_path: file_path.to_s)
 
-    # Also collect any extra custom field keys injected directly into tickets
-    # (e.g. from registration forms) that are not in event.labels_data
+    { file_path: file_path.to_s, export_log: export_log }
+  end
+
+  private
+
+  def scoped_tickets
+    tickets = @event.tickets.includes(:ticket_type, :event, :ticket_application, :scanned_by)
+    tickets = tickets.where('created_at >= ?', @from.beginning_of_day) if @from.present?
+    tickets = tickets.where('created_at <= ?', @to.end_of_day) if @to.present?
+    tickets = tickets.where(ticket_type_id: @ticket_type_id) if @ticket_type_id.present?
+    tickets
+  end
+
+  # Label keys from event.labels_data (preferring sequential "Label N" keys),
+  # plus any extra custom field keys injected directly into tickets that
+  # aren't part of that schema (e.g. from registration forms).
+  def label_schema(tickets)
+    label_keys = self.class.preferred_label_keys(@event.labels_data)
     extra_keys = tickets.flat_map { |t| (t.custom_fields_data || {}).keys }
                         .uniq
                         .reject { |k| label_keys.include?(k) }
+    all_keys = label_keys + extra_keys
 
-    all_label_keys = label_keys + extra_keys
-
-    # Build a display name map: keys from labels_data use their configured name,
-    # injected keys are prettified (ic_no -> "Ic No", t_shirt_size -> "T Shirt Size")
-    label_display = (event.labels_data || {}).dup
+    label_display = (@event.labels_data || {}).dup
     extra_keys.each do |key|
       label_display[key] = key.to_s.gsub('_', ' ').gsub(/\b\w/) { |c| c.upcase }
     end
 
-    # Create Excel workbook
-    package = Axlsx::Package.new
-    workbook = package.workbook
+    [all_keys, label_display]
+  end
 
-    workbook.add_worksheet(name: "Tickets") do |sheet|
-      # Build header row: fixed columns + dynamic label columns
-      header_row = [
-        'Attendee Name',
-        'Attendee Email',
-        'Attendee Phone',
-        'Event Title',
-        'Ticket Type',
-        'Role',
-        'Public ID',
-        'QR Code',
-        'Payment Status',
-        'Checked In',
-        'Created At',
-        'Review Status'
-      ]
-      # Add label columns (using display names)
-      all_label_keys.each do |key|
-        header_row << label_display[key]
-      end
-      sheet.add_row header_row
+  def define_styles(package)
+    s = package.workbook.styles
+    @styles = {
+      title: s.add_style(sz: 16, b: true, fg_color: WHITE, bg_color: BRAND_NAVY,
+                          alignment: { vertical: :center, horizontal: :left, indent: 1 }),
+      subtitle: s.add_style(sz: 10, i: true, fg_color: TEXT_MUTED),
+      section_header: s.add_style(sz: 12, b: true, fg_color: BRAND_NAVY,
+                                   border: { style: :medium, color: BRAND_NAVY, edges: [:bottom] }),
+      stat_label: s.add_style(sz: 9, fg_color: TEXT_MUTED, b: true,
+                               bg_color: LIGHT_GRAY, border: cell_border),
+      stat_value: s.add_style(sz: 13, b: true, fg_color: TEXT_DARK, border: cell_border),
+      table_header: s.add_style(sz: 10, b: true, fg_color: WHITE, bg_color: BRAND_BLUE,
+                                 alignment: { vertical: :center, horizontal: :center, wrap_text: true },
+                                 border: cell_border),
+      cell: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border),
+      cell_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border),
+      text: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border, format_code: '@'),
+      text_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border,
+                             format_code: '@'),
+      date_cell: s.add_style(sz: 10, fg_color: TEXT_DARK, border: cell_border, format_code: 'yyyy-mm-dd hh:mm'),
+      date_cell_alt: s.add_style(sz: 10, fg_color: TEXT_DARK, bg_color: LIGHT_GRAY, border: cell_border,
+                                  format_code: 'yyyy-mm-dd hh:mm')
+    }
+  end
 
-      # Add data rows
-      tickets.each do |ticket|
+  def cell_border
+    { style: :thin, color: BORDER_GRAY, edges: %i[top bottom left right] }
+  end
+
+  def merge_row_across(sheet, column_count)
+    row = sheet.rows.last
+    sheet.merge_cells(row.cells[0..(column_count - 1)])
+  end
+
+  # Unique, Excel-legal (<=31 chars, no : \ / ? * [ ]) sheet name.
+  def safe_sheet_name(name, used_names)
+    base = name.to_s.strip.presence || 'Ticket Type'
+    base = base.gsub(/[:\\\/\?\*\[\]]/, '-')[0, 31]
+
+    candidate = base
+    suffix = 2
+    while used_names.include?(candidate)
+      candidate = "#{base[0, 31 - suffix.to_s.length - 1]}-#{suffix}"
+      suffix += 1
+    end
+    used_names << candidate
+    candidate
+  end
+
+  # --- Sheet 1: Tickets (flat, reimportable - structure never changes) ---
+
+  def build_flat_sheet(package, tickets, label_keys, label_display)
+    package.workbook.add_worksheet(name: 'Tickets') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      headers = FLAT_HEADERS + label_keys.map { |key| label_display[key] }
+      sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
+      sheet.column_widths(*([26, 30, 18, 22, 16, 12, 22, 10, 16, 12, 20, 16] + Array.new(label_keys.size, 20)))
+
+      tickets.each_with_index do |ticket, index|
+        style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+        text_style = index.even? ? @styles[:text] : @styles[:text_alt]
+        date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+
         row_data = [
-          ticket.attendee_name,
-          ticket.attendee_email,
-          ticket.attendee_phone,
-          event.title,
-          ticket.ticket_type&.name,
-          ticket.role,
-          ticket.public_id,
-          '', # QR Code column - will be filled with formula below
-          ticket.payment_status,
-          ticket.checked_in,
-          ticket.created_at&.strftime('%Y-%m-%d %H:%M:%S'),
+          ticket.attendee_name, ticket.attendee_email, ticket.attendee_phone, @event.title,
+          ticket.ticket_type&.name, ticket.role, ticket.public_id, '',
+          ticket.payment_status, ticket.checked_in,
+          ticket.created_at,
           ticket.ticket_application&.review_status&.titleize || ''
         ]
+        label_keys.each { |key| row_data << ((ticket.custom_fields_data || {})[key] || '') }
 
-        # Add values from ticket.custom_fields_data for each label key
-        all_label_keys.each do |key|
-          row_data << ((ticket.custom_fields_data || {})[key] || '')
+        row_styles = [style, style, text_style, style, style, style, text_style, style,
+                      style, style, date_style, style] + Array.new(label_keys.size, style)
+        sheet.add_row(row_data, style: row_styles)
+
+        row_number = index + 2
+        sheet.rows[index + 1].cells[7].value =
+          "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(G#{row_number}))"
+      end
+
+      sheet.sheet_view.pane do |pane|
+        pane.top_left_cell = 'A2'
+        pane.state = :frozen
+        pane.y_split = 1
+      end
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+    end
+  end
+
+  # --- Per ticket-type detail tabs (report-only: check-in data, never reimported) ---
+
+  def build_detail_sheets(package, tickets)
+    used_names = ['Tickets']
+    tickets.group_by { |t| t.ticket_type&.name || 'Unassigned' }.each do |type_name, type_tickets|
+      package.workbook.add_worksheet(name: safe_sheet_name(type_name, used_names)) do |sheet|
+        sheet.sheet_pr.tab_color = BRAND_BLUE
+        sheet.add_row DETAIL_HEADERS, style: Array.new(DETAIL_HEADERS.size, @styles[:table_header]), height: 18
+        sheet.column_widths 26, 30, 18, 14, 22, 16, 12, 20, 22, 22, 20, 16
+
+        type_tickets.each_with_index do |ticket, index|
+          style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+          text_style = index.even? ? @styles[:text] : @styles[:text_alt]
+          date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+
+          sheet.add_row(
+            [
+              ticket.attendee_name, ticket.attendee_email, ticket.attendee_phone, ticket.role,
+              ticket.public_id, ticket.payment_status.to_s.titleize, ticket.checked_in ? 'Yes' : 'No',
+              ticket.check_in_at, check_in_location_for(ticket), ticket.scanned_by&.full_name,
+              ticket.created_at, ticket.ticket_application&.review_status&.titleize || ''
+            ],
+            style: [style, style, text_style, style, text_style, style, style,
+                    date_style, style, style, date_style, style]
+          )
         end
 
-        sheet.add_row row_data
-      end
-
-      # Add QR code formula for each ticket row (starting from row 2)
-      tickets.each_with_index do |ticket, index|
-        row_number = index + 2 # +2 because Excel is 1-indexed and row 1 is headers
-        # Formula: =IMAGE("https://quickchart.io/qr?text=" & ENCODEURL(G2))
-        # G column is now the public_id column (7th column)
-        cell = sheet.rows[index + 1].cells[7] # 0-indexed, so index+1 for data rows, column 8 for QR
-        cell.value = "=IMAGE(\"https://quickchart.io/qr?text=\" & ENCODEURL(G#{row_number}))"
+        sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
+        sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
       end
     end
+  end
 
-    # Save the file
-    package.serialize(file_path.to_s)
+  def check_in_location_for(ticket)
+    first_scan_locations[ticket.id]
+  end
 
-    # Create export log
-    export_log = ExportLog.create!(
-      event_id: event_id,
-      type: 'ticket-list',
-      sheet_path: file_path.to_s
-    )
+  # First scan's location per ticket, computed once for the whole export.
+  def first_scan_locations
+    @first_scan_locations ||= ScanLog.where(scannable_type: 'Ticket', event_id: @event.id)
+                                      .includes(:event_location)
+                                      .order(:scanned_at)
+                                      .each_with_object({}) { |log, h| h[log.scannable_id] ||= log.event_location&.name }
+  end
 
-    {
-      file_path: file_path.to_s,
-      export_log: export_log
-    }
+  # Every scan event (including re-entries) for the tickets in this export -
+  # same rows the Entry Timeline sheet lists. Only meaningful when the event
+  # allows multiple scans; a single-scan event has at most one row per ticket.
+  def scan_logs_for_tickets(tickets)
+    ScanLog.where(scannable_type: 'Ticket', scannable_id: tickets.map(&:id))
+  end
+
+  # "Checked In" counts unique tickets; on a multiple_scans event that undercounts
+  # actual foot traffic since one ticket can be scanned (and counted) many times.
+  # Total Participant auto-detects that setting and reports the real scan volume -
+  # i.e. the same number of rows as the Entry Timeline sheet - falling back to the
+  # unique checked-in count on events where re-entry scanning isn't enabled.
+  def total_participant_count(tickets, checked_in_count)
+    return checked_in_count unless @event.multiple_scans?
+    scan_logs_for_tickets(tickets).count
+  end
+
+  # --- Summary ---
+
+  def build_summary_sheet(package, tickets)
+    package.workbook.add_worksheet(name: 'Summary') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      sheet.sheet_view.tab_selected = true
+      sheet.column_widths 28, 22, 22, 22, 22, 22, 22
+      sheet.merge_cells('A1:G1')
+      sheet.add_row [@event.title], style: @styles[:title], height: 28
+      sheet.add_row ["Ticket Report  •  Generated #{Time.current.strftime('%d %b %Y, %I:%M %p')}"],
+                    style: @styles[:subtitle]
+      sheet.add_row []
+
+      sheet.add_row ['Overview'], style: @styles[:section_header]
+      merge_row_across(sheet, 7)
+
+      checked_in_count = tickets.count(&:checked_in)
+      paid_count = tickets.count { |t| t.payment_status == 'paid' }
+      total_participant = total_participant_count(tickets, checked_in_count)
+
+      sheet.add_row ['Total Tickets', 'Checked In', 'Not Checked In', 'Paid', 'Pending/Other', 'Ticket Types', 'Total Participant'],
+                    style: Array.new(7, @styles[:stat_label])
+      sheet.add_row [
+        tickets.size, checked_in_count, tickets.size - checked_in_count, paid_count,
+        tickets.size - paid_count, tickets.map { |t| t.ticket_type&.name }.uniq.compact.size,
+        total_participant
+      ], style: Array.new(7, @styles[:stat_value]), height: 20
+
+      sheet.add_row []
+      sheet.add_row ['By Ticket Type'], style: @styles[:section_header]
+      merge_row_across(sheet, 7)
+      tickets.group_by { |t| t.ticket_type&.name || 'Unassigned' }.each do |type_name, type_tickets|
+        sheet.add_row [type_name, type_tickets.size, type_tickets.count(&:checked_in)],
+                      style: [@styles[:cell], @styles[:cell], @styles[:cell]]
+      end
+
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+      sheet.print_options.set(horizontal_centered: true)
+    end
+  end
+
+  # --- Entry Timeline (every scan event; only when include_rescans is true) ---
+
+  def build_scan_history_sheet(package, tickets)
+    headers = ['Scan ID', 'Attendee Name', 'Ticket Type', 'Scanned At', 'Source', 'Location', 'Scanned By']
+    source_labels = { 'staff_scan' => 'Staff scan', 'self_check_in' => 'Self check-in', 'kiosk' => 'Public Check-in Page' }
+
+    logs = scan_logs_for_tickets(tickets)
+                  .includes(:event_location, :scanned_by, scannable: :ticket_type)
+                  .order(:scanned_at)
+
+    package.workbook.add_worksheet(name: 'Entry Timeline') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
+      sheet.column_widths 12, 26, 18, 20, 20, 22, 22
+
+      logs.each_with_index do |log, index|
+        style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+        date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+        ticket = log.scannable
+
+        sheet.add_row(
+          [
+            log.id, ticket&.attendee_name, ticket&.ticket_type&.name, log.scanned_at,
+            source_labels[log.source] || log.source.to_s.titleize,
+            log.event_location&.name, log.scanned_by&.full_name
+          ],
+          style: [style, style, style, date_style, style, style, style]
+        )
+      end
+
+      sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
+      sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
+    end
   end
 
   # Import tickets from Excel file
@@ -122,13 +338,14 @@ class TicketExcelService
   # @param full [Boolean] If true, include full record data (all extracted fields + model + id) in response
   # @param no_label [Boolean] If true, map custom fields to sequential "Label N" keys; if false, use header names as keys
   # @return [Hash] { created: {count: Integer, data: Array}, updated: {count: Integer, data: Array}, skipped: {count: Integer, data: Array}, duplicates_in_file: {count: Integer, data: Array}, errors: {count: Integer, data: Array} }
-  def self.import(file, dry_run: false, full: false, no_label: false)
+  def self.import(file, dry_run: false, full: false, no_label: false, overwrite_blank_custom_fields: false)
     results = {
       created: { count: 0, data: [] },
       skipped: { count: 0, data: [] },
       updated: { count: 0, data: [] },
       duplicates_in_file: { count: 0, data: [] },
-      errors: { count: 0, data: [] }
+      errors: { count: 0, data: [] },
+      events: []
     }
 
     begin
@@ -198,7 +415,7 @@ class TicketExcelService
           attendee_name = titleize_name(attendee_name_raw)
           attendee_email = normalize_email(attendee_email_raw)
           attendee_phone = normalize_phone(attendee_phone_raw)
-          event_title = event_title_raw.to_s.strip
+          event_title = normalize_event_title(event_title_raw)
           role = role_raw.to_s.strip
           effective_ticket_type_name = (ticket_type_raw.to_s.strip.presence || 'General Admission')
 
@@ -266,7 +483,7 @@ class TicketExcelService
           end
 
           key = [
-            "evt:#{event_title.downcase.strip}",
+            "evt:#{normalize_event_title(event_title).downcase}",
             "type:#{effective_ticket_type_name.downcase.strip}",
             "name:#{normalize_name_key(attendee_name)}"
           ].join('|')
@@ -310,55 +527,97 @@ class TicketExcelService
         end
       end
 
+      # Per-event breakdown for the preview: which distinct Event Title values the
+      # file targets, whether each maps to an existing event or would create a new
+      # (draft) one, and how many rows point at it. Titles are normalized
+      # (whitespace collapsed) and grouped case-insensitively, so a file that spells
+      # one event "Sabah Expo 2026" / "sabah expo 2026" / "Sabah  Expo 2026" shows
+      # as a single target instead of three. A genuinely new title still flags
+      # "will create" so the user can catch real typos before committing. Read-only.
+      event_titles_in_file = candidates.each_value.map { |entry| entry[:attrs][:event_title] }.reject(&:blank?)
+      unless event_titles_in_file.empty?
+        # Group rows by normalized+downcased title, keeping the most common raw
+        # spelling for display.
+        groups = event_titles_in_file.group_by { |t| normalize_event_title(t).downcase }
+        results[:events] = groups.map do |_norm, titles|
+          display_title = titles.tally.max_by { |_, count| count }.first
+          existing = find_event_by_title(display_title)
+          {
+            title: existing&.title || display_title,
+            exists: existing.present?,
+            row_count: titles.length
+          }
+        end
+      end
+
       # Update labels_data once per unique event before processing tickets
       # This ensures all tickets see the updated labels_data structure
       events_processed = {}
       candidates.each_value do |entry|
         event_title = entry[:attrs][:event_title]
-        next if events_processed[event_title]
+        # Key by normalized title so "Sabah Expo 2026" / "sabah expo 2026" /
+        # "Sabah  Expo 2026" all resolve to one event, not three.
+        norm_key = normalize_event_title(event_title).downcase
+        next if events_processed[norm_key]
 
-        event = Event.find_or_create_by!(title: event_title) do |e|
-          e.status = :draft
-          e.start_date = 10.days.from_now
-          e.end_date = 20.days.from_now
-          e.visibility = true
-          e.labels_data = labels_schema if labels_schema.present?
+        event = find_event_by_title(event_title)
+
+        if event.nil?
+          if dry_run
+            # A dry-run must not persist anything — building an event row (or a new
+            # ticket type, below) would create real draft records just from a
+            # preview. Stand in with an in-memory event good enough for the second
+            # pass to render the report; it is never saved.
+            event = Event.new(
+              title: normalize_event_title(event_title),
+              status: :draft,
+              start_date: 10.days.from_now,
+              end_date: 20.days.from_now,
+              visibility: true,
+              labels_data: labels_schema.presence || {}
+            )
+            events_processed[norm_key] = event
+            next
+          end
+
+          event = Event.create!(
+            title: normalize_event_title(event_title),
+            status: :draft,
+            start_date: 10.days.from_now,
+            end_date: 20.days.from_now,
+            visibility: true,
+            labels_data: labels_schema.presence
+          )
         end
-        # Reload to ensure we have the latest labels_data (especially if event was just created)
-        event.reload
-        # Normalize/replace labels_data schema according to selected mode for this import run
+
+        # Normalize/replace labels_data schema according to selected mode for this import run.
+        # Dry-runs calculate the same effective schema in memory so preview rows
+        # include custom fields, but never persist the event or synchronize tickets.
         if labels_schema.present?
           existing_labels = event.labels_data || {}
           existing_style = existing_labels.keys.any? { |k| k.to_s.match?(/^Label \d+$/) } ? :labelN : :header
           import_style = no_label ? :labelN : :header
 
-          if existing_style != import_style
+          effective_labels = if existing_style != import_style
             # Replace entirely to ensure consistency with this import run's rule
-            if event.labels_data != labels_schema
-              event.update!(labels_data: labels_schema)
-              event.reload
-            end
+            labels_schema
+          elsif import_style == :labelN
+            merge_label_n_schema(existing_labels, labels_schema)
           else
-            # Same style: merge and update only if changed
-            merged_labels = if import_style == :labelN
-              merge_label_n_schema(existing_labels, labels_schema)
-            else
-              existing_labels.merge(labels_schema)
-            end
-            existing_array = (existing_labels || {}).to_a.sort_by { |k, _| k.to_s }
-            merged_array = merged_labels.to_a.sort_by { |k, _| k.to_s }
-            has_changes = existing_array != merged_array
-            if has_changes
-              event.update!(labels_data: merged_labels)
-              event.reload
-            end
+            existing_labels.merge(labels_schema)
           end
 
-          # Ensure all existing tickets for this event are synchronized to the selected keying style
-          # so that their custom_fields_data keys match event.labels_data (unless dry_run)
-          synchronize_event_tickets(event, labels_schema, import_style, dry_run)
+          if dry_run
+            # Preview needs effective labels_data for response/custom-field
+            # shaping, but assignment stays in memory and cannot write to DB.
+            event.labels_data = effective_labels
+          elsif event.labels_data != effective_labels
+            event.update!(labels_data: effective_labels)
+            event.reload
+            synchronize_event_tickets(event, labels_schema, import_style, false, overwrite_blank_custom_fields)
+          end
         end
-        events_processed[event_title] = event
+        events_processed[norm_key] = event
       end
 
       # Second pass: apply to DB with update-if-more-complete policy
@@ -383,13 +642,34 @@ class TicketExcelService
                                 else :pending
                                 end
 
-        # Use the pre-processed event from events_processed
-        event = events_processed[event_title]
+        # Use the pre-processed event from events_processed (keyed by normalized title)
+        event = events_processed[normalize_event_title(event_title).downcase]
 
-        ticket_type = event.ticket_types.find_or_create_by!(name: ticket_type_name) do |tt|
-          tt.price = 0
-          tt.quantity = 10000
-          tt.status = :draft
+        # merge_custom_fields_preserving_existing uses Hash#merge, whose block only
+        # fires for keys present in BOTH hashes — a label key absent from this file's
+        # columns (removed entirely, not just left blank) never reaches that block, so
+        # overwrite_blank_custom_fields could never clear it. In reset mode, treat an
+        # absent column the same as a present-but-blank one by filling it in here.
+        if overwrite_blank_custom_fields
+          missing_keys = self.preferred_label_keys(event.labels_data) - custom_fields_data.keys
+          custom_fields_data = custom_fields_data.merge(missing_keys.index_with { '' }) if missing_keys.any?
+        end
+
+        ticket_type = if !event.persisted?
+          # Dry-run against a brand-new (unsaved) event: use an in-memory ticket
+          # type so the preview can render without persisting a real draft record.
+          event.ticket_types.build(name: ticket_type_name, price: 0, quantity: 10000, status: :draft)
+        elsif dry_run
+          # Existing event, but a preview must not create a real ticket type for a
+          # name that doesn't exist yet — find it, else use an in-memory stand-in.
+          event.ticket_types.find_by(name: ticket_type_name) ||
+            event.ticket_types.build(name: ticket_type_name, price: 0, quantity: 10000, status: :draft)
+        else
+          event.ticket_types.find_or_create_by!(name: ticket_type_name) do |tt|
+            tt.price = 0
+            tt.quantity = 10000
+            tt.status = :draft
+          end
         end
 
         # Find existing by name within same event+type
@@ -410,7 +690,9 @@ class TicketExcelService
             unless dry_run
               # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
               base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = base_custom_fields.merge(
+                self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+              )
               # Remove legacy keys not part of preferred label keys
               merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
               merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
@@ -428,7 +710,9 @@ class TicketExcelService
             else
               # In dry_run mode, check if custom_fields_data would change
               base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = base_custom_fields.merge(
+                self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+              )
               merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
               merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
               if merged_custom_fields != original_custom_fields
@@ -453,7 +737,7 @@ class TicketExcelService
                 role: existing.role,
                 payment_status: 'paid',
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {})
+                **(merged_custom_fields || existing.custom_fields_data || {})
               })
             end
             results[:updated][:data] << record_data
@@ -467,6 +751,7 @@ class TicketExcelService
             attendee_email: existing.attendee_email,
             attendee_phone: existing.attendee_phone,
             ticket_type: existing.ticket_type&.name.to_s,
+            role: existing.role,
             payment_status: existing.payment_status.to_s,
             checked_in: existing.checked_in,
             custom_fields_data: existing.custom_fields_data || {}
@@ -490,8 +775,11 @@ class TicketExcelService
               # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
               # Start with event labels (as base) to ensure new labels are included
               base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-              # Merge existing ticket data, then import data (preserving existing values)
-              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              # Merge existing ticket data, then import data (preserving existing values; a blank
+              # incoming cell must not erase a stored value)
+              merged_custom_fields = base_custom_fields.merge(
+                self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+              )
               merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
               merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
@@ -511,7 +799,9 @@ class TicketExcelService
             else
               # In dry_run mode, check if custom_fields_data would change
               base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-              merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+              merged_custom_fields = base_custom_fields.merge(
+                self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+              )
               merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
               merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
               if merged_custom_fields != original_custom_fields
@@ -534,9 +824,9 @@ class TicketExcelService
                 event_title: event.title,
                 ticket_type: ticket_type.name,
                 role: existing.role,
-                payment_status: existing.payment_status.to_s,
+                payment_status: upgraded_payment_status.to_s,
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {})
+                **(merged_custom_fields || existing.custom_fields_data || {})
               })
             end
             results[:updated][:data] << record_data
@@ -569,8 +859,11 @@ class TicketExcelService
           unless dry_run
             # Ensure all preferred label keys from event.labels_data are present in custom_fields_data
             base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-            # Merge existing ticket data, then import data (import data takes precedence for values)
-            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+            # Merge existing ticket data, then import data. A blank incoming cell means "not
+            # provided", not "clear" — it must not erase the stored value (EF-308).
+            merged_custom_fields = base_custom_fields.merge(
+              self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+            )
             merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
             merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
 
@@ -596,7 +889,9 @@ class TicketExcelService
           else
             # In dry_run mode, check if custom_fields_data would change
             base_custom_fields = self.preferred_label_keys(event.labels_data).index_with { |_k| '' }
-            merged_custom_fields = base_custom_fields.merge(existing.custom_fields_data.to_h).merge(custom_fields_data)
+            merged_custom_fields = base_custom_fields.merge(
+              self.merge_custom_fields_preserving_existing(existing.custom_fields_data, custom_fields_data, overwrite_blank: overwrite_blank_custom_fields)
+            )
             merged_custom_fields = self.sanitize_custom_fields(merged_custom_fields, event.labels_data)
             merged_custom_fields = self.strip_empty_custom_fields(merged_custom_fields)
             if merged_custom_fields != original_custom_fields
@@ -624,9 +919,9 @@ class TicketExcelService
                 event_title: event.title,
                 ticket_type: ticket_type.name,
                 role: existing.role,
-                payment_status: existing.payment_status.to_s,
+                payment_status: (dry_run ? upgraded_payment_status_for_skip : existing.payment_status).to_s,
                 checked_in: existing.checked_in,
-                **(existing.custom_fields_data || {})
+                **((dry_run ? merged_custom_fields : existing.custom_fields_data) || {})
               })
             end
             results[:updated][:data] << record_data
@@ -742,6 +1037,23 @@ class TicketExcelService
     key.present? ? key : nil
   end
 
+  # Collapse internal runs of whitespace and trim, so "Sabah  Expo  2026" and
+  # "Sabah Expo 2026" are treated as the same event. Case is matched separately
+  # (case-insensitively) at lookup time.
+  def self.normalize_event_title(value)
+    value.to_s.strip.gsub(/\s+/, ' ')
+  end
+
+  # Case-insensitive event lookup matching the same normalization, so a file that
+  # spells one event "Sabah Expo 2026" / "sabah expo 2026" / "Sabah  Expo 2026"
+  # resolves to a single existing event instead of creating duplicates. Compares
+  # normalized titles in Ruby (DB-agnostic, no fragile regex SQL). Event counts
+  # per import are small, so this scan is cheap.
+  def self.find_event_by_title(title)
+    target = normalize_event_title(title).downcase
+    Event.all.find { |e| normalize_event_title(e.title).downcase == target }
+  end
+
   def self.row_completeness_score(attrs)
     core_keys = [:attendee_name, :attendee_email, :attendee_phone, :ticket_type, :role, :payment_status, :checked_in]
     score = core_keys.count { |k| v = attrs[k]; !(v.nil? || v.to_s.strip.empty?) }
@@ -770,6 +1082,23 @@ class TicketExcelService
   def self.strip_empty_custom_fields(custom_fields)
     # Preserve empty-string values for defined label keys; normalize nil to ""
     custom_fields.transform_values { |v| v.nil? ? '' : v.to_s }
+  end
+
+  # Merge imported custom fields over the ticket's stored ones. By default a
+  # blank cell in a reimported file means "not provided" and keeps the stored
+  # value (EF-308) — a blank must not silently erase data. Pass
+  # overwrite_blank: true to opt into the old "blank clears the field" behaviour,
+  # e.g. an explicit "reset these custom fields" import.
+  def self.merge_custom_fields_preserving_existing(existing, incoming, overwrite_blank: false)
+    existing = (existing || {}).to_h
+    incoming = (incoming || {}).to_h
+    existing.merge(incoming) do |_key, old_val, new_val|
+      if !overwrite_blank && new_val.to_s.strip.empty?
+        old_val
+      else
+        new_val
+      end
+    end
   end
 
   # Convert a display name like "Dietary Restrictions" to a machine key "dietary_restrictions"
@@ -825,7 +1154,7 @@ class TicketExcelService
 
   # Synchronize all tickets of an event so their custom_fields_data keys match the current labels schema style
   # import_style: :labelN or :header
-  def self.synchronize_event_tickets(event, labels_schema, import_style, dry_run)
+  def self.synchronize_event_tickets(event, labels_schema, import_style, dry_run, overwrite_blank_custom_fields = false)
     return if dry_run
 
     # Build preferred base keys from current event.labels_data
@@ -849,6 +1178,22 @@ class TicketExcelService
       # Start with base keys (ensures presence of all keys)
       new_fields = base.dup
 
+      # Preserve stored values for keys that are part of the event's schema but
+      # were NOT present as columns in this file. The mapping loop below only
+      # rewrites keys the file actually carries; without this, removing a column
+      # from the reimported file would silently wipe that field's stored data on
+      # every ticket in the event. Skipped entirely when overwrite_blank_custom_fields
+      # is on — that's the explicit "reset custom fields" mode, where a column
+      # removed from the file means "clear this field".
+      mapping_keys_this_file = mapping.map do |(current_key, display_name), index|
+        if import_style == :labelN
+          "Label #{index + 1}"
+        else
+          machine_key_for(display_name)
+        end
+      end
+      preserved_keys = overwrite_blank_custom_fields ? [] : (target_keys - mapping_keys_this_file)
+
       mapping.each_with_index do |(current_key, display_name), index|
         target_key = if import_style == :labelN
           "Label #{index + 1}"
@@ -866,6 +1211,11 @@ class TicketExcelService
         value = original[target_key]
         value = original[alt_key] if (value.nil? || value.to_s.strip.empty?)
         new_fields[target_key] = value.to_s
+      end
+
+      # Restore the untouched keys (columns not in this file) from the stored record.
+      preserved_keys.each do |key|
+        new_fields[key] = original[key].to_s if original.key?(key)
       end
 
       new_fields = self.sanitize_custom_fields(new_fields, event.labels_data)

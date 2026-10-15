@@ -22,24 +22,28 @@ class CertificatePdfGenerator
   end
 
   # Renders many tickets into a single multi-page PDF (one certificate per
-  # page). Used for bulk download. Returns nil when there are no tickets.
-  def self.render_batch(template, tickets)
-    raise ArgumentError, 'certificate template is required' if template.nil?
+  # page), each from the template its ticket type resolves to. Used for bulk
+  # download. Tickets with no usable template are skipped; returns nil when
+  # nothing was rendered.
+  def self.render_batch(event, tickets)
+    pdf = nil
+    tickets.each do |ticket|
+      template = event.certificate_template_for(ticket)
+      next unless template&.background_image&.attached?
 
-    tickets = tickets.to_a
-    return nil if tickets.empty?
+      cw = template.canvas_width.to_f
+      ch = template.canvas_height.to_f
+      cw = 1123.0 if cw <= 0
+      ch = 794.0 if ch <= 0
 
-    cw = template.canvas_width.to_f
-    ch = template.canvas_height.to_f
-    cw = 1123.0 if cw <= 0
-    ch = 794.0 if ch <= 0
-
-    pdf = Prawn::Document.new(page_size: [cw, ch], margin: 0)
-    tickets.each_with_index do |ticket, index|
-      pdf.start_new_page(size: [cw, ch], margin: 0) if index.positive?
+      if pdf.nil?
+        pdf = Prawn::Document.new(page_size: [cw, ch], margin: 0)
+      else
+        pdf.start_new_page(size: [cw, ch], margin: 0)
+      end
       new(template, ticket).draw_onto(pdf, cw, ch)
     end
-    pdf.render
+    pdf&.render
   end
 
   def render

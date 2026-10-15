@@ -1,8 +1,8 @@
 module V1
   module BusinessMatching
     class BookingsController < ApplicationController
-      skip_before_action :authenticate_user!, only: [:public_create]
-      skip_before_action :require_verified_email!, only: [:public_create]
+      skip_before_action :authenticate_user!, only: [:public_create, :public_show, :reschedule, :cancel]
+      skip_before_action :require_verified_email!, only: [:public_create, :public_show, :reschedule, :cancel]
 
       # GET /api/v1/business_matching/events/:business_matching_event_id/bookings
       def index
@@ -62,6 +62,10 @@ module V1
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
+        unless event.business_matching_public_booking_open?
+          return render json: { errors: 'Public booking is closed for this event.' }, status: :forbidden
+        end
+
         # The service should handle a nil current_user for public bookings.
         service_result = BusinessMatchingService.new(current_user).public_create_booking(
           params[:business_matching_event_id],
@@ -99,33 +103,30 @@ module V1
         end
       end
 
-      # GET /api/v1/business_matching/events/:business_matching_event_id/bookings/generate_report
-      # OR
-      # GET /api/v1/business_matching/events/:event_id/report
+      # POST /api/v1/business_matching/events/:event_id/report?format=xlsx
       def generate_report
         bm_event_ids = params[:business_matching_event_ids]
-        
+        report_format = (params[:format].presence || 'xlsx').to_s.downcase
+
         all_bookings = []
         service_error_occurred = false
 
         if bm_event_ids.present? && bm_event_ids.is_a?(Array)
-          # Fetch bookings for specific BM event IDs
           bm_event_ids.each do |bm_event_id|
             service_result = BusinessMatchingService.new(current_user).fetch_bookings(
               bm_event_id,
               params[:event_id],
-              force_refresh: true # Always force refresh for reports
+              force_refresh: true
             )
             if service_result.success?
               all_bookings.concat(service_result.data[:bookings])
             else
               render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
               service_error_occurred = true
-              break # Stop processing on first error
+              break
             end
           end
         else
-          # Fallback: Fetch all bookings for the event
           service_result = BusinessMatchingService.new(current_user).fetch_all_bookings(params[:event_id], force_refresh: true)
           if service_result.success?
             all_bookings.concat(service_result.data[:bookings])
@@ -135,33 +136,188 @@ module V1
           end
         end
 
-        unless service_error_occurred
-          request.format = :xlsx unless params[:format]
-          report_service = BusinessMatchingReportService.new(all_bookings, "Business Matching Report")
+        return if service_error_occurred
 
-          respond_to do |format|
-            format.xlsx do
-              send_data report_service.generate_xlsx,
-                        filename: "business_matching_report_#{params[:event_id]}.xlsx",
-                        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        disposition: "attachment"
-            end
-          end
+        report_service = BusinessMatchingReportService.new(all_bookings, "Business Matching Report")
+
+        case report_format
+        when 'xlsx'
+          send_data report_service.generate_xlsx,
+                    filename: report_filename,
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    disposition: 'attachment'
+        else
+          render json: { errors: "Unsupported format: #{report_format}. Use 'xlsx'." }, status: :unprocessable_entity
+        end
+      rescue StandardError => e
+        Rails.logger.error("Report generation failed: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
+      # GET /api/v1/business_matching/bookings/:id/public
+      def public_show
+        booking = BusinessMatchingBooking.find_by(id: params[:id])
+        return render json: { error: 'Booking not found' }, status: :not_found unless booking
+
+        session = booking.business_matching_session
+        render json: {
+          id: booking.id.to_s,
+          name: booking.name,
+          email: booking.email,
+          booking_date: booking.booking_date.strftime('%-d %B %Y'),
+          booking_time: booking.booking_time,
+          status: booking.status,
+          event_id: session&.event_id.to_s,
+          bm_event_id: session&.id.to_s,
+          session_title: session&.title || 'Matchmaking Session',
+          host_user_id: booking.host_user_id.to_s,
+          host_name: booking.host_user&.full_name,
+          slot_duration: session&.slot_duration
+        }, status: :ok
+      end
+
+      # PATCH /api/v1/business_matching/bookings/:id/approve
+      # Staff/host action — authenticated, unlike the booker-facing
+      # reschedule/cancel links below.
+      def approve
+        booking = BusinessMatchingBooking.find_by(id: params[:id])
+        return render json: { error: 'Booking not found' }, status: :not_found unless booking
+
+        session = booking.business_matching_session
+        return render json: { error: 'Session not found' }, status: :not_found unless session
+
+        authorize session, :update?
+
+        service_result = BusinessMatchingService.new(current_user).approve_booking(booking.id)
+
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :unprocessable_entity
         end
       end
-    
+
+      # PATCH /api/v1/business_matching/bookings/:id/reschedule
+      def reschedule
+        booking = BusinessMatchingBooking.find_by(id: params[:id])
+        return render json: { error: 'Booking not found' }, status: :not_found unless booking
+        return render json: { error: 'Cancelled bookings cannot be rescheduled' }, status: :unprocessable_entity if booking.status == 'Cancelled'
+
+        new_date = params[:date].presence
+        new_time = params[:time].presence
+        return render json: { error: 'New date and time are required' }, status: :bad_request unless new_date && new_time
+
+        parsed_date = Date.parse(new_date)
+
+        target_session = if params[:bm_event_id].present? || params[:business_matching_event_id].present?
+                           BusinessMatchingSession.find_by(id: params[:bm_event_id] || params[:business_matching_event_id])
+                         else
+                           booking.business_matching_session
+                         end
+
+        target_host_id = params[:host_user_id].presence
+        if target_host_id.blank? && target_session.present?
+          assignment = BusinessHostAssignment.find_by(event_id: target_session.event_id, business_matching_event_id: target_session.id.to_s)
+          target_host_id = assignment&.user_id || booking.host_user_id
+        else
+          target_host_id ||= booking.host_user_id
+        end
+
+        # Check slot is not already taken
+        conflict = BusinessMatchingBooking
+                     .where(host_user_id: target_host_id, booking_date: parsed_date, booking_time: new_time)
+                     .where.not(id: booking.id)
+                     .where.not(status: 'Cancelled')
+                     .exists?
+
+        return render json: { error: 'That slot is already booked. Please choose another time.' }, status: :conflict if conflict
+
+        old_date = booking.booking_date
+        old_time = booking.booking_time
+        old_host = booking.host_user
+
+        update_attrs = {
+          booking_date: parsed_date,
+          booking_time: new_time,
+          host_user_id: target_host_id
+        }
+        update_attrs[:business_matching_session_id] = target_session.id if target_session.present?
+
+        if booking.update(update_attrs)
+          session = booking.business_matching_session
+          ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_rescheduled' })
+          BusinessMatchingService.new(current_user).notify_booking_rescheduled(booking, old_date, old_time, old_host: old_host)
+          render json: {
+            message: 'Booking rescheduled successfully',
+            booking_date: booking.booking_date.strftime('%-d %B %Y'),
+            booking_time: booking.booking_time,
+            host_user_id: booking.host_user_id.to_s,
+            bm_event_id: session&.id.to_s,
+            session_title: session&.title
+          }, status: :ok
+        else
+          render json: { errors: booking.errors.full_messages }, status: :unprocessable_entity
+        end
+      rescue Date::Error
+        render json: { error: 'Invalid date format' }, status: :bad_request
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
+      # PATCH /api/v1/business_matching/bookings/:id/cancel
+      def cancel
+        booking = BusinessMatchingBooking.find_by(id: params[:id])
+        return render json: { error: 'Booking not found' }, status: :not_found unless booking
+        return render json: { error: 'Booking is already cancelled' }, status: :unprocessable_entity if booking.status == 'Cancelled'
+
+        if booking.update(status: 'Cancelled')
+          session = booking.business_matching_session
+          ActionCable.server.broadcast("business_matching_event_#{session&.event_id}", { action: 'booking_cancelled' })
+          BusinessMatchingService.new(current_user).notify_booking_cancelled(booking)
+          render json: {
+            message: 'Booking cancelled successfully',
+            status: booking.status
+          }, status: :ok
+        else
+          render json: { errors: booking.errors.full_messages }, status: :unprocessable_entity
+        end
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
       private # Add this line
+
+      def report_filename
+        event = Event.find_by(id: params[:event_id])
+        event_name = (event&.title || params[:event_id]).to_s.parameterize(separator: '_')
+        timestamp = Time.current.strftime('%Y%m%d%H%M%S')
+
+        is_pure_business_host = event.present? &&
+          current_user&.is_business_host?(event) &&
+          !current_user&.is_org_owner_or_organizer? &&
+          !current_user&.is_event_admin?(event)
+
+        base = if is_pure_business_host
+                 "#{event_name}_business_matching_export_#{current_user.full_name.to_s.parameterize(separator: '_')}"
+               else
+                 "#{event_name}_business_matching_export"
+               end
+
+        "#{base}_#{timestamp}.xlsx"
+      end
 
       def booking_params
         params.require(:booking).permit(
           :name, :email, :phone, :booking_date, :booking_time, :status, :payment_status,
-          :attendance, :host_comment, :potential_deal_value, :host_user_id
+          :attendance, :host_comment, :potential_deal_value, :host_user_id,
+          :booker_description, :booker_sourcing_intent, :booker_capabilities
         )
       end
 
       def public_booking_create_params
         params.require(:booking).permit(
-          :name, :email, :phone, :date, :time
+          :name, :email, :phone, :date, :time,
+          :booker_description, :booker_sourcing_intent, :booker_capabilities
         )
       end
     end

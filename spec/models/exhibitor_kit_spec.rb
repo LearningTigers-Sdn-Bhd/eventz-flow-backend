@@ -29,6 +29,68 @@ RSpec.describe ExhibitorKit, type: :model do
       .with_prefix(:booking)
   end
 
+  it do
+    should define_enum_for(:payment_status)
+      .with_values(unpaid: 0, paid: 1, waived: 2, sponsored: 3, deposit: 4)
+  end
+
+  describe 'deposit payment status' do
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid, pic_email_address: 'pic@example.com') }
+
+    it 'does not trigger the payment confirmed email' do
+      perform_enqueued_jobs do
+        expect { kit.update!(payment_status: :deposit) }
+          .not_to have_enqueued_job.on_queue('mailers')
+      end
+    end
+
+    it 'is excluded from settled?' do
+      kit.update!(payment_status: :deposit)
+      expect(kit.settled?).to be false
+    end
+  end
+
+  describe 'payment_recorded_at stamping' do
+    let(:kit) { create(:exhibitor_kit, event_vendor: exhibitor, payment_status: :unpaid) }
+
+    it 'stamps payment_recorded_at when payment_status transitions into a money status' do
+      # travel_to drops sub-second precision, so compare against the same instant.
+      stamped_at = 1.day.from_now.change(usec: 0)
+      travel_to(stamped_at) do
+        kit.update!(payment_status: :deposit)
+      end
+
+      expect(kit.payment_recorded_at).to be_within(1.second).of(stamped_at)
+    end
+
+    it 'does not shift payment_recorded_at when an unrelated field is edited' do
+      travel_to(1.day.from_now) { kit.update!(payment_status: :deposit) }
+      recorded_at = kit.payment_recorded_at
+
+      travel_to(5.days.from_now) { kit.update!(company_name: 'Renamed Co') }
+
+      expect(kit.reload.payment_recorded_at).to be_within(1.second).of(recorded_at)
+    end
+
+    it 'clears payment_recorded_at when reverted to unpaid' do
+      kit.update!(payment_status: :deposit)
+      kit.update!(payment_status: :unpaid)
+
+      expect(kit.payment_recorded_at).to be_nil
+    end
+  end
+
+  describe '.active_or_paid' do
+    let!(:active_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :active) }
+    let!(:paid_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :paid) }
+    let!(:cancelled_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :cancelled) }
+    let!(:expired_kit) { create(:exhibitor_kit, event_vendor: exhibitor, booking_status: :expired) }
+
+    it 'returns kits that still represent a current booking' do
+      expect(described_class.active_or_paid).to contain_exactly(active_kit, paid_kit)
+    end
+  end
+
   it { should validate_uniqueness_of(:public_id).ignoring_case_sensitivity }
   it { should validate_uniqueness_of(:idempotency_key).scoped_to(:event_vendor_id).allow_nil }
 

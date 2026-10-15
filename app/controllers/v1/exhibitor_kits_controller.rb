@@ -1,8 +1,16 @@
 class V1::ExhibitorKitsController < ApplicationController
+  # Some browsers/OS send the legacy .xls MIME type for .xlsx uploads; accept both,
+  # matching the existing xlsx allowlist in UploadsController::ALLOWED_CONTENT_TYPES.
+  XLSX_CONTENT_TYPES = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel'
+  ].freeze
+  MAX_IMPORT_FILE_SIZE = 50.megabytes
+
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof ic_copy customs_declaration permanently_delete force_delete]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order]
+  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof resync_team_members ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order resync_team_members export import_template import]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -13,6 +21,80 @@ class V1::ExhibitorKitsController < ApplicationController
   def show
     authorize @exhibitor_kit
     render json: format_exhibitor_kit(@exhibitor_kit)
+  end
+
+  # GET /v1/events/:event_id/exhibitor_kits/export?format=xlsx|csv
+  # Downloads registered exhibitor kits for the event as an Excel workbook (default) or CSV.
+  def export
+    authorize @event, :analytics?
+
+    if params[:format] == 'csv'
+      timestamp = Time.current.strftime('%Y%m%d_%H%M%S')
+      send_data(
+        ExhibitorKitCsvService.export(@event.id),
+        filename: "exhibitor-kits-#{@event.id}-#{timestamp}.csv",
+        type: 'text/csv',
+        disposition: 'attachment'
+      )
+    else
+      result = ExhibitorKitExcelService.export(@event.id)
+      send_file(
+        result[:file_path],
+        filename: File.basename(result[:file_path]),
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        disposition: 'attachment'
+      )
+    end
+  rescue Pundit::NotAuthorizedError
+    render json: { error: 'Not authorized to export exhibitor kits for this event' }, status: :forbidden
+  end
+
+  # GET /v1/events/:event_id/exhibitor_kits/import_template
+  def import_template
+    authorize @event, :update?
+
+    result = ExhibitorKitImportTemplateService.export(@event.id)
+    send_file(
+      result[:file_path],
+      filename: File.basename(result[:file_path]),
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment'
+    )
+  end
+
+  # POST /v1/events/:event_id/exhibitor_kits/import
+  def import
+    authorize @event, :update?
+
+    file = params[:file]
+    unless file.present?
+      return render json: { error: 'No file provided' }, status: :unprocessable_content
+    end
+    unless file.respond_to?(:content_type) && XLSX_CONTENT_TYPES.include?(file.content_type)
+      return render json: { error: 'File must be an .xlsx workbook' }, status: :unprocessable_content
+    end
+    if file.size.to_i > MAX_IMPORT_FILE_SIZE
+      return render json: { error: 'File size exceeds the maximum allowed size of 50MB' }, status: :unprocessable_content
+    end
+
+    dry_run = ActiveModel::Type::Boolean.new.cast(params[:dry_run])
+    force_duplicate_rows = Array(params[:force_duplicate_rows]).map(&:to_i)
+    results = ExhibitorKitImportService.import(
+      file, event: @event, current_user: current_user, dry_run: dry_run, force_duplicate_rows: force_duplicate_rows
+    )
+    total = results[:created][:count] + results[:errors][:count]
+
+    render json: {
+      total: total,
+      created: results[:created],
+      skipped: results[:skipped],
+      errors: results[:errors]
+    }, status: :ok
+  rescue Pundit::NotAuthorizedError
+    raise
+  rescue StandardError => e
+    Rails.logger.error "Exhibitor kit import error: #{e.message}"
+    render json: { error: 'Import failed', errors: [e.message] }, status: :unprocessable_content
   end
 
   def create
@@ -66,7 +148,7 @@ class V1::ExhibitorKitsController < ApplicationController
                     status: :unprocessable_content
     end
 
-    @exhibitor_kit.destroy!
+    @exhibitor_kit.destroy_with_event_vendor_cleanup!
     head :no_content
   end
 
@@ -75,7 +157,7 @@ class V1::ExhibitorKitsController < ApplicationController
   def force_delete
     authorize @exhibitor_kit, :force_destroy?
 
-    @exhibitor_kit.destroy!
+    @exhibitor_kit.destroy_with_event_vendor_cleanup!
     head :no_content
   end
 
@@ -101,6 +183,23 @@ class V1::ExhibitorKitsController < ApplicationController
     render json: format_exhibitor_kit(@exhibitor_kit.reload), status: :ok
   end
 
+  # POST /v1/events/:event_id/exhibitor_kits/:id/resync_team_members
+  # Re-applies the kit's current company_name onto every team member's linked
+  # ticket. Fixes tickets left stale after someone corrects a company name typo
+  # post-registration, without touching ticket status/payment.
+  def resync_team_members
+    authorize @exhibitor_kit, :update?
+
+    result = ExhibitorTeamMemberCompanyResyncService.new(@exhibitor_kit).call
+
+    render json: {
+      updated: result[:updated],
+      unchanged: result[:unchanged],
+      skipped: result[:skipped],
+      failed: result[:failed]
+    }, status: :ok
+  end
+
   def ic_copy
     authorize @exhibitor_kit, :download_ic_copy?
     return render json: { error: 'IC copy not found' }, status: :not_found unless @exhibitor_kit.ic_copy.attached?
@@ -120,6 +219,30 @@ class V1::ExhibitorKitsController < ApplicationController
     send_data @exhibitor_kit.customs_declaration_form.download,
               filename: @exhibitor_kit.customs_declaration_form.filename.to_s,
               type: @exhibitor_kit.customs_declaration_form.content_type,
+              disposition: 'attachment'
+  end
+
+  def indemnity_form
+    authorize @exhibitor_kit, :download_ic_copy?
+    unless @exhibitor_kit.indemnity_form.attached?
+      return render json: { error: 'Indemnity form not found' }, status: :not_found
+    end
+
+    send_data @exhibitor_kit.indemnity_form.download,
+              filename: @exhibitor_kit.indemnity_form.filename.to_s,
+              type: @exhibitor_kit.indemnity_form.content_type,
+              disposition: 'attachment'
+  end
+
+  def customs_duty_estimate
+    authorize @exhibitor_kit, :download_ic_copy?
+    unless @exhibitor_kit.customs_duty_estimate.attached?
+      return render json: { error: 'Customs duty estimate not found' }, status: :not_found
+    end
+
+    send_data @exhibitor_kit.customs_duty_estimate.download,
+              filename: @exhibitor_kit.customs_duty_estimate.filename.to_s,
+              type: @exhibitor_kit.customs_duty_estimate.content_type,
               disposition: 'attachment'
   end
 
@@ -155,6 +278,7 @@ class V1::ExhibitorKitsController < ApplicationController
                   end
     end
 
+    voucher = batch_voucher(kit)
     kit.as_json(
       include: [
         { custom_requests: { only: %i[id description quantity status resolved_price response_notes] } }
@@ -162,6 +286,8 @@ class V1::ExhibitorKitsController < ApplicationController
     ).merge(
       ic_copy_uploaded: kit.ic_copy.attached?,
       customs_declaration_uploaded: kit.customs_declaration_form.attached?,
+      customs_duty_estimate_uploaded: kit.customs_duty_estimate.attached?,
+      indemnity_form_uploaded: kit.indemnity_form.attached?,
       booking_batch_id: kit.custom_fields_data['booking_batch_id'],
       payment_proof_url: kit.exhibitor_registration_payment&.payment_proof&.attached? ? url_for(kit.exhibitor_registration_payment.payment_proof) : nil,
       payment_proof_status: kit.exhibitor_registration_payment&.status || 'pending',
@@ -172,15 +298,30 @@ class V1::ExhibitorKitsController < ApplicationController
       exhibitor_package_id: kit.exhibitor_package_id,
       exhibitor_package_name: kit.exhibitor_package&.name,
       exhibitor_package_inclusions: kit.exhibitor_package&.inclusions,
-      exhibitor_voucher_code: kit.applied_voucher&.code,
-      exhibitor_voucher_discount_type: kit.applied_voucher&.discount_type,
-      exhibitor_voucher_discount_value: kit.applied_voucher&.discount_value,
+      exhibitor_voucher_code: voucher&.code,
+      exhibitor_voucher_discount_type: voucher&.discount_type,
+      exhibitor_voucher_discount_value: voucher&.discount_value,
       exhibitor_team_members: kit.exhibitor_team_members.as_json(
         only: %i[id exhibitor_kit_id full_name email phone attendee_type attendee_id created_at updated_at]
       ),
       exhibitor_kit_items: items.map { |item| format_kit_item(item) },
       exhibitor_kit_printings: printings.map { |printing| format_kit_printing(printing) }
     )
+  end
+
+  # A batch redeems its shared voucher once, tied to the batch's first kit — every
+  # sibling kit in the batch still needs to show the voucher that discounted it.
+  def batch_voucher(kit)
+    return kit.applied_voucher if kit.applied_voucher
+
+    batch_id = kit.custom_fields_data['booking_batch_id']
+    return nil if batch_id.blank?
+
+    sibling_ids = ExhibitorKit.joins(:event_vendor)
+      .where(event_vendors: { event_id: kit.event.id })
+      .where("custom_fields_data ->> 'booking_batch_id' = ?", batch_id)
+      .pluck(:id)
+    ExhibitorVoucher.find_by(redeemed_by_exhibitor_kit_id: sibling_ids)
   end
 
   def format_kit_item(item)

@@ -66,7 +66,8 @@ module V1
         :payment_mode,
         :payment_status,
         :status,
-        :expires_at
+        :expires_at,
+        :plan_object_id
       )
     end
 
@@ -92,6 +93,10 @@ module V1
           id: bundle.ticket_type.id,
           name: bundle.ticket_type.name
         },
+        plan_object: bundle.plan_object && {
+          id: bundle.plan_object.id,
+          label: bundle.plan_object.label
+        },
         bundle_link: bundle_link(bundle),
         created_at: bundle.created_at,
         updated_at: bundle.updated_at
@@ -100,7 +105,9 @@ module V1
 
     def bundle_link(bundle)
       base_url = public_registration_url_for(@event)
-      "#{base_url}/register/#{bundle.registration_form.slug}?bundle=#{bundle.token}"
+      path = @event.registration_path_for(bundle.registration_form.slug)
+      separator = path.include?('?') ? '&' : '?'
+      "#{base_url}#{path}#{separator}bundle=#{bundle.token}"
     end
   end
 end

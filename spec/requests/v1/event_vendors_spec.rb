@@ -847,11 +847,11 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       expect(kit_payload['exhibitor_package_name']).to eq('Package B | Prime Booth')
     end
 
-    it 'returns empty plural array and nil legacy kit for zero kits' do
+    it 'does not list an exhibitor with zero kits' do
       get "/v1/events/#{event.id}/vendors", headers: headers
 
       payload = JSON.parse(response.body).find { |vendor| vendor['id'] == exhibitor.id }
-      expect(payload).to include('exhibitor_kits' => [], 'exhibitor_kit' => nil)
+      expect(payload).to be_nil
     end
 
     it 'returns every kit oldest first and keeps oldest legacy kit' do
@@ -965,5 +965,228 @@ RSpec.describe 'Event Vendors Management', type: :request, openapi_spec: 'v1/swa
       expect(EventVendor.find_by(event: merchant_event, vendor: vendor)).to be_nil
       expect(merchant_voucher.reload).to be_active
     end
+  end
+
+  describe 'POST /v1/events/:event_id/vendors/batch' do
+    let(:event) { create(:event, use_exhibitor_kit: true) }
+    let(:organizer) { create(:user, :organizer) }
+    let(:vendor) { create(:user, :vendor) }
+    let(:first_zone) { create(:exhibitor_zone, event:, zone: 'zone_a') }
+    let(:second_zone) { create(:exhibitor_zone, event:, zone: 'zone_b') }
+    let(:first_booth_price) do
+      create(:exhibitor_booth_price, event:, exhibitor_zone: first_zone, booth_type: 'shell_scheme')
+    end
+    let(:second_booth_price) do
+      create(:exhibitor_booth_price, event:, exhibitor_zone: second_zone, booth_type: 'raw_space')
+    end
+    let!(:first_booth) do
+      create(:exhibitor_booth, event:, exhibitor_booth_price: first_booth_price, number: 'A101', status: :available)
+    end
+    let!(:second_booth) do
+      create(:exhibitor_booth, event:, exhibitor_booth_price: second_booth_price, number: 'A102', status: :available)
+    end
+    let(:headers) do
+      {
+        'Authorization' => "Bearer #{JwtService.generate_tokens(organizer)[:access_token]}",
+        'Idempotency-Key' => 'event-vendor-batch-1'
+      }
+    end
+    let(:payload) do
+      {
+        vendor: {
+          vendor_id: vendor.id,
+          redirect_url: 'https://example.com/vendor',
+          poster_url: 'https://example.com/poster.jpg',
+          qr_url: 'https://example.com/qr.png',
+          exhibitor: {
+            company_name: 'Acme Sdn Bhd',
+            pic_full_name: 'Ada Lovelace',
+            pic_contact_number: '+60123456789',
+            pic_email_address: 'ada@example.com',
+            special_requirements: 'Near the entrance'
+          },
+          booths: [
+            {
+              exhibitor_booth_price_id: first_booth_price.id,
+              booth_type: first_booth_price.booth_type,
+              booth_number: first_booth.number
+            },
+            {
+              exhibitor_booth_price_id: second_booth_price.id,
+              booth_type: second_booth_price.booth_type,
+              booth_number: second_booth.number
+            }
+          ]
+        }
+      }
+    end
+
+    it 'creates every booth kit and returns the plural kit response' do
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+
+      body = JSON.parse(response.body)
+      expect(response).to have_http_status(:created)
+      expect(body['type']).to eq('Exhibitor')
+      expect(body['exhibitor_kits'].map { |kit| kit['id'] }.size).to eq(2)
+      expect(body['exhibitor_kits'].map { |kit| kit['booth_number'] }).to contain_exactly('A101', 'A102')
+    end
+
+    it 'preloads event associations used by the kit response formatter' do
+      EventPaymentGateway.create!(
+        event: event,
+        provider: 'razorpay',
+        key_id: 'rzp_test_key',
+        key_secret: 'secret',
+        webhook_secret: 'webhook_secret'
+      )
+      create(:exhibitor_team_member_limit, event:, team_member_limit: 3, extra_team_member_fee: 50.0)
+      allow(EventVendor).to receive(:includes).and_call_original
+
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+
+      body = JSON.parse(response.body)
+      expect(response).to have_http_status(:created)
+      expect(body['exhibitor_kits'].first['extra_team_member_payment_mode']).to eq('payment_gateway')
+      expect(body['exhibitor_kits'].first['team_member_limit']).to eq(3)
+      expect(EventVendor).to have_received(:includes).with(
+        :vendor,
+        hash_including(
+          event: %i[event_payment_gateway exhibitor_team_member_limit],
+          exhibitor_kits: array_including(:exhibitor_booth_price)
+        )
+      )
+    end
+
+    it 'returns the plural kit response when an identical batch is replayed' do
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+      first_kit_ids = JSON.parse(response.body)['exhibitor_kits'].map { |kit| kit['id'] }
+
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+
+      body = JSON.parse(response.body)
+      expect(response).to have_http_status(:created)
+      expect(body['exhibitor_kits'].map { |kit| kit['id'] }).to match_array(first_kit_ids)
+      expect(body['exhibitor_kits'].map { |kit| kit['booth_number'] }).to contain_exactly('A101', 'A102')
+    end
+
+    it 'returns a conflict when an idempotency key is reused for a different batch' do
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+
+      post "/v1/events/#{event.id}/vendors/batch",
+           params: payload.deep_merge(vendor: { booths: [{ booth_type: 'custom', booth_number: 'C101' }] }),
+           headers: headers
+
+      expect(response).to have_http_status(:conflict)
+      expect(JSON.parse(response.body)['errors']).to include('Idempotency key conflicts with a different batch')
+    end
+
+    it 'requires an idempotency key' do
+      post "/v1/events/#{event.id}/vendors/batch", params: payload,
+                                                     headers: headers.except('Idempotency-Key')
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq(
+        'error' => 'Validation Error',
+        'errors' => ['Idempotency key is required']
+      )
+    end
+
+    it 'appends new booths to an already-assigned vendor instead of rejecting' do
+      existing_exhibitor = create(:exhibitor, :with_exhibitor_kit, event:, vendor:)
+
+      post "/v1/events/#{event.id}/vendors/batch", params: payload, headers: headers
+
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body['id']).to eq(existing_exhibitor.id)
+      expect(body['exhibitor_kits'].map { |kit| kit['booth_number'] }).to include('A101', 'A102')
+      expect(body['exhibitor_kits'].size).to eq(3)
+    end
+
+    it 'returns not found for a missing vendor, booth price, or package' do
+      post "/v1/events/#{event.id}/vendors/batch",
+           params: payload.deep_merge(vendor: { vendor_id: 999_999 }), headers: headers
+
+      expect(response).to have_http_status(:not_found)
+      expect(JSON.parse(response.body)['errors']).to include('Vendor not found')
+
+      post "/v1/events/#{event.id}/vendors/batch",
+           params: payload.deep_merge(vendor: { booths: [{ exhibitor_booth_price_id: 999_999, booth_number: 'X1' }] }),
+           headers: headers.merge('Idempotency-Key' => 'event-vendor-batch-missing-price')
+
+      expect(response).to have_http_status(:not_found)
+
+      post "/v1/events/#{event.id}/vendors/batch",
+           params: payload.deep_merge(vendor: {
+                                       booths: [{
+                                         exhibitor_booth_price_id: first_booth_price.id,
+                                         exhibitor_package_id: 999_999,
+                                         booth_number: first_booth.number
+                                       }]
+                                     }),
+           headers: headers.merge('Idempotency-Key' => 'event-vendor-batch-missing-package')
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'rejects an invalid package and leaves no event vendor behind' do
+      other_price = create(:exhibitor_booth_price, event:)
+      mismatched_package = create(:exhibitor_package, event:, exhibitor_booth_price: other_price)
+
+      post "/v1/events/#{event.id}/vendors/batch",
+           params: payload.deep_merge(
+             vendor: {
+               booths: [
+                 payload[:vendor][:booths].first,
+                 payload[:vendor][:booths].second.merge(exhibitor_package_id: mismatched_package.id)
+               ]
+             }
+           ),
+           headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['errors']).to include('Selected package does not match the booth price')
+      expect(EventVendor.where(event:, vendor:)).to be_empty
+    end
+  end
+end
+
+RSpec.describe 'Event vendor visibility after kit cancellation', type: :request do
+  let(:event) { create(:event, use_exhibitor_kit: true) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:headers) { { 'Authorization' => "Bearer #{jwt_token(org_owner)}" } }
+  let!(:active_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+  let!(:stale_exhibitor) { create(:exhibitor, :with_exhibitor_kit, event: event) }
+
+  before do
+    stale_exhibitor.exhibitor_kits.update_all(booking_status: ExhibitorKit.booking_statuses[:cancelled])
+  end
+
+  it 'hides an exhibitor when all of its kits are cancelled' do
+    get "/v1/events/#{event.id}/vendors", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.map { |vendor| vendor['id'] }).to contain_exactly(active_exhibitor.id)
+  end
+end
+
+RSpec.describe 'Event vendor visibility without exhibitor kits', type: :request do
+  let(:event) { create(:event, use_ticket: true, use_exhibitor_kit: false) }
+  let(:org_owner) { create(:user, :org_owner) }
+  let(:vendor) { create(:user, :vendor) }
+  let(:headers) { { 'Authorization' => "Bearer #{jwt_token(org_owner)}" } }
+
+  it 'lists a manually assigned vendor when exhibitor kits are disabled' do
+    post "/v1/events/#{event.id}/vendors",
+      params: { vendor: { vendor_id: vendor.id } },
+      headers: headers
+
+    expect(response).to have_http_status(:created)
+    created_vendor_id = response.parsed_body.fetch('id')
+
+    get "/v1/events/#{event.id}/vendors", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.map { |event_vendor| event_vendor['id'] }).to include(created_vendor_id)
   end
 end

@@ -133,6 +133,11 @@ RSpec.describe 'V1::Roulette', type: :request do
       # Ensure ticket/visitor have public_id set (model callbacks handle this in app)
       ticket.update!(public_id: SecureRandom.uuid) if ticket.public_id.blank?
       visitor.update!(public_id: SecureRandom.uuid) if visitor.public_id.blank?
+
+      # Exhibitors draw winners from their own captured leads only
+      exhibitor_vendor = create(:exhibitor, event: event, vendor: exhibitor)
+      create(:event_lead, event_vendor: exhibitor_vendor, leadable: ticket)
+      create(:event_lead, event_vendor: exhibitor_vendor, leadable: visitor)
     end
 
     it 'allows creating a single winner when is_multiple is false and blocks second winner' do
@@ -220,6 +225,12 @@ RSpec.describe 'V1::Roulette', type: :request do
       # Assign exhibitor to events
       EventAssignment.find_or_create_by!(event: ticket_event, user: exhibitor, role: :event_team_member)
       EventAssignment.find_or_create_by!(event: visitor_event, user: exhibitor, role: :event_team_member)
+
+      # Exhibitors only look up participants they've captured as leads
+      ticket_vendor = create(:exhibitor, event: ticket_event, vendor: exhibitor)
+      visitor_vendor = create(:exhibitor, event: visitor_event, vendor: exhibitor)
+      create(:event_lead, event_vendor: ticket_vendor, leadable: ticket)
+      create(:event_lead, event_vendor: visitor_vendor, leadable: visitor)
     end
 
     context 'when event uses tickets' do

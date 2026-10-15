@@ -35,6 +35,10 @@ paths:
                           type: string
                         status:
                           type: string
+                        use_ticket:
+                          type: boolean
+                        use_exhibitor_kit:
+                          type: boolean
                         total_tickets:
                           type: integer
                           description: Total active tickets (purchased + scanned)
@@ -44,6 +48,22 @@ paths:
                         unscanned_tickets:
                           type: integer
                           description: Total unscanned active tickets
+                        total_vendors:
+                          type: integer
+                          description: Total vendors linked to the event
+                        total_exhibitors:
+                          type: integer
+                          description: Active or paid exhibitors linked to the event
+                        paid_exhibitors:
+                          type: integer
+                          description: Exhibitors with paid, waived, or sponsored
+                            kits
+                        deposit_exhibitors:
+                          type: integer
+                          description: Exhibitors with a deposit-status kit
+                        unpaid_exhibitors:
+                          type: integer
+                          description: Exhibitors with unpaid kits
                         total_revenue:
                           type: integer
                           description: Total revenue in cents
@@ -543,6 +563,10 @@ paths:
                 properties:
                   totalTickets:
                     type: integer
+                  paidTickets:
+                    type: integer
+                  pendingTickets:
+                    type: integer
         '403':
           description: Forbidden - insufficient permissions
         '404':
@@ -710,6 +734,57 @@ paths:
                   totalAmountPrice:
                     type: integer
                     description: Amount in cents
+                  pendingAmountPrice:
+                    type: integer
+                    description: Amount in cents
+  "/v1/events/{event_id}/metrics/exhibitor_analytics":
+    get:
+      summary: Get exhibitor or vendor analytics for an event
+      tags:
+      - Event Analytics
+      parameters:
+      - name: event_id
+        in: path
+        description: Event ID
+        required: true
+        schema:
+          type: integer
+      - name: Authorization
+        in: header
+        description: Bearer token
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Exhibitor breakdown rows have unique identifiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                    - exhibitor
+                    - vendor
+                  totalPartners:
+                    type: integer
+                  paidPartners:
+                    type: integer
+                  depositPartners:
+                    type: integer
+                  unpaidPartners:
+                    type: integer
+                  collectedRevenue:
+                    type: number
+                  pendingRevenue:
+                    type: number
+                  breakdown:
+                    type: array
+                    items:
+                      type: object
+                  vendorMetrics:
+                    type: object
   "/v1/events/{event_id}/metrics/mall_live_feed":
     get:
       summary: Get live feed dashboard data
@@ -1752,7 +1827,7 @@ paths:
           type: integer
       responses:
         '200':
-          description: Organizer can view staff if they are event staff
+          description: Business Matching admin can view staff for their assigned event
           content:
             application/json:
               schema:
@@ -1839,7 +1914,7 @@ paths:
           type: integer
       responses:
         '201':
-          description: Staff appointed successfully (Organizer)
+          description: Business matching admin appointed successfully
         '403':
           description: Forbidden for member
           content:
@@ -2787,6 +2862,9 @@ paths:
                   multiple_scans:
                     type: boolean
                     example: false
+                  allow_multiple_tickets_per_email:
+                    type: boolean
+                    example: false
                   start_date:
                     type: string
                     format: date_time
@@ -2999,7 +3077,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Private event viewable by org owner
+          description: Private event viewable by a business matching admin
           content:
             application/json:
               schema:
@@ -3018,6 +3096,9 @@ paths:
                     type: string
                     example: draft
                   multiple_scans:
+                    type: boolean
+                    example: false
+                  allow_multiple_tickets_per_email:
                     type: boolean
                     example: false
                   start_date:
@@ -3134,6 +3215,9 @@ paths:
                     type: string
                     example: draft
                   multiple_scans:
+                    type: boolean
+                    example: false
+                  allow_multiple_tickets_per_email:
                     type: boolean
                     example: false
                   start_date:
@@ -3701,6 +3785,78 @@ paths:
                   - sponsored
                 company_name:
                   type: string
+  "/v1/events/{event_id}/exhibitor_kits/import_template":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    get:
+      summary: download exhibitor kit import template
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: template downloaded
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/exhibitor_kits/import":
+    parameters:
+    - name: event_id
+      in: path
+      description: ID of the event
+      required: true
+      schema:
+        type: string
+    post:
+      summary: import exhibitor kits from Excel
+      tags:
+      - Exhibitor Kits
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: dry_run
+        in: query
+        required: false
+        description: Validate rows without persisting bookings
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: import completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  created:
+                    type: object
+                  skipped:
+                    type: object
+                  errors:
+                    type: object
+                required:
+                - total
+                - created
+                - skipped
+                - errors
+        '403':
+          description: forbidden
+        '422':
+          description: file is missing
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: Excel workbook created from the exhibitor kit import template
   "/v1/events/{event_id}/exhibitor_kits/{exhibitor_kit_id}/exhibitor_team_member_payments":
     parameters:
     - name: event_id
@@ -10082,7 +10238,8 @@ paths:
           type: string
       responses:
         '201':
-          description: Ticket created by Org Owner
+          description: Creates a registration batch of N tickets when quantity > 1
+            and the event allows it
           content:
             application/json:
               schema:
@@ -10152,6 +10309,9 @@ paths:
                 additionalProperties: true
         '403':
           description: Forbidden for event staff (Team Member)
+        '422':
+          description: Rejects quantity greater than 1 when the event does not allow
+            multiple tickets per email
       requestBody:
         content:
           application/json:
@@ -10361,6 +10521,8 @@ paths:
                 - event_id
                 - ticket_type_id
                 additionalProperties: true
+        '422':
+          description: Cannot un-pay a ticket that has already been checked in
         '403':
           description: Forbidden for unauthorized user
         '404':
@@ -10504,6 +10666,40 @@ paths:
           description: Ticket successfully restored by Organizer
         '403':
           description: Forbidden for event staff
+        '404':
+          description: Not Found
+  "/v1/events/{event_id}/tickets/{id}/accept_waiting_list":
+    parameters:
+    - name: event_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: Ticket Public ID (UUID)
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Accepts a waiting-list ticket, moving it to a purchased seat
+      tags:
+      - Tickets
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: Authorization
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Ticket successfully accepted off the waiting list
+        '403':
+          description: Forbidden for an unassigned member
+        '422':
+          description: No seats available for the ticket type
         '404':
           description: Not Found
   "/v1/tickets/{public_id}/check_in":
@@ -12401,6 +12597,301 @@ paths:
                   message:
                     type: string
                     example: Resource not found
+  "/v1/events/{event_id}/feedback_form/ai_summary":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: read the latest AI summary
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: The latest stored AI summary plus `can_generate` (true only for
+        an org_owner) and whether an AI provider is configured. Provider details are
+        only returned to an org_owner.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+    post:
+      summary: generate an AI summary
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Org owner only. Queues a background job that summarizes the written
+        comments with the organization's default AI model. Only comment text is sent
+        (no names or emails). One run at a time per form, 60 second cooldown, 10 per
+        form per day.
+      parameters:
+      - name: ticket_type_id
+        in: query
+        required: false
+        description: Only this ticket type
+        schema:
+          type: integer
+      - name: from
+        in: query
+        required: false
+        description: Submitted on or after (YYYY-MM-DD)
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: false
+        description: Submitted on or before (YYYY-MM-DD)
+        schema:
+          type: string
+      responses:
+        '202':
+          description: accepted
+        '422':
+          description: AI is not set up, or there are no comments
+        '403':
+          description: only an org_owner can generate a summary
+  "/v1/events/{event_id}/feedback_form/comments":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      description: Only this ticket type
+      schema:
+        type: integer
+    - name: from
+      in: query
+      required: false
+      description: Submitted on or after (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      description: Submitted on or before (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: q
+      in: query
+      required: false
+      description: Search comment text or attendee
+      schema:
+        type: string
+    - name: question_id
+      in: query
+      required: false
+      description: Only this text question
+      schema:
+        type: integer
+    - name: max_rating
+      in: query
+      required: false
+      description: Only responses whose average rating is at or below this (find unhappy
+        attendees)
+      schema:
+        type: number
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list comments
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Written answers, newest first, each with the attendee and that
+        response's average rating.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/export_data":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      description: Only this ticket type
+      schema:
+        type: integer
+    - name: from
+      in: query
+      required: false
+      description: Submitted on or after (YYYY-MM-DD)
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      description: Submitted on or before (YYYY-MM-DD)
+      schema:
+        type: string
+    get:
+      summary: export feedback data
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: 'Everything needed to build CSV, Excel and PDF files: form, summary,
+        questions, responses and comments. Limited to 10,000 responses (422 above
+        that; narrow the filters).'
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/non_responders":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: ticket_type_id
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: q
+      in: query
+      required: false
+      description: Search name or email
+      schema:
+        type: string
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list attendees who have not responded
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Checked-in, still-valid tickets (not cancelled, refunded or waitlisted)
+        with no response yet.
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/remind":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: remind attendees to give feedback
+      tags:
+      - Feedback Reports
+      security:
+      - bearerAuth: []
+      description: Re-sends the thank-you email (with the feedback link) to non-responders.
+        Anyone emailed in the last 24 hours is skipped. Only after the event has ended.
+      parameters: []
+      responses:
+        '202':
+          description: accepted
+        '422':
+          description: event has not ended or the feedback email is off
+        '403':
+          description: forbidden
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Ticket public IDs
+                all:
+                  type: boolean
+                  description: Remind every non-responder (up to 500)
+        required: true
+  "/v1/events/{event_id}/feedback_form/responses":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+    - name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+    get:
+      summary: list feedback responses
+      tags:
+      - Feedback Forms
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
+  "/v1/events/{event_id}/feedback_form/summary":
+    parameters:
+    - name: event_id
+      in: path
+      description: event_id
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: summarize feedback responses
+      tags:
+      - Feedback Forms
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: successful
+        '403':
+          description: forbidden
 components:
   securitySchemes:
     bearerAuth:

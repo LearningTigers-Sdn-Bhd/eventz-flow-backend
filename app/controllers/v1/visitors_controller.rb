@@ -1,5 +1,7 @@
 module V1
   class VisitorsController < ApplicationController
+    include ScannableCheckIn
+
     # Load and Authorize the parent event before every action
     before_action :set_event_and_authorize, except: %i[global_check_in unscan]
 
@@ -74,28 +76,28 @@ module V1
     # PATCH /v1/visitors/:public_id/check_in
     # Global check-in endpoint - finds visitor by public_id and checks them in
     def global_check_in
-      # 1. Global Lookup (Find the visitor by its UUID)
       @visitor = Visitor.find_by!(public_id: params[:public_id])
-
-      # 2. Authorization (Must authorize against the found visitor's event)
       authorize @visitor, :check_in?
 
-      # 3. Perform Check-in Logic
-      if @visitor.checked_in?
-        render json: { error: 'Visitor has already been checked in.' }, status: :unprocessable_content and return
+      status, log = ScanGate.record!(
+        @visitor,
+        by: current_user,
+        source: :staff_scan,
+        location: scan_location_for(@visitor.event)
+      )
+
+      if status == :blocked
+        render json: scan_blocked_payload(log, message: 'Visitor has already been checked in.'),
+               status: :unprocessable_content and return
       end
 
-      if @visitor.update(checked_in: true, check_in_at: Time.current, scanned_by_id: current_user.id)
-        broadcast_to_welcome_screen(@visitor)
-        render json: @visitor.as_json(
-          include: {
-            event: { only: %i[id title] },
-            scanned_by: { only: %i[id full_name] }
-          }
-        ), status: :ok
-      else
-        render json: @visitor.errors, status: :unprocessable_content
-      end
+      broadcast_to_welcome_screen(@visitor)
+      render json: @visitor.reload.as_json(
+        include: {
+          event: { only: %i[id title] },
+          scanned_by: { only: %i[id full_name] }
+        }
+      ), status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Visitor not found' }, status: :not_found
     end
@@ -107,14 +109,7 @@ module V1
 
       authorize @visitor, :unscan?
 
-      unscanned = @visitor.with_lock do
-        next false unless @visitor.reload.checked_in?
-
-        @visitor.update_columns(checked_in: false, check_in_at: nil, scanned_by_id: nil)
-        true
-      end
-
-      unless unscanned
+      unless ScanGate.undo!(@visitor)
         render json: { error: 'Visitor is not checked in' }, status: :unprocessable_content and return
       end
 

@@ -8,7 +8,7 @@ module V1
       def index
         authorize @event, :show?
 
-        @sessions = @event.lucky_draw_sessions.ordered
+        @sessions = policy_scope(@event.lucky_draw_sessions).ordered
 
         success_response(
           data: @sessions.map { |s| format_session_response(s) },
@@ -27,7 +27,7 @@ module V1
 
       # POST /v1/events/:event_id/lucky_draw/sessions
       def create
-        @session = @event.lucky_draw_sessions.build(session_params)
+        @session = @event.lucky_draw_sessions.build(session_params.merge(created_by: current_user))
         authorize @session
 
         # Handle logo upload via Active Storage
@@ -171,7 +171,7 @@ module V1
       end
 
       def session_params
-        params.permit(:title, :draw_date, :use_gifts, draw_styles: {}, wrapper_background: {})
+        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, draw_styles: {}, wrapper_background: {})
       end
 
       def format_session_response(session)
@@ -184,6 +184,10 @@ module V1
           draw_styles: session.draw_styles || {},
           wrapper_background: format_wrapper_background(session),
           use_gifts: session.use_gifts,
+          scanned_only: session.scanned_only,
+          scanned_from: session.scanned_from,
+          scanned_to: session.scanned_to,
+          scanned_source: session.scanned_source,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }

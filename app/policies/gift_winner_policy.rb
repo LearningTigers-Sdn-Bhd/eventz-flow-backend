@@ -1,28 +1,22 @@
 class GiftWinnerPolicy < ApplicationPolicy
-  # Convenience method for delegating to the parent resource policy
-  def event_policy
-    return nil if record.blank? || !record.respond_to?(:gift)
+  # All winner actions are authorized through the parent lucky draw session,
+  # so an exhibitor can only record winners on a session they created
+  # themselves, never an organizer/admin-owned session.
+  def resolve_session
+    return nil unless record.respond_to?(:gift)
 
-    gift = record.gift
-    return nil unless gift.respond_to?(:event)
-
-    Pundit.policy(user, gift.event)
-  rescue NoMethodError
-    nil
+    record.gift&.lucky_draw_session
   end
 
-  # create? - event admins, team members, org admins
+  # create? - delegates to the session: org admins see all, exhibitors only their own
   def create?
     return false if user.blank? || record.blank?
+    session = resolve_session
+    return false unless session
 
-    # Organization-level permissions
-    return true if user.is_org_owner? || user.is_organizer?
+    return true if user.is_event_team_member?(session.event)
 
-    # Event-level permissions
-    gift = record.respond_to?(:gift) ? record.gift : nil
-    return false unless gift&.event
-
-    user.is_event_admin?(gift.event) || user.is_event_team_member?(gift.event)
+    LuckyDrawSessionPolicy.new(user, session).show?
   end
 
   # destroy? - event admins, team members, org admins

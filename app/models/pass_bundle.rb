@@ -3,6 +3,7 @@ class PassBundle < ApplicationRecord
   belongs_to :registration_form
   belongs_to :ticket_type
   belongs_to :created_by, class_name: 'User', optional: true
+  belongs_to :plan_object, optional: true
   has_many :tickets, dependent: :nullify
 
   enum :payment_mode, { free: 0, pay_offline: 1 }
@@ -18,6 +19,7 @@ class PassBundle < ApplicationRecord
   validate :registration_form_belongs_to_event
   validate :ticket_type_belongs_to_event
   validate :pass_limit_not_below_used_count
+  validate :plan_object_must_be_table
 
   def used_count
     tickets.count
@@ -75,5 +77,12 @@ class PassBundle < ApplicationRecord
     return if pass_limit >= used_count
 
     errors.add(:pass_limit, 'cannot be lower than used passes')
+  end
+
+  def plan_object_must_be_table
+    return if plan_object.blank?
+    return if plan_object.object_type_table?
+
+    errors.add(:plan_object, 'must be a table')
   end
 end

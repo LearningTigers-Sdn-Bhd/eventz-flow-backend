@@ -10,7 +10,7 @@ module V1
       staff_assignments = @event.event_assignments.includes(:user)
 
       render json: staff_assignments.as_json(
-        only: [:id, :event_id, :user_id, :role],
+        only: [:id, :event_id, :user_id, :role, :created_at, :updated_at],
         include: {
           user: {
             only: [:id, :email, :full_name, :phone, :role, :status]
@@ -58,13 +58,17 @@ module V1
     end
 
     def authorize_staff_view!
-      # Allow Org Owner, Organizer (global roles), OR Event Staff (event_admin/event_team_member/business_host) to VIEW
+      # Allow Org Owner, Organizer (global roles), OR Event Staff
+      # (event_admin/event_team_member/business_host/business_matching_admin) to VIEW.
+      # business_matching_admin needs this so the frontend can resolve their own
+      # assignment and scope their nav accordingly.
       is_event_staff = @event.event_assignments.exists?(
         user_id: current_user.id,
         role: [
           EventAssignment.roles[:event_admin],
           EventAssignment.roles[:event_team_member],
-          EventAssignment.roles[:business_host]
+          EventAssignment.roles[:business_host],
+          EventAssignment.roles[:business_matching_admin]
         ]
       )
 

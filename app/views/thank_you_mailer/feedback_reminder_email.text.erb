@@ -1,0 +1,18 @@
+We'd Love Your Feedback
+
+Dear <%= @ticket.attendee_name.presence || 'friend' %>,
+
+Thank you again for joining us at <%= @event.title %>. We noticed we haven't received your feedback yet, and your voice really matters to us.
+
+Every answer is read by our team, and your honest thoughts help shape an even better experience for everyone next time. It only takes a minute:
+<%= @feedback_url %>
+<% if @contact_email.present? %>
+
+Got a question, an idea, or something you'd rather tell us in person? We'd love to chat. Drop us a line at <%= @contact_email %>.
+<% end %>
+
+Thank you for your time,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

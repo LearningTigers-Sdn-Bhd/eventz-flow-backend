@@ -198,7 +198,7 @@ RSpec.describe 'V1::Visitors', type: :request do
 
   describe 'PATCH /v1/visitors/:id/unscan' do
     let!(:scanned_visitor) do
-      create(
+      visitor = create(
         :visitor,
         event: organizer_event,
         full_name: 'Scanned Visitor',
@@ -206,6 +206,9 @@ RSpec.describe 'V1::Visitors', type: :request do
         check_in_at: Time.current,
         scanned_by_id: staff_user.id
       )
+      create(:scan_log, event: organizer_event, scannable: visitor,
+                        scanned_at: visitor.check_in_at, scanned_by: staff_user)
+      visitor
     end
 
     it 'allows org owners to unscan a checked-in visitor' do
@@ -278,6 +281,37 @@ RSpec.describe 'V1::Visitors', type: :request do
 
       expect(response).to have_http_status(:not_found)
       expect(JSON.parse(response.body)['error']).to eq('Visitor not found')
+    end
+  end
+
+  describe 'PATCH /v1/visitors/:id/unscan with scan history' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:visitor) { create(:visitor, event: event) }
+    let(:owner) { create(:user, :org_owner) }
+    let(:owner_token) { JwtService.generate_tokens(owner)[:access_token] }
+    let(:headers) { { 'Authorization' => "Bearer #{owner_token}" } }
+
+    it 'walks back one scan at a time' do
+      ScanGate.record!(visitor, by: owner, at: 2.hours.ago)
+      ScanGate.record!(visitor, by: owner, at: 1.hour.ago)
+
+      patch "/v1/visitors/#{visitor.id}/unscan", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      visitor.reload
+      expect(ScanLog.for_scannable(visitor).count).to eq(1)
+      expect(visitor.checked_in).to be true
+    end
+
+    it 'fully resets once the last scan is removed' do
+      ScanGate.record!(visitor, by: owner)
+
+      patch "/v1/visitors/#{visitor.id}/unscan", headers: headers
+
+      visitor.reload
+      expect(ScanLog.for_scannable(visitor)).to be_empty
+      expect(visitor.checked_in).to be false
+      expect(visitor.check_in_at).to be_nil
     end
   end
 end

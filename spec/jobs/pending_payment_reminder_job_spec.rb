@@ -156,6 +156,18 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
       end
     end
 
+    context 'when the ticket is on the waiting list' do
+      let!(:ticket) do
+        create(:ticket, :pending_payment, event: event, attendee_email: 'waiting@example.com', waiting_list: true)
+      end
+
+      it 'skips the reminder' do
+        expect do
+          perform_job
+        end.not_to have_enqueued_job(EmailDeliveryJob)
+      end
+    end
+
     context 'when the ticket payment status is failed' do
       let!(:ticket) do
         create(:ticket, event: event, attendee_email: 'failed@example.com', payment_status: :failed, status: :purchased)
@@ -235,6 +247,20 @@ RSpec.describe PendingPaymentReminderJob, type: :job do
           )
         ).to be_empty
       end
+    end
+
+    it 'sends one batched group_pending_payment_reminder and logs each ticket when siblings share an email' do
+      sibling = create(:ticket, :pending_payment, event: event, attendee_email: 'pending@example.com')
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+
+      expect { perform_job }.to change(EventReminderLog, :count).by(2)
+
+      expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'group_pending_payment_reminder', args: [match_array([ticket, sibling]), event])
+      ).once
+      expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+        hash_including(mailer_action: 'pending_payment_reminder')
+      )
     end
   end
 end

@@ -6,9 +6,6 @@ class RouletteSessionPolicy < ApplicationPolicy
     # Global/org-level roles: org_owner & organizer (event_admins)
     return true if user.is_org_owner_or_organizer?
 
-    # Exhibitors are explicitly allowed to access Prize Roulette
-    return true if user.exhibitor?
-
     # Owner can view
     return true if record.user_id == user.id
 

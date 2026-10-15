@@ -82,7 +82,16 @@ RSpec.describe 'V1::Tickets', type: :request do
     create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, attendee_name: 'Purchased Attendee')
   end
   let!(:checked_in_ticket) do
-    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type, checked_in: true, check_in_at: Time.current, status: :scanned, attendee_name: 'Scanned Attendee')
+    create(:scan_log, event: organizer_event, scannable: ticket,
+                      scanned_at: ticket.check_in_at, scanned_by: staff_user)
+    ticket
+  end
+  let(:paid_purchased_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :purchased, payment_status: :paid, attendee_name: 'Paid Purchased Attendee')
+  end
+  let(:paid_checked_in_ticket) do
+    create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :scanned, checked_in: true, check_in_at: Time.current, payment_status: :paid, attendee_name: 'Paid Scanned Attendee')
   end
   let(:pending_payment_ticket) do
     create(
@@ -204,6 +213,184 @@ RSpec.describe 'V1::Tickets', type: :request do
       end
     end
 
+    describe 'GET index — search/filter/sort/pagination for the Manage Tickets table' do
+      let!(:other_type_ticket) do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                        attendee_name: 'Aaron Zed', attendee_email: 'aaron@example.com')
+      end
+
+      it 'searches by attendee name/email/phone/ticket type' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { q: 'aaron' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([other_type_ticket.id])
+      end
+
+      it 'searches by a custom registration field (e.g. car_registration_number)' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        custom_field_ticket = create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                                              attendee_name: 'Someone Else', attendee_email: 'else@example.com',
+                                              custom_fields_data: { 'car_registration_number' => 'SAA1234' })
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { q: 'saa1234' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([custom_field_ticket.id])
+      end
+
+      it 'filters by scanned status' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { status: 'scanned' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([checked_in_ticket.id])
+      end
+
+      it 'filters by ticket type name' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { ticket_type_name: 'VIP' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([other_type_ticket.id])
+      end
+
+      it 'sorts by name descending' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'name', sort_dir: 'desc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['attendee_name'] }).to eq(
+          ['Scanned Attendee', 'Purchased Attendee', 'Aaron Zed']
+        )
+      end
+
+      it 'sorts by a custom field (e.g. car_registration_number)' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        %w[SA1088R EGLA7788 SS3030E].each do |plate|
+          create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                          attendee_name: "Driver #{plate}", attendee_email: "#{plate.downcase}@example.com",
+                          custom_fields_data: { 'car_registration_number' => plate })
+        end
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_car_registration_number', sort_dir: 'asc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        # Tickets with a plate come first in ascending plate order (proving the
+        # order is driven by the plate value, not insertion/id order — they were
+        # created as SA1088R, EGLA7788, SS3030E).
+        plates = json.filter_map { |t| t.dig('custom_fields_data', 'car_registration_number') }
+        expect(plates).to eq(%w[EGLA7788 SA1088R SS3030E])
+        expect(json.first(3).map { |t| t['attendee_name'] }).to eq(
+          ['Driver Egla7788', 'Driver Sa1088r', 'Driver Ss3030e']
+        )
+      end
+
+      it 'sorts by participation_category' do
+        vip = create(:ticket_type, event: organizer_event, name: 'VIP')
+        {
+          'Expedition' => 'Exp Driver',
+          'Competition' => 'Comp Driver'
+        }.each do |category, name|
+          create(:ticket, event: organizer_event, ticket_type: vip, status: :purchased,
+                          attendee_name: name, attendee_email: "#{name.parameterize}@example.com",
+                          custom_fields_data: { 'participation_category' => category })
+        end
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_participation_category', sort_dir: 'asc' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        # ASC puts categorized tickets first (NULLs last), ordered by category.
+        # They were created Expedition-then-Competition, so ascending category
+        # order also proves the sort is value-driven rather than id-driven.
+        json = JSON.parse(response.body)
+        expect(json.first(2).map { |t| t['attendee_name'] }).to eq(['Comp Driver', 'Exp Driver'])
+      end
+
+      it 'falls back to id order for an unrecognized custom sort key' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { sort_by: 'custom_not_a_real_field' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        expect(response).to have_http_status(:ok)
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq(json.map { |t| t['id'] }.sort)
+      end
+
+      it 'paginates and reports totals via response headers' do
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { page: 1, per_page: 2 },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.length).to eq(2)
+        expect(response.headers['X-Total-Count']).to eq('3')
+        expect(response.headers['X-Total-Pages']).to eq('2')
+      end
+
+      it 'filters by payment_status (default factory tickets are pending)' do
+        paid_purchased_ticket # force creation
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { payment_status: 'paid' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([paid_purchased_ticket.id])
+      end
+
+      it 'filters by an array of payment_status values (IN filter, used by Pending Tickets)' do
+        paid_purchased_ticket # force creation, should be excluded
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { payment_status: %w[pending failed] },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).not_to include(paid_purchased_ticket.id)
+      end
+
+      it 'filters by review_status' do
+        form = create(:registration_form, event: organizer_event)
+        approved_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                                          attendee_name: 'Approved App', attendee_email: 'approved@example.com')
+        create(:ticket_application, ticket: approved_ticket, registration_form: form, review_status: :approved)
+        create(:ticket_application, ticket: other_type_ticket, registration_form: form, review_status: :pending_review)
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { review_status: 'approved' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([approved_ticket.id])
+      end
+
+      it 'filters by rsvp_status' do
+        form = create(:registration_form, event: organizer_event)
+        confirmed_ticket = create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                                           attendee_name: 'Confirmed RSVP', attendee_email: 'confirmed@example.com')
+        create(:ticket_application, ticket: confirmed_ticket, registration_form: form, rsvp_status: :confirmed)
+        create(:ticket_application, ticket: other_type_ticket, registration_form: form, rsvp_status: :not_sent)
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { rsvp_status: 'confirmed' },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.map { |t| t['id'] }).to eq([confirmed_ticket.id])
+      end
+    end
+
     # --- POST - Create ---
     post 'Creates a new ticket (Staff Manual Entry)' do
       tags 'Tickets'
@@ -260,6 +447,49 @@ RSpec.describe 'V1::Tickets', type: :request do
       response '403', 'Forbidden for event staff (Team Member)' do
         let(:Authorization) { "Bearer #{staff_token}" }
         run_test!
+      end
+
+      response '201', 'Creates a registration batch of N tickets when quantity > 1 and the event allows it' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:ticket) do
+          {
+            ticket: valid_ticket_params[:ticket].merge(payment_status: 1),
+            quantity: 3
+          }
+        end
+
+        before do
+          organizer_event.update!(allow_multiple_tickets_per_email: true)
+          allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later)
+        end
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['group_public_ids'].size).to eq(3)
+          batch_id = Ticket.find_by(public_id: json['public_id']).registration_batch_id
+          expect(batch_id).to be_present
+          expect(Ticket.where(registration_batch_id: batch_id).count).to eq(3)
+
+          # One batched email with all 3 QR codes, not 3 individual ones.
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'group_confirmation_email')
+          ).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'confirmation_email')
+          )
+        end
+      end
+
+      response '422', 'Rejects quantity greater than 1 when the event does not allow multiple tickets per email' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:ticket) { valid_ticket_params.merge(quantity: 3) }
+
+        run_test! do
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(Ticket.count).to eq(2)
+        end
       end
     end
   end
@@ -349,6 +579,77 @@ RSpec.describe 'V1::Tickets', type: :request do
           expect(json['payment_status']).to eq('paid')
           expect(json['status']).to eq('purchased')
           expect(pending_payment_ticket.reload.status).to eq('purchased')
+        end
+      end
+
+      response '200', 'Paid, purchased ticket reverts to pending payment when un-paid' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { paid_purchased_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'pending' } } }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['payment_status']).to eq('pending')
+          expect(json['status']).to eq('pending_payment')
+          expect(paid_purchased_ticket.reload.status).to eq('pending_payment')
+        end
+      end
+
+      response '422', 'Cannot un-pay a ticket that has already been checked in' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:id) { paid_checked_in_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'pending' } } }
+
+        run_test! do
+          expect(paid_checked_in_ticket.reload.payment_status).to eq('paid')
+        end
+      end
+
+      response '200', 'Approving one ticket in a registration batch auto-approves its siblings and sends one grouped email' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        let!(:batch_id) { SecureRandom.uuid }
+        let!(:primary) do
+          create(
+            :ticket,
+            event: organizer_event,
+            ticket_type: general_ticket_type,
+            status: :pending_payment,
+            payment_status: :pending,
+            registration_batch_id: batch_id,
+            attendee_email: 'batch-primary@example.com'
+          )
+        end
+        let!(:sibling) do
+          create(
+            :ticket,
+            event: organizer_event,
+            ticket_type: general_ticket_type,
+            status: :pending_payment,
+            payment_status: :pending,
+            registration_batch_id: batch_id,
+            attendee_email: 'batch-sibling@example.com'
+          )
+        end
+        let(:id) { primary.public_id }
+
+        before { allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later) }
+
+        schema TICKET_SCHEMA
+
+        run_test! do
+          expect(primary.reload.payment_status).to eq('paid')
+          expect(sibling.reload.payment_status).to eq('paid')
+          expect(sibling.reload.status).to eq('purchased')
+          expect(EmailDelivery::AuditedDelivery).to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'group_confirmation_email')
+          ).once
+          expect(EmailDelivery::AuditedDelivery).not_to have_received(:deliver_later).with(
+            hash_including(mailer_action: 'confirmation_email')
+          )
         end
       end
 
@@ -517,6 +818,74 @@ RSpec.describe 'V1::Tickets', type: :request do
     end
   end
 
+  # ---------------------------------------------------------------------
+  # --- PATCH - Accept Waiting List Ticket ---
+  # ---------------------------------------------------------------------
+  path '/v1/events/{event_id}/tickets/{id}/accept_waiting_list' do
+    parameter name: :event_id, in: :path, type: :integer
+    parameter name: :id, in: :path, type: :string, description: 'Ticket Public ID (UUID)'
+
+    let!(:waiting_list_ticket) do
+      create(
+        :ticket,
+        event: organizer_event,
+        ticket_type: general_ticket_type,
+        status: :pending_payment,
+        payment_status: :pending,
+        waiting_list: true,
+        attendee_name: 'Waiting List Attendee'
+      )
+    end
+
+    patch 'Accepts a waiting-list ticket, moving it to a purchased seat' do
+      tags 'Tickets'
+      security [{ BearerAuth: [] }]
+      parameter name: :Authorization, in: :header, type: :string, required: true
+
+      let(:event_id) { organizer_event.id }
+      let(:id) { waiting_list_ticket.public_id }
+
+      response '200', 'Ticket successfully accepted off the waiting list' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        run_test! do
+          waiting_list_ticket.reload
+          expect(waiting_list_ticket.waiting_list).to eq(false)
+          expect(waiting_list_ticket.status).to eq('purchased')
+          expect(waiting_list_ticket.payment_status).to eq('paid')
+        end
+      end
+
+      response '403', 'Forbidden for an unassigned member' do
+        let(:Authorization) { "Bearer #{member_token}" }
+        run_test!
+      end
+
+      response '422', 'Ticket is not on the waiting list' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { purchased_ticket.public_id }
+        run_test!
+      end
+
+      response '422', 'No seats available for the ticket type' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          general_ticket_type.update!(quantity: 1)
+          purchased_ticket.update!(payment_status: :paid)
+        end
+
+        run_test!
+      end
+
+      response '404', 'Not Found' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:id) { '00000000-0000-0000-0000-000000000000' }
+        run_test!
+      end
+    end
+  end
+
   # =========================================================================
   # Custom Route: /v1/tickets/:public_id/check_in
   # =========================================================================
@@ -535,14 +904,15 @@ RSpec.describe 'V1::Tickets', type: :request do
       let(:public_id) { purchased_ticket.public_id }
 
       response '200', 'Check-in successful via global scan by staff' do
+        let(:public_id) { paid_purchased_ticket.public_id }
         let(:Authorization) { "Bearer #{staff_token}" }
 
         # REFACTORED: Use reusable schema constant
         schema TICKET_SCHEMA
 
         run_test! do
-          purchased_ticket.reload
-          expect(purchased_ticket.checked_in).to be true
+          paid_purchased_ticket.reload
+          expect(paid_purchased_ticket.checked_in).to be true
         end
       end
 
@@ -826,6 +1196,130 @@ RSpec.describe 'V1::Tickets', type: :request do
 
         run_test!
       end
+    end
+  end
+
+  describe 'PATCH /v1/tickets/:public_id/check_in with multiple scans' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+    let(:admin) { create(:user, :org_owner) }
+    let(:admin_token) { JwtService.generate_tokens(admin)[:access_token] }
+    let(:headers) { { 'Authorization' => "Bearer #{admin_token}" } }
+
+    before do
+      create(:event_assignment, event: event, user: admin, role: :event_admin)
+    end
+
+    it 'allows a second scan and appends a log' do
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      expect(ScanLog.for_scannable(ticket).count).to eq(2)
+    end
+
+    it 'returns blocked_by when the mode forbids the re-scan' do
+      event.update!(multiple_scan_mode: :per_day)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['blocked_by']).to include('scanned_at')
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+
+    it 'still blocks the second scan when the toggle is off' do
+      event.update!(multiple_scans: false)
+
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+      patch "/v1/tickets/#{ticket.public_id}/check_in", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+  end
+
+  describe 'POST /v1/tickets/self_check_in with multiple scans' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+
+    it 'allows a repeat self check-in and records the source' do
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      expect(response).to have_http_status(:ok)
+
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      expect(response).to have_http_status(:ok)
+
+      logs = ScanLog.for_scannable(ticket)
+      expect(logs.count).to eq(2)
+      expect(logs.pluck(:source).uniq).to eq(['self_check_in'])
+      expect(ticket.reload.scanned_by_id).to be_nil
+    end
+
+    it 'blocks a repeat when the toggle is off' do
+      event.update!(multiple_scans: false)
+
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+      post '/v1/tickets/self_check_in', params: { public_id: ticket.public_id }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+    end
+  end
+
+  describe 'PATCH /v1/tickets/:id/unscan with scan history' do
+    let(:event) { create(:event, multiple_scans: true, multiple_scan_mode: :unlimited) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+    let(:owner) { create(:user, :org_owner) }
+    let(:owner_token) { JwtService.generate_tokens(owner)[:access_token] }
+    let(:headers) { { 'Authorization' => "Bearer #{owner_token}" } }
+
+    it 'walks back one scan at a time' do
+      ScanGate.record!(ticket, by: owner, at: 2.hours.ago)
+      ScanGate.record!(ticket, by: owner, at: 1.hour.ago)
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      ticket.reload
+      expect(ScanLog.for_scannable(ticket).count).to eq(1)
+      expect(ticket.checked_in).to be true
+      expect(ticket.status).to eq('scanned')
+    end
+
+    it 'fully resets once the last scan is removed' do
+      ScanGate.record!(ticket, by: owner)
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+
+      ticket.reload
+      expect(ScanLog.for_scannable(ticket)).to be_empty
+      expect(ticket.checked_in).to be false
+      expect(ticket.check_in_at).to be_nil
+      expect(ticket.status).to eq('purchased')
+    end
+
+    it 'unscans an imported checked-in ticket that has no scan log' do
+      # Import sets checked_in without ever writing a ScanLog.
+      ticket.update!(checked_in: true, check_in_at: 1.hour.ago, status: :scanned)
+      expect(ScanLog.for_scannable(ticket)).to be_empty
+
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:ok)
+
+      ticket.reload
+      expect(ticket.checked_in).to be false
+      expect(ticket.check_in_at).to be_nil
+      expect(ticket.scanned_by_id).to be_nil
+      expect(ticket.status).to eq('purchased')
+    end
+
+    it 'still returns 422 for a ticket that was never checked in' do
+      patch "/v1/tickets/#{ticket.id}/unscan", headers: headers
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 end

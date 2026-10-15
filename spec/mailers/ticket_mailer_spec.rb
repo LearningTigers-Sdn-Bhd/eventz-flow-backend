@@ -151,5 +151,134 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(free_mail.body.encoded).not_to include('Payment Receipt')
       expect(free_mail.bcc.to_a).to include('eventpayment@eventzflow.com')
     end
+
+    it 'uses standard sender_name and never uses business_matching_sender_name' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk',
+        business_matching_sender_name: 'Event Secretariat B2B'
+      )
+
+      expect(mail.header['From'].to_s).to include('Main Registration Desk')
+      expect(mail.header['From'].to_s).not_to include('Event Secretariat B2B')
+    end
+  end
+
+  describe '#business_matching_email' do
+    let(:event) { create(:event, title: 'Test Event') }
+    let(:ticket_type) { create(:ticket_type, event: event, name: 'VIP') }
+    let(:ticket) { create(:ticket, event: event, ticket_type: ticket_type, attendee_name: 'John', attendee_email: 'john@example.com') }
+    let(:mail) { described_class.business_matching_email(ticket) }
+
+    it 'uses business_matching_sender_name when present' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk',
+        business_matching_sender_name: 'Event Secretariat B2B'
+      )
+
+      expect(mail.header['From'].to_s).to include('Event Secretariat B2B')
+      expect(mail.header['From'].to_s).not_to include('Main Registration Desk')
+    end
+
+    it 'falls back to sender_name when business_matching_sender_name is not set' do
+      event.create_event_email_setting!(
+        sender_name: 'Main Registration Desk'
+      )
+
+      expect(mail.header['From'].to_s).to include('Main Registration Desk')
+    end
+  end
+
+  describe '#group_confirmation_email' do
+    let(:event) { create(:event, title: 'Group Event') }
+    let(:ticket_type) { create(:ticket_type, event: event, name: 'Group Admission') }
+    let(:registered_by_email) { 'buyer@example.com' }
+
+    def create_paid_ticket(name:, email:, registered_by: registered_by_email)
+      create(
+        :ticket,
+        :paid,
+        event: event,
+        ticket_type: ticket_type,
+        attendee_name: name,
+        attendee_email: email,
+        registered_by_email: registered_by,
+        status: :purchased
+      )
+    end
+
+    it 'renders one mail with one inline QR attachment per shared-address ticket' do
+      tickets = 8.times.map do |index|
+        create_paid_ticket(name: "Attendee #{index + 1}", email: 'shared@example.com')
+      end
+
+      mail = described_class.group_confirmation_email(tickets.first)
+
+      expect(mail.to).to eq(['shared@example.com'])
+      expect(mail.subject).to eq('Your tickets for Group Event')
+      expect(mail.attachments.map(&:filename)).to contain_exactly(
+        *8.times.map { |index| "qr_code_#{index}.png" }
+      )
+      tickets.each do |ticket|
+        expect(mail.body.encoded).to include(ticket.attendee_name)
+      end
+    end
+
+    it 'keeps existing distinct-email group registrations at one mail and one QR each' do
+      tickets = 8.times.map do |index|
+        create_paid_ticket(name: "Attendee #{index + 1}", email: "attendee#{index + 1}@example.com")
+      end
+
+      mails = tickets.map { |ticket| described_class.group_confirmation_email(ticket) }
+
+      expect(mails).to have_attributes(size: 8)
+      expect(mails).to all(satisfy { |mail| mail.attachments.size == 1 })
+    end
+
+    it 'renders one mail for three shared tickets and one for each distinct address' do
+      shared_tickets = 3.times.map do |index|
+        create_paid_ticket(name: "Shared Attendee #{index + 1}", email: 'shared@example.com')
+      end
+      distinct_tickets = 2.times.map do |index|
+        create_paid_ticket(name: "Distinct Attendee #{index + 1}", email: "distinct#{index + 1}@example.com")
+      end
+
+      representatives = [shared_tickets.first, *distinct_tickets]
+      mails = representatives.map { |ticket| described_class.group_confirmation_email(ticket) }
+
+      expect(mails).to have_attributes(size: 3)
+      expect(mails.first.attachments.size).to eq(3)
+      expect(mails.drop(1)).to all(satisfy { |mail| mail.attachments.size == 1 })
+    end
+
+    it 'scopes by registration_batch_id, keeping two separate batches by the same email/address apart' do
+      batch_a_id = SecureRandom.uuid
+      batch_b_id = SecureRandom.uuid
+
+      batch_a_tickets = 2.times.map do |index|
+        create_paid_ticket(name: "Batch A Attendee #{index + 1}", email: 'shared@example.com')
+          .tap { |t| t.update!(registration_batch_id: batch_a_id) }
+      end
+      # Same registered_by_email AND same attendee_email as batch A, but a
+      # separate submission made another time — must not bleed into batch A's
+      # QR email just because the old email-only match would have grouped them.
+      batch_b_ticket = create_paid_ticket(name: 'Batch B Attendee', email: 'shared@example.com')
+      batch_b_ticket.update!(registration_batch_id: batch_b_id)
+
+      mail = described_class.group_confirmation_email(batch_a_tickets.first)
+
+      expect(mail.attachments.map(&:filename)).to contain_exactly('qr_code_0.png', 'qr_code_1.png')
+      expect(mail.body.encoded).not_to include(batch_b_ticket.attendee_name)
+    end
+
+    it 'does not group tickets without a registered-by email' do
+      first_ticket = create_paid_ticket(name: 'First Attendee', email: 'shared@example.com', registered_by: nil)
+      second_ticket = create_paid_ticket(name: 'Second Attendee', email: 'shared@example.com', registered_by: nil)
+
+      mail = described_class.group_confirmation_email(first_ticket)
+
+      expect(mail.attachments.map(&:filename)).to eq(['qr_code_0.png'])
+      expect(mail.body.encoded).to include(first_ticket.attendee_name)
+      expect(mail.body.encoded).not_to include(second_ticket.attendee_name)
+    end
   end
 end

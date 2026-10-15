@@ -61,6 +61,41 @@ RSpec.describe PublicExhibitorBookingService do
     expect(welcome_deliveries).to be_empty
   end
 
+  # Real end-to-end: does NOT stub AuditedDelivery, so this exercises the
+  # actual event-resolution + gating path (regression guard: `related` here
+  # is a User with no association back to its event — the welcome email is
+  # only gated because the service passes `event:` explicitly).
+  context 'with EventEmailSetting gating (not stubbed)' do
+    before { RSpec::Mocks.space.proxy_for(EmailDelivery::AuditedDelivery).reset }
+
+    it 'does not send the welcome email when exhibitor_welcome is disabled' do
+      access.update!(normalized_email: 'gated@example.com')
+      event.create_event_email_setting!(disabled_categories: ['exhibitor_welcome'])
+
+      expect(PublicExhibitorWelcomeMailer).not_to receive(:welcome)
+
+      described_class.call(event: event, access: access, idempotency_key: 'gated', attributes: attributes)
+
+      user = User.find_by!(email: access.normalized_email)
+      delivery = EmailDelivery.where(mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
+        related: user).last
+      expect(delivery.status).to eq('skipped')
+    end
+
+    it 'still sends the welcome email when exhibitor_welcome is enabled' do
+      access.update!(normalized_email: 'ungated@example.com')
+      event.create_event_email_setting!(disabled_categories: [])
+      allow_any_instance_of(Mail::Message).to receive(:deliver!)
+
+      described_class.call(event: event, access: access, idempotency_key: 'ungated', attributes: attributes)
+
+      user = User.find_by!(email: access.normalized_email)
+      delivery = EmailDelivery.where(mailer_name: 'PublicExhibitorWelcomeMailer', mailer_action: 'welcome',
+        related: user).last
+      expect(delivery.status).to eq('sent')
+    end
+  end
+
   it 'does not email credentials again on idempotent replay' do
     access.update!(normalized_email: 'replay@example.com')
     described_class.call(event: event, access: access, idempotency_key: 'replay', attributes: attributes)

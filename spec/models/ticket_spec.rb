@@ -40,6 +40,22 @@ RSpec.describe Ticket, type: :model do
 
       expect { ticket.destroy! }.to change(EventReminderLog, :count).by(-1)
     end
+
+    it 'destroys the vehicle registration only when its last ticket is hard-deleted' do
+      form = create(:registration_form, event: event)
+      create(:registration_form_ticket_type, registration_form: form, ticket_type: ticket_type)
+      car = VehicleRegistration.create!(event: event, registration_form: form, base_ticket_type: ticket_type,
+                                        plate: 'SAA4000', normalized_plate: 'SAA4000')
+      driver = create(:ticket, event: event, ticket_type: ticket_type, vehicle_registration: car)
+      co_driver = create(:ticket, event: event, ticket_type: ticket_type, vehicle_registration: car,
+                                  deleted_at: Time.current)
+
+      driver.destroy!
+      expect(VehicleRegistration.exists?(car.id)).to be(true)
+
+      co_driver.destroy!
+      expect(VehicleRegistration.exists?(car.id)).to be(false)
+    end
   end
 
   # --- VALIDATIONS ---
@@ -179,6 +195,52 @@ RSpec.describe Ticket, type: :model do
         member_ticket.update!(status: :purchased, payment_status: :paid)
       end.to have_enqueued_job(EmailDeliveryJob)
     end
+
+    it 'does not send confirmation email when a ticket is created on the waiting list' do
+      expect do
+        create(
+          :ticket,
+          event: event,
+          ticket_type:,
+          attendee_email: 'waiting@example.com',
+          waiting_list: true,
+          status: :pending_payment,
+          payment_status: :pending
+        )
+      end.not_to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    it 'sends confirmation email once a waiting-list ticket is accepted' do
+      waiting_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type:,
+        attendee_email: 'waiting-accepted@example.com',
+        waiting_list: true,
+        status: :pending_payment,
+        payment_status: :pending
+      )
+
+      expect do
+        waiting_ticket.update!(waiting_list: false, status: :purchased, payment_status: :paid)
+      end.to have_enqueued_job(EmailDeliveryJob)
+    end
+
+    it 'does not send confirmation email when explicitly suppressed' do
+      suppressed_ticket = create(
+        :ticket,
+        event: event,
+        ticket_type:,
+        attendee_email: 'suppressed@example.com',
+        status: :pending_payment,
+        payment_status: :pending
+      )
+      suppressed_ticket.suppress_confirmation_email = true
+
+      expect do
+        suppressed_ticket.update!(status: :purchased, payment_status: :paid)
+      end.not_to have_enqueued_job(EmailDeliveryJob)
+    end
   end
 
   describe '#send_webhook_notification' do
@@ -203,12 +265,73 @@ RSpec.describe Ticket, type: :model do
     end
   end
 
+  describe 'scan_source on the ticket.scanned webhook' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/print') }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+
+    def scanned_payloads
+      ActiveJob::Base.queue_adapter.enqueued_jobs
+                          .select { |job| job[:job] == WebhookSenderJob }
+                          .map { |job| job[:args][1].deep_symbolize_keys }
+                          .select { |payload| payload[:event_type] == 'ticket.scanned' }
+    end
+
+    before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
+
+    it 'names the app that made the first check-in' do
+      ScanGate.record!(ticket, source: :rfid_desk, at: Time.zone.parse('2026-09-26T09:14:03Z'),
+                               operation_id: SecureRandom.uuid)
+
+      expect(scanned_payloads.length).to eq(1)
+      expect(scanned_payloads[0][:scan_source]).to eq('rfid_desk')
+      expect(scanned_payloads[0][:ticket][:checked_in]).to be(true)
+    end
+
+    it 'keeps the ordinary source for a staff scan' do
+      ScanGate.record!(ticket, source: :staff_scan, by: create(:user))
+
+      expect(scanned_payloads[0][:scan_source]).to eq('staff_scan')
+    end
+
+    it 'never relabels a historic first scan, and never sends a second one' do
+      ScanGate.record!(ticket, source: :rfid_desk, operation_id: SecureRandom.uuid)
+
+      ticket.update!(attendee_name: 'Renamed Guest')
+
+      expect(scanned_payloads.length).to eq(1)
+      expect(scanned_payloads[0][:scan_source]).to eq('rfid_desk')
+    end
+
+    it 'omits the source when an import set checked_in without a scan' do
+      imported = create(:ticket, :paid, :checked_in, event: event)
+
+      ScanGate.record!(imported, source: :rfid_desk)
+
+      expect(scanned_payloads).to be_empty
+    end
+  end
+
   describe 'unique custom fields within event' do
     let(:event) { create(:event) }
     let(:ticket_type) { create(:ticket_type, event: event) }
 
     def build_with(fields, evt: event)
       build(:ticket, event: evt, ticket_type: ticket_type, custom_fields_data: fields)
+    end
+
+    def insert_without_validations(fields, allow_multiple:, evt: event)
+      Ticket.insert!({
+        event_id: evt.id,
+        ticket_type_id: ticket_type.id,
+        attendee_name: 'Direct Insert',
+        attendee_email: 'direct@example.com',
+        status: Ticket.statuses[:purchased],
+        payment_status: Ticket.payment_statuses[:pending],
+        custom_fields_data: fields,
+        allow_multiple_tickets_per_email: allow_multiple,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
     end
 
     it 'allows blank values to repeat' do
@@ -224,9 +347,68 @@ RSpec.describe Ticket, type: :model do
       expect(ticket.errors[:base].first).to include('already registered')
     end
 
+    it 'rejects a duplicate no_ic' do
+      create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'no_ic' => '890811-12-5155' })
+      expect(build_with({ 'no_ic' => '890811-12-5155' })).not_to be_valid
+    end
+
     it 'rejects a duplicate ic_passport_no' do
       create(:ticket, event: event, ticket_type: ticket_type, custom_fields_data: { 'ic_passport_no' => 'H12345678' })
       expect(build_with({ 'ic_passport_no' => 'H12345678' })).not_to be_valid
+    end
+
+    it 'accepts duplicate ic_passport_no when multiple tickets per email are allowed' do
+      event.update!(allow_multiple_tickets_per_email: true)
+      create(:ticket, event: event, ticket_type: ticket_type,
+                      custom_fields_data: { 'ic_passport_no' => 'H12345678' })
+
+      expect do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                       custom_fields_data: { 'ic_passport_no' => 'H12345678' })
+      end.not_to raise_error
+    end
+
+    it 'accepts duplicate membership_no only when membership uniqueness is disabled' do
+      event.update!(require_unique_membership_numbers: false)
+      create(:ticket, event: event, ticket_type: ticket_type,
+                      custom_fields_data: { 'membership_no' => 'M-1234' })
+
+      expect do
+        create(:ticket, event: event, ticket_type: ticket_type,
+                       custom_fields_data: { 'membership_no' => 'M-1234' })
+      end.not_to raise_error
+    end
+
+    it 'keeps flag-off uniqueness after a flag-on ticket is created' do
+      create(:ticket, event: event, ticket_type: ticket_type,
+                      custom_fields_data: { 'ic_passport_no' => 'H12345678' })
+
+      event.update!(allow_multiple_tickets_per_email: true)
+      create(:ticket, event: event, ticket_type: ticket_type,
+                      custom_fields_data: { 'ic_passport_no' => 'H12345678' })
+
+      event.update!(allow_multiple_tickets_per_email: false)
+      later_flag_off_ticket = build_with({ 'ic_passport_no' => 'H12345678' })
+
+      expect(later_flag_off_ticket).not_to be_valid
+      expect(later_flag_off_ticket.errors[:base].first).to include('already registered')
+    end
+
+    it 'rejects a duplicate direct insert when multiple tickets per email are disabled' do
+      insert_without_validations({ 'ic_passport_no' => 'H12345678' }, allow_multiple: false)
+
+      expect do
+        insert_without_validations({ 'ic_passport_no' => 'H12345678' }, allow_multiple: false)
+      end.to raise_error(ActiveRecord::RecordNotUnique)
+    end
+
+    it 'allows duplicate direct inserts when multiple tickets per email are enabled' do
+      event.update!(allow_multiple_tickets_per_email: true)
+      insert_without_validations({ 'ic_passport_no' => 'H12345678' }, allow_multiple: true)
+
+      expect do
+        insert_without_validations({ 'ic_passport_no' => 'H12345678' }, allow_multiple: true)
+      end.not_to raise_error
     end
 
     it 'frees the value when the existing ticket is canceled' do
@@ -243,6 +425,36 @@ RSpec.describe Ticket, type: :model do
                              custom_fields_data: { 'membership_no' => 'A-1234' })
 
       expect(other).to be_valid
+    end
+  end
+
+  describe 'allow_multiple_tickets_per_email mirror' do
+    let(:event) { create(:event, allow_multiple_tickets_per_email: true) }
+    let(:ticket_type) { create(:ticket_type, event: event) }
+
+    it 'mirrors the enabled event flag when a ticket is created' do
+      ticket = create(:ticket, event: event, ticket_type: ticket_type)
+
+      expect(ticket.allow_multiple_tickets_per_email).to be true
+    end
+
+    it 'mirrors the disabled event flag when a ticket is created' do
+      event.update!(allow_multiple_tickets_per_email: false)
+      ticket = create(:ticket, event: event, ticket_type: ticket_type)
+
+      expect(ticket.allow_multiple_tickets_per_email).to be false
+    end
+
+    it 'does not change an existing ticket until that ticket is saved' do
+      event.update!(allow_multiple_tickets_per_email: false)
+      ticket = create(:ticket, event: event, ticket_type: ticket_type)
+
+      event.update!(allow_multiple_tickets_per_email: true)
+      expect(ticket.reload.allow_multiple_tickets_per_email).to be false
+
+      ticket.update!(attendee_name: 'Updated Attendee')
+
+      expect(ticket.reload.allow_multiple_tickets_per_email).to be true
     end
   end
 end

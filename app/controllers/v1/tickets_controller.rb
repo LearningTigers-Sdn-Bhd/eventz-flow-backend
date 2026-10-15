@@ -1,13 +1,25 @@
 module V1
   class TicketsController < ApplicationController
+    include PublicFileValidation
+    include ScannableCheckIn
+
+    MAX_PAYMENT_PROOF_SIZE = 10.megabytes
+
     # Load and Authorize the parent event before every action
     before_action :set_event_and_authorize, except: [:global_check_in, :export, :self_check_in, :find_by_contact, :unscan]
 
     # Load the specific ticket for actions that require it
-    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email]
+    before_action :set_ticket, only: [:show, :update, :destroy, :force_delete, :cancel_ticket, :restore, :resend_confirmation_email, :resend_feedback_email, :accept_waiting_list]
 
     # Skip authentication for public endpoints
     skip_before_action :authenticate_user!, only: [:self_check_in, :find_by_contact]
+
+    SORTABLE_COLUMNS = {
+      'name' => 'tickets.attendee_name',
+      'email' => 'tickets.attendee_email',
+      'status' => 'tickets.checked_in',
+      'createdAt' => 'tickets.created_at'
+    }.freeze
 
     # GET /v1/events/:event_id/tickets
     # Query params:
@@ -15,12 +27,26 @@ module V1
     #   - full=true: Show all tickets including archived ones
     #   - updated_since: ISO8601 timestamp. Returns only tickets updated at or
     #     after the given time. Use for incremental sync.
+    #   - q: Search attendee name/email/phone and ticket type name (case-insensitive substring).
+    #   - status: 'scanned' or 'not_scanned', matches the checked_in flag.
+    #   - ticket_type_name: Exact match on the ticket's type name.
+    #   - payment_status: 'pending', 'paid', 'failed', or 'refunded_payment'.
+    #     Accepts an array (payment_status[]=a&payment_status[]=b) for an IN filter.
+    #   - review_status: 'pending_review', 'approved', or 'rejected'. Matches
+    #     tickets with a ticket_application at that review status (inner join —
+    #     tickets without an application are excluded).
+    #   - rsvp_status: 'not_sent', 'sent', 'confirmed', 'declined', or 'expired'.
+    #     Same join behavior as review_status.
+    #   - sort_by / sort_dir: One of name/email/status/createdAt, or
+    #     custom_<labels_data key> (e.g. custom_car_registration_number) to sort
+    #     by a custom field; 'asc' or 'desc' (default tickets.id order when
+    #     omitted or unrecognized).
     #   - page / per_page: Paginate results. When either is present, the response
     #     is sliced and pagination metadata is returned via response headers
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
     #     remains a bare array for backwards compatibility.
     def index
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, :ticket_payment, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
 
       if params[:archived] == 'true'
         @tickets = @tickets.only_deleted
@@ -42,8 +68,15 @@ module V1
         @tickets = @tickets.where('tickets.updated_at >= ?', since)
       end
 
+      @tickets = search_tickets(@tickets, params[:q]) if params[:q].present?
+      @tickets = filter_by_status(@tickets, params[:status]) if params[:status].present?
+      @tickets = filter_by_ticket_type_name(@tickets, params[:ticket_type_name]) if params[:ticket_type_name].present?
+      @tickets = @tickets.where(payment_status: params[:payment_status]) if params[:payment_status].present?
+      @tickets = filter_by_review_status(@tickets, params[:review_status]) if params[:review_status].present?
+      @tickets = filter_by_rsvp_status(@tickets, params[:rsvp_status]) if params[:rsvp_status].present?
+
       json_options = {
-        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
         include: {
           ticket_type: { only: [:id, :name, :price] },
           scanned_by: { only: [:id, :full_name] },
@@ -54,8 +87,9 @@ module V1
         }
       }
 
+      ordered_scope = @tickets.reorder(sort_order)
+
       if params[:page].present? || params[:per_page].present?
-        ordered_scope = @tickets.reorder(id: :asc)
         pagy_obj, paginated = pagy(ordered_scope, limit: pagination_params[:per_page])
 
         response.headers['X-Total-Count'] = pagy_obj.count.to_s
@@ -65,7 +99,7 @@ module V1
 
         render json: paginated.as_json(json_options), status: :ok
       else
-        render json: @tickets.as_json(json_options), status: :ok
+        render json: ordered_scope.as_json(json_options), status: :ok
       end
     end
 
@@ -81,8 +115,21 @@ module V1
       # Authorization check
       authorize @event, :create_ticket?
 
+      quantity = params[:quantity].to_i
+      quantity = 1 if quantity < 1
+
+      if quantity > 1 && !@event.allow_multiple_tickets_per_email?
+        return render json: {
+          errors: ['Multiple tickets per email is not enabled for this event']
+        }, status: :unprocessable_content
+      end
+
       # Build the ticket using ONLY the strong parameters.
-      @ticket = @event.tickets.build(ticket_params_with_payment_sync)
+      attrs = ticket_params_with_payment_sync
+      payment_proof_file = attrs.delete(:payment_proof)
+      return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
+
+      @ticket = @event.tickets.build(attrs)
 
       # @ticket.user = current_user # Hide this for now
 
@@ -90,9 +137,55 @@ module V1
       # seen in the test environment, even if @event.tickets.build is supposed to do it.
       @ticket.event_id = @event.id
 
-      if @ticket.save
+      extra_tickets = []
+      plate_error = nil
+
+      saved = ActiveRecord::Base.transaction do
+        # Bulk-add: same attendee info repeated across N tickets, tied by
+        # batch id so payment approval and confirmation email treat them as
+        # one purchase — mirrors the public group-registration flow. Suppress
+        # each ticket's own confirmation email; one batched email fires below
+        # instead once the whole batch is confirmed paid.
+        @ticket.suppress_confirmation_email = true if quantity > 1
+        raise ActiveRecord::Rollback unless @ticket.save
+        raise ActiveRecord::Rollback if (plate_error = assign_vehicle_plate!(@ticket))
+
+        @ticket.update_column(:registration_batch_id, @ticket.public_id) if quantity > 1
+
+        (quantity - 1).times do
+          extra = @event.tickets.new(attrs)
+          extra.registration_batch_id = @ticket.registration_batch_id
+          extra.suppress_confirmation_email = true
+          raise ActiveRecord::Rollback unless extra.save
+          raise ActiveRecord::Rollback if (plate_error = assign_vehicle_plate!(extra))
+
+          extra_tickets << extra
+        end
+
+        true
+      end
+
+      if plate_error
+        return render json: { errors: [plate_error] }, status: :unprocessable_content
+      end
+
+      if saved
         @ticket.reload
-        render json: ticket_response(@ticket), status: :created
+        attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
+
+        if quantity > 1 && @ticket.paid? && @ticket.purchased? && @ticket.attendee_email.present?
+          EmailDelivery::AuditedDelivery.deliver_later(
+            mailer_name: 'TicketMailer',
+            mailer_action: 'group_confirmation_email',
+            args: [@ticket],
+            related: @ticket,
+            metadata: { source: 'panel_bulk_ticket_create', event_id: @event.id }
+          )
+        end
+
+        render json: ticket_response(@ticket).merge(
+          group_public_ids: [@ticket.public_id, *extra_tickets.map(&:public_id)]
+        ), status: :created
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
@@ -102,11 +195,89 @@ module V1
       # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
 
-      if @ticket.update(ticket_params_with_payment_sync)
+      # Manual bank-transfer approval mirrors the online-gateway path
+      # (PaymentsController#mark_tickets_paid!): approving one ticket in a
+      # group registration_batch auto-approves its siblings too (safe now
+      # that the batch id scopes to exactly this submission, not just
+      # email+ticket_type) and sends one batched QR email instead of N.
+      marking_paid = @ticket.pending_payment? && ticket_params[:payment_status].to_s.in?(%w[paid 1])
+      siblings = marking_paid && @ticket.registration_batch_id.present? ? batch_siblings(@ticket) : Ticket.none
+      @ticket.suppress_confirmation_email = true if siblings.exists?
+
+      reverting_paid = @ticket.paid? && ticket_params[:payment_status].present? &&
+                        !ticket_params[:payment_status].to_s.in?(%w[paid 1])
+      if reverting_paid && @ticket.scanned?
+        return render json: { error: 'Ticket already checked in, cannot revert payment status' },
+                      status: :unprocessable_content
+      end
+      if reverting_paid && @ticket.ticket_application&.approved?
+        return render json: { error: 'This ticket has an approved application — use "Revert to Pending" instead' },
+                      status: :unprocessable_content
+      end
+
+      attrs = ticket_params_with_payment_sync
+      payment_proof_file = attrs.delete(:payment_proof)
+      return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
+
+      # Apply attrs first so the plate is validated against the new ticket
+      # type/role in the same request; one transaction so a rejected plate
+      # doesn't leave the other edits half-saved.
+      # custom_fields_data replaces the whole hash, and ticket_params strips
+      # reserved keys — carry the stored ones over or every edit erases them.
+      if attrs.key?(:custom_fields_data)
+        attrs[:custom_fields_data] = attrs[:custom_fields_data].to_h.merge(
+          @ticket.custom_fields_data.to_h.slice(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
+        )
+      end
+
+      plate_error = nil
+      saved = ActiveRecord::Base.transaction do
+        @ticket.assign_attributes(attrs)
+        plate_error = assign_vehicle_plate!(@ticket)
+        raise ActiveRecord::Rollback if plate_error
+        raise ActiveRecord::Rollback unless @ticket.save
+
+        true
+      end
+
+      if plate_error
+        @ticket.reload
+        return render json: { errors: [plate_error] }, status: :unprocessable_content
+      end
+
+      if saved
+        attach_payment_proof!(@ticket, payment_proof_file) if payment_proof_file.present?
+        mark_batch_siblings_paid!(primary: @ticket, siblings: siblings) if siblings.exists?
         render json: ticket_response(@ticket), status: :ok
       else
         render json: @ticket.errors, status: :unprocessable_content
       end
+    rescue VehicleRegistrationTicketTypeSync::Error => e
+      render json: { errors: [e.message] }, status: :unprocessable_content
+    end
+
+    def accept_waiting_list
+      authorize @ticket, :update?
+
+      unless @ticket.waiting_list?
+        return render json: { error: 'Ticket is not on the waiting list' }, status: :unprocessable_content
+      end
+
+      @ticket.ticket_type.with_lock do
+        ticket_type = @ticket.ticket_type
+        if ticket_type.quantity.present? && ticket_type.tickets
+          .where(payment_status: :paid, status: %i[purchased scanned])
+          .where.not(id: @ticket.id)
+          .count >= ticket_type.quantity
+          return render json: { error: 'No seats are currently available for this ticket type' }, status: :unprocessable_content
+        end
+
+        unless @ticket.update(waiting_list: false, payment_status: :paid, status: :purchased)
+          return render json: @ticket.errors, status: :unprocessable_content
+        end
+      end
+
+      render json: ticket_response(@ticket), status: :ok
     end
 
     def destroy
@@ -152,6 +323,97 @@ module V1
       end
     end
 
+    # PATCH /v1/events/:event_id/tickets/bulk_archive
+    # Soft-deletes a batch of tickets. Restricted to org_owner/organizer —
+    # stricter than the per-ticket destroy? policy (which also allows
+    # event_admin) because bulk archiving affects many attendees at once.
+    def bulk_archive
+      unless current_user.is_org_owner_or_organizer?
+        return render json: { error: 'Not authorized' }, status: :forbidden
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.where(public_id: public_ids)
+      archived = []
+      errors = []
+
+      tickets.each do |ticket|
+        if ticket.archive
+          archived << ticket.public_id
+        else
+          errors << { public_id: ticket.public_id, errors: ticket.errors.full_messages }
+        end
+      end
+
+      render json: { archived: archived, errors: errors }, status: :ok
+    end
+
+    # DELETE /v1/events/:event_id/tickets/bulk_delete
+    # Permanently deletes a batch of tickets (including already-archived
+    # ones). Restricted to org_owner only.
+    def bulk_delete
+      unless current_user.is_org_owner?
+        return render json: { error: 'Not authorized' }, status: :forbidden
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.with_deleted.where(public_id: public_ids)
+      deleted = []
+      errors = []
+
+      tickets.each do |ticket|
+        ticket.delete
+        deleted << ticket.public_id
+      rescue StandardError => e
+        errors << { public_id: ticket.public_id, errors: [e.message] }
+      end
+
+      render json: { deleted: deleted, errors: errors }, status: :ok
+    end
+
+    # PATCH /v1/events/:event_id/tickets/bulk_update_ticket_type
+    # Changes ticket_type_id for a batch of tickets in one call. Skips (and
+    # reports) any ticket the current user isn't authorized to update or that
+    # fails validation, instead of aborting the whole batch.
+    def bulk_update_ticket_type
+      ticket_type = @event.ticket_types.find_by(id: params[:ticket_type_id])
+      unless ticket_type
+        return render json: { error: 'Ticket type not found for this event' }, status: :unprocessable_content
+      end
+
+      public_ids = Array(params[:ticket_ids])
+      if public_ids.empty?
+        return render json: { error: 'No tickets specified' }, status: :unprocessable_content
+      end
+
+      tickets = @event.tickets.where(public_id: public_ids)
+      updated = []
+      errors = []
+
+      tickets.each do |ticket|
+        unless TicketPolicy.new(pundit_user, ticket).update?
+          errors << { public_id: ticket.public_id, errors: ['Not authorized'] }
+          next
+        end
+
+        if ticket.update(ticket_type_id: ticket_type.id)
+          updated << ticket.public_id
+        else
+          errors << { public_id: ticket.public_id, errors: ticket.errors.full_messages }
+        end
+      end
+
+      render json: { updated: updated, errors: errors }, status: :ok
+    end
+
     # POST /v1/events/:event_id/tickets/:id/resend_confirmation_email
     # Org owner only - resend ticket confirmation email with QR
     def resend_confirmation_email
@@ -161,9 +423,19 @@ module V1
         return render json: { errors: ['Ticket does not have an attendee email'] }, status: :unprocessable_content
       end
 
+      if @ticket.waiting_list?
+        return render json: { errors: ['Ticket is on the waiting list and has not been confirmed'] }, status: :unprocessable_content
+      end
+
+      # Resend the batched email (all QR codes) when this ticket belongs to a
+      # paid group registration_batch — otherwise the admin's resend would
+      # only cover this one attendee, dropping the others from the resend.
+      batched = @ticket.paid? && @ticket.registration_batch_id.present? &&
+        @event.tickets.where(registration_batch_id: @ticket.registration_batch_id, payment_status: :paid).count > 1
+
       delivery = EmailDelivery::AuditedDelivery.deliver_later(
         mailer_name: 'TicketMailer',
-        mailer_action: 'confirmation_email',
+        mailer_action: batched ? 'group_confirmation_email' : 'confirmation_email',
         args: [@ticket],
         related: @ticket,
         metadata: {
@@ -178,28 +450,65 @@ module V1
       }, status: :accepted
     end
 
-    def global_check_in
-      # 1. Global Lookup (Find the ticket by its UUID)
-      @ticket = Ticket.find_by!(public_id: params[:public_id])
+    # Manual resend of the post-event thank-you + feedback link for one ticket.
+    # Uses this ticket's own public_id in the link, so it also covers extra
+    # tickets that shared an email and were skipped by the automatic send.
+    # Unlike the automatic send, check-in is not required: it's the fallback
+    # for attendees whose scan got missed (the panel warns before sending).
+    def resend_feedback_email
+      authorize @ticket, :resend_confirmation_email?
 
-      # 2. Authorization (Must authorize against the found ticket's event)
-      # The user must be staff/manager for @ticket.event
+      error = if @ticket.waiting_list? then 'Ticket is on the waiting list'
+              elsif !@ticket.paid? then 'Ticket is still pending'
+              elsif @ticket.attendee_email.blank? then 'Ticket does not have an attendee email'
+              elsif !@event.ended? then 'Event has not ended yet'
+              elsif @event.event_email_setting&.email_enabled?('ThankYouMailer', 'thank_you_email') == false
+                'Thank you email is turned off for this event'
+              elsif !ThankYouMailer.feedback_link_available?(@event)
+                'Feedback link is off, or the feedback form is inactive or has no questions'
+              end
+      return render json: { errors: [error] }, status: :unprocessable_content if error
+
+      delivery = EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'ThankYouMailer',
+        mailer_action: 'feedback_reminder_email',
+        args: [@ticket],
+        related: @ticket,
+        metadata: { source: 'ticket_actions_menu_manual_resend', event_id: @event.id }
+      )
+
+      render json: {
+        message: 'Feedback email has been queued for resend',
+        email_delivery_id: delivery.id
+      }, status: :accepted
+    end
+
+    def global_check_in
+      @ticket = Ticket.find_by!(public_id: params[:public_id])
       authorize @ticket, :check_in?
 
-      # 3. Perform Check-in Logic
-      if @ticket.checked_in?
-        render json: { error: 'Ticket has already been checked in.' }, status: :unprocessable_content and return
+      status, log = ScanGate.record!(
+        @ticket,
+        by: current_user,
+        source: :staff_scan,
+        location: scan_location_for(@ticket.event)
+      )
+
+      if status == :unpaid
+        render json: { error: 'Ticket payment is still pending. Cannot check in until payment is confirmed.' },
+               status: :unprocessable_content and return
       end
 
-      if @ticket.update(checked_in: true, check_in_at: Time.current, status: :scanned, scanned_by_id: current_user.id)
-        broadcast_to_welcome_screen(@ticket)
-        render json: @ticket.as_json(include: {
-          ticket_type: { only: [:id, :name, :price] },
-          event: { only: [:id, :title] }
-        }), status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
+      if status == :blocked
+        render json: scan_blocked_payload(log, message: 'Ticket has already been checked in.'),
+               status: :unprocessable_content and return
       end
+
+      broadcast_to_welcome_screen(@ticket)
+      render json: @ticket.reload.as_json(include: {
+        ticket_type: { only: %i[id name price] },
+        event: { only: %i[id title] }
+      }), status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     end
@@ -344,99 +653,71 @@ module V1
     def self_check_in
       public_id = params[:public_id]
 
-      # Validate public_id is provided
       if public_id.blank?
         render json: { error: 'Ticket ID is required' }, status: :bad_request and return
       end
 
-      # Find the ticket by public_id
       @ticket = Ticket.find_by(public_id: public_id)
 
       if @ticket.nil?
         render json: { error: 'Ticket not found' }, status: :not_found and return
       end
 
-      # Check if already checked in
-      if @ticket.checked_in?
-        render json: { error: 'This ticket has already been checked in.' }, status: :unprocessable_content and return
-      end
-
-      # Prepare update parameters for check-in
-      update_params = {
-        checked_in: true,
-        check_in_at: Time.current,
-        status: :scanned
-      }
-
-      # Update phone number if provided and currently missing
+      # Fill in contact details the attendee supplied, if we don't have them yet.
+      contact_updates = {}
       if params[:attendee_phone].present? && @ticket.attendee_phone.blank?
-        update_params[:attendee_phone] = params[:attendee_phone]
+        contact_updates[:attendee_phone] = params[:attendee_phone]
       end
-
-      # Update email if provided and currently missing
       if params[:attendee_email].present? && @ticket.attendee_email.blank?
-        update_params[:attendee_email] = params[:attendee_email]
+        contact_updates[:attendee_email] = params[:attendee_email]
+      end
+      @ticket.update!(contact_updates) if contact_updates.any?
+
+      # The ticket.checked_in webhook reads this thread-local.
+      Thread.current[:check_in_url] = params[:check_in_url] if params[:check_in_url].present?
+
+      status, log = ScanGate.record!(@ticket, by: nil, source: :self_check_in)
+
+      if status == :unpaid
+        render json: { error: 'Ticket payment is still pending. Cannot check in until payment is confirmed.' },
+               status: :unprocessable_content and return
       end
 
-      # Store check_in_url temporarily in Thread for webhook access
-      if params[:check_in_url].present?
-        Thread.current[:check_in_url] = params[:check_in_url]
+      if status == :blocked
+        render json: scan_blocked_payload(log, message: 'This ticket has already been checked in.'),
+               status: :unprocessable_content and return
       end
 
-      # Perform self check-in (WITHOUT scanned_by_id)
-      if @ticket.update(update_params)
-        # Clear the thread-local variable after update
-        Thread.current[:check_in_url] = nil
-
-        broadcast_to_welcome_screen(@ticket)
-        render json: @ticket.as_json(
-          include: {
-            ticket_type: { only: [:id, :name, :price] },
-            event: { only: [:id, :title] }
-          }
-        ), status: :ok
-      else
-        # Clear the thread-local variable on error
-        Thread.current[:check_in_url] = nil
-        render json: @ticket.errors, status: :unprocessable_content
-      end
+      broadcast_to_welcome_screen(@ticket)
+      render json: @ticket.reload.as_json(
+        include: {
+          ticket_type: { only: %i[id name price] },
+          event: { only: %i[id title] }
+        }
+      ), status: :ok
     rescue StandardError => e
-      # Clear the thread-local variable on exception
-      Thread.current[:check_in_url] = nil
       render json: { error: "An error occurred: #{e.message}" }, status: :internal_server_error
+    ensure
+      Thread.current[:check_in_url] = nil
     end
 
     # PATCH /v1/tickets/:id/unscan
     # Org owner only - unscan a ticket (reset check-in status)
     def unscan
-      # Find the ticket by ID (internal ID or public_id)
       @ticket = Ticket.find_by(id: params[:id]) || Ticket.find_by!(public_id: params[:id])
-
-      # Authorization: Only org_owner can unscan tickets
       authorize @ticket, :unscan?
 
-      # Check if ticket is actually scanned
-      unless @ticket.checked_in?
+      unless ScanGate.undo!(@ticket)
         render json: { error: 'Ticket is not checked in' }, status: :unprocessable_content and return
       end
 
-      # Reset ticket to not scanned state
-      if @ticket.update(
-        checked_in: false,
-        check_in_at: nil,
-        scanned_by_id: nil,
-        status: :purchased
-      )
-        render json: {
-          message: 'Ticket successfully unscanned',
-          ticket: @ticket.as_json(
-            methods: [:payment_method, :transaction_id, :payment_screenshot_url],
-            include: { ticket_type: { only: [:id, :name, :price] } }
-          )
-        }, status: :ok
-      else
-        render json: @ticket.errors, status: :unprocessable_content
-      end
+      render json: {
+        message: 'Ticket successfully unscanned',
+        ticket: @ticket.reload.as_json(
+          methods: %i[payment_method transaction_id payment_screenshot_url],
+          include: { ticket_type: { only: %i[id name price] } }
+        )
+      }, status: :ok
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Ticket not found' }, status: :not_found
     rescue Pundit::NotAuthorizedError
@@ -455,6 +736,29 @@ module V1
       )
     end
 
+    def batch_siblings(ticket)
+      @event.tickets.where(
+        registration_batch_id: ticket.registration_batch_id,
+        payment_status: %i[pending failed],
+        status: :pending_payment
+      ).where.not(id: ticket.id)
+    end
+
+    def mark_batch_siblings_paid!(primary:, siblings:)
+      siblings.find_each do |sibling|
+        sibling.suppress_confirmation_email = true
+        sibling.update!(payment_status: :paid, status: :purchased)
+      end
+
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'group_confirmation_email',
+        args: [primary],
+        related: primary,
+        metadata: { source: 'manual_payment_approval_batch', event_id: @event.id }
+      )
+    end
+
     def set_event
       # Allow accessing archived events for record-keeping
       @event = Event.with_deleted.find(params[:event_id])
@@ -470,6 +774,77 @@ module V1
          authorize @event, :show?
       end
 
+    end
+
+    def search_tickets(scope, query)
+      pattern = "%#{query.strip.downcase}%"
+      # custom_fields_data holds registration-form fields (car_registration_number,
+      # membership_no, ic_passport_no, ...) that never get their own column —
+      # cast-to-text LIKE searches every key/value in there without needing to
+      # know the field name. ponytail: no index behind this cast, so it's a
+      # sequential scan per search; fine at per-event ticket counts, revisit
+      # with a GIN index on custom_fields_data if this ever gets slow.
+      scope.joins(:ticket_type).where(
+        'LOWER(tickets.attendee_name) LIKE :p OR LOWER(tickets.attendee_email) LIKE :p ' \
+        'OR LOWER(tickets.attendee_phone) LIKE :p OR LOWER(ticket_types.name) LIKE :p ' \
+        'OR LOWER(tickets.custom_fields_data::text) LIKE :p',
+        p: pattern
+      )
+    end
+
+    def filter_by_status(scope, status)
+      case status
+      when 'scanned' then scope.where(checked_in: true)
+      when 'not_scanned' then scope.where(checked_in: false)
+      else scope
+      end
+    end
+
+    def filter_by_ticket_type_name(scope, name)
+      scope.joins(:ticket_type).where(ticket_types: { name: name })
+    end
+
+    def filter_by_review_status(scope, status)
+      scope.joins(:ticket_application).where(ticket_applications: { review_status: status })
+    end
+
+    def filter_by_rsvp_status(scope, status)
+      scope.joins(:ticket_application).where(ticket_applications: { rsvp_status: status })
+    end
+
+    def sort_order
+      column = sortable_column(params[:sort_by])
+      direction = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
+      Arel.sql("#{column} #{direction}")
+    end
+
+    # Maps the frontend column id to an ORDER BY expression. Fixed columns go
+    # through SORTABLE_COLUMNS; custom-field columns arrive as "custom_<key>"
+    # (e.g. custom_car_registration_number) and sort on the JSONB value as
+    # text. The key is validated against the custom-field keys the event
+    # actually uses (labels_data plus keys present on its tickets, minus
+    # reserved "_"-prefixed ones) so arbitrary keys can't reach the SQL.
+    def sortable_column(sort_by)
+      return SORTABLE_COLUMNS[sort_by] if SORTABLE_COLUMNS.key?(sort_by)
+      return 'tickets.id' unless sort_by.to_s.start_with?('custom_')
+
+      key = sort_by.to_s.delete_prefix('custom_')
+      return 'tickets.id' unless custom_field_sort_keys.include?(key)
+
+      quoted_key = ActiveRecord::Base.connection.quote(key)
+      "tickets.custom_fields_data ->> #{quoted_key}"
+    end
+
+    # Custom-field keys shown as sortable columns in the panel: the event's
+    # labels_data keys merged with any key found on its tickets (same merge as
+    # the frontend table), excluding server-reserved "_"-prefixed fields.
+    def custom_field_sort_keys
+      @custom_field_sort_keys ||= begin
+        keys = @event.labels_data.to_h.keys
+        ticket_keys = @event.tickets.where.not(custom_fields_data: {})
+                            .distinct.pluck(Arel.sql("jsonb_object_keys(custom_fields_data)"))
+        (keys + ticket_keys).uniq.reject { |k| k.to_s.start_with?('_') }
+      end
     end
 
     def set_ticket
@@ -493,9 +868,11 @@ module V1
         :attendee_phone,
         :ticket_type_id,
         :payment_status,
+        :waiting_list,
         :payment_method,
         :transaction_id,
         :payment_screenshot_url,
+        :payment_proof,
         :role,
         :skip_webhooks,
         custom_fields_data: {}
@@ -516,6 +893,14 @@ module V1
         permitted[:custom_fields_data] = permitted[:custom_fields_data].except(*Ticket::RESERVED_CUSTOM_FIELD_KEYS)
       end
 
+      # multipart/form-data (used when payment_proof is uploaded) stringifies
+      # every field, but Ticket#payment_status is an integer-backed enum and
+      # rejects a digit string like "0" as an invalid key — only the bare
+      # integer or its label ("pending") is accepted.
+      if permitted[:payment_status].present? && permitted[:payment_status].to_s.match?(/\A\d+\z/)
+        permitted[:payment_status] = permitted[:payment_status].to_i
+      end
+
       permitted
     end
 
@@ -523,18 +908,117 @@ module V1
       permitted_params = ticket_params
       payment_status = permitted_params[:payment_status]
 
-      return permitted_params unless @ticket&.pending_payment?
       return permitted_params unless payment_status.present?
 
       paid_value = Ticket.payment_statuses[:paid]
-      return permitted_params unless payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
+      going_paid = payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
 
-      permitted_params.merge(status: :purchased)
+      return permitted_params.merge(status: :purchased) if @ticket&.pending_payment? && going_paid
+
+      # Reverting a paid, not-yet-scanned ticket back to an unpaid status also
+      # resets its lifecycle status to pending_payment, mirroring the forward
+      # sync above (organizer un-paying = same as reverting an approval).
+      return permitted_params.merge(status: :pending_payment) if @ticket&.paid? && @ticket.purchased? && !going_paid
+
+      permitted_params
+    end
+
+    # car_registration_number is reserved on Ticket#custom_fields_data (it's
+    # derived from vehicle_registration_id), so ticket_params strips it. A
+    # panel-submitted plate is instead routed through
+    # VehicleRegistrationAssignment, which sets the FK and the field together
+    # and re-checks capacity/role for the target vehicle. Saves the ticket
+    # when there is a plate change. An optional ticket[vehicle_registration_form_id]
+    # picks the group (e.g. Expedition B) for a new plate, or moves the ticket's
+    # current car there. Returns an error string, or nil.
+    def assign_vehicle_plate!(ticket)
+      target_form = requested_vehicle_form
+      current_vehicle = ticket.vehicle_registration
+      raw_custom_fields = params.dig(:ticket, :custom_fields_data)
+      if raw_custom_fields.respond_to?(:[])
+        new_plate = raw_custom_fields[:car_registration_number] || raw_custom_fields['car_registration_number']
+      end
+
+      if new_plate.present?
+        normalized = VehicleRegistration.normalize_plate(new_plate)
+        return 'Car plate number must contain letters or digits' if normalized.blank?
+
+        if current_vehicle && normalized == current_vehicle.normalized_plate
+          # Heal tickets whose field was wiped by earlier edits; caller saves.
+          ticket.custom_fields_data = ticket.custom_fields_data.to_h.merge('car_registration_number' => current_vehicle.plate)
+        else
+          form = target_form || vehicle_form_for(ticket, normalized)
+          unless form
+            return "Cannot set car plate: ticket type \"#{ticket.ticket_type&.name}\" is not part of any vehicle registration form"
+          end
+
+          return nil if VehicleRegistrationAssignment.new(event: @event, form: form, ticket: ticket, plate: new_plate).save
+
+          return ticket.errors.full_messages.to_sentence.presence || 'Could not save car plate'
+        end
+      end
+
+      return nil unless target_form && current_vehicle && current_vehicle.registration_form_id != target_form.id
+
+      VehicleRegistrationGroupMove.call(vehicle: current_vehicle, form: target_form, ticket: ticket)
+      nil
+    rescue VehicleRegistrationAssignment::Error, VehicleRegistrationGroupMove::Error, VehicleRegistrationRules::UnsupportedForm => e
+      e.message
+    end
+
+    def requested_vehicle_form
+      form_id = params.dig(:ticket, :vehicle_registration_form_id).presence
+      return nil unless form_id
+
+      form = @event.registration_forms.find_by(id: form_id)
+      raise VehicleRegistrationAssignment::Error, 'Choose a valid vehicle group' unless VehicleRegistrationRules.supported?(form)
+
+      form
+    end
+
+    # Joining an existing car uses that car's form; a new car keeps the
+    # ticket's current vehicle form, else the vehicle form offering its type.
+    def vehicle_form_for(ticket, normalized_plate)
+      existing = VehicleRegistration.find_by(event: @event, normalized_plate: normalized_plate) ||
+                 VehicleRegistrationLegacyAdopter.call(event: @event, normalized_plate: normalized_plate)
+      return existing.registration_form if existing
+      return ticket.vehicle_registration.registration_form if ticket.vehicle_registration
+
+      ticket.ticket_type&.registration_forms&.where(event: @event)&.find { |f| VehicleRegistrationRules.supported?(f) }
+    end
+
+    # Renders an error and returns false when the uploaded payment proof
+    # fails type/size checks (mirrors V1::Public::TicketPaymentProofsController).
+    def valid_payment_proof!(file)
+      unless file.respond_to?(:content_type) && allowed_file_type?(file)
+        render json: { errors: ['Payment proof must be a JPEG, PNG, WebP, or PDF'] }, status: :unprocessable_content
+        return false
+      end
+
+      if file_too_large?(file, MAX_PAYMENT_PROOF_SIZE)
+        render json: { errors: ["Payment proof is too large (max #{MAX_PAYMENT_PROOF_SIZE / 1.megabyte}MB)"] },
+               status: :unprocessable_content
+        return false
+      end
+
+      true
+    end
+
+    # Attaches an admin-uploaded payment proof to the ticket's payment record
+    # via Active Storage, replacing the legacy free-text payment_screenshot_url.
+    def attach_payment_proof!(ticket, file)
+      payment = ticket.payment_record
+      # On a brand-new ticket (create action), payment_record builds an
+      # unsaved TicketPayment — Active Storage can't attach to an unpersisted
+      # record (no id to generate a signed_id from), so save it first.
+      payment.save! if payment.new_record?
+      payment.payment_proof.attach(file)
+      payment.update!(payment_screenshot_url: url_for(payment.payment_proof))
     end
 
     def ticket_response(ticket)
       ticket.as_json(
-        methods: [:payment_method, :transaction_id, :payment_screenshot_url],
+        methods: [:payment_method, :transaction_id, :payment_screenshot_url, :registration_documents_data, :vehicle_registration_data],
         include: {
           ticket_type: { only: [:id, :name, :price] },
           pass_bundle: { only: [:id, :name] },
