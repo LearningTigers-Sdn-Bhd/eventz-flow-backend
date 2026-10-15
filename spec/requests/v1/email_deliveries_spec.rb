@@ -108,7 +108,7 @@ RSpec.describe 'V1::EmailDeliveries', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['data']).to include(
-        'retention_days' => 730, 'protected_retention_days' => 1825, 'rows_to_purge' => 1
+        'retention_days' => 730, 'protected_retention_days' => 1825, 'purge_enabled' => false, 'rows_to_purge' => 1
       )
     end
 
@@ -130,10 +130,12 @@ RSpec.describe 'V1::EmailDeliveries', type: :request do
 
     it 'lets org owners update the windows' do
       patch '/v1/email_deliveries/settings',
-            params: { retention_days: 180, protected_retention_days: 365 }, headers: headers
+            params: { retention_days: 180, protected_retention_days: 365, purge_enabled: true }, headers: headers
 
       expect(response).to have_http_status(:ok)
-      expect(EmailLogSetting.current).to have_attributes(retention_days: 180, protected_retention_days: 365)
+      expect(EmailLogSetting.current).to have_attributes(
+        retention_days: 180, protected_retention_days: 365, purge_enabled: true
+      )
     end
 
     it 'rejects invalid windows' do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -352,6 +352,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_060000) do
     t.integer "protected_retention_days", default: 1825, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "purge_enabled", default: false, null: false
     t.check_constraint "protected_retention_days >= 30 AND protected_retention_days <= 3650", name: "chk_email_log_settings_protected_range"
     t.check_constraint "protected_retention_days >= retention_days", name: "chk_email_log_settings_protected_gte_retention"
     t.check_constraint "retention_days >= 30 AND retention_days <= 3650", name: "chk_email_log_settings_retention_range"
