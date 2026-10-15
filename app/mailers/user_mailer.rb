@@ -1,7 +1,7 @@
 # app/mailers/user_mailer.rb
 class UserMailer < ApplicationMailer
 
-  default from: "EventzFlow App Notifications <notifications@updates.eventzflow.com>"
+  default from: "EventzFlow App Notifications <#{DEFAULT_SENDER_ADDRESS}>"
 
   def verification_code(user, code)
     @user = user

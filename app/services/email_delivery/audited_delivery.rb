@@ -13,6 +13,10 @@ class EmailDelivery::AuditedDelivery
   # lower EMAIL_SEND_SPACING_SECONDS if the Resend plan allows a higher rate.
   SEND_SPACING = ENV.fetch('EMAIL_SEND_SPACING_SECONDS', '0.6').to_f
   SLOT_KEY = 'email_delivery:next_send_slot'.freeze
+  # Label stored on each EmailDelivery row. MillionSend speaks the Resend API,
+  # so the switch is RESEND_BASE_URL + RESEND_API_KEY; set EMAIL_PROVIDER=millionsend
+  # alongside them so the Email page can tell old and new rows apart.
+  PROVIDER = ENV.fetch('EMAIL_PROVIDER', 'resend').freeze
   # Atomically: slot = max(stored next slot, now); store slot + spacing; return slot.
   SLOT_SCRIPT = <<~LUA.freeze
     local slot = math.max(tonumber(redis.call('GET', KEYS[1]) or '0'), tonumber(ARGV[1]))
@@ -102,7 +106,7 @@ class EmailDelivery::AuditedDelivery
 
   def build_skipped_record
     EmailDelivery.create!(
-      provider: 'resend',
+      provider: PROVIDER,
       mailer_name: @mailer_name,
       mailer_action: @mailer_action,
       status: 'skipped',
@@ -117,7 +121,7 @@ class EmailDelivery::AuditedDelivery
     message = message_delivery.respond_to?(:message) ? message_delivery.message : nil
 
     EmailDelivery.create!(
-      provider: 'resend',
+      provider: PROVIDER,
       mailer_name: @mailer_name,
       mailer_action: @mailer_action,
       recipient: Array(message&.to).first,
@@ -155,9 +159,10 @@ class EmailDelivery::AuditedDelivery
     delivery
   rescue StandardError => e
     attrs = EmailDelivery::FailureClassifier.call(e)
+    suppressed = attrs[:failure_reason] == 'suppressed'
     delivery.update!(
-      status: 'failed',
-      failed_at: Time.current,
+      status: suppressed ? 'suppressed' : 'failed',
+      "#{suppressed ? 'suppressed' : 'failed'}_at": Time.current,
       last_error: attrs[:last_error],
       failure_reason: attrs[:failure_reason],
       next_retry_at: attrs[:next_retry_at]

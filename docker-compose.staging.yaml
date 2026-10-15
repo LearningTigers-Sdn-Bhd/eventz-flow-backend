@@ -9,6 +9,12 @@ x-rails-env: &rails-env
   DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres-db-staging:5432/eventz_flow_api_staging}
   # Mail configuration
   RESEND_API_KEY: ${RESEND_API_KEY}
+  # Provider switch (Resend or MillionSend). Unset = Resend. The base URL must
+  # keep its trailing slash and never be blank (the gem treats "" as set).
+  RESEND_BASE_URL: ${RESEND_BASE_URL:-https://api.resend.com/}
+  RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+  MAIL_FROM: ${MAIL_FROM:-}
   REDIRECT_BASE_URL: ${REDIRECT_BASE_URL}
 
 x-db-env: &db-env

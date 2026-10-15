@@ -129,13 +129,13 @@ class TicketMailer < ApplicationMailer
   end
 
   def sender_from
-    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    address = email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS
     name = email_setting&.sender_name.presence || @event.title
     format_sender(name, address)
   end
 
   def bm_sender_from
-    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    address = email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS
     name = email_setting&.business_matching_sender_name.presence ||
            email_setting&.sender_name.presence ||
            @event.title

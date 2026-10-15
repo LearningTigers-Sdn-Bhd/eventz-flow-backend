@@ -16,7 +16,7 @@ class ThankYouMailer < ApplicationMailer
 
     mail(
       to: ticket.attendee_email,
-      from: format_sender(@sender_name, email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'),
+      from: format_sender(@sender_name, email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS),
       subject: "Thank you for joining #{@event.title}"
     )
   end
@@ -31,7 +31,7 @@ class ThankYouMailer < ApplicationMailer
 
     mail(
       to: ticket.attendee_email,
-      from: format_sender(@sender_name, email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'),
+      from: format_sender(@sender_name, email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS),
       subject: "Quick reminder: share your feedback on #{@event.title}"
     )
   end

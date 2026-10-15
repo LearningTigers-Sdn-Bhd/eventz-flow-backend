@@ -43,6 +43,24 @@ RSpec.describe EmailDelivery::AuditedDelivery do
       expect(delivery.failure_reason).to eq('provider_daily_limit')
       expect(delivery.next_retry_at).to be_present
     end
+
+    it 'marks the audit row suppressed when the provider rejects a suppressed recipient' do
+      message_delivery = TicketMailer.confirmation_email(ticket)
+      allow(TicketMailer).to receive(:confirmation_email).with(ticket).and_return(message_delivery)
+      allow(message_delivery).to receive(:deliver_now)
+        .and_raise(Resend::Error::InvalidRequestError.new('All recipients are suppressed', 422, {}))
+
+      delivery = described_class.deliver_now(
+        mailer_name: 'TicketMailer',
+        mailer_action: 'confirmation_email',
+        args: [ticket],
+        related: ticket
+      )
+
+      expect(delivery.status).to eq('suppressed')
+      expect(delivery.suppressed_at).to be_present
+      expect(delivery.failed_at).to be_nil
+    end
   end
 
   describe '.deliver_later' do

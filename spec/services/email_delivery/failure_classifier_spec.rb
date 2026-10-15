@@ -29,6 +29,15 @@ RSpec.describe EmailDelivery::FailureClassifier do
       expect(result[:next_retry_at]).to be_nil
     end
 
+    it 'classifies suppressed-recipient rejections without retrying' do
+      error = Resend::Error::InvalidRequestError.new('All recipients are suppressed', 422, {})
+
+      result = described_class.call(error)
+
+      expect(result[:failure_reason]).to eq('suppressed')
+      expect(result[:next_retry_at]).to be_nil
+    end
+
     it 'classifies network timeouts as transient' do
       result = described_class.call(Net::OpenTimeout.new('execution expired'))
 

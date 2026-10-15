@@ -26,6 +26,15 @@ RSpec.describe EmailDelivery::WebhookProcessor do
     expect(delivery.reload.status).to eq('suppressed')
   end
 
+  it 'logs account-level events as errors and touches no delivery' do
+    allow(Rails.logger).to receive(:error)
+
+    described_class.call(type: 'quota.paused', data: { reason: 'limit' })
+
+    expect(Rails.logger).to have_received(:error).with(/quota\.paused/)
+    expect(delivery.reload.status).to eq('sent')
+  end
+
   it 'does not overwrite an existing final delivery status' do
     delivery.update!(status: 'delivered')
     described_class.call(event)
