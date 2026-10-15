@@ -33,6 +33,15 @@ class EmailDelivery < ApplicationRecord
   scope :for_recipient, lambda { |recipient|
     recipient.present? ? where('recipient ILIKE ?', "%#{sanitize_sql_like(recipient)}%") : all
   }
+  scope :for_search, lambda { |query|
+    next all if query.blank?
+
+    pattern = "%#{sanitize_sql_like(query)}%"
+    where(
+      'recipient ILIKE :q OR subject ILIKE :q OR mailer_name ILIKE :q OR mailer_action ILIKE :q OR provider_message_id ILIKE :q',
+      q: pattern
+    )
+  }
   scope :for_event, ->(event_id) { event_id.present? ? where(event_id: event_id) : all }
   MAX_RETRY_COUNT = 3
 
