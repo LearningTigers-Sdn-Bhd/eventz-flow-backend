@@ -1,0 +1,10 @@
+<%# locals: title, rows [[label, value], ...] — blank values are skipped, empty tables not rendered %>
+<% shown = email_rows(rows) %>
+<% if shown.any? %>
+  <div class="h2"><%= title %></div>
+  <table role="presentation" width="100%" class="dl">
+    <% shown.each do |label, value| %>
+      <tr><td class="k"><%= label %></td><td class="v"><%= value %></td></tr>
+    <% end %>
+  </table>
+<% end %>

@@ -1,43 +1,12 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <style>
-    <%= render 'booking_mailer/shared_styles' %>
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2><%= @host_label %> Invitation</h2>
-    </div>
-    <div class="content">
-      <p>Hello,</p>
-      <p>
-        <strong><%= @inviter_name.presence || "The event organizer" %></strong> has invited you to join as a
-        <strong><%= @host_label %></strong> for <strong><%= @event_title %></strong>
-        <% if @session_title.present? %>(Session: <%= @session_title %>)<% end %>.
-      </p>
-      <% if @custom_message.present? %>
-        <div style="background: #f8fafc; border-left: 4px solid #0284c7; padding: 12px 16px; margin: 16px 0; border-radius: 4px; color: #334155; line-height: 1.6;">
-          <%= simple_format(@custom_message) %>
-        </div>
-      <% else %>
-        <p>
-          As a <%= @host_label %>, you can set up your profile, manage your schedule, and connect with attendees during business matching sessions.
-        </p>
-      <% end %>
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="<%= @invite_url %>" class="button">Accept Invitation &amp; Join Session</a>
-      </div>
-      <p style="font-size: 12px; color: #666; word-break: break-all;">
-        If the button above does not work, copy and paste this link into your browser:<br/>
-        <a href="<%= @invite_url %>"><%= @invite_url %></a>
-      </p>
-    </div>
-    <div class="footer">
-      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>
+<%= email_page :violet, icon: 'users', label: 'Invitation', title: "You are invited as a #{@host_label}", tagline: @event_title,
+      footer: "&copy; #{Time.now.year} EventzFlow. All rights reserved.".html_safe %>
+<p>Hello,</p>
+<p><strong><%= @inviter_name.presence || 'The event organizer' %></strong> has invited you to join as a <strong><%= @host_label %></strong> for <strong><%= @event_title %></strong><% if @session_title.present? %> (Session: <%= @session_title %>)<% end %>.</p>
+<% if @custom_message.present? %>
+  <div class="callout"><%= simple_format(@custom_message) %></div>
+<% else %>
+  <p>As a <%= @host_label %>, you can set up your profile, manage your schedule, and connect with attendees during business matching sessions.</p>
+<% end %>
+<%= render 'emails/buttons', primary: ['Accept invitation and join session', @invite_url] %>
+<p class="qrnote">If the button does not work, copy and paste this link into your browser:<br><a class="link" href="<%= @invite_url %>" style="word-break:break-all"><%= @invite_url %></a></p>
+<%= render 'emails/signoff', closing: 'Best regards,', name: 'The Organizing Team' %>

@@ -118,7 +118,7 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(paid_mail.body.encoded).to include('order_receipt_123')
     end
 
-    it 'styles payment receipt labels with distinct header color' do
+    it 'renders payment receipt labels in the bold label column' do
       paid_ticket = create(
         :ticket,
         :paid,
@@ -130,7 +130,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       paid_mail = described_class.confirmation_email(paid_ticket)
 
-      expect(paid_mail.body.encoded).to include('color: #000000;')
+      expect(paid_mail.body.encoded).to include('<td class="k">Receipt No</td>')
     end
 
     it 'does not show payment receipt section but still bccs when amount paid is zero' do

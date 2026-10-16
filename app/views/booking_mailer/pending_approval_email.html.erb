@@ -1,51 +1,11 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <style>
-    <%= render 'booking_mailer/shared_styles' %>
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2>Booking Request Received for <%= @event_title %></h2>
-    </div>
-    <div class="content">
-      <p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
-      <p>
-        We've received your request for a business matching meeting at
-        <strong><%= @event_title %></strong>. Your booking is currently
-        <strong>awaiting approval</strong> from the host — it is not confirmed yet.
-      </p>
-
-      <h3>Requested Slot:</h3>
-      <div class="details">
-        <p><strong>Date:</strong> <%= @booking_date %></p>
-        <p><strong>Time:</strong> <%= @booking_time %></p>
-        <% if @booking['location'].present? %>
-          <p><strong>Location:</strong> <%= @booking['location'] %></p>
-        <% end %>
-        <p><strong>Status:</strong> Pending approval</p>
-      </div>
-
-      <p>
-        We'll email you again as soon as the host approves it. There's nothing
-        you need to do in the meantime.
-      </p>
-
-      <% if @cancel_url.present? %>
-        <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
-          <p style="margin: 0 0 12px 0; font-size: 13px; color: #666;">Need to withdraw this request?</p>
-          <a href="<%= @cancel_url %>" style="display: inline-block; background-color: #ffffff; color: #dc3545; border: 1px solid #dc3545; padding: 9px 18px; text-decoration: none; border-radius: 5px; font-size: 14px; font-weight: 600;">Cancel Request</a>
-        </div>
-      <% end %>
-
-      <p style="margin-top: 20px;">Best regards,<br>The Organizing Team</p>
-    </div>
-    <div class="footer">
-      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>
+<%= email_page :amber, icon: 'hourglass', label: 'Awaiting approval', title: 'We have received your request', tagline: @event_title,
+      footer: "&copy; #{Time.now.year} EventzFlow. All rights reserved.".html_safe %>
+<p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
+<p>Thank you for requesting a business matching meeting at <strong><%= @event_title %></strong>. Your booking is now <strong>awaiting approval</strong> from the host and is not yet confirmed.</p>
+<%= render 'emails/details', title: 'Requested Slot', rows: [['Date', @booking_date], ['Time', @booking_time], ['Location', @booking['location']], ['Status', 'Pending approval']] %>
+<% if @cancel_url.present? %>
+  <%= render 'emails/buttons', primary: ['Cancel Request', @cancel_url] %>
+  <p class="qrnote">Need to withdraw this request?</p>
+<% end %>
+<p style="margin-top:28px">We will email you as soon as the host responds. There is nothing you need to do in the meantime.</p>
+<%= render 'emails/signoff', closing: 'Best regards,', name: 'The Organizing Team' %>

@@ -215,7 +215,7 @@ RSpec.describe BookingMailer, type: :mailer do
 
         it 'uses the custom host label in default subject and body' do
           expect(mail.subject).to eq("You've been invited as a Business Partner for #{event.title}")
-          expect(mail.html_part.body.encoded).to include('<h2>Business Partner Invitation</h2>')
+          expect(mail.html_part.body.encoded).to include('<h1>You are invited as a Business Partner</h1>')
           expect(mail.html_part.body.encoded).to include('join as a')
           expect(mail.html_part.body.encoded).to include('<strong>Business Partner</strong>')
           expect(mail.html_part.body.encoded).to include('As a Business Partner, you can set up your profile')

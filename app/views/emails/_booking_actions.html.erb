@@ -1,0 +1,8 @@
+<%# Change / cancel buttons for the booking emails; each link is skipped if its URL is missing %>
+<% if @reschedule_url.present? && @cancel_url.present? %>
+  <%= render 'emails/buttons', primary: ['Change or Reschedule', @reschedule_url], secondary: ['Cancel', @cancel_url] %>
+<% elsif @reschedule_url.present? %>
+  <%= render 'emails/buttons', primary: ['Change or Reschedule', @reschedule_url] %>
+<% elsif @cancel_url.present? %>
+  <%= render 'emails/buttons', primary: ['Cancel', @cancel_url] %>
+<% end %>

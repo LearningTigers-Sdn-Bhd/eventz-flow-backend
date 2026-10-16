@@ -1,0 +1,8 @@
+<%# locals: title (optional), text (optional paragraph), items (optional array, rendered as a numbered list) %>
+<div class="callout">
+  <% if local_assigns[:title].present? %><div class="ct"><%= title %></div><% end %>
+  <% if local_assigns[:text].present? %><p><%= text %></p><% end %>
+  <% if local_assigns[:items] %>
+    <ol><% items.each do |item| %><li><%= item %></li><% end %></ol>
+  <% end %>
+</div>
