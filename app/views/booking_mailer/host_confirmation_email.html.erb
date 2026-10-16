@@ -1,46 +1,16 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <style>
-    <%= render 'booking_mailer/shared_styles' %>
-  </style>
-</head>
-<body>
-  <div class="container">
-    <% pending = @booking['status'] == 'Pending' %>
-    <div class="header">
-      <h2><%= pending ? "Booking Request for #{@event_title}" : "New Booking for #{@event_title}" %></h2>
-    </div>
-    <div class="content">
-      <p>Hi <%= @host.full_name %>,</p>
-      <% if pending %>
-        <p>
-          <strong><%= @booking['name'] %></strong> has requested a business matching
-          session with you. It is <strong>pending your approval</strong> — open
-          EventzFlow and approve it to confirm the slot for them.
-        </p>
-      <% else %>
-        <p><strong><%= @booking['name'] %></strong> has booked a business matching session with you.</p>
-      <% end %>
-
-      <h3>Booking Details:</h3>
-      <div class="details">
-        <p><strong>Date:</strong> <%= @booking_date %></p>
-        <p><strong>Time:</strong> <%= @booking_time %></p>
-        <p><strong>Name:</strong> <%= @booking['name'] %></p>
-        <p><strong>Email:</strong> <%= @booking['email'] %></p>
-        <p><strong>Phone:</strong> <%= @booking['phone'] %></p>
-        <% if @booking['location'].present? %>
-          <p><strong>Location:</strong> <%= @booking['location'] %></p>
-        <% end %>
-      </div>
-
-      <a href="<%= @dashboard_url %>" class="button"><%= pending ? 'Review & Approve' : 'View on EventzFlow' %></a>
-    </div>
-    <div class="footer">
-      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>
+<% pending = @booking['status'] == 'Pending' %>
+<%= email_page :violet, icon: 'mail', label: (pending ? 'Booking request' : 'New booking'),
+      title: (pending ? 'You have a new booking request' : 'You have a new booking'), tagline: @event_title,
+      footer: "&copy; #{Time.now.year} EventzFlow. All rights reserved.".html_safe %>
+<p>Dear <%= @host.full_name %>,</p>
+<% if pending %>
+  <p><strong><%= @booking['name'] %></strong> has requested a business matching session with you. It is <strong>pending your approval</strong>. Please open EventzFlow to approve the request and confirm the slot.</p>
+<% else %>
+  <p><strong><%= @booking['name'] %></strong> has booked a business matching session with you.</p>
+<% end %>
+<%= render 'emails/details', title: 'Booking Details', rows: [
+      ['Date', @booking_date], ['Time', @booking_time], ['Name', @booking['name']],
+      ['Email', @booking['email']], ['Phone', @booking['phone']], ['Location', @booking['location']]
+    ] %>
+<%= render 'emails/buttons', primary: [(pending ? 'Review and approve' : 'View on EventzFlow'), @dashboard_url] %>
+<%= render 'emails/signoff', closing: 'Best regards,', name: 'The Organizing Team' %>

@@ -1,0 +1,16 @@
+<%# locals: title, rows [[label, value], ...], qr (image url, optional), ticket_id (optional), qr_size (optional) %>
+<% size = local_assigns[:qr_size] || 124 %>
+<table role="presentation" width="100%" class="ticket"<%= raw(' style="margin:12px 0 0"') if local_assigns[:compact] %>><tr>
+  <td class="tcol" valign="top">
+    <div class="t-type"><%= title %></div>
+    <% email_rows(rows).each do |label, value| %>
+      <div class="t-lbl"><%= label %></div><div class="t-val"><%= value %></div>
+    <% end %>
+  </td>
+  <% if local_assigns[:qr].present? %>
+    <td class="tcol qrcell" width="<%= size + 20 %>" align="right">
+      <div class="qrwrap"><%= image_tag qr, alt: 'QR code', width: size, height: size, style: 'display:block' %></div>
+      <% if local_assigns[:ticket_id].present? %><div class="tid"><%= ticket_id %></div><% end %>
+    </td>
+  <% end %>
+</tr></table>

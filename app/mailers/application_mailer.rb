@@ -6,7 +6,8 @@ class ApplicationMailer < ActionMailer::Base
   DEFAULT_SENDER_ADDRESS = (ENV['MAIL_FROM'].presence || 'notifications@updates.eventzflow.com').freeze
 
   default from: "EventzFlow <#{DEFAULT_SENDER_ADDRESS}>"
-  layout 'mailer'
+  helper EmailHelper
+  layout 'email'
 
   private
 

@@ -1,38 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <style>
-    <%= render 'booking_mailer/shared_styles' %>
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2>Booking Rescheduled for <%= @event_title %></h2>
-    </div>
-    <div class="content">
-      <p>Hi <%= @host.full_name %>,</p>
-      <p><strong><%= @booking['name'] %></strong> has rescheduled their session with you.</p>
-
-      <h3>New Booking Details:</h3>
-      <div class="details">
-        <p><strong>Date:</strong> <%= @booking_date %></p>
-        <p><strong>Time:</strong> <%= @booking_time %></p>
-        <p><strong>Name:</strong> <%= @booking['name'] %></p>
-        <p><strong>Email:</strong> <%= @booking['email'] %></p>
-        <p><strong>Phone:</strong> <%= @booking['phone'] %></p>
-      </div>
-
-      <% if @old_date.present? && @old_time.present? %>
-        <p style="color: #777; font-size: 0.9em;">Previously scheduled for <%= @old_date.strftime('%A, %B %d, %Y') %> at <%= @old_time %>.</p>
-      <% end %>
-
-      <a href="<%= @dashboard_url %>" class="button">View on EventzFlow</a>
-    </div>
-    <div class="footer">
-      <p>&copy; <%= Time.now.year %> EventzFlow. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>
+<%= email_page :blue, icon: 'refresh', label: 'Rescheduled', title: 'A booking has been rescheduled', tagline: @event_title,
+      footer: "&copy; #{Time.now.year} EventzFlow. All rights reserved.".html_safe %>
+<p>Dear <%= @host.full_name %>,</p>
+<p><strong><%= @booking['name'] %></strong> has rescheduled their session with you. The new details are below.</p>
+<%= render 'emails/details', title: 'New Booking Details', rows: [
+      ['Date', @booking_date], ['Time', @booking_time], ['Name', @booking['name']],
+      ['Email', @booking['email']], ['Phone', @booking['phone']]
+    ] %>
+<% if @old_date.present? && @old_time.present? %>
+  <p class="qrnote" style="text-align:left;margin-top:12px">Previously scheduled for <%= @old_date.strftime('%A, %B %d, %Y') %> at <%= @old_time %>.</p>
+<% end %>
+<%= render 'emails/buttons', primary: ['View on EventzFlow', @dashboard_url] %>
+<%= render 'emails/signoff', closing: 'Best regards,', name: 'The Organizing Team' %>
