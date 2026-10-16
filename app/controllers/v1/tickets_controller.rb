@@ -97,7 +97,9 @@ module V1
         response.headers['X-Per-Page']    = pagy_obj.limit.to_s
         response.headers['X-Total-Pages'] = pagy_obj.pages.to_s
 
-        render json: paginated.as_json(json_options), status: :ok
+        rows = paginated.as_json(json_options)
+        problems = EmailDelivery.problem_status_by_ticket(rows.pluck('id'))
+        render json: rows.map { |row| row.merge('email_problem' => problems[row['id']]) }, status: :ok
       else
         render json: ordered_scope.as_json(json_options), status: :ok
       end

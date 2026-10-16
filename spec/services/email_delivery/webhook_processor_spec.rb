@@ -26,6 +26,14 @@ RSpec.describe EmailDelivery::WebhookProcessor do
     expect(delivery.reload.status).to eq('suppressed')
   end
 
+  it 'lets a late bounce override a delivered email' do
+    delivery.update!(status: 'delivered')
+
+    described_class.call(event.merge(type: 'email.bounced'))
+
+    expect(delivery.reload).to have_attributes(status: 'bounced', failure_reason: 'bounced')
+  end
+
   it 'logs account-level events as errors and touches no delivery' do
     allow(Rails.logger).to receive(:error)
 

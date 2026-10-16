@@ -284,6 +284,25 @@ RSpec.describe UserActivityRecorder do
         .to eq(['events', 'Updated Event Settings'])
     end
 
+    it 'records the old and new email when Fix & resend corrects a ticket address' do
+      ticket = create(:ticket, attendee_email: 'wrong@example.con')
+      delivery = create(:email_delivery, :failed, related: ticket)
+
+      changes = ActivityChangeTracker.call(
+        controller: 'v1/events/email_deliveries', action: 'resend',
+        params: { id: delivery.id.to_s, email: 'right@example.com' }
+      )
+
+      expect(changes).to eq('Attendee Email' => { from: 'wrong@example.con', to: 'right@example.com' })
+    end
+
+    it 'records nothing for a plain resend' do
+      delivery = create(:email_delivery, :failed, related: create(:ticket))
+
+      expect(ActivityChangeTracker.call(controller: 'v1/events/email_deliveries', action: 'resend',
+                                        params: { id: delivery.id.to_s })).to eq({})
+    end
+
     it 'maps business matching reschedule' do
       cat, action = described_class.resolve_friendly_action('POST', 'v1/business_matching/bookings', 'reschedule', '/v1/business_matching/bookings/1/reschedule', {})
       expect(cat).to eq('business_matching')

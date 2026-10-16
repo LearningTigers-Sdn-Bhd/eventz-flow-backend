@@ -41,4 +41,19 @@ RSpec.describe EmailDelivery, type: :model do
       expect(build(:email_delivery, status: 'bounced')).not_to be_eligible_for_manual_resend
     end
   end
+
+  describe '.problem_status_by_ticket' do
+    it 'flags tickets whose latest email did not arrive, ignoring retried and delivered ones' do
+      bounced_ticket = create(:ticket)
+      fixed_ticket = create(:ticket)
+      fine_ticket = create(:ticket)
+      create(:email_delivery, status: 'bounced', related: bounced_ticket)
+      original = create(:email_delivery, status: 'bounced', related: fixed_ticket)
+      create(:email_delivery, :sent, related: fixed_ticket, resend_of: original)
+      create(:email_delivery, :delivered, related: fine_ticket)
+
+      expect(described_class.problem_status_by_ticket([bounced_ticket.id, fixed_ticket.id, fine_ticket.id]))
+        .to eq(bounced_ticket.id => 'bounced')
+    end
+  end
 end

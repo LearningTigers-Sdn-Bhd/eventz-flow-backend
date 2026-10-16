@@ -216,6 +216,11 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
+      resources :email_deliveries, only: :index, controller: 'events/email_deliveries' do
+        get :summary, on: :collection
+        get :export, on: :collection
+        post :resend, on: :member
+      end
       resources :activity_logs, only: :index, controller: 'events/activity_logs' do
         collection do
           delete :clear, action: :destroy_all
