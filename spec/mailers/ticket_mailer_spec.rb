@@ -1,6 +1,11 @@
 require 'rails_helper'
 
 RSpec.describe TicketMailer, type: :mailer do
+  # The status-badge icon is also attached inline, so QR assertions look only at the QR files.
+  def qr_attachments(mail)
+    mail.attachments.select { |attachment| attachment.filename.start_with?('qr_code') }
+  end
+
   describe '#confirmation_email' do
     let(:event) { create(:event, title: 'Test Event') }
     let(:ticket_type) { create(:ticket_type, event: event, name: 'General Admission') }
@@ -52,8 +57,12 @@ RSpec.describe TicketMailer, type: :mailer do
     end
 
     it 'attaches the QR code' do
-      expect(mail.attachments.count).to eq(1)
-      expect(mail.attachments.first.filename).to eq('qr_code.png')
+      expect(qr_attachments(mail).map(&:filename)).to eq(['qr_code.png'])
+    end
+
+    it 'embeds the status badge icon inline instead of linking to a server' do
+      expect(mail.attachments.map(&:filename) - ['qr_code.png']).to eq(['ticket.png']) # free-ticket badge
+      expect(mail.html_part.body.decoded).to match(/<img src="cid:[^"]+" width="18"/)
     end
 
     it 'adds receipt bcc for paid tickets' do
@@ -215,7 +224,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       expect(mail.to).to eq(['shared@example.com'])
       expect(mail.subject).to eq('Your tickets for Group Event')
-      expect(mail.attachments.map(&:filename)).to contain_exactly(
+      expect(qr_attachments(mail).map(&:filename)).to contain_exactly(
         *8.times.map { |index| "qr_code_#{index}.png" }
       )
       tickets.each do |ticket|
@@ -231,7 +240,7 @@ RSpec.describe TicketMailer, type: :mailer do
       mails = tickets.map { |ticket| described_class.group_confirmation_email(ticket) }
 
       expect(mails).to have_attributes(size: 8)
-      expect(mails).to all(satisfy { |mail| mail.attachments.size == 1 })
+      expect(mails).to all(satisfy { |mail| qr_attachments(mail).size == 1 })
     end
 
     it 'renders one mail for three shared tickets and one for each distinct address' do
@@ -246,8 +255,8 @@ RSpec.describe TicketMailer, type: :mailer do
       mails = representatives.map { |ticket| described_class.group_confirmation_email(ticket) }
 
       expect(mails).to have_attributes(size: 3)
-      expect(mails.first.attachments.size).to eq(3)
-      expect(mails.drop(1)).to all(satisfy { |mail| mail.attachments.size == 1 })
+      expect(qr_attachments(mails.first).size).to eq(3)
+      expect(mails.drop(1)).to all(satisfy { |mail| qr_attachments(mail).size == 1 })
     end
 
     it 'scopes by registration_batch_id, keeping two separate batches by the same email/address apart' do
@@ -266,7 +275,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       mail = described_class.group_confirmation_email(batch_a_tickets.first)
 
-      expect(mail.attachments.map(&:filename)).to contain_exactly('qr_code_0.png', 'qr_code_1.png')
+      expect(qr_attachments(mail).map(&:filename)).to contain_exactly('qr_code_0.png', 'qr_code_1.png')
       expect(mail.body.encoded).not_to include(batch_b_ticket.attendee_name)
     end
 
@@ -280,8 +289,8 @@ RSpec.describe TicketMailer, type: :mailer do
       mail = described_class.group_confirmation_email(tickets.first)
       html = mail.html_part.decoded
 
-      expect(mail.attachments.size).to eq(2)
-      mail.attachments.each do |attachment|
+      expect(qr_attachments(mail).size).to eq(2)
+      qr_attachments(mail).each do |attachment|
         expect(html).to include("src=\"cid:#{attachment.cid}\"")
       end
     end
@@ -292,7 +301,7 @@ RSpec.describe TicketMailer, type: :mailer do
 
       mail = described_class.group_confirmation_email(first_ticket)
 
-      expect(mail.attachments.map(&:filename)).to eq(['qr_code_0.png'])
+      expect(qr_attachments(mail).map(&:filename)).to eq(['qr_code_0.png'])
       expect(mail.body.encoded).to include(first_ticket.attendee_name)
       expect(mail.body.encoded).not_to include(second_ticket.attendee_name)
     end

@@ -16,11 +16,9 @@ module EmailHelper
     sky: { accent: '#0369a1', dark: '#0c4a6e' }
   }.freeze
 
-  # PNG files in the panel's public/email-icons folder.
-  ICONS = %w[
-    alert arrow-up award bell cal-check cal-x calendar card check clock file gift heart hourglass
-    info key link list lock mail message refresh shield store ticket users x
-  ].freeze
+  # White outline icons shown in the status badge; the file name is the icon name.
+  ICON_DIR = Rails.root.join('app/views/emails/icons')
+  ICONS = Dir[ICON_DIR.join('*.png')].map { |path| File.basename(path, '.png') }.freeze
 
   AUTOMATED_FOOTER = 'This is an automated email from EventzFlow. Please do not reply to this email.'.freeze
 
@@ -41,9 +39,12 @@ module EmailHelper
     nil
   end
 
-  def email_icon_url(name)
-    base = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
-    "#{base}/email-icons/#{name}.png"
+  # Attaches the icon to the email (once) and returns its cid: URL, so it
+  # travels with the message instead of being fetched from a server.
+  def email_icon_src(name)
+    filename = "#{name}.png"
+    attachments.inline[filename] = ICON_DIR.join(filename).binread unless attachments[filename]
+    attachments[filename].url
   end
 
   # Blend a hex colour with white; ratio is the share of the colour kept.
