@@ -270,6 +270,22 @@ RSpec.describe TicketMailer, type: :mailer do
       expect(mail.body.encoded).not_to include(batch_b_ticket.attendee_name)
     end
 
+    it 'points each QR image at its attachment Content-ID so clients can resolve it' do
+      batch_id = SecureRandom.uuid
+      tickets = 2.times.map do |index|
+        create_paid_ticket(name: "Cid Attendee #{index + 1}", email: 'shared@example.com')
+          .tap { |t| t.update!(registration_batch_id: batch_id) }
+      end
+
+      mail = described_class.group_confirmation_email(tickets.first)
+      html = mail.html_part.decoded
+
+      expect(mail.attachments.size).to eq(2)
+      mail.attachments.each do |attachment|
+        expect(html).to include("src=\"cid:#{attachment.cid}\"")
+      end
+    end
+
     it 'does not group tickets without a registered-by email' do
       first_ticket = create_paid_ticket(name: 'First Attendee', email: 'shared@example.com', registered_by: nil)
       second_ticket = create_paid_ticket(name: 'Second Attendee', email: 'shared@example.com', registered_by: nil)
