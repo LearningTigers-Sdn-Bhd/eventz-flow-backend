@@ -53,6 +53,7 @@ class EmailDelivery::StatusReportWorkbook
   def initialize(event, deliveries:, now: Time.current)
     @event = event
     @deliveries = deliveries.to_a
+    @account_names = EmailDelivery.account_names_for(@deliveries)
     @now = now
   end
 
@@ -99,7 +100,7 @@ class EmailDelivery::StatusReportWorkbook
   def row_for(delivery)
     label, tone = OUTCOMES.fetch(delivery.status, [delivery.status.humanize, nil])
     ticket = delivery.related if delivery.related_type == 'Ticket'
-    [ticket&.attendee_name.to_s, delivery.recipient.to_s, ticket&.attendee_phone.to_s,
+    [(ticket&.attendee_name || @account_names[delivery.recipient.to_s.downcase]).to_s, delivery.recipient.to_s, ticket&.attendee_phone.to_s,
      EMAIL_TYPES.fetch(delivery.mailer_action) { delivery.mailer_action.humanize },
      [label, tone], reason_for(delivery), what_to_do(delivery.status), delivery.created_at, delivery.delivered_at]
   end
