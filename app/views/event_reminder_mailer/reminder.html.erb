@@ -9,7 +9,7 @@
 <p>Please keep your QR code ready for a smooth check-in. Your ticket details are below.</p>
 
 <%= render 'emails/ticket_card', title: @ticket.ticket_type.name,
-      rows: [['Name', @ticket.attendee_name]],
+      rows: [['Name', @ticket.attendee_name], ['Email', @ticket.attendee_email]],
       qr: attachments['qr_code.png'].url, ticket_id: @ticket.public_id %>
 <p class="qrnote"><strong>Scan at check-in</strong><br>Please present this QR code at the registration counter.</p>
 
