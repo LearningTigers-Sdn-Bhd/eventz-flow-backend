@@ -29,6 +29,33 @@ RSpec.describe EmailDelivery::FailureClassifier do
       expect(result[:next_retry_at]).to be_nil
     end
 
+    it 'classifies MillionSend undeliverable-domain rejections without retrying' do
+      error = Resend::Error::InvalidRequestError.new(
+        'x@gmail.con can never receive mail: .con is not a top-level domain.', 422, {}
+      )
+
+      result = described_class.call(error)
+
+      expect(result[:failure_reason]).to eq('invalid_recipient')
+      expect(result[:next_retry_at]).to be_nil
+    end
+
+    it 'does not retry other permanent 422 rejections' do
+      error = Resend::Error::InvalidRequestError.new('tags: expected array, received object', 422, {})
+
+      result = described_class.call(error)
+
+      expect(result[:failure_reason]).to eq('unknown')
+      expect(result[:next_retry_at]).to be_nil
+    end
+
+    it 'still retries 5xx provider errors' do
+      result = described_class.call(Resend::Error::InternalServerError.new('boom', 500, {}))
+
+      expect(result[:failure_reason]).to eq('provider_error')
+      expect(result[:next_retry_at]).to be_present
+    end
+
     it 'classifies suppressed-recipient rejections without retrying' do
       error = Resend::Error::InvalidRequestError.new('All recipients are suppressed', 422, {})
 

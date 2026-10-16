@@ -154,7 +154,7 @@
                 <% unless ticket_types_uniform %>&middot; <%= ticket.ticket_type.name %><% end %>
               </p>
             <% end %>
-            <%= image_tag "cid:qr_code_#{index}.png", alt: "QR Code", width: 160, height: 160 %>
+            <%= image_tag attachments["qr_code_#{index}.png"].url, alt: "QR Code", width: 160, height: 160 %>
             <p class="ticket-id">Ticket ID: <%= ticket.public_id %></p>
           </div>
         <% end %>

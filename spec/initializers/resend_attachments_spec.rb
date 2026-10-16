@@ -21,6 +21,24 @@ RSpec.describe 'Resend attachment encoding' do
     expect(Base64.strict_decode64(attachment[:content])).to eq(bytes)
   end
 
+  it 'sends a lone tag object as an array, as MillionSend requires' do
+    user = build(:user, email: 'success@simulator.amazonses.com')
+    mail = UserMailer.verification_code(user, '123456').message
+
+    tags = build_params(mail)[:tags]
+
+    expect(tags).to eq([{ name: 'category', value: 'confirm_email' }])
+  end
+
+  it 'leaves a tags array and mail without tags untouched' do
+    mail = Mail.new(from: 'a@example.com', to: 'b@example.com', subject: 'Hi')
+    mail.body = 'hello'
+    expect(build_params(mail)).not_to have_key(:tags)
+
+    mail[:tags] = [{ name: 'a', value: 'b' }]
+    expect(build_params(mail)[:tags]).to eq([{ name: 'a', value: 'b' }])
+  end
+
   it 'keeps the content id for inline attachments' do
     mail = Mail.new(from: 'a@example.com', to: 'b@example.com', subject: 'Logo')
     mail.body = 'hello'
