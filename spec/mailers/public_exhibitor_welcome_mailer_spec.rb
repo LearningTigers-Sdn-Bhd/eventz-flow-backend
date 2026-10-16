@@ -8,7 +8,7 @@ RSpec.describe PublicExhibitorWelcomeMailer, type: :mailer do
     expect(mail.to).to eq(['vendor@example.com'])
     expect(mail.bcc).to be_blank
     expect(body).to include('vendor@example.com', 'Sabah-A1B2C3D4!', described_class::LOGIN_URL)
-    expect(body).to include('Hi <strong>Illana Zamora</strong>', 'Your exhibitor account is ready', 'Account Details',
+    expect(body).to include('Dear Illana Zamora', 'Your exhibitor account is ready', 'Account Details',
       'manage your booths', 'update exhibitor details where available',
       'add team members', 'order items and services', 'update your password promptly',
       'This is an automated email from EventzFlow')

@@ -15,6 +15,20 @@ class EmailDeliveryPolicy < ApplicationPolicy
     index?
   end
 
+  def summary?
+    index?
+  end
+
+  # Retention is a write that deletes data; keep it tied to its own rule so
+  # widening read access later can't silently widen it.
+  def settings?
+    user.org_owner?
+  end
+
+  def update_settings?
+    user.org_owner?
+  end
+
   def resend?
     index? && record.eligible_for_manual_resend?
   end

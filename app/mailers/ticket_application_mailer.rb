@@ -46,7 +46,7 @@ class TicketApplicationMailer < ApplicationMailer
 
   def sender_from
     setting = @event.event_email_setting
-    address = setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    address = setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS
     name = setting&.sender_name.presence || @event.title
     format_sender(name, address)
   end

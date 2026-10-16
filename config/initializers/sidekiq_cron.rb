@@ -19,6 +19,12 @@ Rails.application.config.after_initialize do
     )
 
     Sidekiq::Cron::Job.create(
+      name: 'Purge old email deliveries - daily at 3:30am',
+      cron: '30 3 * * *',
+      class: 'PurgeOldEmailDeliveriesJob'
+    )
+
+    Sidekiq::Cron::Job.create(
       name: 'Send event reminders - daily at 9am',
       cron: '0 9 * * *',
       class: 'EventReminderJob'

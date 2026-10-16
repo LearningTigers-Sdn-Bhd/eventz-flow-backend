@@ -13,16 +13,18 @@ class EmailDelivery::Resender
     end
   end
 
-  def self.call(delivery)
-    new(delivery).call
+  def self.call(delivery, organizer: false)
+    new(delivery, organizer: organizer).call
   end
 
-  def initialize(delivery)
+  def initialize(delivery, organizer: false)
     @delivery = delivery
+    @organizer = organizer
   end
 
   def call
-    return failure('Email is not eligible for resend') unless @delivery.eligible_for_manual_resend?
+    eligible = @organizer ? @delivery.eligible_for_organizer_resend? : @delivery.eligible_for_manual_resend?
+    return failure('Email is not eligible for resend') unless eligible
 
     args = EmailDelivery::ArgsRebuilder.call(@delivery)
     return failure('Email type is not supported for resend') unless args

@@ -97,6 +97,13 @@ class EventEmailSetting < ApplicationRecord
 
   validate :disabled_categories_are_known
 
+  # Organizers may only pick the local part; the domain is the one verified
+  # with the mail provider. Checked only on change so legacy values still save.
+  SENDER_DOMAIN = 'notify.eventzflow.com'.freeze
+  before_validation { self.sender_address = sender_address.to_s.strip.downcase.presence }
+  validates :sender_address, format: { with: /\A[a-z0-9._+-]+@#{Regexp.escape(SENDER_DOMAIN)}\z/, message: "must end with @#{SENDER_DOMAIN}" },
+                             allow_nil: true, if: :sender_address_changed?
+
   # Whether AuditedDelivery should actually send this mailer/action. Mailers
   # not in CATEGORIES (e.g. UserMailer password_reset) are never gated here.
   def email_enabled?(mailer_name, mailer_action)

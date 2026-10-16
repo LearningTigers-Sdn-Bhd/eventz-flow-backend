@@ -1,0 +1,95 @@
+<% e = @email || email_page(:slate, icon: 'info', label: 'EventzFlow', title: '') || @email %>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title><%= e[:label] %></title>
+<style>
+  :root { color-scheme: light dark; }
+  html { background:<%= e[:accent] %>; }
+  body { margin:0; padding:0; background:<%= e[:accent] %>; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; color:#1a1a1a; -webkit-font-smoothing:antialiased; }
+  table { border-collapse:collapse; }
+  .outer { padding:40px 16px; }
+  .card { width:100%; max-width:600px; background:#ffffff; }
+  .pad { padding:0 44px; }
+  .status { margin:40px auto 4px; background:<%= e[:tint] %>; }
+  .status td { padding:6px 18px 6px 10px; vertical-align:middle; font-size:15px; font-weight:700; color:<%= e[:dark] %>; }
+  .sico { width:32px; height:32px; padding:7px; box-sizing:border-box; border-radius:50%; background:<%= e[:accent] %>; line-height:0; }
+  h1 { text-align:center; margin:12px 0 16px; font-family:Georgia,'Times New Roman',serif; font-size:30px; line-height:1.25; font-weight:400; color:#1a1a1a; }
+  p { margin:0 0 16px; font-size:15px; line-height:1.7; color:#3d3a35; }
+  .tagline { text-align:center; color:#55503f; margin-bottom:28px; }
+  .ticket { background:#f6f2e9; border:1px solid #e6dfd0; margin:32px 0 8px; }
+  .ticket td { padding:24px 26px; vertical-align:top; color:#1a1a1a; }
+  .t-type { font-family:Georgia,serif; font-size:22px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #e6dfd0; }
+  .t-lbl { font-size:12px; font-weight:700; color:#4a463b; margin-bottom:3px; }
+  .t-val { font-size:16px; line-height:1.4; margin-bottom:16px; overflow-wrap:anywhere; word-break:break-word; }
+  .t-val:last-child { margin-bottom:0; }
+  .qrwrap { display:inline-block; background:#fff; padding:10px; line-height:0; border:1px solid #e6dfd0; }
+  .tid { margin-top:8px; text-align:center; font-size:12px; color:#5f5a4d; letter-spacing:.5px; }
+  .qrnote { text-align:center; font-size:13px; color:#5f5a4d; margin:14px 0 0; }
+  .h2 { margin:36px 0 4px; font-family:Georgia,serif; font-size:19px; }
+  .dl td { padding:10px 0; font-size:14px; border-bottom:1px solid #e6dfd0; vertical-align:top; }
+  .dl td.k { width:155px; padding-right:16px; font-weight:700; color:#4a463b; }
+  a.link { color:<%= e[:accent] %>; text-decoration:underline; }
+  .callout { background:<%= e[:tint] %>; border:1px solid <%= e[:tint_border] %>; padding:16px 18px; margin-top:24px; }
+  .callout .ct { font-size:15px; font-weight:700; color:#1a1a1a; margin-bottom:6px; }
+  .callout p { margin:0; font-size:14px; line-height:1.65; color:#3d3a35; }
+  .callout ol { margin:8px 0 0 20px; padding:0; }
+  .callout li { margin:0 0 6px; font-size:14px; line-height:1.6; color:#3d3a35; }
+  .sig { margin:0 0 56px; font-family:Georgia,serif; font-size:17px; font-weight:700; }
+  .foot { padding:22px 44px 26px; border-top:1px solid #e6dfd0; font-size:13px; line-height:1.6; color:#6b6558; }
+  @media only screen and (max-width:480px) {
+    .outer { padding:30px 12px 32px !important; }
+    .pad, .foot { padding-left:22px !important; padding-right:22px !important; }
+    h1 { font-size:26px !important; }
+    .ticket td { padding:20px !important; text-align:center !important; }
+    .bt { display:block !important; width:100% !important; box-sizing:border-box !important; }
+    .gap { display:block !important; height:10px !important; }
+    .tcol { display:block !important; width:100% !important; box-sizing:border-box !important; }
+    .qrcell { text-align:center !important; padding-top:0 !important; }
+    .dl td.k { width:120px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    html, body, table[bgcolor], td.outer { background:<%= e[:dark] %> !important; }
+    .card { background:#1d1a16 !important; }
+    h1, .h2, .sig, .dl td.v, .callout .ct { color:#f5f1e8 !important; }
+    p, .callout p, .callout li { color:#cfc8b8 !important; }
+    .tagline { color:#bdb5a3 !important; }
+    .ticket { background:#14120f !important; border-color:#322d25 !important; }
+    .t-val { color:#f5f1e8 !important; }
+    .t-type { border-color:#322d25 !important; }
+    .t-lbl, .tid, .qrnote, .dl td.k { color:#bdb5a3 !important; }
+    .foot { color:#a8a08d !important; border-color:#322d25 !important; }
+    .qrwrap { border-color:#322d25 !important; }
+    .callout { background:#14120f !important; border-color:#322d25 !important; }
+    .b2 { border-color:#fff !important; }
+    .b2 a { color:#fff !important; }
+    .dl td { border-color:#322d25 !important; }
+    .status { background:<%= e[:dark] %> !important; }
+    .status td { color:#fff !important; }
+    .sico { background:<%= e[:accent] %> !important; }
+    a.link { color:#fff !important; }
+  }
+</style>
+</head>
+<body bgcolor="<%= e[:accent] %>">
+<table role="presentation" width="100%" align="center" bgcolor="<%= e[:accent] %>" style="margin:0 auto">
+<tr><td align="center" valign="top" class="outer" bgcolor="<%= e[:accent] %>">
+<table role="presentation" class="card" width="600" align="center" style="margin:0 auto">
+  <tr><td class="pad">
+    <table role="presentation" class="status" align="center"><tr>
+      <td width="32" valign="middle" style="padding:6px 0 6px 6px"><div class="sico"><img src="<%= email_icon_src(e[:icon]) %>" width="18" height="18" alt="" style="display:block;margin:0"></div></td>
+      <td><%= e[:label] %></td>
+    </tr></table>
+    <h1><%= e[:title] %></h1>
+    <% if e[:tagline].present? %><p class="tagline"><%= e[:tagline] %></p><% end %>
+    <%= yield %>
+  </td></tr>
+  <tr><td class="foot"><%= e[:footer] %></td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

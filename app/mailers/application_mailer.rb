@@ -1,8 +1,13 @@
 class ApplicationMailer < ActionMailer::Base
   DEFAULT_PAYMENT_RECEIPT_EMAIL = 'eventpayment@eventzflow.com'.freeze
 
-  default from: 'EventzFlow <notifications@updates.eventzflow.com>'
-  layout 'mailer'
+  # Bare address, shared by every mailer. Must be on a domain verified with the
+  # mail provider; set MAIL_FROM to move sending to another domain.
+  DEFAULT_SENDER_ADDRESS = (ENV['MAIL_FROM'].presence || 'notifications@updates.eventzflow.com').freeze
+
+  default from: "EventzFlow <#{DEFAULT_SENDER_ADDRESS}>"
+  helper EmailHelper
+  layout 'email'
 
   private
 

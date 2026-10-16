@@ -344,6 +344,19 @@ RSpec.describe 'V1::Tickets', type: :request do
         expect(response.headers['X-Total-Pages']).to eq('2')
       end
 
+      it 'flags tickets whose email did not arrive on a paginated page' do
+        flagged = Ticket.where(event_id: organizer_event.id).first
+        create(:email_delivery, status: 'bounced', related: flagged, event_id: organizer_event.id)
+
+        get "/v1/events/#{organizer_event.id}/tickets",
+            params: { page: 1, per_page: 10 },
+            headers: { 'Authorization' => "Bearer #{staff_token}" }
+
+        json = JSON.parse(response.body)
+        expect(json.find { |t| t['id'] == flagged.id }['email_problem']).to eq('bounced')
+        expect(json.reject { |t| t['id'] == flagged.id }.map { |t| t['email_problem'] }.uniq).to eq([nil])
+      end
+
       it 'filters by payment_status (default factory tickets are pending)' do
         paid_purchased_ticket # force creation
 

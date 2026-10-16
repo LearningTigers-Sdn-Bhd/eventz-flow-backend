@@ -179,6 +179,9 @@ Rails.application.routes.draw do
     get 'vendor_invitations/verify', to: 'vendor_invitations#verify'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
     resources :email_deliveries, only: %i[index show] do
+      get :summary, on: :collection
+      get :settings, on: :collection
+      patch :settings, action: :update_settings, on: :collection
       post :resend, on: :member
     end
 
@@ -213,6 +216,11 @@ Rails.application.routes.draw do
 
     # 4. EVENTS AND ASSOCIATED RESOURCES
     resources :events do
+      resources :email_deliveries, only: :index, controller: 'events/email_deliveries' do
+        get :summary, on: :collection
+        get :export, on: :collection
+        post :resend, on: :member
+      end
       resources :activity_logs, only: :index, controller: 'events/activity_logs' do
         collection do
           delete :clear, action: :destroy_all

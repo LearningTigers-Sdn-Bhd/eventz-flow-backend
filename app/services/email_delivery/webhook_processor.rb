@@ -18,17 +18,36 @@ class EmailDelivery::WebhookProcessor
   end
 
   def call
+    return log_account_alert if account_alert?
+
     delivery = EmailDelivery.find_by(provider_message_id: provider_message_id)
     return unless delivery
 
     status = EVENT_STATUS_MAP[@event[:type]]
     return unless status
-    return if FINAL_STATUSES.include?(delivery.status) && delivery.status != status
+    return if FINAL_STATUSES.include?(delivery.status) && delivery.status != status && !late_bounce?(delivery, status)
 
     delivery.update!(attributes_for(status, delivery))
   end
 
   private
+
+  # Providers can report a bounce or complaint after delivery (mailbox
+  # accepted it, then rejected it asynchronously); that is the truer outcome.
+  def late_bounce?(delivery, status)
+    delivery.status == 'delivered' && %w[bounced complained].include?(status)
+  end
+
+  # Account-level MillionSend events (reputation/quota). They carry no email
+  # id, so they can't update a row; log loudly so a paused account is noticed.
+  def account_alert?
+    @event[:type].to_s.start_with?('deliverability.', 'quota.')
+  end
+
+  def log_account_alert
+    level = @event[:type].end_with?('.warning') ? :warn : :error
+    Rails.logger.public_send(level, "[EmailDelivery::WebhookProcessor] #{@event[:type]}: #{@event[:data].to_json}")
+  end
 
   def provider_message_id
     @event.dig(:data, :email_id) || @event.dig(:data, :id)

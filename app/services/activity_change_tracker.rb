@@ -36,6 +36,22 @@ class ActivityChangeTracker
         'cancel_ticket' => ->(record) { { 'Status' => { from: record.status.to_s.humanize, to: 'Canceled' } } }
       }
     },
+    # Fix & resend on the Email Status tab corrects the ticket's email, so log
+    # the old and new address on the delivery's ticket.
+    'v1/events/email_deliveries' => {
+      finder: lambda { |params|
+        related = EmailDelivery.find_by(id: params[:id])&.related
+        related if related.is_a?(Ticket)
+      },
+      action_effects: {
+        'resend' => lambda { |ticket, params|
+          corrected = params[:email].to_s.strip
+          next {} if corrected.blank? || corrected.casecmp?(ticket.attendee_email.to_s)
+
+          { 'Attendee Email' => { from: ticket.attendee_email.to_s, to: corrected } }
+        }
+      }
+    },
     'v1/events' => {
       finder: ->(params) { Event.with_deleted.find_by(id: params[:id]) },
       fields: {
@@ -59,7 +75,7 @@ class ActivityChangeTracker
     effect = entry[:action_effects]&.dig(action)
     return {} unless effect
 
-    effect.call(record)
+    effect.arity == 1 ? effect.call(record) : effect.call(record, params)
   rescue StandardError => e
     Rails.logger.warn("ActivityChangeTracker failed: #{e.message}")
     {}

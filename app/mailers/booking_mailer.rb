@@ -2,7 +2,7 @@
 
 # eventz_flow_api/app/mailers/booking_mailer.rb
 class BookingMailer < ApplicationMailer
-  default from: 'EventzFlow <notifications@updates.eventzflow.com>'
+  default from: "EventzFlow <#{DEFAULT_SENDER_ADDRESS}>"
 
   def confirmation_email(booking_data, event_title, event_id)
     @booking = booking_data
@@ -231,7 +231,7 @@ class BookingMailer < ApplicationMailer
            email_setting&.sender_name.presence ||
            event&.title.presence ||
            'EventzFlow'
-    address = email_setting&.sender_address.presence || 'notifications@updates.eventzflow.com'
+    address = email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS
     format_sender(name, address)
   end
 

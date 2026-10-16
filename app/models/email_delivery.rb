@@ -11,6 +11,8 @@ class EmailDelivery < ApplicationRecord
     skipped
   ].freeze
 
+  PROBLEM_STATUSES = %w[failed bounced complained suppressed].freeze
+
   TRANSIENT_FAILURE_REASONS = %w[
     provider_daily_limit
     rate_limit
@@ -33,8 +35,37 @@ class EmailDelivery < ApplicationRecord
   scope :for_recipient, lambda { |recipient|
     recipient.present? ? where('recipient ILIKE ?', "%#{sanitize_sql_like(recipient)}%") : all
   }
+  scope :for_search, lambda { |query|
+    next all if query.blank?
+
+    pattern = "%#{sanitize_sql_like(query)}%"
+    where(
+      'recipient ILIKE :q OR subject ILIKE :q OR mailer_name ILIKE :q OR mailer_action ILIKE :q OR provider_message_id ILIKE :q',
+      q: pattern
+    )
+  }
   scope :for_event, ->(event_id) { event_id.present? ? where(event_id: event_id) : all }
   MAX_RETRY_COUNT = 3
+
+  # A row that was retried is superseded by its retry row, which carries the
+  # real outcome.
+  scope :not_retried, -> { where.not(id: EmailDelivery.where.not(resend_of_id: nil).select(:resend_of_id)) }
+
+  # { ticket_id => problem status } for the tickets whose latest email did not
+  # arrive, for flagging them in the attendee list in one query.
+  # Display names for emails not tied to a ticket (e.g. host invitations):
+  # the account that owns the recipient address, keyed by lowercased email.
+  def self.account_names_for(deliveries)
+    emails = deliveries.reject { |d| d.related_type == 'Ticket' }.map { |d| d.recipient.to_s.downcase }.uniq
+    return {} if emails.empty?
+
+    User.where('lower(email) IN (?)', emails).where.not(full_name: [nil, '']).pluck(Arel.sql('lower(email)'), :full_name).to_h
+  end
+
+  def self.problem_status_by_ticket(ticket_ids)
+    where(related_type: 'Ticket', related_id: ticket_ids, status: PROBLEM_STATUSES)
+      .not_retried.order(:id).pluck(:related_id, :status).to_h
+  end
 
   scope :retryable, -> { where(status: 'failed', failure_reason: TRANSIENT_FAILURE_REASONS).where('retry_count < ?', MAX_RETRY_COUNT) }
 
@@ -47,6 +78,12 @@ class EmailDelivery < ApplicationRecord
     return true if status == 'sent' && sent_at.present? && sent_at <= 24.hours.ago
 
     false
+  end
+
+  # Organizers can also retry a bounced or suppressed address (after fixing
+  # the email), which the admin Email Log deliberately does not offer.
+  def eligible_for_organizer_resend?
+    eligible_for_manual_resend? || %w[bounced suppressed].include?(status)
   end
 
   def transient_failure?

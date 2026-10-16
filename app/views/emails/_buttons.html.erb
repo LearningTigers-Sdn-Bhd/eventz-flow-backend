@@ -1,0 +1,9 @@
+<%# locals: primary: [text, url], secondary: [text, url] (optional) %>
+<% accent = @email[:accent] %>
+<table role="presentation" align="center" style="margin:24px auto 8px"><tr>
+  <td class="bt" align="center" bgcolor="<%= accent %>" style="background:<%= accent %>;border:2px solid <%= accent %>"><a href="<%= primary[1] %>" style="display:inline-block;padding:12px 30px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none"><%= primary[0] %></a></td>
+  <% if local_assigns[:secondary] %>
+    <td class="gap" width="12" style="font-size:0">&nbsp;</td>
+    <td class="bt b2" align="center" style="border:2px solid <%= accent %>"><a href="<%= secondary[1] %>" style="display:inline-block;padding:12px 30px;font-size:15px;font-weight:600;color:<%= accent %>;text-decoration:none"><%= secondary[0] %></a></td>
+  <% end %>
+</tr></table>
