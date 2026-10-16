@@ -26,6 +26,20 @@ RSpec.describe 'V1::Events::EmailDeliveries', type: :request do
       expect(rows.first.keys).not_to include('provider', 'provider_message_id', 'metadata', 'last_error')
     end
 
+    it 'shows the account name for emails not tied to a ticket' do
+      create(:user, email: 'Host@Example.com', full_name: 'Siti Host')
+      invite = create(:email_delivery, :delivered, event_id: event.id, mailer_action: 'host_invitation_email',
+                                                   recipient: 'host@example.com')
+      stranger = create(:email_delivery, :delivered, event_id: event.id, mailer_action: 'host_invitation_email',
+                                                     recipient: 'nobody@example.com')
+
+      get base, headers: headers
+
+      by_id = rows.index_by { |r| r['id'] }
+      expect(by_id[invite.id]['attendee']).to eq('ticket_id' => nil, 'name' => 'Siti Host')
+      expect(by_id[stranger.id]['attendee']).to be_nil
+    end
+
     it 'filters by outcome group' do
       create(:email_delivery, :delivered, event_id: event.id)
       bounced = create(:email_delivery, :sent, status: 'bounced', bounced_at: Time.current, event_id: event.id)

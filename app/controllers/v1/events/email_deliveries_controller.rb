@@ -22,8 +22,9 @@ module V1
         scope = scope.for_recipient(params[:recipient]) if params[:recipient].present?
 
         pagy, records = pagy(scope, limit: pagination_params[:per_page] || 25)
+        account_names = EmailDelivery.account_names_for(records)
         render json: {
-          data: records.map { |delivery| serialize(delivery) },
+          data: records.map { |delivery| serialize(delivery, account_names) },
           pagination: pagy_metadata(pagy)
         }, status: :ok
       end
@@ -91,8 +92,9 @@ module V1
         ticket.errors.full_messages.to_sentence
       end
 
-      def serialize(delivery)
+      def serialize(delivery, account_names = {})
         ticket = delivery.related if delivery.related_type == 'Ticket'
+        account_name = account_names[delivery.recipient.to_s.downcase]
         {
           id: delivery.id,
           email_type: delivery.mailer_action,
@@ -104,7 +106,11 @@ module V1
           sent_at: delivery.sent_at,
           delivered_at: delivery.delivered_at,
           problem_at: delivery.bounced_at || delivery.complained_at || delivery.suppressed_at || delivery.failed_at,
-          attendee: ticket && { ticket_id: ticket.id, name: ticket.attendee_name },
+          attendee: if ticket
+                      { ticket_id: ticket.id, name: ticket.attendee_name }
+                    elsif account_name
+                      { ticket_id: nil, name: account_name }
+                    end,
           can_resend: delivery.eligible_for_organizer_resend?
         }
       end

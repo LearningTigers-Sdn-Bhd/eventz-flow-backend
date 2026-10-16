@@ -53,6 +53,15 @@ class EmailDelivery < ApplicationRecord
 
   # { ticket_id => problem status } for the tickets whose latest email did not
   # arrive, for flagging them in the attendee list in one query.
+  # Display names for emails not tied to a ticket (e.g. host invitations):
+  # the account that owns the recipient address, keyed by lowercased email.
+  def self.account_names_for(deliveries)
+    emails = deliveries.reject { |d| d.related_type == 'Ticket' }.map { |d| d.recipient.to_s.downcase }.uniq
+    return {} if emails.empty?
+
+    User.where('lower(email) IN (?)', emails).where.not(full_name: [nil, '']).pluck(Arel.sql('lower(email)'), :full_name).to_h
+  end
+
   def self.problem_status_by_ticket(ticket_ids)
     where(related_type: 'Ticket', related_id: ticket_ids, status: PROBLEM_STATUSES)
       .not_retried.order(:id).pluck(:related_id, :status).to_h
