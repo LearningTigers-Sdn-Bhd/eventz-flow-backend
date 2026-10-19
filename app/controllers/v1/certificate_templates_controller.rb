@@ -6,7 +6,7 @@ module V1
     # GET /v1/events/:event_id/certificate_templates
     def index
       authorize @event, :show?, policy_class: CertificateTemplatePolicy
-      render json: @event.certificate_templates.order(:id).map(&:as_json), status: :ok
+      render json: templates_scope.order(:id).map(&:as_json), status: :ok
     end
 
     # GET /v1/events/:event_id/certificate_templates/:id
@@ -20,8 +20,12 @@ module V1
     # duplicate_from_id copies design (fields, canvas, background) from another
     # template of this event, so only the wording needs changing.
     def create
-      @template = @event.certificate_templates.build
+      @template = exhibitor_audience? ? CertificateTemplate.new(event: @event, audience: 'exhibitor') : @event.certificate_templates.build
       authorize @template, :create?
+
+      if exhibitor_audience? && @event.exhibitor_certificate_template
+        return render json: { errors: ['This event already has an exhibitor template'] }, status: :unprocessable_content
+      end
 
       source = duplicate_source
       return render json: { errors: ['Template to duplicate not found'] }, status: :not_found if params[:duplicate_from_id].present? && source.nil?
@@ -69,11 +73,20 @@ module V1
     end
 
     def set_template
-      @template = @event.certificate_templates.find(params[:id])
+      @template = @event.all_certificate_templates.find(params[:id])
+    end
+
+    # Ticket templates by default; the event's single exhibitor template with ?audience=exhibitor.
+    def exhibitor_audience?
+      params[:audience] == 'exhibitor'
+    end
+
+    def templates_scope
+      exhibitor_audience? ? @event.all_certificate_templates.where(audience: 'exhibitor') : @event.certificate_templates
     end
 
     def duplicate_source
-      @event.certificate_templates.find_by(id: params[:duplicate_from_id]) if params[:duplicate_from_id].present?
+      @event.all_certificate_templates.find_by(id: params[:duplicate_from_id]) if params[:duplicate_from_id].present?
     end
 
     def copy_design_from(source)

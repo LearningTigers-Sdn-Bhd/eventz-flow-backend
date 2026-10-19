@@ -11,9 +11,12 @@ class CertificateTemplate < ApplicationRecord
 
   # --- Constants ---
   ORIENTATIONS = %w[portrait landscape].freeze
+  AUDIENCES = %w[ticket exhibitor].freeze
 
   # --- Validations ---
   validates :orientation, inclusion: { in: ORIENTATIONS }
+  validates :audience, inclusion: { in: AUDIENCES }
+  validate :single_exhibitor_template
   validates :canvas_width, :canvas_height, numericality: { greater_than: 0 }
   validates :name, presence: true, length: { maximum: 100 }
   validate :fields_must_be_array
@@ -26,9 +29,14 @@ class CertificateTemplate < ApplicationRecord
   # so a new template must not silently reset them.
   before_create :inherit_auto_send_settings
 
-  before_validation { self.ticket_type_ids = Array(ticket_type_ids).map(&:to_i).uniq }
+  # An exhibitor template is never tied to ticket types: one per event.
+  before_validation { self.ticket_type_ids = exhibitor? ? [] : Array(ticket_type_ids).map(&:to_i).uniq }
 
   # --- Instance Methods ---
+  def exhibitor?
+    audience == 'exhibitor'
+  end
+
   def background_image_url
     return nil unless background_image.attached?
 
@@ -52,6 +60,8 @@ class CertificateTemplate < ApplicationRecord
   private
 
   def inherit_auto_send_settings
+    return if exhibitor?
+
     sibling = event.certificate_templates.where.not(id: id).order(:id).first
     return unless sibling
 
@@ -76,10 +86,17 @@ class CertificateTemplate < ApplicationRecord
   end
 
   def single_default_template
-    return if event.nil? || ticket_type_ids.any?
+    return if event.nil? || exhibitor? || ticket_type_ids.any?
 
     others = event.certificate_templates.where.not(id: id).where(ticket_type_ids: [])
     errors.add(:base, 'Only one template can apply to all other ticket types') if others.exists?
+  end
+
+  def single_exhibitor_template
+    return if event.nil? || !exhibitor?
+
+    others = CertificateTemplate.where(event_id: event_id, audience: 'exhibitor').where.not(id: id)
+    errors.add(:base, 'This event already has an exhibitor template') if others.exists?
   end
 
   # A template can only be marked ready when it is actually sendable.

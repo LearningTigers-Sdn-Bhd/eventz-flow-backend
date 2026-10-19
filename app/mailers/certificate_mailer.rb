@@ -15,6 +15,22 @@ class CertificateMailer < ApplicationMailer
     )
   end
 
+  def exhibitor_certificate_email(exhibitor)
+    @certificate = ExhibitorCertificate.new(exhibitor)
+    @event = exhibitor.event
+    @template = @event.exhibitor_certificate_template
+    set_email_config
+
+    pdf = CertificatePdfGenerator.new(@template, nil, exhibitor: @certificate).render
+    attachments['certificate.pdf'] = { mime_type: 'application/pdf', content: pdf }
+
+    mail(
+      to: @certificate.email,
+      from: sender_from,
+      subject: "Your exhibitor certificate for #{@event.title}"
+    )
+  end
+
   private
 
   def email_setting

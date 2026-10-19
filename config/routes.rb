@@ -284,6 +284,14 @@ Rails.application.routes.draw do
           get :download_all
         end
       end
+      resources :exhibitor_certificates, only: :index do
+        collection do
+          post :send_one
+          post :send_batch
+          get :preview
+          get :download_all
+        end
+      end
       resources :pass_bundles, only: %i[index show create update destroy]
       resources :event_locations, only: %i[index show create update destroy]
       resources :event_halls, only: %i[index show create update destroy] do

@@ -52,7 +52,11 @@ class Event < ApplicationRecord
   has_one :feedback_form, dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
-  has_many :certificate_templates, dependent: :destroy
+  # Ticket-holder templates only; the exhibitor template lives beside them.
+  has_many :certificate_templates, -> { where(audience: 'ticket') }, dependent: :destroy
+  has_many :all_certificate_templates, class_name: 'CertificateTemplate', dependent: nil, inverse_of: :event
+  has_one :exhibitor_certificate_template, -> { where(audience: 'exhibitor') },
+          class_name: 'CertificateTemplate', dependent: :destroy, inverse_of: :event
   has_one :check_in_display, dependent: :destroy
   has_one :event_payment_gateway, dependent: :destroy
 
