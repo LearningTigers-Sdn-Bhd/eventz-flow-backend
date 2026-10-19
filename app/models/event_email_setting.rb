@@ -43,7 +43,7 @@ class EventEmailSetting < ApplicationRecord
     'certificate' => {
       label: 'E-Certificate',
       group: 'ticket',
-      mailers: [%w[CertificateMailer certificate_email]]
+      mailers: [%w[CertificateMailer certificate_email], %w[CertificateMailer exhibitor_certificate_email]]
     },
     'thank_you' => {
       label: 'Post-Event Thank You',

@@ -1,0 +1,19 @@
+<%= email_page :purple, icon: 'award', label: 'E-certificate', title: 'Your certificate is ready', tagline: 'With our thanks for exhibiting' %>
+<p>Dear <%= @certificate.company_name %>,</p>
+<p>Thank you for exhibiting at <strong><%= @event.title %></strong>. We are pleased to share your certificate of participation as a token of our appreciation.</p>
+<%= render 'emails/callout', title: 'Your certificate is attached', text: 'Open the PDF attachment to view, download and save your certificate.' %>
+
+<%= render 'emails/details', title: 'Event Details', rows: [
+      ['Event', @event.title],
+      ['Date', email_date_range(@event)],
+      ['Venue', @event.event_locations.first&.name]
+    ] %>
+
+<p style="margin-top:28px">
+  <% if @contact_email.present? %>
+    If you have any questions, please contact us at <%= mail_to @contact_email, nil, class: 'link' %>. Thank you once again for joining us.
+  <% else %>
+    Thank you once again for joining us.
+  <% end %>
+</p>
+<%= render 'emails/signoff', name: @sender_name %>

@@ -46,6 +46,13 @@ class ExhibitorKit < ApplicationRecord
   MONEY_STATUSES = %w[paid waived sponsored deposit].freeze
   enum :booking_status, { active: 0, paid: 1, cancelled: 2, expired: 3 }, prefix: :booking
   scope :active_or_paid, -> { where(booking_status: %i[active paid]) }
+  # Bookings that earn the exhibitor an e-certificate: still live and money settled.
+  CERTIFICATE_PAYMENT_STATUSES = %w[paid waived sponsored].freeze
+  scope :certificate_eligible, -> { active_or_paid.where(payment_status: CERTIFICATE_PAYMENT_STATUSES) }
+
+  def certificate_eligible?
+    booking_status.in?(%w[active paid]) && payment_status.in?(CERTIFICATE_PAYMENT_STATUSES)
+  end
 
   # Counts toward "paid" for reporting purposes: actually paid, or excused from payment
   # (waived/sponsored). Shared by analytics and export so both agree on what "settled" means.
