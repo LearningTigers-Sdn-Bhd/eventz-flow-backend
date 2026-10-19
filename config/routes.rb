@@ -266,6 +266,7 @@ Rails.application.routes.draw do
           patch :accept_waiting_list
         end
         collection do
+          post :create_guest_passes
           patch :bulk_update_ticket_type
           patch :bulk_archive
           delete :bulk_delete

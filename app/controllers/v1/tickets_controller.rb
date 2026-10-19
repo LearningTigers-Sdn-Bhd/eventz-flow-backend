@@ -193,6 +193,76 @@ module V1
       end
     end
 
+    # POST /v1/events/:event_id/tickets/create_guest_passes
+    # Sponsor guest passes: N placeholder tickets named "<label> Pax i/N" for
+    # guests whose real names aren't known yet. Unlike the `quantity` bulk path
+    # in #create this does NOT depend on allow_multiple_tickets_per_email —
+    # these are organizer-managed placeholder seats, not a public group
+    # purchase. All passes share one registration_batch_id so they group in
+    # the table and can be batch-managed; renaming one later does not affect
+    # the others.
+    def create_guest_passes
+      authorize @event, :create_ticket?
+
+      label = params[:label].to_s.strip
+      quantity = params[:quantity].to_i
+      ticket_type = @event.ticket_types.find_by(id: params[:ticket_type_id])
+
+      errors = []
+      errors << 'Label is required' if label.blank?
+      # 500 is a sanity ceiling against typos; the ticket type's remaining
+      # capacity is the real limit. The panel confirms before sending > 50.
+      errors << 'Quantity must be between 1 and 500' unless quantity.between?(1, 500)
+      errors << 'Ticket type not found' if ticket_type.nil?
+      return render json: { errors: errors }, status: :unprocessable_content if errors.any?
+
+      # Placeholder passes hold real quota, same as any paid ticket.
+      if ticket_type.quantity.present? && ticket_type.remaining_quantity.to_i < quantity
+        return render json: {
+          errors: ["Not enough capacity: #{ticket_type.remaining_quantity} seat(s) left for #{ticket_type.name}"]
+        }, status: :unprocessable_content
+      end
+
+      attendee_email = params[:attendee_email].to_s.strip.presence
+      attendee_phone = params[:attendee_phone].to_s.strip.presence
+      role = params[:role].to_s.strip.presence
+      tickets = []
+
+      saved = ActiveRecord::Base.transaction do
+        quantity.times do |i|
+          ticket = @event.tickets.build(
+            attendee_name: "#{label} Pax #{i + 1}/#{quantity}",
+            attendee_email: attendee_email,
+            attendee_phone: attendee_phone,
+            role: role,
+            ticket_type: ticket_type,
+            status: :purchased,
+            payment_status: :paid
+          )
+          ticket.suppress_confirmation_email = true
+          raise ActiveRecord::Rollback unless ticket.save
+
+          # First pass anchors the batch id to its own public_id, mirroring
+          # the group-registration convention in #create.
+          ticket.update_column(:registration_batch_id, tickets.first&.registration_batch_id || ticket.public_id)
+          tickets << ticket
+        end
+        true
+      end
+
+      if saved
+        render json: {
+          label: label,
+          quantity: tickets.size,
+          tickets: tickets.map { |t| ticket_response(t) },
+          group_public_ids: tickets.map(&:public_id)
+        }, status: :created
+      else
+        render json: { errors: tickets.last&.errors&.full_messages || ['Failed to create guest passes'] },
+               status: :unprocessable_content
+      end
+    end
+
     def update
       # Authorization check: Can the user (Organizer/Staff) update this ticket?
       authorize @ticket, :update?
