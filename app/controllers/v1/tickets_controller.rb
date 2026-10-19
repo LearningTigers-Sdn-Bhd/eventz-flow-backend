@@ -287,6 +287,12 @@ module V1
                       status: :unprocessable_content
       end
 
+      marking_paid_now = !@ticket.paid? && ticket_params[:payment_status].to_s.in?(%w[paid 1])
+      if marking_paid_now && @ticket.canceled? && @ticket.ticket_application&.rejected?
+        return render json: { error: 'This ticket\'s application was rejected — approve it from the review queue instead' },
+                      status: :unprocessable_content
+      end
+
       attrs = ticket_params_with_payment_sync
       payment_proof_file = attrs.delete(:payment_proof)
       return if payment_proof_file.present? && !valid_payment_proof!(payment_proof_file)
@@ -986,6 +992,12 @@ module V1
       going_paid = payment_status.to_s == 'paid' || payment_status.to_s == paid_value.to_s
 
       return permitted_params.merge(status: :purchased) if @ticket&.pending_payment? && going_paid
+
+      # Marking a canceled ticket paid reopens it; otherwise it ends up
+      # paid + canceled (looks valid, but is dropped from vehicles/counts).
+      # Skipped when already paid so re-saving an old paid+canceled ticket
+      # doesn't silently un-cancel it. Rejected applications are blocked in #update.
+      return permitted_params.merge(status: :purchased) if @ticket&.canceled? && !@ticket.paid? && going_paid
 
       # Reverting a paid, not-yet-scanned ticket back to an unpaid status also
       # resets its lifecycle status to pending_payment, mirroring the forward
