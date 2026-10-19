@@ -55,4 +55,26 @@ RSpec.describe RegistrationLookupService do
     expect(lookup(plate: '', email: 'driver@example.com')).to be_nil
     expect(lookup(plate: 'SAB 1234', email: '')).to be_nil
   end
+
+  it 'finds a legacy ticket with no vehicle registration by adopting one from its plate' do
+    # A ticket registered before vehicle registrations existed: its plate only
+    # lives in custom_fields_data, and no VehicleRegistration row exists for it.
+    legacy_ticket = create(
+      :ticket,
+      event: event,
+      ticket_type: ticket_type,
+      vehicle_registration: nil,
+      attendee_email: 'legacy@example.com',
+      attendee_name: 'Legacy Driver',
+      role: 'Driver',
+      status: :purchased,
+      payment_status: :paid,
+      custom_fields_data: { 'car_registration_number' => 'sbc 5678' }
+    )
+    form.registration_form_ticket_types.create!(ticket_type: ticket_type)
+
+    result = lookup(plate: 'SBC-5678', email: 'legacy@example.com')
+    expect(result).to eq(legacy_ticket)
+    expect(result.vehicle_registration).to be_present
+  end
 end
