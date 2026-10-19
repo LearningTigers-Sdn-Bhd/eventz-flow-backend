@@ -751,6 +751,48 @@ RSpec.describe 'V1::Tickets', type: :request do
         end
       end
 
+      response '200', 'Marking a manually canceled ticket paid reopens it as purchased' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:canceled_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :pending)
+        end
+        let(:id) { canceled_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        run_test! do
+          expect(canceled_ticket.reload.status).to eq('purchased')
+          expect(canceled_ticket.payment_status).to eq('paid')
+        end
+      end
+
+      response '422', 'Cannot mark a ticket paid when its application was rejected' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:rejected_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :pending)
+        end
+        let!(:application) { create(:ticket_application, ticket: rejected_ticket, review_status: :rejected) }
+        let(:id) { rejected_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        run_test! do
+          expect(rejected_ticket.reload.status).to eq('canceled')
+          expect(rejected_ticket.payment_status).to eq('pending')
+        end
+      end
+
+      response '200', 'Editing an already paid + canceled ticket does not un-cancel it' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:legacy_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :paid)
+        end
+        let(:id) { legacy_ticket.public_id }
+        let(:ticket) { { ticket: { attendee_name: 'Renamed', payment_status: 'paid' } } }
+
+        run_test! do
+          expect(legacy_ticket.reload.status).to eq('canceled')
+        end
+      end
+
       response '200', 'Approving one ticket in a registration batch auto-approves its siblings and sends one grouped email' do
         let(:Authorization) { "Bearer #{staff_token}" }
         let(:ticket) { { ticket: { payment_status: 'paid' } } }
