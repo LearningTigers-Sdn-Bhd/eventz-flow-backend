@@ -1,0 +1,16 @@
+<%= email_page :slate, icon: 'heart', label: 'Thank you', title: 'Thank you for exhibiting with us', tagline: @event.title %>
+<p>Dear <%= @company_name %>,</p>
+<p>Thank you for being part of <strong><%= @event.title %></strong>. Exhibitors are what make an event worth attending, and having <%= @company_name %> with us made a real difference.</p>
+<p>We hope the event brought you valuable conversations and new connections.</p>
+
+<% if @feedback_url %>
+  <%= render 'emails/callout', title: "We'd love to hear from you",
+        text: 'Your thoughts as an exhibitor help us make the next event even better, and it only takes a minute.' %>
+  <%= render 'emails/buttons', primary: ['Share Your Feedback', @feedback_url] %>
+<% end %>
+
+<% if @contact_email.present? %>
+  <p style="margin-top:28px">If there is anything else you would like to tell us, please write to <%= mail_to @contact_email, nil, class: 'link' %>.</p>
+<% end %>
+<p>We hope to work with you again soon.</p>
+<%= render 'emails/signoff', closing: 'With gratitude,', name: @sender_name %>

@@ -2,22 +2,24 @@
 
 module V1
   class FeedbackFormsController < ApplicationController
+    include FeedbackAudience
+
     before_action :authenticate_user!
     before_action :set_event
     before_action :authorize_event
 
     # No form yet is a normal state for the builder, so it returns 200 without data.
     def show
-      form = @event.feedback_form
+      form = audience_form(@event)
       success_response(data: form && FeedbackFormSerializer.serialize(form, stats: true))
     end
 
     def create
-      save_feedback_form(FeedbackForm.new(event: @event), :created)
+      save_feedback_form(FeedbackForm.new(event: @event, audience: feedback_audience), :created)
     end
 
     def update
-      form = @event.feedback_form
+      form = audience_form(@event)
       raise ActiveRecord::RecordNotFound unless form
 
       save_feedback_form(form, :ok)
@@ -32,7 +34,7 @@ module V1
     SQL
 
     def summary
-      form = @event.feedback_form
+      form = audience_form(@event)
       return success_response unless form
 
       filters = params.permit(:ticket_type_id, :from, :to).to_h.symbolize_keys
@@ -42,21 +44,24 @@ module V1
     end
 
     def responses
-      form = @event.feedback_form
+      form = audience_form(@event)
       filters = params.permit(:ticket_type_id, :from, :to).to_h.symbolize_keys
       scope = form ? FeedbackResponseScope.call(form, filters) : FeedbackResponse.none
       if params[:q].present?
         query = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].strip)}%"
-        scope = scope.left_joins({ ticket: :ticket_type }, :feedback_answers)
+        scope = scope.left_joins({ ticket: :ticket_type }, { exhibitor: %i[vendor exhibitor_kits] }, :feedback_answers)
                      .where(
                        "tickets.attendee_name ILIKE :query OR tickets.attendee_email ILIKE :query OR tickets.public_id::text ILIKE :query " \
-                       "OR ticket_types.name ILIKE :query OR #{SEARCHABLE_ANSWER_SQL} ILIKE :query",
+                       "OR ticket_types.name ILIKE :query OR exhibitor_kits.company_name ILIKE :query " \
+                       "OR exhibitor_kits.pic_email_address ILIKE :query OR users.email ILIKE :query " \
+                       "OR #{SEARCHABLE_ANSWER_SQL} ILIKE :query",
                        query: query
                      )
                      .distinct
       end
 
-      scope = scope.includes(ticket: :ticket_type, feedback_answers: :feedback_question)
+      scope = scope.includes({ ticket: :ticket_type }, { exhibitor: [:vendor, { exhibitor_kits: :exhibitor_booths }] },
+                           { feedback_answers: :feedback_question })
                    .order(submitted_at: :desc, id: :desc)
       pagy, records = pagy(scope, limit: pagination_params[:per_page] || 25)
 

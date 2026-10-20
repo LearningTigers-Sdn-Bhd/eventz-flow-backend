@@ -50,6 +50,11 @@ class EventEmailSetting < ApplicationRecord
       group: 'ticket',
       mailers: [%w[ThankYouMailer thank_you_email], %w[ThankYouMailer feedback_reminder_email]]
     },
+    'exhibitor_thank_you' => {
+      label: 'Exhibitor Post-Event Thank You',
+      group: 'exhibitor',
+      mailers: [%w[ThankYouMailer exhibitor_thank_you_email], %w[ThankYouMailer exhibitor_feedback_reminder_email]]
+    },
     'ticket_application' => {
       label: 'Ticket Application (RSVP)',
       group: 'ticket',

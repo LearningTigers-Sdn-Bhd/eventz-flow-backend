@@ -8,6 +8,7 @@ class FeedbackFormSerializer
     payload = {
       id: form.id,
       event_id: form.event_id,
+      audience: form.audience,
       updated_at: form.updated_at.utc.iso8601(6),
       title: form.title,
       description: form.description,

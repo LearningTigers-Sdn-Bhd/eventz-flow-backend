@@ -3,7 +3,7 @@ class FeedbackOrganizerResponseSerializer
     {
       id: response.id,
       submitted_at: response.submitted_at,
-      ticket: serialize_ticket(response.ticket),
+      ticket: FeedbackRespondent.for(response),
       answers: response.feedback_answers.to_h do |answer|
         answer_text = answer.answer_text
         if answer.feedback_question&.multi_choice?
@@ -15,16 +15,4 @@ class FeedbackOrganizerResponseSerializer
       end
     }
   end
-
-  def self.serialize_ticket(ticket)
-    return unless ticket
-
-    {
-      public_id: ticket.public_id,
-      attendee_name: ticket.attendee_name,
-      attendee_email: ticket.attendee_email,
-      ticket_type_name: ticket.ticket_type&.name
-    }
-  end
-  private_class_method :serialize_ticket
 end

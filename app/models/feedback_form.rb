@@ -11,8 +11,10 @@ class FeedbackForm < ApplicationRecord
     continuous: 1
   }, default: :pages, validate: true
 
+  enum :audience, { ticket: 0, exhibitor: 1 }, default: :ticket, validate: true
+
   validates :title, presence: true
-  validates :event_id, uniqueness: true
+  validates :event_id, uniqueness: { scope: :audience }
   validate :validate_pages_metadata
 
   private

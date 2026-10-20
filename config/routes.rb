@@ -96,6 +96,7 @@ Rails.application.routes.draw do
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
       post 'feedback_responses', to: 'feedback_responses#create'
+      get 'feedback_links/:code', to: 'feedback_links#show'
       # Public seating plans
       resources :plans, only: %i[show]
       # Public booking details
@@ -323,6 +324,8 @@ Rails.application.routes.draw do
       end
       get 'feedback_form/comments', to: 'feedback_reports#comments'
       get 'feedback_form/non_responders', to: 'feedback_reports#non_responders'
+      get 'feedback_form/exhibitor_links', to: 'feedback_reports#exhibitor_links'
+      post 'feedback_form/exhibitor_link', to: 'feedback_reports#exhibitor_link'
       post 'feedback_form/remind', to: 'feedback_reports#remind'
       get 'feedback_form/export_data', to: 'feedback_reports#export_data'
       get 'feedback_form/ai_summary', to: 'feedback_reports#ai_summary'

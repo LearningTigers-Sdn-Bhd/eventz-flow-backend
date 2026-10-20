@@ -4,7 +4,7 @@
 # average of that response's ratings, selected by the controller's query.
 class FeedbackCommentSerializer
   def self.serialize(answer)
-    ticket = answer.feedback_response.ticket
+    respondent = FeedbackRespondent.for(answer.feedback_response)
     {
       id: answer.id,
       question_id: answer.feedback_question_id,
@@ -12,10 +12,10 @@ class FeedbackCommentSerializer
       answer_text: answer.answer_text,
       submitted_at: answer.feedback_response.submitted_at,
       response_rating: answer.attributes['response_rating']&.to_f&.round(1),
-      attendee: ticket && {
-        name: ticket.attendee_name,
-        email: ticket.attendee_email,
-        ticket_type_name: ticket.ticket_type&.name
+      attendee: respondent && {
+        name: respondent[:attendee_name],
+        email: respondent[:attendee_email],
+        ticket_type_name: respondent[:ticket_type_name]
       }
     }
   end

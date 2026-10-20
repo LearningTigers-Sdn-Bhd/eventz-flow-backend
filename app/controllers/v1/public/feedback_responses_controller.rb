@@ -9,16 +9,18 @@ module V1
         form = FeedbackForm.find(attributes.fetch(:form_id))
         raise ActiveRecord::RecordNotFound unless form.is_active? || FeedbackSession.valid?(attributes[:session_token], form)
 
-        # ponytail: responses must come from a ticket link; a bare form link is
-        # preview-only. Add an allow_anonymous form setting here when needed.
-        if attributes[:ticket_public_id].blank?
+        # ponytail: responses must come from a personal link (ticket or exhibitor);
+        # a bare form link is preview-only. Add an allow_anonymous form setting
+        # here when needed.
+        exhibitor = find_exhibitor(form, attributes) if form.exhibitor?
+        if form.exhibitor? ? exhibitor.nil? : attributes[:ticket_public_id].blank?
           return error_response(
             message: 'This link is a preview only. Use your personal feedback link to respond.',
             status: :unprocessable_content
           )
         end
 
-        ticket = find_ticket(form, attributes)
+        ticket = find_ticket(form, attributes) unless form.exhibitor?
         answers = Array(attributes[:answers]).map(&:to_h)
         questions_by_id = form.feedback_questions.index_by { |question| question.id.to_s }
         answer_ids = answers.map { |answer| answer[:question_id].to_s }
@@ -53,7 +55,7 @@ module V1
 
         response = nil
         FeedbackResponse.transaction do
-          response = form.feedback_responses.create!(ticket:, submitted_at: Time.current)
+          response = form.feedback_responses.create!(ticket:, exhibitor:, submitted_at: Time.current)
           answers.each do |answer|
             response.feedback_answers.create!(
               feedback_question: questions_by_id.fetch(answer[:question_id].to_s),
@@ -78,15 +80,20 @@ module V1
           status: :unprocessable_content
         )
       rescue ActiveRecord::RecordNotUnique
-        error_response(message: 'Feedback has already been submitted for this ticket', status: :unprocessable_content)
+        error_response(message: "Feedback has already been submitted for this #{form&.exhibitor? ? 'company' : 'ticket'}", status: :unprocessable_content)
       end
 
       private
 
       def response_params
-        params.permit(:form_id, :ticket_id, :ticket_public_id, :session_token, answers: %i[question_id answer_text]).tap do |permitted|
+        params.permit(:form_id, :ticket_id, :ticket_public_id, :exhibitor_token, :session_token, answers: %i[question_id answer_text]).tap do |permitted|
           permitted[:form_id] = params.require(:form_id)
         end
+      end
+
+      def find_exhibitor(form, attributes)
+        exhibitor = Exhibitor.find_signed(attributes[:exhibitor_token], purpose: :feedback)
+        exhibitor if exhibitor&.event_id == form.event_id
       end
 
       def find_ticket(form, attributes)

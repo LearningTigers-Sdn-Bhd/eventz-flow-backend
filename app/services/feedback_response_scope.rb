@@ -13,6 +13,12 @@ class FeedbackResponseScope
     tickets
   end
 
+  # Companies that could have answered the exhibitor form: one per exhibitor
+  # with a live, settled booking (see ExhibitorCertificate).
+  def self.eligible_exhibitors(event)
+    ExhibitorCertificate.for_event(event)
+  end
+
   # filters: { ticket_type_id:, from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } (all optional)
   def self.call(form, filters = {})
     filters = (filters || {}).to_h.symbolize_keys

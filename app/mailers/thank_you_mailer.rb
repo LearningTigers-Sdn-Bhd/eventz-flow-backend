@@ -1,7 +1,7 @@
 class ThankYouMailer < ApplicationMailer
   # Only link when the organizer opted in AND there's an active, non-empty form to land on.
-  def self.feedback_link_available?(event)
-    form = event.feedback_form
+  def self.feedback_link_available?(event, audience: :ticket)
+    form = audience.to_sym == :exhibitor ? event.exhibitor_feedback_form : event.feedback_form
     !!(event.event_email_setting&.thank_you_include_feedback && form&.is_active? && form.feedback_questions.exists?)
   end
 
@@ -36,16 +36,51 @@ class ThankYouMailer < ApplicationMailer
     )
   end
 
+  # Exhibitor variants: one email per company, however many kits or booths it has.
+  def exhibitor_thank_you_email(exhibitor)
+    load_exhibitor(exhibitor)
+
+    mail(
+      to: @recipient_email,
+      from: format_sender(@sender_name, email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS),
+      subject: "Thank you for exhibiting at #{@event.title}"
+    )
+  end
+
+  def exhibitor_feedback_reminder_email(exhibitor)
+    load_exhibitor(exhibitor)
+
+    mail(
+      to: @recipient_email,
+      from: format_sender(@sender_name, email_setting&.sender_address.presence || DEFAULT_SENDER_ADDRESS),
+      subject: "Quick reminder: share your feedback on #{@event.title}"
+    )
+  end
+
   private
+
+  def load_exhibitor(exhibitor)
+    @exhibitor = exhibitor
+    @event = exhibitor.event
+    @company = ExhibitorCertificate.new(exhibitor)
+    @company_name = @company.company_name.presence || 'exhibitor'
+    @recipient_email = @company.email
+    @sender_name = email_setting&.sender_name.presence || @event.title
+    @contact_email = email_setting&.contact_email.presence
+    @feedback_url = feedback_url_for(:exhibitor)
+  end
 
   def email_setting
     @event.event_email_setting
   end
 
   def feedback_url
-    return unless self.class.feedback_link_available?(@event)
+    feedback_url_for(:ticket)
+  end
 
-    base_url = ENV.fetch('FRONTEND_URL', ENV.fetch('APP_FRONTEND_URL', 'http://localhost:3001')).to_s.chomp('/')
-    "#{base_url}/events/#{@event.slug.presence || @event.id}/feedback?ticket=#{@ticket.public_id}"
+  def feedback_url_for(audience)
+    return unless self.class.feedback_link_available?(@event, audience:)
+
+    audience == :exhibitor ? FeedbackLink.exhibitor(@event, @exhibitor) : FeedbackLink.ticket(@event, @ticket)
   end
 end
