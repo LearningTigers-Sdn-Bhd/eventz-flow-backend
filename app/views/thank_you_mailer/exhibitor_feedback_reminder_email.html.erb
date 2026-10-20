@@ -1,0 +1,11 @@
+<%= email_page :slate, icon: 'message', label: 'Feedback', title: 'We would value your feedback', tagline: @event.title %>
+<p>Dear <%= @company_name %>,</p>
+<p>Thank you again for exhibiting at <strong><%= @event.title %></strong>. We have not yet received your feedback, and your voice truly matters to us.</p>
+<%= render 'emails/callout', title: 'It only takes a minute',
+      text: 'Every response is read by our team, and your honest thoughts help us shape a better experience for exhibitors next time.' %>
+<%= render 'emails/buttons', primary: ['Share Your Feedback', @feedback_url] %>
+
+<% if @contact_email.present? %>
+  <p style="margin-top:28px">If you have a question or idea you would rather share directly, please write to <%= mail_to @contact_email, nil, class: 'link' %>.</p>
+<% end %>
+<%= render 'emails/signoff', closing: 'Thank you for your time,', name: @sender_name %>

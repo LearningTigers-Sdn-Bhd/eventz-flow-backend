@@ -1,0 +1,24 @@
+Thank You for Exhibiting With Us!
+
+Dear <%= @company_name %>,
+
+Thank you for being part of <%= @event.title %>. Exhibitors are what make an event worth attending, and having <%= @company_name %> with us made a real difference.
+
+We hope the event brought you valuable conversations and new connections.
+<% if @feedback_url %>
+
+We'd love to hear from you. Your thoughts as an exhibitor help us make the next one even better:
+<%= @feedback_url %>
+<% end %>
+
+<% if @contact_email.present? %>
+If there's anything you'd like to tell us, reach out anytime at <%= @contact_email %>.
+
+<% end %>
+We hope to work with you again soon.
+
+With gratitude,
+<%= @sender_name %>
+
+---
+This email was sent by EventzFlow

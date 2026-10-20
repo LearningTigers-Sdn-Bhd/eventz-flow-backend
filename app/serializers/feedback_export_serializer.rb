@@ -16,16 +16,10 @@ class FeedbackExportSerializer
   end
 
   def self.response(response)
-    ticket = response.ticket
     {
       id: response.id,
       submitted_at: response.submitted_at,
-      ticket: ticket && {
-        public_id: ticket.public_id,
-        attendee_name: ticket.attendee_name,
-        attendee_email: ticket.attendee_email,
-        ticket_type_name: ticket.ticket_type&.name
-      },
+      ticket: FeedbackRespondent.for(response),
       # multi_choice comes back as an array, everything else as the stored text
       answers: response.feedback_answers.to_h { |answer| [answer.feedback_question_id, answer_value(answer)] }
     }
@@ -33,14 +27,15 @@ class FeedbackExportSerializer
 
   def self.comments(responses)
     responses.flat_map do |response|
+      respondent = FeedbackRespondent.for(response)
       response.feedback_answers.select { |a| a.feedback_question&.text? && a.answer_text.to_s.strip.present? }.map do |a|
         {
           question_id: a.feedback_question_id,
           question_text: a.feedback_question.question_text,
           answer_text: a.answer_text,
           submitted_at: response.submitted_at,
-          attendee_name: response.ticket&.attendee_name,
-          attendee_email: response.ticket&.attendee_email
+          attendee_name: respondent&.dig(:attendee_name),
+          attendee_email: respondent&.dig(:attendee_email)
         }
       end
     end

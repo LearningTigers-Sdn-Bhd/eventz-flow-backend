@@ -49,7 +49,9 @@ class Event < ApplicationRecord
   has_many :roulette_sessions, dependent: :destroy
   has_many :event_seat_sessions, dependent: :destroy
   has_many :custom_field_quotas, dependent: :destroy
-  has_one :feedback_form, dependent: :destroy
+  # One feedback form per audience: ticket holders (the original) and exhibitors.
+  has_one :feedback_form, -> { where(audience: :ticket) }, dependent: :destroy
+  has_one :exhibitor_feedback_form, -> { where(audience: :exhibitor) }, class_name: 'FeedbackForm', dependent: :destroy
   has_one :exhibitor_team_member_limit, dependent: :destroy
   has_one :event_email_setting, dependent: :destroy
   # Ticket-holder templates only; the exhibitor template lives beside them.
