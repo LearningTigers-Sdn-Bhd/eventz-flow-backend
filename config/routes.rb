@@ -80,6 +80,7 @@ Rails.application.routes.draw do
     # Public endpoints (No authentication required)
     namespace :public do
       post 'resend/webhook', to: 'resend_webhooks#create'
+      get 'system_notice', to: 'system_notices#show'
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
@@ -179,6 +180,8 @@ Rails.application.routes.draw do
     # Vendor invite verify without an event id: the short code carries it.
     get 'vendor_invitations/verify', to: 'vendor_invitations#verify'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
+    # Planned-maintenance banner: org owners edit it, the panel reads the public one.
+    resource :system_notice, only: %i[show update]
     resources :email_deliveries, only: %i[index show] do
       get :summary, on: :collection
       get :settings, on: :collection
