@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_20_080000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_22_070000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1885,6 +1885,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_20_080000) do
     t.index ["deleted_at"], name: "index_sponsors_on_deleted_at"
     t.index ["group_id", "name"], name: "index_sponsors_on_group_id_and_name", unique: true
     t.index ["group_id"], name: "index_sponsors_on_group_id"
+  end
+
+  create_table "system_notices", force: :cascade do |t|
+    t.text "message", default: "", null: false
+    t.boolean "active", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.check_constraint "char_length(message) <= 300", name: "chk_system_notices_message_length"
   end
 
   create_table "table_assignments", force: :cascade do |t|
