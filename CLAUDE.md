@@ -81,6 +81,7 @@ MillionSend speaks the Resend API, so the `resend` gem sends through either one 
 - User-supplied files (Excel import, uploads) are untrusted: validate content type and size before processing.
 - Use ActiveRecord parameter binding; no string-interpolated SQL.
 
-## Docs
+## Docs & Data Audit
 
+`EVENTZFLOW_AUDIT.md` holds the complete guide for the local PostgreSQL mirror (`eventzflow_audit`), sync commands (`bin/sync_audit_db.sh`), schema mapping, and reporting queries.
 `docs/` holds feature guides: `EVENT_ROLES.md`, `PAGINATION.md`, `IMAGE_PROCESSING.md`, `TICKET_EXCEL_IMPORT_EXPORT.md`, `CROSS_PLATFORM_SETUP.md`, plus `docs/modules/`, `docs/plan/`, `docs/wip/`. `README.md` has the full command reference and Razorpay test plan.
