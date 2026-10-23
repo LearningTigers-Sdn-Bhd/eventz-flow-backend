@@ -27,15 +27,24 @@ module V1
       @user = User.new(register_params)
       authorize @user, :create?
 
+      # If registering via a valid business host invite token, auto-verify email
+      invite_token = params[:invite_token] || params.dig(:user, :invite_token)
+      if invite_token.present?
+        access = BusinessHostInviteToken.verify(invite_token)
+        @user.email_verified_at = Time.current if access.present?
+      end
+
       if @user.save
-        # Generate and send verification code
-        code = EmailVerification.create_for_user(@user)
-        EmailDelivery::AuditedDelivery.deliver_now(
-          mailer_name: 'UserMailer',
-          mailer_action: 'verification_code',
-          args: [@user, code],
-          related: @user
-        )
+        # Only send verification code if email is not already verified
+        unless @user.email_verified?
+          code = EmailVerification.create_for_user(@user)
+          EmailDelivery::AuditedDelivery.deliver_now(
+            mailer_name: 'UserMailer',
+            mailer_action: 'verification_code',
+            args: [@user, code],
+            related: @user
+          )
+        end
 
         # Register creates a session too
         tokens = JwtService.generate_tokens(@user, request)
@@ -48,7 +57,7 @@ module V1
             expires_at: tokens[:expires_at],
             session_id: tokens[:session_id]
           },
-          message: 'User registered successfully. Please verify your email.',
+          message: @user.email_verified? ? 'User registered successfully.' : 'User registered successfully. Please verify your email.',
           status: :created
         )
       else

@@ -605,6 +605,7 @@ Rails.application.routes.draw do
 
       # No IDs in the path or params on purpose — the token is the only way
       # in, so a hand-typed URL can't be used to self-attach as a host.
+      get 'host_invites/:token', to: 'hosts#invite_details'
       post 'host_invites/accept', to: 'hosts#accept_invite'
     end
 

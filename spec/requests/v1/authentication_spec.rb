@@ -33,6 +33,26 @@ RSpec.describe 'V1::Authentication', type: :request do
       end
     end
 
+    context 'when registering with a business host invite token' do
+      let(:organizer) { create(:user, :organizer) }
+      let(:event) { create(:event, user: organizer) }
+      let(:bm_session) { BusinessMatchingSession.create!(event: event, title: 'Session A') }
+      let(:token) { BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: bm_session.id.to_s) }
+
+      it 'auto-verifies the user email on registration' do
+        post '/v1/auth/register', params: {
+          user: valid_attributes.merge(email: 'seller@example.com', invite_token: token)
+        }
+
+        expect(response).to have_http_status(:created)
+        expect(json_response['success']).to be true
+        expect(json_response['data']['user']['email_verified']).to be true
+
+        created_user = User.find_by(email: 'seller@example.com')
+        expect(created_user.email_verified?).to be true
+      end
+    end
+
     context 'when the request is invalid' do
       it 'returns validation errors for invalid email' do
         post '/v1/auth/register', params: {
