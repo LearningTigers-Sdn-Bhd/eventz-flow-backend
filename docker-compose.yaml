@@ -50,8 +50,9 @@ services:
       - coolify
 
   sidekiq:
+    build: .
     image: eventz-flow-backend:latest
-    pull_policy: if_not_present
+    pull_policy: build
     command: bundle exec sidekiq
     depends_on:
       postgres-db:
