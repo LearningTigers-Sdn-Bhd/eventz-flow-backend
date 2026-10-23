@@ -378,5 +378,73 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(archived_session.reload.archived?).to be false
     end
   end
+
+  describe "GET /v1/business_matching/events/:event_id/export_sellers" do
+    let!(:session) do
+      BusinessMatchingSession.create!(
+        event: event,
+        title: "Alpha Tech Solutions",
+        location: "Table 1",
+        slot_duration: 30,
+        start_time: "10:00",
+        end_time: "17:00",
+        start_date: Date.new(2026, 9, 1),
+        end_date: Date.new(2026, 9, 1)
+      )
+    end
+    let(:host_user) { create(:user, full_name: "Alice Host", email: "alice@alphatech.com", phone: "+60123456789") }
+
+    before do
+      BusinessHostAssignment.create!(
+        event: event,
+        user: host_user,
+        business_matching_event_id: session.id.to_s
+      )
+      BusinessMatchingParticipant.create!(
+        event: event,
+        registerable: host_user,
+        profile_data: {
+          'description' => 'Leading software vendor',
+          'capabilities' => 'Cloud and AI solutions',
+          'sourcing_intent' => 'Seeking partners and distributors'
+        },
+        offering_tags: ['Cloud', 'AI'],
+        interest_tags: ['Enterprise']
+      )
+    end
+
+    it "downloads an Excel file with sellers and full profiles" do
+      get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.content_type).to eq('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      expect(response.headers['Content-Disposition']).to include('sellers_with_profiles')
+
+      temp_file = Tempfile.new(['sellers_export', '.xlsx'])
+      temp_file.binmode
+      temp_file.write(response.body)
+      temp_file.rewind
+
+      xlsx = Roo::Excelx.new(temp_file.path)
+      expect(xlsx.sheets).to eq(['Sellers & Profiles', 'seller_list'])
+
+      xlsx.default_sheet = 'Sellers & Profiles'
+      expect(xlsx.row(1)).to include('Table', 'Seller Name', 'Session Schedule', 'Host Name', 'BM Profile Description')
+      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'Leading software vendor')
+
+      xlsx.default_sheet = 'seller_list'
+      expect(xlsx.row(1)).to eq(['Table', 'Seller Name', 'Session Schedule', 'Host', 'Email'])
+      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'alice@alphatech.com')
+
+      temp_file.close
+      temp_file.unlink
+    end
+
+    it "rejects unauthorized users" do
+      regular_user = create(:user)
+      get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(regular_user)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
 
