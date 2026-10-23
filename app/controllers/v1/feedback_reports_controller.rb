@@ -9,6 +9,9 @@ module V1
     REMINDER_COOLDOWN = 24.hours
     # Thank-you also carries the link, so either counts as "last emailed".
     FEEDBACK_MAIL_ACTIONS = %w[thank_you_email feedback_reminder_email].freeze
+    EXHIBITOR_FEEDBACK_MAIL_ACTIONS = %w[exhibitor_thank_you_email exhibitor_feedback_reminder_email].freeze
+
+    include FeedbackAudience
 
     before_action :authenticate_user!
     before_action :set_event
@@ -42,13 +45,17 @@ module V1
 
       if params[:q].present?
         like = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].strip)}%"
-        scope = scope.joins(feedback_response: :ticket)
+        scope = scope.joins(:feedback_response)
+                     .joins('LEFT JOIN tickets ON tickets.id = feedback_responses.ticket_id')
+                     .joins('LEFT JOIN exhibitor_kits ON exhibitor_kits.event_vendor_id = feedback_responses.exhibitor_id')
                      .where('feedback_answers.answer_text ILIKE :q OR tickets.attendee_name ILIKE :q ' \
-                            'OR tickets.attendee_email ILIKE :q', q: like)
+                            'OR tickets.attendee_email ILIKE :q OR exhibitor_kits.company_name ILIKE :q ' \
+                            'OR exhibitor_kits.pic_email_address ILIKE :q', q: like)
+                     .distinct
       end
 
       scope = scope.select("feedback_answers.*, #{response_rating} AS response_rating")
-                   .preload(:feedback_question, feedback_response: { ticket: :ticket_type })
+                   .preload(:feedback_question, feedback_response: [{ ticket: :ticket_type }, { exhibitor: [:vendor, { exhibitor_kits: :exhibitor_booths }] }])
                    .order('feedback_answers.created_at DESC, feedback_answers.id DESC')
       pagy, records = pagy(scope, limit: pagination_params[:per_page] || 25)
 
@@ -61,6 +68,7 @@ module V1
     # GET /v1/events/:event_id/feedback_form/non_responders
     def non_responders
       return empty_page unless @form
+      return exhibitor_non_responders if @form.exhibitor?
 
       scope = non_responder_scope
       if params[:q].present?
@@ -79,12 +87,43 @@ module V1
       }, status: :ok
     end
 
+    # GET /v1/events/:event_id/feedback_form/exhibitor_links?q=
+    # Search companies and get each one's personal link (to test or share by hand).
+    def exhibitor_links
+      companies = FeedbackResponseScope.eligible_exhibitors(@event)
+      needle = params[:q].to_s.strip.downcase
+      companies = companies.select { |c| [c.company_name, c.email].any? { |v| v.to_s.downcase.include?(needle) } } if needle.present?
+      answered = @form ? @form.feedback_responses.where.not(exhibitor_id: nil).pluck(:exhibitor_id).to_set : Set.new
+
+      success_response(data: companies.first(8).map do |company|
+        {
+          id: company.exhibitor.id,
+          company_name: company.company_name,
+          email: company.email,
+          booth_numbers: company.booth_numbers,
+          submitted: answered.include?(company.exhibitor.id),
+          url: FeedbackLink.exhibitor_short(@event, company.exhibitor)
+        }
+      end)
+    end
+
+    # POST /v1/events/:event_id/feedback_form/exhibitor_link  { exhibitor_id }
+    # Short personal link for one eligible company, to pass on by hand.
+    def exhibitor_link
+      company = FeedbackResponseScope.eligible_exhibitors(@event).find { |c| c.exhibitor.id == params[:exhibitor_id].to_i }
+      return error_response(message: 'Exhibitor not found', status: :not_found) unless company
+
+      success_response(data: { url: FeedbackLink.exhibitor_short(@event, company.exhibitor) })
+    end
+
     # POST /v1/events/:event_id/feedback_form/remind
     # Body: { ticket_ids: [public_id, ...] } or { all: true } (plus filters).
     # Sends the dedicated feedback-reminder email.
     def remind
       error = reminder_blocker
       return error_response(message: error, status: :unprocessable_content) if error
+
+      return remind_exhibitors if @form.exhibitor?
 
       scope = non_responder_scope.where.not(attendee_email: [nil, ''])
       scope = scope.where(public_id: Array(params[:ticket_ids])) unless ActiveModel::Type::Boolean.new.cast(params[:all])
@@ -118,7 +157,8 @@ module V1
         )
       end
 
-      records = responses.includes(ticket: :ticket_type, feedback_answers: :feedback_question)
+      records = responses.includes({ ticket: :ticket_type }, { exhibitor: [:vendor, { exhibitor_kits: :exhibitor_booths }] },
+                                   { feedback_answers: :feedback_question })
                          .order(submitted_at: :asc, id: :asc)
 
       success_response(data: {
@@ -159,6 +199,69 @@ module V1
     end
 
     private
+
+    def exhibitor_non_responders
+      companies = exhibitor_non_responder_companies
+      if params[:q].present?
+        needle = params[:q].strip.downcase
+        companies = companies.select { |c| [c.company_name, c.email].any? { |v| v.to_s.downcase.include?(needle) } }
+      end
+      per_page = (pagination_params[:per_page] || 25).to_i
+      total_pages = (companies.length.to_f / per_page).ceil
+      page = (pagination_params[:page] || 1).to_i.clamp(1, [total_pages, 1].max)
+      records = companies.slice((page - 1) * per_page, per_page) || []
+      last_emailed = last_emailed_at(records.map { |c| c.exhibitor.id }, related_type: 'EventVendor')
+
+      render json: {
+        data: records.map do |company|
+          {
+            public_id: company.exhibitor.id.to_s,
+            attendee_name: company.company_name,
+            attendee_email: company.email,
+            ticket_type_name: 'Exhibitor',
+            booth_numbers: company.booth_numbers,
+            checked_in_at: nil,
+            last_emailed_at: last_emailed[company.exhibitor.id]
+          }
+        end,
+        pagination: {
+          current_page: page, total_pages:, total_count: companies.length, per_page:,
+          prev_page: page > 1 ? page - 1 : nil, next_page: page < total_pages ? page + 1 : nil,
+          first_page: 1, last_page: total_pages,
+          from: records.empty? ? 0 : (page - 1) * per_page + 1, to: (page - 1) * per_page + records.length
+        }
+      }, status: :ok
+    end
+
+    # Companies that haven't answered yet and have an email to reach them at.
+    def exhibitor_non_responder_companies
+      answered = @form.feedback_responses.where.not(exhibitor_id: nil).pluck(:exhibitor_id).to_set
+      FeedbackResponseScope.eligible_exhibitors(@event).reject { |c| answered.include?(c.exhibitor.id) || c.email.blank? }
+    end
+
+    def remind_exhibitors
+      companies = exhibitor_non_responder_companies
+      unless ActiveModel::Type::Boolean.new.cast(params[:all])
+        ids = Array(params[:ticket_ids]).map(&:to_i)
+        companies = companies.select { |c| ids.include?(c.exhibitor.id) }
+      end
+      companies = companies.first(REMINDER_LIMIT)
+      recent = recently_emailed_ids(companies.map { |c| c.exhibitor.id }, related_type: 'EventVendor')
+
+      queued = 0
+      companies.each do |company|
+        next if recent.include?(company.exhibitor.id)
+
+        EmailDelivery::AuditedDelivery.deliver_later(
+          mailer_name: 'ThankYouMailer', mailer_action: 'exhibitor_feedback_reminder_email', args: [company.exhibitor],
+          related: company.exhibitor, event: @event, dedupe: true,
+          metadata: { source: 'exhibitor_feedback_reminder', event_id: @event.id }
+        )
+        queued += 1
+      end
+
+      success_response(data: { queued:, skipped: companies.length - queued }, status: :accepted)
+    end
 
     def default_ai_model
       AiModel.includes(:ai_integration).find_by(is_default: true)
@@ -232,7 +335,7 @@ module V1
     end
 
     def set_form
-      @form = @event.feedback_form
+      @form = audience_form(@event)
     end
 
     def filters
@@ -252,26 +355,35 @@ module V1
                            .where.not(id: @form.feedback_responses.where.not(ticket_id: nil).select(:ticket_id))
     end
 
-    def last_emailed_at(ticket_ids)
-      EmailDelivery.where(related_type: 'Ticket', related_id: ticket_ids, mailer_name: 'ThankYouMailer',
-                          mailer_action: FEEDBACK_MAIL_ACTIONS, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
+    def last_emailed_at(ids, related_type: 'Ticket')
+      EmailDelivery.where(related_type:, related_id: ids, mailer_name: 'ThankYouMailer',
+                          mailer_action: feedback_mail_actions, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
                    .group(:related_id).maximum(:created_at)
     end
 
     def recently_emailed_ticket_ids(ticket_ids)
-      EmailDelivery.where(related_type: 'Ticket', related_id: ticket_ids, mailer_name: 'ThankYouMailer',
-                          mailer_action: FEEDBACK_MAIL_ACTIONS, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
+      recently_emailed_ids(ticket_ids, related_type: 'Ticket')
+    end
+
+    def recently_emailed_ids(ids, related_type:)
+      EmailDelivery.where(related_type:, related_id: ids, mailer_name: 'ThankYouMailer',
+                          mailer_action: feedback_mail_actions, status: EmailDelivery::AuditedDelivery::IN_FLIGHT_STATUSES)
                    .where('created_at >= ?', REMINDER_COOLDOWN.ago)
                    .distinct.pluck(:related_id).to_set
     end
 
+    def feedback_mail_actions
+      @form&.exhibitor? ? EXHIBITOR_FEEDBACK_MAIL_ACTIONS : FEEDBACK_MAIL_ACTIONS
+    end
+
     # Same conditions as a single ticket's "resend feedback email".
     def reminder_blocker
+      thank_you_action = @form&.exhibitor? ? 'exhibitor_thank_you_email' : 'thank_you_email'
       if @form.nil? then 'No feedback form yet'
       elsif !@event.ended? then 'Event has not ended yet'
-      elsif @event.event_email_setting&.email_enabled?('ThankYouMailer', 'thank_you_email') == false
+      elsif @event.event_email_setting&.email_enabled?('ThankYouMailer', thank_you_action) == false
         'Thank you email is turned off for this event'
-      elsif !ThankYouMailer.feedback_link_available?(@event)
+      elsif !ThankYouMailer.feedback_link_available?(@event, audience: feedback_audience)
         'Feedback link is off, or the feedback form is inactive or has no questions'
       end
     end

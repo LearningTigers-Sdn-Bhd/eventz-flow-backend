@@ -14,6 +14,20 @@ class SendThankYouEmailsJob < ApplicationJob
          .includes(:event_email_setting)
          .ended_between(now - LOOKBACK, now)
          .find_each { |event| send_for(event) if due?(event, now) }
+
+    # Exhibitors are opt-in per event (thank_you_exhibitors) and tracked apart
+    # from tickets, so turning them on later still sends once.
+    Event.where(status: %i[published completed], exhibitor_thank_you_sent_at: nil)
+         .joins(:event_email_setting).where(event_email_settings: { thank_you_exhibitors: true })
+         .includes(:event_email_setting)
+         .ended_between(now - LOOKBACK, now)
+         .find_each { |event| send_for_exhibitors(event) if due?(event, now) }
+  end
+
+  # One entry per company (however many kits/booths) with a usable email.
+  def self.exhibitor_recipients(event)
+    ExhibitorCertificate.for_event(event).select { |company| company.email.present? }
+                        .uniq { |company| company.email.downcase }
   end
 
   # One email per address: several tickets bought under the same email only
@@ -31,6 +45,23 @@ class SendThankYouEmailsJob < ApplicationJob
   def due?(event, now)
     minutes = event.event_email_setting&.thank_you_delay_minutes || DEFAULT_DELAY_MINUTES
     event.effective_end_date <= now - minutes.minutes
+  end
+
+  def send_for_exhibitors(event)
+    claimed = Event.where(id: event.id, exhibitor_thank_you_sent_at: nil).update_all(exhibitor_thank_you_sent_at: Time.current)
+    return if claimed.zero?
+
+    self.class.exhibitor_recipients(event).each do |company|
+      EmailDelivery::AuditedDelivery.deliver_later(
+        mailer_name: 'ThankYouMailer',
+        mailer_action: 'exhibitor_thank_you_email',
+        args: [company.exhibitor],
+        related: company.exhibitor,
+        event: event,
+        dedupe: true,
+        metadata: { source: 'exhibitor_thank_you_send', event_id: event.id }
+      )
+    end
   end
 
   def send_for(event)

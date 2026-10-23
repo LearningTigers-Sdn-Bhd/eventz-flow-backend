@@ -18,6 +18,7 @@ class RegistrationLookupService
     return nil if @plate.blank? || @email.blank?
 
     vehicle = VehicleRegistration.find_by(event: @event, normalized_plate: @plate)
+    vehicle ||= VehicleRegistrationLegacyAdopter.call(event: @event, normalized_plate: @plate)
     return nil unless vehicle
 
     # attendee_email_norm is the same normalized column the rest of the app

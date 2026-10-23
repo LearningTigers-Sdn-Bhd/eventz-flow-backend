@@ -508,6 +508,131 @@ RSpec.describe 'V1::Tickets', type: :request do
   end
 
   # =========================================================================
+  # POST /v1/events/:event_id/tickets/create_guest_passes
+  # =========================================================================
+
+  path '/v1/events/{event_id}/tickets/create_guest_passes' do
+    parameter name: :event_id, in: :path, type: :integer, description: 'ID of the parent Event'
+
+    post 'Creates N placeholder guest passes named "<label> Pax i/N"' do
+      tags 'Tickets'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :body, in: :body, schema: {
+        type: :object,
+        properties: {
+          label: { type: :string, example: 'Borneo 4WD' },
+          quantity: { type: :integer, example: 6 },
+          ticket_type_id: { type: :integer },
+          attendee_email: { type: :string, format: :email, example: 'sponsor@example.com' },
+          attendee_phone: { type: :string },
+          role: { type: :string, example: 'Sponsor Guest' }
+        },
+        required: %w[label quantity ticket_type_id]
+      }
+
+      let(:event_id) { organizer_event.id }
+      let(:body) do
+        {
+          label: 'Borneo 4WD',
+          quantity: 3,
+          ticket_type_id: general_ticket_type.id,
+          role: 'Sponsor Guest'
+        }
+      end
+
+      response '201', 'Creates numbered paid placeholder tickets in one batch' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['quantity']).to eq(3)
+          expect(json['group_public_ids'].size).to eq(3)
+
+          # NOTE: Ticket#normalize_attendee_fields title-cases every attendee name
+          # on save (word.downcase.capitalize), so "4WD" is stored as "4wd".
+          # That's a system-wide convention (same in Visitor + Excel imports),
+          # not specific to guest passes.
+          names = json['tickets'].map { |t| t['attendee_name'] }
+          expect(names).to eq(['Borneo 4wd Pax 1/3', 'Borneo 4wd Pax 2/3', 'Borneo 4wd Pax 3/3'])
+          expect(json['tickets'].map { |t| t['payment_status'] }.uniq).to eq(['paid'])
+          expect(json['tickets'].map { |t| t['status'] }.uniq).to eq(['purchased'])
+          expect(json['tickets'].map { |t| t['role'] }.uniq).to eq(['Sponsor Guest'])
+
+          # All passes share one registration batch anchored to the first ticket.
+          batch_ids = json['tickets'].map { |t| Ticket.find_by(public_id: t['public_id']).registration_batch_id }
+          expect(batch_ids.uniq.size).to eq(1)
+          expect(batch_ids.first).to be_present
+        end
+      end
+
+      response '201', 'Works even when the event does not allow multiple tickets per email' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before { organizer_event.update!(allow_multiple_tickets_per_email: false) }
+
+        run_test! do
+          expect(response).to have_http_status(:created)
+          expect(JSON.parse(response.body)['quantity']).to eq(3)
+        end
+      end
+
+      response '422', 'Rejects when label is blank' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:body) { { label: '  ', quantity: 3, ticket_type_id: general_ticket_type.id } }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['errors']).to include('Label is required')
+        end
+      end
+
+      response '422', 'Rejects when quantity is out of range' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:body) { { label: 'Borneo 4WD', quantity: 501, ticket_type_id: general_ticket_type.id } }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['errors']).to include('Quantity must be between 1 and 500')
+        end
+      end
+
+      response '422', 'Rejects when ticket type does not belong to the event' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:body) { { label: 'Borneo 4WD', quantity: 3, ticket_type_id: 0 } }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['errors']).to include('Ticket type not found')
+        end
+      end
+
+      response '422', 'Rejects when the ticket type lacks capacity' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        before do
+          general_ticket_type.update!(quantity: 4)
+          # 2 existing tickets (purchased_ticket + checked_in_ticket) hold 2 slots,
+          # leaving 2 — asking for 3 overflows.
+        end
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['errors'].first).to match(/Not enough capacity/)
+        end
+      end
+
+      response '403', 'Forbidden for event staff (Team Member)' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        run_test!
+      end
+    end
+  end
+
+  # =========================================================================
   # Routes for specific ticket actions: /v1/events/:event_id/tickets/:id
   # =========================================================================
 
@@ -617,6 +742,48 @@ RSpec.describe 'V1::Tickets', type: :request do
 
         run_test! do
           expect(paid_checked_in_ticket.reload.payment_status).to eq('paid')
+        end
+      end
+
+      response '200', 'Marking a manually canceled ticket paid reopens it as purchased' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:canceled_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :pending)
+        end
+        let(:id) { canceled_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        run_test! do
+          expect(canceled_ticket.reload.status).to eq('purchased')
+          expect(canceled_ticket.payment_status).to eq('paid')
+        end
+      end
+
+      response '422', 'Cannot mark a ticket paid when its application was rejected' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:rejected_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :pending)
+        end
+        let!(:application) { create(:ticket_application, ticket: rejected_ticket, review_status: :rejected) }
+        let(:id) { rejected_ticket.public_id }
+        let(:ticket) { { ticket: { payment_status: 'paid' } } }
+
+        run_test! do
+          expect(rejected_ticket.reload.status).to eq('canceled')
+          expect(rejected_ticket.payment_status).to eq('pending')
+        end
+      end
+
+      response '200', 'Editing an already paid + canceled ticket does not un-cancel it' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        let(:legacy_ticket) do
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type, status: :canceled, payment_status: :paid)
+        end
+        let(:id) { legacy_ticket.public_id }
+        let(:ticket) { { ticket: { attendee_name: 'Renamed', payment_status: 'paid' } } }
+
+        run_test! do
+          expect(legacy_ticket.reload.status).to eq('canceled')
         end
       end
 

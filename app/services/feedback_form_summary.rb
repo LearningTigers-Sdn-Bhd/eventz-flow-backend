@@ -48,6 +48,8 @@ class FeedbackFormSummary
 
   # Responses from checked-in, still-valid tickets, out of all such tickets.
   def response_rate
+    return exhibitor_response_rate if @form.exhibitor?
+
     eligible = FeedbackResponseScope.eligible_tickets(@form.event, ticket_type_id: @filters[:ticket_type_id])
     eligible_count = eligible.count
     responded = eligible.where(id: @responses.select(:ticket_id)).count
@@ -55,6 +57,16 @@ class FeedbackFormSummary
       eligible: eligible_count,
       responded: responded,
       percent: eligible_count.zero? ? nil : (responded * 100.0 / eligible_count).round(1)
+    }
+  end
+
+  def exhibitor_response_rate
+    eligible_ids = FeedbackResponseScope.eligible_exhibitors(@form.event).map { |company| company.exhibitor.id }
+    responded = (@responses.where.not(exhibitor_id: nil).distinct.pluck(:exhibitor_id) & eligible_ids).size
+    {
+      eligible: eligible_ids.size,
+      responded: responded,
+      percent: eligible_ids.empty? ? nil : (responded * 100.0 / eligible_ids.size).round(1)
     }
   end
 

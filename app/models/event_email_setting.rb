@@ -43,12 +43,17 @@ class EventEmailSetting < ApplicationRecord
     'certificate' => {
       label: 'E-Certificate',
       group: 'ticket',
-      mailers: [%w[CertificateMailer certificate_email]]
+      mailers: [%w[CertificateMailer certificate_email], %w[CertificateMailer exhibitor_certificate_email]]
     },
     'thank_you' => {
       label: 'Post-Event Thank You',
       group: 'ticket',
       mailers: [%w[ThankYouMailer thank_you_email], %w[ThankYouMailer feedback_reminder_email]]
+    },
+    'exhibitor_thank_you' => {
+      label: 'Exhibitor Post-Event Thank You',
+      group: 'exhibitor',
+      mailers: [%w[ThankYouMailer exhibitor_thank_you_email], %w[ThankYouMailer exhibitor_feedback_reminder_email]]
     },
     'ticket_application' => {
       label: 'Ticket Application (RSVP)',

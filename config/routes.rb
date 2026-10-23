@@ -80,6 +80,7 @@ Rails.application.routes.draw do
     # Public endpoints (No authentication required)
     namespace :public do
       post 'resend/webhook', to: 'resend_webhooks#create'
+      get 'system_notice', to: 'system_notices#show'
       # Public event info - accessible without login (limited fields)
       resources :events, only: [:show], param: :slug do
         get :business_matching_events, on: :member
@@ -96,6 +97,7 @@ Rails.application.routes.draw do
       # Public voucher showcase - accessible without login
       resources :vouchers, only: %i[index show]
       post 'feedback_responses', to: 'feedback_responses#create'
+      get 'feedback_links/:code', to: 'feedback_links#show'
       # Public seating plans
       resources :plans, only: %i[show]
       # Public booking details
@@ -178,6 +180,8 @@ Rails.application.routes.draw do
     # Vendor invite verify without an event id: the short code carries it.
     get 'vendor_invitations/verify', to: 'vendor_invitations#verify'
     post 'auth/join_event_as_vendor', to: 'authentication#join_event_as_vendor'
+    # Planned-maintenance banner: org owners edit it, the panel reads the public one.
+    resource :system_notice, only: %i[show update]
     resources :email_deliveries, only: %i[index show] do
       get :summary, on: :collection
       get :settings, on: :collection
@@ -266,6 +270,7 @@ Rails.application.routes.draw do
           patch :accept_waiting_list
         end
         collection do
+          post :create_guest_passes
           patch :bulk_update_ticket_type
           patch :bulk_archive
           delete :bulk_delete
@@ -280,6 +285,14 @@ Rails.application.routes.draw do
           post :send_one
           get :preview
           get :participants
+          get :download_all
+        end
+      end
+      resources :exhibitor_certificates, only: :index do
+        collection do
+          post :send_one
+          post :send_batch
+          get :preview
           get :download_all
         end
       end
@@ -314,6 +327,8 @@ Rails.application.routes.draw do
       end
       get 'feedback_form/comments', to: 'feedback_reports#comments'
       get 'feedback_form/non_responders', to: 'feedback_reports#non_responders'
+      get 'feedback_form/exhibitor_links', to: 'feedback_reports#exhibitor_links'
+      post 'feedback_form/exhibitor_link', to: 'feedback_reports#exhibitor_link'
       post 'feedback_form/remind', to: 'feedback_reports#remind'
       get 'feedback_form/export_data', to: 'feedback_reports#export_data'
       get 'feedback_form/ai_summary', to: 'feedback_reports#ai_summary'

@@ -2,7 +2,7 @@ require 'prawn'
 
 Prawn::Fonts::AFM.hide_m17n_warning = true
 
-# Renders a single attendee's certificate as a PDF.
+# Renders a single attendee's (or exhibitor company's) certificate as a PDF.
 #
 # The page is sized to the template's design canvas (canvas_width x canvas_height
 # in px), so canvas pixels map 1:1 to PDF points and only the Y axis needs to be
@@ -15,9 +15,10 @@ class CertificatePdfGenerator
   FONT_STYLES = %w[normal bold italic].freeze
   ALIGNMENTS = %w[left center right].freeze
 
-  def initialize(template, ticket = nil, sample_name: nil)
+  def initialize(template, ticket = nil, sample_name: nil, exhibitor: nil)
     @template = template
     @ticket = ticket
+    @exhibitor = exhibitor
     @sample_name = sample_name
   end
 
@@ -26,9 +27,18 @@ class CertificatePdfGenerator
   # download. Tickets with no usable template are skipped; returns nil when
   # nothing was rendered.
   def self.render_batch(event, tickets)
+    render_pages(tickets) { |ticket| [event.certificate_template_for(ticket), { ticket: ticket }] }
+  end
+
+  # Same, one page per exhibitor company, all from the event's exhibitor template.
+  def self.render_exhibitor_batch(template, exhibitors)
+    render_pages(exhibitors) { |exhibitor| [template, { exhibitor: exhibitor }] }
+  end
+
+  def self.render_pages(items)
     pdf = nil
-    tickets.each do |ticket|
-      template = event.certificate_template_for(ticket)
+    items.each do |item|
+      template, options = yield(item)
       next unless template&.background_image&.attached?
 
       cw = template.canvas_width.to_f
@@ -41,10 +51,11 @@ class CertificatePdfGenerator
       else
         pdf.start_new_page(size: [cw, ch], margin: 0)
       end
-      new(template, ticket).draw_onto(pdf, cw, ch)
+      new(template, options[:ticket], exhibitor: options[:exhibitor]).draw_onto(pdf, cw, ch)
     end
     pdf&.render
   end
+  private_class_method :render_pages
 
   def render
     raise ArgumentError, 'certificate template is required' if @template.nil?
@@ -108,6 +119,12 @@ class CertificatePdfGenerator
     case field[:type].to_s
     when 'attendee_name'
       @sample_name.presence || @ticket&.attendee_name
+    when 'company_name'
+      @exhibitor&.company_name || @sample_name
+    when 'booth_count'
+      (@exhibitor ? @exhibitor.booth_count : 3).to_s
+    when 'booth_numbers'
+      @exhibitor ? @exhibitor.booth_numbers : 'A01, A02, A03'
     when 'event_title'
       @template.event&.title
     when 'date'

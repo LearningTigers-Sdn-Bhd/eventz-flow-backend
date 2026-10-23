@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_22_070000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -206,6 +206,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.string "name", default: "Default", null: false
     t.bigint "ticket_type_ids", default: [], null: false, array: true
     t.jsonb "auto_send_filter", default: {}, null: false
+    t.string "audience", default: "ticket", null: false
+    t.index ["event_id"], name: "idx_certificate_templates_one_exhibitor_per_event", unique: true, where: "((audience)::text = 'exhibitor'::text)"
     t.index ["event_id"], name: "index_certificate_templates_on_event_id"
     t.index ["status"], name: "index_certificate_templates_on_status"
   end
@@ -391,6 +393,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.jsonb "disabled_categories", default: [], null: false
     t.jsonb "business_matching_ticket_type_ids", default: [], null: false
     t.boolean "thank_you_include_feedback", default: false, null: false
+    t.boolean "thank_you_exhibitors", default: false, null: false
     t.string "business_matching_sender_name"
     t.string "business_matching_host_invite_subject"
     t.text "business_matching_host_invite_message"
@@ -846,6 +849,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
     t.datetime "thank_you_sent_at"
+    t.datetime "exhibitor_thank_you_sent_at"
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
@@ -1185,7 +1189,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.jsonb "pages_metadata", default: [], null: false
     t.string "thank_you_title"
     t.text "thank_you_message"
-    t.index ["event_id"], name: "index_feedback_forms_on_event_id", unique: true
+    t.integer "audience", default: 0, null: false
+    t.index ["event_id", "audience"], name: "index_feedback_forms_on_event_id_and_audience", unique: true
   end
 
   create_table "feedback_questions", force: :cascade do |t|
@@ -1210,6 +1215,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.datetime "submitted_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "exhibitor_id"
+    t.index ["exhibitor_id"], name: "index_feedback_responses_on_exhibitor_id"
+    t.index ["feedback_form_id", "exhibitor_id"], name: "idx_feedback_responses_one_per_exhibitor", unique: true, where: "(exhibitor_id IS NOT NULL)"
     t.index ["feedback_form_id", "ticket_id"], name: "index_feedback_responses_on_feedback_form_id_and_ticket_id", unique: true
     t.index ["feedback_form_id"], name: "index_feedback_responses_on_feedback_form_id"
     t.index ["ticket_id"], name: "index_feedback_responses_on_ticket_id"
@@ -1879,6 +1887,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
     t.index ["group_id"], name: "index_sponsors_on_group_id"
   end
 
+  create_table "system_notices", force: :cascade do |t|
+    t.text "message", default: "", null: false
+    t.boolean "active", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.check_constraint "char_length(message) <= 300", name: "chk_system_notices_message_length"
+  end
+
   create_table "table_assignments", force: :cascade do |t|
     t.bigint "ticket_id"
     t.bigint "plan_object_id", null: false
@@ -2335,6 +2351,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_15_070000) do
   add_foreign_key "feedback_answers", "feedback_responses"
   add_foreign_key "feedback_forms", "events"
   add_foreign_key "feedback_questions", "feedback_forms"
+  add_foreign_key "feedback_responses", "event_vendors", column: "exhibitor_id"
   add_foreign_key "feedback_responses", "feedback_forms"
   add_foreign_key "feedback_responses", "tickets", on_delete: :nullify
   add_foreign_key "gift_winners", "gifts"
