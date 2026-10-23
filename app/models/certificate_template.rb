@@ -44,8 +44,12 @@ class CertificateTemplate < ApplicationRecord
   end
 
   # Auto-send (after feedback) narrowing by one registration answer, e.g.
-  # { "key" => "category", "values" => ["2", "3"] }. Blank filter = everyone.
+  # { "key" => "category", "values" => ["2", "3"] } and/or "ticket_type_ids" => [5, 6].
+  # Both must match; a blank filter = everyone.
   def auto_send_allows?(ticket)
+    type_ids = Array(auto_send_filter['ticket_type_ids']).map(&:to_i)
+    return false if type_ids.any? && type_ids.exclude?(ticket.ticket_type_id)
+
     key = auto_send_filter['key'].to_s
     values = Array(auto_send_filter['values']).map { |v| v.to_s.strip.downcase }
     return true if key.blank? || values.empty?

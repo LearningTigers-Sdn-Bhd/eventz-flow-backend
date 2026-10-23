@@ -180,6 +180,7 @@ module V1
         attendee_name: ticket.attendee_name,
         attendee_email: ticket.attendee_email,
         ticket_type: ticket.ticket_type&.name,
+        ticket_type_id: ticket.ticket_type_id,
         certificate_template: @event.certificate_template_for(ticket)&.name,
         checked_in: ticket.checked_in,
         feedback_submitted: feedback_submitted,
