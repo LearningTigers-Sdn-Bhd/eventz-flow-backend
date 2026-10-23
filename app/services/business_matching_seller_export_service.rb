@@ -186,6 +186,8 @@ class BusinessMatchingSellerExportService
   end
 
   def add_sellers_and_profiles_sheet(workbook, styles, sessions, host_lookup, participant_lookup, exhibitor_data, _vendor_profiles)
+    include_exhibitors = exhibitor_data[:all_kits].any?
+
     headers = [
       'Table',
       'Seller Name',
@@ -197,16 +199,21 @@ class BusinessMatchingSellerExportService
       'Capabilities & Offerings',
       'Sourcing Intent (Seeking)',
       'Offering Tags',
-      'Interest Tags',
-      'Exhibitor PIC Name',
-      'Exhibitor PIC Email',
-      'Exhibitor PIC Phone',
-      'PIC Designation',
-      'Company Address',
-      'Country',
-      'Industry / Category',
-      'Company Profile & Notes'
+      'Interest Tags'
     ]
+
+    if include_exhibitors
+      headers += [
+        'Exhibitor PIC Name',
+        'Exhibitor PIC Email',
+        'Exhibitor PIC Phone',
+        'PIC Designation',
+        'Company Address',
+        'Country',
+        'Industry / Category',
+        'Company Profile & Notes'
+      ]
+    end
 
     workbook.add_worksheet(name: 'Sellers & Profiles') do |sheet|
       sheet.add_row headers, style: styles[:header], height: 28
@@ -214,22 +221,13 @@ class BusinessMatchingSellerExportService
       sessions.each do |session|
         host_user = host_lookup[session.id.to_s]
         h_profile = host_user ? participant_lookup[host_user.id] : nil
-        exhibitor_match = match_exhibitor(session, host_user, exhibitor_data)
+        exhibitor_match = include_exhibitors ? match_exhibitor(session, host_user, exhibitor_data) : nil
         kit = exhibitor_match&.[](:kit)
         vp = exhibitor_match&.[](:vendor_profile)
 
         profile_data = h_profile&.profile_data || {}
         offering_tags = h_profile&.offering_tags&.join(', ')
         interest_tags = h_profile&.interest_tags&.join(', ')
-
-        pic_name = kit&.pic_full_name.presence || vp&.person_in_charge
-        pic_email = kit&.pic_email_address.presence
-        pic_phone = kit&.pic_contact_number.presence
-        pic_position = kit&.pic_position.presence
-        company_address = kit&.company_address.presence || vp&.address
-        country = kit&.country.presence
-        category = vp&.category.presence
-        company_notes = vp&.description.presence || vp&.company_profile.presence || kit&.special_requirements
 
         row = [
           session.location.presence || "Table #{session.id}",
@@ -242,22 +240,37 @@ class BusinessMatchingSellerExportService
           profile_data['capabilities'],
           profile_data['sourcing_intent'],
           offering_tags,
-          interest_tags,
-          pic_name,
-          pic_email,
-          pic_phone,
-          pic_position,
-          company_address,
-          country,
-          category,
-          company_notes
+          interest_tags
         ]
+
+        if include_exhibitors
+          pic_name = kit&.pic_full_name.presence || vp&.person_in_charge
+          pic_email = kit&.pic_email_address.presence
+          pic_phone = kit&.pic_contact_number.presence
+          pic_position = kit&.pic_position.presence
+          company_address = kit&.company_address.presence || vp&.address
+          country = kit&.country.presence
+          category = vp&.category.presence
+          company_notes = vp&.description.presence || vp&.company_profile.presence || kit&.special_requirements
+
+          row += [
+            pic_name,
+            pic_email,
+            pic_phone,
+            pic_position,
+            company_address,
+            country,
+            category,
+            company_notes
+          ]
+        end
 
         sheet.add_row row, style: styles[:cell]
       end
 
-      # Set reasonable column widths
-      sheet.column_widths 12, 30, 26, 22, 26, 16, 35, 35, 35, 24, 24, 22, 26, 16, 18, 35, 14, 18, 30
+      widths = [12, 30, 26, 22, 26, 16, 35, 35, 35, 24, 24]
+      widths += [22, 26, 16, 18, 35, 14, 18, 30] if include_exhibitors
+      sheet.column_widths(*widths)
     end
   end
 

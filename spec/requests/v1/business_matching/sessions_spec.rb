@@ -413,7 +413,7 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       )
     end
 
-    it "downloads an Excel file with sellers and full profiles" do
+    it "downloads an Excel file with sellers and full profiles (excludes exhibitor columns when no exhibitors exist)" do
       get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(organizer_user)
 
       expect(response).to have_http_status(:ok)
@@ -429,12 +429,44 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(xlsx.sheets).to eq(['Sellers & Profiles', 'seller_list'])
 
       xlsx.default_sheet = 'Sellers & Profiles'
+      expect(xlsx.row(1).length).to eq(11) # Only 11 columns since no exhibitors exist
       expect(xlsx.row(1)).to include('Table', 'Seller Name', 'Session Schedule', 'Host Name', 'BM Profile Description')
+      expect(xlsx.row(1)).not_to include('Exhibitor PIC Name')
       expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'Leading software vendor')
 
       xlsx.default_sheet = 'seller_list'
       expect(xlsx.row(1)).to eq(['Table', 'Seller Name', 'Session Schedule', 'Host', 'Email'])
       expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'alice@alphatech.com')
+
+      temp_file.close
+      temp_file.unlink
+    end
+
+    it "includes columns 12-19 when at least one exhibitor exists for the event" do
+      vendor = create(:user, :vendor)
+      exhibitor = Exhibitor.create!(event: event, vendor: vendor)
+      ExhibitorKit.create!(
+        event_vendor: exhibitor,
+        company_name: "Alpha Tech Solutions",
+        pic_full_name: "PIC Bob",
+        pic_email_address: "bob@alphatech.com",
+        pic_contact_number: "0123456789",
+        booth_type: "Standard"
+      )
+
+      get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      temp_file = Tempfile.new(['sellers_export', '.xlsx'])
+      temp_file.binmode
+      temp_file.write(response.body)
+      temp_file.rewind
+
+      xlsx = Roo::Excelx.new(temp_file.path)
+      xlsx.default_sheet = 'Sellers & Profiles'
+      expect(xlsx.row(1).length).to eq(19)
+      expect(xlsx.row(1)).to include('Exhibitor PIC Name', 'Exhibitor PIC Email', 'Company Address', 'Industry / Category')
+      expect(xlsx.row(2)).to include('PIC Bob', 'bob@alphatech.com')
 
       temp_file.close
       temp_file.unlink
