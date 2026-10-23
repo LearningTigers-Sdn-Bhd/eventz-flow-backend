@@ -138,18 +138,25 @@ class BookingMailer < ApplicationMailer
     )
   end
 
-  def session_reminder_email(booking_data, event_title, event_id)
+  def session_reminder_email(booking_data, event_title, event_id, reminder_type = '1_hour')
     @booking = booking_data
     @event_title = event_title
+    @reminder_type = reminder_type
     _assign_booking_datetime
     _assign_booking_links(event_id)
     @dashboard_url = _dashboard_url(event_id)
+
+    subject = case reminder_type
+              when '2_day' then "Reminder: Your session for #{@event_title} is in 2 days"
+              when '1_day' then "Reminder: Your session for #{@event_title} is tomorrow"
+              else "Reminder: Your session for #{@event_title} starts in 1 hour"
+              end
 
     mail(
       to: @booking['email'],
       from: _bm_sender_from(event_id),
       reply_to: _bm_reply_to(event_id),
-      subject: "Reminder: Your session for #{@event_title} starts in 1 hour"
+      subject: subject
     )
   end
 

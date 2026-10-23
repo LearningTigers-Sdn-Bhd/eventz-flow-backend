@@ -546,6 +546,7 @@ Rails.application.routes.draw do
     namespace :business_matching do
       post 'receive', to: 'callbacks#receive'
       post 'events/:event_id/report', to: 'bookings#generate_report'
+      get 'events/:event_id/export_sellers', to: 'sessions#export_sellers'
 
       # Public booking creation route (authenticated users)
       post 'events/:event_id/bookings/public', to: 'bookings#public_create'
@@ -605,6 +606,7 @@ Rails.application.routes.draw do
 
       # No IDs in the path or params on purpose — the token is the only way
       # in, so a hand-typed URL can't be used to self-attach as a host.
+      get 'host_invites/:token', to: 'hosts#invite_details'
       post 'host_invites/accept', to: 'hosts#accept_invite'
     end
 

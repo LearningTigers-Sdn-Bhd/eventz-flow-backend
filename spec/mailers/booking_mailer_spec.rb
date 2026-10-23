@@ -110,9 +110,19 @@ RSpec.describe BookingMailer, type: :mailer do
   describe '#session_reminder_email' do
     let(:mail) { described_class.session_reminder_email(booking_data, session.title, event.id) }
 
-    it 'sends to the participant with a 1-hour reminder subject' do
+    it 'sends to the participant with a 1-hour reminder subject by default' do
       expect(mail.to).to eq(['alice@example.com'])
       expect(mail.subject).to include('starts in 1 hour')
+    end
+
+    it 'sends 1-day reminder subject when reminder_type is 1_day' do
+      mail_1_day = described_class.session_reminder_email(booking_data, session.title, event.id, '1_day')
+      expect(mail_1_day.subject).to include('is tomorrow')
+    end
+
+    it 'sends 2-day reminder subject when reminder_type is 2_day' do
+      mail_2_day = described_class.session_reminder_email(booking_data, session.title, event.id, '2_day')
+      expect(mail_2_day.subject).to include('is in 2 days')
     end
   end
 

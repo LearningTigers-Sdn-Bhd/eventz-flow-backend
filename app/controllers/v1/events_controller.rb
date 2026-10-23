@@ -346,6 +346,8 @@ module V1
           :sender_name, :sender_address, :contact_email, :payment_receipt_email,
           :business_matching_sender_name, :business_matching_host_label,
           :business_matching_host_invite_subject, :business_matching_host_invite_message,
+          :business_matching_reminder_enabled, :business_matching_reminder_2_day,
+          :business_matching_reminder_1_day, :business_matching_reminder_1_hour,
           :emails_enabled, :thank_you_include_feedback, :thank_you_exhibitors, :thank_you_delay_minutes, { disabled_categories: [], business_matching_ticket_type_ids: [] }
         ],
         wish_wall_setting_attributes: %i[

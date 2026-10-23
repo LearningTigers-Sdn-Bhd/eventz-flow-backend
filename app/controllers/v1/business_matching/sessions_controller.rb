@@ -95,6 +95,27 @@ module V1
         end
       end
 
+      # GET /v1/business_matching/events/:event_id/export_sellers
+      def export_sellers
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_matching_sessions?
+
+        export_service = BusinessMatchingSellerExportService.new(event)
+        filename = "#{event.title.to_s.parameterize(separator: '_')}_sellers_with_profiles_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx"
+
+        send_data export_service.generate_xlsx,
+                  filename: filename,
+                  type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  disposition: 'attachment'
+      rescue Pundit::NotAuthorizedError
+        raise
+      rescue StandardError => e
+        Rails.logger.error("Seller export failed: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
       private
 
       def session_payload(session)

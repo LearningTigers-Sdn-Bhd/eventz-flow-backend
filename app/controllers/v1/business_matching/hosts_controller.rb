@@ -2,8 +2,8 @@
 module V1
   module BusinessMatching
     class HostsController < ApplicationController
-      skip_before_action :authenticate_user!, only: [:index, :show_availability]
-      skip_before_action :require_verified_email!, only: [:index, :show_availability, :accept_invite]
+      skip_before_action :authenticate_user!, only: %i[index show_availability invite_details]
+      skip_before_action :require_verified_email!, only: %i[index show_availability accept_invite invite_details]
 
       # GET /v1/events/:event_id/business_matching/hosts
       def index
@@ -208,6 +208,46 @@ module V1
           message: "Invitation email sent to #{email}",
           invite_url: invite_url,
           token: token
+        }, status: :ok
+      rescue StandardError => e
+        render json: { errors: e.message }, status: :internal_server_error
+      end
+
+      # GET /v1/business_matching/host_invites/:token
+      def invite_details
+        access = BusinessHostInviteToken.verify(params[:token])
+        return render json: { error: 'This invite link is invalid or has expired.' }, status: :not_found unless access
+
+        event = Event.find_by(id: access.event_id)
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        session = event.business_matching_sessions.find_by(id: access.business_matching_event_id)
+        return render json: { error: 'Session not found' }, status: :not_found unless session
+
+        assigned_host = session.business_host_assignments.includes(:user).first&.user
+
+        user = @current_user || soft_current_user
+        is_admin_or_organizer = user.present? && (
+          user.is_owner? ||
+          user.is_organizer_for?(event) ||
+          user.is_event_admin_for?(event)
+        )
+        is_current_user_host = user.present? && assigned_host.present? && (assigned_host.id == user.id)
+
+        render json: {
+          event_id: event.id,
+          event_title: event.title,
+          event_slug: event.slug,
+          event_logo_url: event.logo_url,
+          session_id: session.id,
+          session_title: session.title,
+          session_location: session.location,
+          slot_duration: session.slot_duration,
+          current_host_name: assigned_host&.full_name,
+          current_host_email: assigned_host&.email,
+          is_assigned: assigned_host.present?,
+          is_current_user_admin: !!is_admin_or_organizer,
+          is_current_user_host: !!is_current_user_host
         }, status: :ok
       rescue StandardError => e
         render json: { errors: e.message }, status: :internal_server_error
@@ -473,7 +513,10 @@ module V1
         update_event_cache(event, bm_event_id, current_user)
         ActionCable.server.broadcast("business_matching_event_#{event.id}", { action: "hosts_updated" })
 
-        render json: { message: "Successfully joined as a business host for #{event.title}" }, status: :ok
+        render json: {
+          message: "Successfully joined as a business host for #{event.title}",
+          user: current_user.public_json
+        }, status: :ok
       end
 
       def update_event_cache(event, bm_event_id, host_user)
@@ -540,6 +583,18 @@ module V1
         return true if session_ids.empty?
 
         BusinessMatchingSession.where(id: session_ids).any? { |session| session.tags_editable_for(current_user) }
+      end
+
+      def soft_current_user
+        header = request.headers['Authorization']
+        return nil unless header&.start_with?('Bearer ')
+
+        token = header.split(' ').last
+        payload = JwtService.decode(token)
+        session = UserSession.find_by(jti: payload[:jti], user_id: payload[:user_id])
+        session&.active? ? session.user : nil
+      rescue StandardError
+        nil
       end
 
       def cast_nullable_boolean(value)

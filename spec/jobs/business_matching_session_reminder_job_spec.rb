@@ -59,4 +59,35 @@ RSpec.describe BusinessMatchingSessionReminderJob, type: :job do
 
     expect(BusinessMatchingReminderLog.exists?(business_matching_booking_id: booking.id, reminder_type: '1_hour')).to be true
   end
+
+  it 'reminds a participant whose session is about 1 day away' do
+    booking = booking_starting_in(24 * 60)
+    expect { described_class.new.perform }.to have_enqueued_job(EmailDeliveryJob)
+    expect(BusinessMatchingReminderLog.exists?(business_matching_booking_id: booking.id, reminder_type: '1_day')).to be true
+  end
+
+  it 'reminds a participant whose session is about 2 days away' do
+    booking = booking_starting_in(48 * 60)
+    expect { described_class.new.perform }.to have_enqueued_job(EmailDeliveryJob)
+    expect(BusinessMatchingReminderLog.exists?(business_matching_booking_id: booking.id, reminder_type: '2_day')).to be true
+  end
+
+  it 'respects email settings disabling a specific reminder type' do
+    event.create_event_email_setting!(
+      business_matching_reminder_enabled: true,
+      business_matching_reminder_1_day: false
+    )
+    booking_starting_in(24 * 60)
+
+    expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+  end
+
+  it 'respects master business matching reminder toggle' do
+    event.create_event_email_setting!(
+      business_matching_reminder_enabled: false
+    )
+    booking_starting_in(60)
+
+    expect { described_class.new.perform }.not_to have_enqueued_job(EmailDeliveryJob)
+  end
 end
