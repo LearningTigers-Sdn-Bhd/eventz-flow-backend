@@ -133,7 +133,7 @@ module V1
         :background_image,
         :remove_background_image,
         ticket_type_ids: [],
-        auto_send_filter: [:key, { values: [] }],
+        auto_send_filter: [:key, { values: [], ticket_type_ids: [] }],
         fields: [
           :id,
           :type,

@@ -95,6 +95,21 @@ RSpec.describe SendEventCertificatesJob, type: :job do
         expect { described_class.deliver_after_feedback(ticket_with_email) }
           .not_to have_enqueued_job(EmailDeliveryJob)
       end
+
+      it 'holds back when the ticket type is not in the ticket type filter' do
+        ticket_with_email.update!(custom_fields_data: { 'category' => '2' })
+        template.update!(auto_send_filter: { 'ticket_type_ids' => [ticket_with_email.ticket_type_id + 1] })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .not_to have_enqueued_job(EmailDeliveryJob)
+      end
+
+      it 'sends when the ticket type is in the ticket type filter' do
+        template.update!(auto_send_filter: { 'ticket_type_ids' => [ticket_with_email.ticket_type_id] })
+
+        expect { described_class.deliver_after_feedback(ticket_with_email) }
+          .to have_enqueued_job(EmailDeliveryJob).once
+      end
     end
   end
 
