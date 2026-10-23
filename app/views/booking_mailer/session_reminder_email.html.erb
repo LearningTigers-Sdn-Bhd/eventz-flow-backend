@@ -1,7 +1,19 @@
-<%= email_page :blue, icon: 'clock', label: 'Starts in 1 hour', title: 'Your session starts in 1 hour', tagline: @event_title,
+<%
+  label_text = case @reminder_type
+               when '2_day' then 'Session in 2 days'
+               when '1_day' then 'Session tomorrow'
+               else 'Starts in 1 hour'
+               end
+  title_text = case @reminder_type
+               when '2_day' then 'Your session is in 2 days'
+               when '1_day' then 'Your session is tomorrow'
+               else 'Your session starts in 1 hour'
+               end
+%>
+<%= email_page :blue, icon: 'clock', label: label_text, title: title_text, tagline: @event_title,
       footer: "&copy; #{Time.now.year} EventzFlow. All rights reserved.".html_safe %>
 <p>Dear <%= @booking['name'] || 'Valued Customer' %>,</p>
-<p>This is a friendly reminder that your business matching session at <strong><%= @event_title %></strong> starts soon.</p>
+<p>This is a friendly reminder that your business matching session at <strong><%= @event_title %></strong> <%= @reminder_type == '1_hour' ? 'starts soon' : 'is coming up' %>.</p>
 <%= render 'emails/details', title: 'Session Details', rows: [['Date', @booking_date], ['Time', @booking_time], ['Location', @booking['location']]] %>
 <%= render 'emails/buttons', primary: ['View booking', @dashboard_url] %>
 <%= render 'emails/booking_actions' %>

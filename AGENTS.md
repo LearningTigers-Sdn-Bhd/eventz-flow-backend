@@ -31,3 +31,8 @@
 ## Security & Configuration Tips
 - Keep secrets in credentials or environment variables; never commit `.env` contents or API keys.
 - Validate authorization with Pundit in controllers and add matching policy specs. Sanitize user input at the model/service layer.
+
+## Local Data Audit & Reporting Mirror
+- For running data reports, audits, and analytics safely without touching production, see [`EVENTZFLOW_AUDIT.md`](./EVENTZFLOW_AUDIT.md).
+- Connect to local mirror: `psql -d eventzflow_audit` (read-only mirror synced from production via `bin/sync_audit_db.sh`).
+

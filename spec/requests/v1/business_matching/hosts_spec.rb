@@ -391,6 +391,44 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
     end
   end
 
+  describe "GET /v1/business_matching/host_invites/:token" do
+    let(:session) do
+      BusinessMatchingSession.create!(
+        event: event, title: "Table 1 - Tech Co", slot_duration: 30, start_time: "09:00", end_time: "17:00",
+        start_date: Date.current, end_date: Date.current, location: "Booth A1"
+      )
+    end
+
+    it "returns event and session details without requiring authentication" do
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      get "/v1/business_matching/host_invites/#{token}"
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['event_title']).to eq(event.title)
+      expect(json_response['session_title']).to eq("Table 1 - Tech Co")
+      expect(json_response['session_location']).to eq("Booth A1")
+      expect(json_response['is_assigned']).to eq(false)
+    end
+
+    it "indicates if the session is already assigned" do
+      BusinessHostAssignment.create!(event: event, user: host_user, business_matching_event_id: session.id.to_s)
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      get "/v1/business_matching/host_invites/#{token}"
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_assigned']).to eq(true)
+      expect(json_response['current_host_name']).to eq(host_user.full_name)
+    end
+
+    it "returns 404 for invalid or expired token" do
+      get "/v1/business_matching/host_invites/invalid-token"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "POST /v1/business_matching/host_invites/accept" do
     let(:invitee) { create(:user) }
     let(:session) do
