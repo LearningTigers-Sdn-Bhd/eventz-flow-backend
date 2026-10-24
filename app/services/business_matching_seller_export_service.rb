@@ -82,13 +82,15 @@ class BusinessMatchingSellerExportService
   end
 
   STOP_WORDS = Set.new(%w[sdn bhd sendirian berhad group hotel hotels resort resorts company co ltd trading enterprise services sbc malaysia])
-  GENERIC_EMAIL_DOMAINS = Set.new(%w[gmail.com yahoo.com hotmail.com outlook.com icloud.com mail.com])
+  GENERIC_EMAIL_DOMAINS = Set.new(%w[gmail.com yahoo.com hotmail.com outlook.com icloud.com mail.com live.com ymail.com proton.me protonmail.com])
+  IGNORED_FASCIA = Set.new(%w[none tba nonerawspace rawspace none(rawspace)])
+  LEGAL_SUFFIXES = /\b(sdn\s*bhd|sendirian\s*berhad|bhd|berhad|co\s*ltd|ltd|inc|llc|plc|enterprise|trading|group|holdings|corporation)\b/i
 
   def match_exhibitor(session, host_user, exhibitor_data)
     all_kits = exhibitor_data[:all_kits]
 
+    # 1. Match by host vendor account
     if host_user.present?
-      # 1. Match by host vendor account
       vendor_match = all_kits.find { |k| k[:exhibitor].vendor_id == host_user.id }
       return vendor_match if vendor_match
 
@@ -98,43 +100,63 @@ class BusinessMatchingSellerExportService
         email_match = all_kits.find { |k| normalize(k[:kit].pic_email_address) == host_email_norm }
         return email_match if email_match
       end
+    end
 
-      # 3. Match by corporate email domain (excluding generic providers)
+    # 3. Clean Company / Brand Name matching
+    s_clean = clean_company_name(session.title)
+    s_norm = normalize(s_clean)
+
+    if s_norm.length >= 3
+      all_kits.each do |k|
+        kit = k[:kit]
+        c_clean = clean_company_name(kit.company_name)
+        c_norm = normalize(c_clean)
+
+        f_raw = kit.name_on_fascia.to_s.strip
+        f_clean = clean_company_name(f_raw)
+        f_norm = normalize(f_clean)
+        f_norm = '' if IGNORED_FASCIA.include?(normalize(f_raw))
+
+        # Exact cleaned brand match
+        if (c_norm.length >= 3 && s_norm == c_norm) || (f_norm.length >= 3 && s_norm == f_norm)
+          return k
+        end
+
+        # Substantial prefix match (must be at least 6 alphanumeric characters to avoid collisions)
+        if (c_norm.length >= 6 && s_norm.length >= 6 && (c_norm.start_with?(s_norm) || s_norm.start_with?(c_norm))) ||
+           (f_norm.length >= 6 && s_norm.length >= 6 && (f_norm.start_with?(s_norm) || s_norm.start_with?(f_norm)))
+          return k
+        end
+      end
+    end
+
+    # 4. Corporate email domain match (must also share brand context)
+    if host_user.present?
       h_dom = email_domain(host_user.email)
       if h_dom.present?
-        domain_match = all_kits.find { |k| email_domain(k[:kit].pic_email_address) == h_dom }
+        domain_root = h_dom.split('.').first.to_s
+        domain_match = all_kits.find do |k|
+          k_dom = email_domain(k[:kit].pic_email_address)
+          next false if k_dom.blank? || h_dom != k_dom
+
+          c_clean = clean_company_name(k[:kit].company_name)
+          s_clean.include?(domain_root) || c_clean.include?(domain_root) || (s_clean.split & c_clean.split).any?
+        end
         return domain_match if domain_match
       end
-    end
-
-    # 4. Match by normalized session title / company name / fascia name
-    title_norm = normalize(session.title)
-    if title_norm.present?
-      name_match = all_kits.find do |k|
-        company_norm = normalize(k[:kit].company_name)
-        fascia_norm = normalize(k[:kit].name_on_fascia)
-
-        (company_norm.present? && (title_norm == company_norm || title_norm.include?(company_norm) || company_norm.include?(title_norm))) ||
-          (fascia_norm.present? && (title_norm == fascia_norm || title_norm.include?(fascia_norm) || fascia_norm.include?(title_norm)))
-      end
-      return name_match if name_match
-    end
-
-    # 5. Distinctive word match
-    s_words = significant_words(session.title)
-    if s_words.any?
-      word_match = all_kits.find do |k|
-        k_words = significant_words(k[:kit].company_name) + significant_words(k[:kit].name_on_fascia)
-        (s_words & k_words).any?
-      end
-      return word_match if word_match
     end
 
     nil
   end
 
-  def significant_words(text)
-    text.to_s.downcase.scan(/[a-z0-9]{3,}/).reject { |w| STOP_WORDS.include?(w) }
+  def clean_company_name(name)
+    return '' if name.blank?
+
+    name.to_s.downcase
+        .gsub(LEGAL_SUFFIXES, '')
+        .gsub(/[^a-z0-9\s]/, ' ')
+        .strip
+        .squeeze(' ')
   end
 
   def email_domain(email)

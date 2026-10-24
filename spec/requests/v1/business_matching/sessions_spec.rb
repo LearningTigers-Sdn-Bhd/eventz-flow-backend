@@ -472,6 +472,47 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       temp_file.unlink
     end
 
+    it "does not match unrelated exhibitors on loose single-word overlap (e.g. supply)" do
+      BusinessMatchingSession.create!(
+        event: event,
+        title: "DHL Supply Chain Malaysia",
+        location: "Table 2",
+        slot_duration: 30,
+        start_time: "10:00",
+        end_time: "18:00"
+      )
+
+      unrelated_vendor = create(:user, :vendor)
+      unrelated_exhibitor = Exhibitor.create!(event: event, vendor: unrelated_vendor)
+      ExhibitorKit.create!(
+        event_vendor: unrelated_exhibitor,
+        company_name: "Nuhea Supply Sdn Bhd",
+        pic_full_name: "Unrelated Clarence",
+        pic_email_address: "clarence@nuhea.com",
+        pic_contact_number: "0191234567",
+        booth_type: "Standard"
+      )
+
+      get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(organizer_user)
+
+      expect(response).to have_http_status(:ok)
+      temp_file = Tempfile.new(['sellers_export', '.xlsx'])
+      temp_file.binmode
+      temp_file.write(response.body)
+      temp_file.rewind
+
+      xlsx = Roo::Excelx.new(temp_file.path)
+      xlsx.default_sheet = 'Sellers & Profiles'
+      dhl_row = (2..xlsx.last_row).map { |r| xlsx.row(r) }.find { |row| row[1] =~ /DHL Supply Chain/ }
+
+      expect(dhl_row).not_to be_nil
+      # Exhibitor PIC Name (Col 11) should be blank/nil, not Unrelated Clarence
+      expect(dhl_row[11]).to be_blank
+
+      temp_file.close
+      temp_file.unlink
+    end
+
     it "rejects unauthorized users" do
       regular_user = create(:user)
       get "/v1/business_matching/events/#{event.id}/export_sellers", headers: auth_headers(regular_user)
