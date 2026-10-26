@@ -139,7 +139,10 @@ RSpec.describe TicketMailer, type: :mailer do
 
       paid_mail = described_class.confirmation_email(paid_ticket)
 
-      expect(paid_mail.body.encoded).to include('<td class="k">Receipt No</td>')
+      # Decoded on purpose: when the factory event crosses midnight the date
+      # range adds an en dash, the HTML part goes quoted-printable, and the
+      # encoded body reads class=3D"k".
+      expect(paid_mail.html_part.body.decoded).to include('<td class="k">Receipt No</td>')
     end
 
     it 'does not show payment receipt section but still bccs when amount paid is zero' do
