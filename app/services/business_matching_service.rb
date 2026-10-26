@@ -525,6 +525,34 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
+  # Bookings the current user made as a buyer, across every session of the
+  # event. Public bookings only carry the booker's name/email, so the match is
+  # on the account email — this is how a seller who also books other sellers
+  # sees their own meetings. Their own session is excluded: those show in the
+  # host schedule already.
+  def fetch_buyer_bookings(event_id)
+    return BaseService::ServiceResult.new(success: false, errors: "Unauthorized", status: :unauthorized) unless user
+
+    email = user.email.to_s.strip.downcase
+    return BaseService::ServiceResult.new(success: true, data: { bookings: [] }) if email.blank?
+
+    sessions = BusinessMatchingSession.where(event_id: event_id)
+    bookings = BusinessMatchingBooking
+                 .where(business_matching_session_id: sessions.select(:id))
+                 .where('LOWER(TRIM(business_matching_bookings.email)) = ?', email)
+                 .where('business_matching_bookings.host_user_id IS DISTINCT FROM ?', user.id)
+                 .includes(:host_user, :business_matching_session)
+                 .sort_by { |b| [b.booking_date, _slot_minutes(b.booking_time)] }
+
+    formatted_bookings = bookings.map do |b|
+      _transform_local_bookings([b]).first.merge(host_name: b.host_user&.full_name || "")
+    end
+
+    BaseService::ServiceResult.new(success: true, data: { bookings: formatted_bookings })
+  rescue StandardError => e
+    BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
+  end
+
   def transform_events(raw_events, event_id)
     host_assignments = BusinessHostAssignment.where(event_id: event_id).includes(:user)
     
@@ -652,6 +680,15 @@ class BusinessMatchingService < BaseService
   end
 
   private
+
+  # "02:20 PM" -> 860, for ordering bookings by time of day. Unparseable
+  # values sort last.
+  def _slot_minutes(booking_time)
+    t = Time.strptime(booking_time.to_s.strip, "%I:%M %p")
+    t.hour * 60 + t.min
+  rescue ArgumentError
+    24 * 60
+  end
 
   def _generate_slots_for_availability(availability, session)
     start_parts = availability.start_time.split(':').map(&:to_i)

@@ -172,7 +172,7 @@ class UserActivityRecorder
         ['business_matching', 'Rescheduled Matchmaking Appointment']
       when 'cancel'
         ['business_matching', 'Cancelled Matchmaking Appointment']
-      when 'index', 'show'
+      when 'index', 'show', 'buyer_bookings'
         ['business_matching', 'Viewed Matchmaking Schedule']
       else
         ['business_matching', "Business Matching (#{action.humanize})"]

@@ -590,6 +590,7 @@ Rails.application.routes.draw do
       end
 
       scope 'events/:event_id' do
+        get 'buyer_bookings', to: 'bookings#buyer_bookings'
         resource :host_profile, only: [:show, :update], controller: 'hosts'
         resource :tags, only: [:show, :update], controller: 'tags'
         resource :defaults, only: [:show, :update], controller: 'event_defaults'
