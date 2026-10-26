@@ -227,10 +227,12 @@ module V1
         assigned_host = session.business_host_assignments.includes(:user).first&.user
 
         user = @current_user || soft_current_user
+        # Signed-in visitors hit this too (the invite page refetches after
+        # login/accept), so only call role helpers User actually defines.
         is_admin_or_organizer = user.present? && (
-          user.is_owner? ||
-          user.is_organizer_for?(event) ||
-          user.is_event_admin_for?(event)
+          user.is_org_owner? ||
+          user.is_organizer? ||
+          user.is_event_admin?(event)
         )
         is_current_user_host = user.present? && assigned_host.present? && (assigned_host.id == user.id)
 
