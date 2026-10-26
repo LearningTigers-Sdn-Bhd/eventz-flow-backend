@@ -527,22 +527,23 @@ class BusinessMatchingService < BaseService
     BaseService::ServiceResult.new(success: false, errors: e.message, status: :internal_server_error)
   end
 
-  # Bookings the current user made as a buyer, across every session of the
-  # event. Public bookings only carry the booker's name/email, so the match is
-  # on the account email — this is how a seller who also books other sellers
-  # sees their own meetings. Their own session is excluded: those show in the
-  # host schedule already.
-  def fetch_buyer_bookings(event_id)
-    return BaseService::ServiceResult.new(success: false, errors: "Unauthorized", status: :unauthorized) unless user
+  # Bookings a user made as a buyer, across every session of the event.
+  # Public bookings only carry the booker's name/email, so the match is on the
+  # account email — this is how a seller who also books other sellers sees
+  # their own meetings. Their own session is excluded: those show in the host
+  # schedule already. `buyer` defaults to the current user; staff pass a
+  # seller to see that seller's bookings (authorized by the caller).
+  def fetch_buyer_bookings(event_id, buyer: user)
+    return BaseService::ServiceResult.new(success: false, errors: "Unauthorized", status: :unauthorized) unless buyer
 
-    email = user.email.to_s.strip.downcase
+    email = buyer.email.to_s.strip.downcase
     return BaseService::ServiceResult.new(success: true, data: { bookings: [] }) if email.blank?
 
     sessions = BusinessMatchingSession.where(event_id: event_id)
     bookings = BusinessMatchingBooking
                  .where(business_matching_session_id: sessions.select(:id))
                  .where('LOWER(TRIM(business_matching_bookings.email)) = ?', email)
-                 .where('business_matching_bookings.host_user_id IS DISTINCT FROM ?', user.id)
+                 .where('business_matching_bookings.host_user_id IS DISTINCT FROM ?', buyer.id)
                  .includes(:host_user, :business_matching_session)
                  .sort_by { |b| [b.booking_date, _slot_minutes(b.booking_time)] }
 

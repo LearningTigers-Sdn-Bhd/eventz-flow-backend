@@ -106,6 +106,43 @@ RSpec.describe 'V1::BusinessMatching::Bookings#buyer_bookings', type: :request d
     expect(response).to have_http_status(:forbidden)
   end
 
+  describe 'staff viewing a seller (?host_user_id=)' do
+    let(:organizer) { create(:user, :organizer) }
+
+    before { make_booking(other_session, other_seller, email: seller.email, time: '11:00 AM') }
+
+    it "returns that seller's bookings with other sellers" do
+      get "/v1/business_matching/events/#{event.id}/buyer_bookings",
+          params: { host_user_id: seller.id }, headers: auth_header(organizer)
+
+      expect(response).to have_http_status(:ok)
+      bookings = JSON.parse(response.body)['bookings']
+      expect(bookings.map { |b| b['event_title'] }).to eq(['Other Table'])
+    end
+
+    it 'is forbidden for a seller looking at another seller' do
+      get "/v1/business_matching/events/#{event.id}/buyer_bookings",
+          params: { host_user_id: seller.id }, headers: auth_header(other_seller)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'lets a seller pass their own id' do
+      get "/v1/business_matching/events/#{event.id}/buyer_bookings",
+          params: { host_user_id: seller.id }, headers: auth_header(seller)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)['bookings'].size).to eq(1)
+    end
+
+    it 'returns 404 for a user who is not a seller in this event' do
+      get "/v1/business_matching/events/#{event.id}/buyer_bookings",
+          params: { host_user_id: create(:user).id }, headers: auth_header(organizer)
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   it 'returns 404 for an unknown event' do
     get '/v1/business_matching/events/0/buyer_bookings', headers: auth_header(seller)
 
