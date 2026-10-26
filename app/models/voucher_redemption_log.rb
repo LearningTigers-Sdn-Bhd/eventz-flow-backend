@@ -6,7 +6,7 @@ class VoucherRedemptionLog < ApplicationRecord
   # enum :redemption_status, { completed: 0, cancelled: 1 }
 
   # --- Associations ---
-  belongs_to :voucher
+  belongs_to :voucher, -> { with_deleted }
   belongs_to :redeemer, polymorphic: true  # Uses redeemer_type (string) and redeemer_id
   belongs_to :redeemer_staff, class_name: 'User', foreign_key: 'redeemer_staff_id', optional: true
 

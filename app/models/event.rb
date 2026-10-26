@@ -35,6 +35,8 @@ class Event < ApplicationRecord
   has_many :wishes, dependent: :destroy
   has_one :wish_wall_setting, dependent: :destroy
   has_many :vouchers, dependent: :destroy
+  # The default scope hides archived vouchers from `vouchers`, so clean them up here.
+  has_many :archived_vouchers, -> { only_deleted }, class_name: 'Voucher', dependent: :destroy
   has_one :event_exhibition_contractor, dependent: :destroy
   has_many :event_exhibition_contractors, dependent: :destroy
   has_many :event_printing_services, dependent: :destroy

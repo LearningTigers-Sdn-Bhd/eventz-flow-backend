@@ -1,13 +1,14 @@
 module V1
   class VouchersController < ApplicationController
-    before_action :set_voucher, only: [:show, :update, :destroy]
+    before_action :set_voucher, only: [:show, :update, :destroy, :restore, :force_delete]
     before_action :authorize_resource, only: [:show, :update, :destroy]
-    before_action :ensure_voucher_enabled_for_resource!, only: [:show, :update, :destroy]
+    before_action :ensure_voucher_enabled_for_resource!, only: [:show, :update, :destroy, :restore, :force_delete]
     before_action :ensure_voucher_enabled_for_create!, only: [:create]
 
     # GET /api/v1/vouchers
     def index
       @vouchers = policy_scope(Voucher)
+      @vouchers = @vouchers.only_deleted if params[:archived] == 'true'
 
       # Apply filters if provided in query parameters
       if params[:event_id].present?
@@ -70,9 +71,33 @@ module V1
     end
 
     # DELETE /api/v1/vouchers/:id
+    # Archives (soft deletes) the voucher; it can be restored.
     def destroy
-      @voucher.destroy
-      success_response(status: :no_content, message: 'Voucher deleted successfully')
+      if @voucher.archive
+        success_response(data: format_voucher(@voucher), message: 'Voucher archived successfully')
+      else
+        error_response(message: 'Failed to archive voucher', errors: @voucher.errors.full_messages, status: :unprocessable_content)
+      end
+    end
+
+    # PATCH /api/v1/vouchers/:id/restore
+    def restore
+      authorize @voucher, :restore?
+
+      if @voucher.restore
+        success_response(data: format_voucher(@voucher), message: 'Voucher restored successfully')
+      else
+        error_response(message: 'Failed to restore voucher', errors: @voucher.errors.full_messages, status: :unprocessable_content)
+      end
+    end
+
+    # DELETE /api/v1/vouchers/:id/force_delete
+    # Permanently deletes the voucher and its redemption history. Org owner only.
+    def force_delete
+      authorize @voucher, :force_delete?
+
+      @voucher.destroy!
+      head :no_content
     end
 
     private
@@ -82,7 +107,8 @@ module V1
     end
 
     def set_voucher
-      @voucher = Voucher.find(params[:id])
+      scope = %w[restore force_delete].include?(action_name) ? Voucher.with_deleted : Voucher
+      @voucher = scope.find(params[:id])
     end
 
     # Handle image upload and removal via Active Storage

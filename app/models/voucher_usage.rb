@@ -7,7 +7,7 @@ class VoucherUsage < ApplicationRecord
   enum :redeemer_type, { User: 0, Visitor: 1, Ticket: 2 }
 
   # --- Associations ---
-  belongs_to :voucher
+  belongs_to :voucher, -> { with_deleted }
   belongs_to :redeemer, polymorphic: true
 
   # --- Validations ---
