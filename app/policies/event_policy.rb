@@ -127,6 +127,12 @@ class EventPolicy < ApplicationPolicy
     business_matching_events?
   end
 
+  # Staff who manage sessions (and so already see every booking) can also see
+  # a given seller's bookings with other sellers.
+  def seller_buyer_bookings?
+    manage_business_matching_sessions?
+  end
+
   # ============================================================
   # Analytics permissions
   # ============================================================

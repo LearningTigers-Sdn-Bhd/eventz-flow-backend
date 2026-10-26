@@ -179,13 +179,24 @@ module V1
       # PATCH /api/v1/business_matching/bookings/:id/approve
       # GET /api/v1/business_matching/events/:event_id/buyer_bookings
       # Bookings the current user made with other sellers (as a buyer).
+      # Staff can pass ?host_user_id= to see a seller's bookings instead.
       def buyer_bookings
         event = Event.find_by(id: params[:event_id])
         return render json: { error: 'Event not found' }, status: :not_found unless event
 
-        authorize event, :buyer_bookings?
+        buyer = current_user
+        if params[:host_user_id].present? && params[:host_user_id].to_s != current_user.id.to_s
+          authorize event, :seller_buyer_bookings?
 
-        service_result = BusinessMatchingService.new(current_user).fetch_buyer_bookings(event.id)
+          assignment = BusinessHostAssignment.includes(:user).find_by(event_id: event.id, user_id: params[:host_user_id])
+          return render json: { error: 'Seller not found' }, status: :not_found unless assignment&.user
+
+          buyer = assignment.user
+        else
+          authorize event, :buyer_bookings?
+        end
+
+        service_result = BusinessMatchingService.new(current_user).fetch_buyer_bookings(event.id, buyer: buyer)
 
         if service_result.success?
           render json: service_result.data, status: :ok
