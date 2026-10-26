@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_23_213000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1234,9 +1234,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_213000) do
     t.datetime "drawn_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "round"
     t.index ["gift_id"], name: "index_gift_winners_on_gift_id"
     t.index ["ticket_id"], name: "index_gift_winners_on_ticket_id"
     t.index ["visitor_id"], name: "index_gift_winners_on_visitor_id"
+    t.check_constraint "round IS NULL OR round > 0", name: "chk_gift_winners_round_positive"
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "gift_winners_exactly_one_participant"
   end
 
@@ -1247,6 +1249,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_213000) do
     t.integer "winner_counts", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "draw_last", default: false, null: false
     t.index ["lucky_draw_session_id", "order"], name: "index_gifts_on_lucky_draw_session_id_and_order"
     t.index ["lucky_draw_session_id"], name: "index_gifts_on_lucky_draw_session_id"
   end
@@ -1286,11 +1289,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_213000) do
     t.bigint "visitor_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "round"
+    t.index ["lucky_draw_session_id", "round"], name: "index_invalid_participants_on_session_id_and_round"
     t.index ["lucky_draw_session_id", "ticket_id"], name: "index_invalid_participants_on_session_id_and_ticket_id_unique", unique: true, where: "(ticket_id IS NOT NULL)"
     t.index ["lucky_draw_session_id", "visitor_id"], name: "index_invalid_participants_on_session_id_and_visitor_id_unique", unique: true, where: "(visitor_id IS NOT NULL)"
     t.index ["lucky_draw_session_id"], name: "index_invalid_participants_on_lucky_draw_session_id"
     t.index ["ticket_id"], name: "index_invalid_participants_on_ticket_id"
     t.index ["visitor_id"], name: "index_invalid_participants_on_visitor_id"
+    t.check_constraint "round IS NULL OR round > 0", name: "chk_invalid_participants_round_positive"
     t.check_constraint "ticket_id IS NOT NULL AND visitor_id IS NULL OR ticket_id IS NULL AND visitor_id IS NOT NULL", name: "invalid_participants_exactly_one_participant"
   end
 
@@ -1331,11 +1337,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_213000) do
     t.date "scanned_from"
     t.date "scanned_to"
     t.string "scanned_source", default: "ticket", null: false
+    t.integer "winners_per_draw", default: 1, null: false
+    t.string "gift_pick", default: "in_order", null: false
+    t.boolean "round_sweep", default: false, null: false
     t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
     t.index ["event_id"], name: "index_lucky_draw_sessions_on_event_id"
     t.index ["wrapper_background"], name: "index_lucky_draw_sessions_on_wrapper_background", using: :gin
+    t.check_constraint "winners_per_draw >= 1 AND winners_per_draw <= 200", name: "chk_lucky_draw_sessions_winners_per_draw"
   end
 
   create_table "orders", force: :cascade do |t|

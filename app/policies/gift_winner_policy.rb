@@ -33,4 +33,9 @@ class GiftWinnerPolicy < ApplicationPolicy
   def bulk?
     create?
   end
+
+  # sweep? - same as create? (one round of winners across several gifts)
+  def sweep?
+    create?
+  end
 end

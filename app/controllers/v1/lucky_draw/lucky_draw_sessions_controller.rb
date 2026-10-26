@@ -171,7 +171,7 @@ module V1
       end
 
       def session_params
-        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, draw_styles: {}, wrapper_background: {})
+        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, :winners_per_draw, :gift_pick, :round_sweep, draw_styles: {}, wrapper_background: {})
       end
 
       def format_session_response(session)
@@ -188,6 +188,9 @@ module V1
           scanned_from: session.scanned_from,
           scanned_to: session.scanned_to,
           scanned_source: session.scanned_source,
+          winners_per_draw: session.winners_per_draw,
+          gift_pick: session.gift_pick,
+          round_sweep: session.round_sweep,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }

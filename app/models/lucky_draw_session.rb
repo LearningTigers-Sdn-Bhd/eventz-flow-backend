@@ -19,10 +19,17 @@ class LuckyDrawSession < ApplicationRecord
   #   entries  - only tickets scanned at the lucky draw booth (lucky_draw_entries)
   SCANNED_SOURCES = %w[ticket scan_log entries].freeze
 
+  # gift_pick: how the next gift is chosen when gifts are on
+  #   in_order - by gift order (default)
+  #   random   - at random among the open gifts
+  GIFT_PICKS = %w[in_order random].freeze
+
   # --- Validations ---
   validates :scanned_source, inclusion: { in: SCANNED_SOURCES }
+  validates :gift_pick, inclusion: { in: GIFT_PICKS }
   validates :event_id, presence: true
   validates :title, presence: true
+  validates :winners_per_draw, numericality: { only_integer: true, in: 1..200 }
   validate :validate_draw_styles_structure
   validate :validate_scanned_range
   validate :acceptable_logo
@@ -38,6 +45,17 @@ class LuckyDrawSession < ApplicationRecord
 
   def draw_theme
     draw_styles&.dig('theme') || 'wireframe'
+  end
+
+  # Round number for the next draw when gifts are off. Call inside #with_lock
+  # so two simultaneous draws cannot share a round.
+  def next_draw_round
+    invalid_participants.maximum(:round).to_i + 1
+  end
+
+  # Same, for a gift sweep. Call inside #with_lock.
+  def next_gift_round
+    GiftWinner.where(gift_id: gifts.select(:id)).maximum(:round).to_i + 1
   end
 
   private

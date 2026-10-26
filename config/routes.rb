@@ -458,6 +458,8 @@ Rails.application.routes.draw do
             get :background_manager, path: 'background-manager'
             post :background_manager, path: 'background-manager'
           end
+          # One draw round across several gifts (round sweep)
+          post 'gift_winners/sweep', to: 'gift_winners#sweep'
           resources :gifts, only: %i[index show create update destroy] do
             resources :winners, only: %i[create destroy], controller: 'gift_winners' do
               member do
@@ -476,6 +478,7 @@ Rails.application.routes.draw do
             end
             collection do
               delete :destroy_all
+              post :bulk
             end
           end
         end
