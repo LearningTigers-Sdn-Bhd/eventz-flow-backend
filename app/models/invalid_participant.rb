@@ -6,6 +6,7 @@ class InvalidParticipant < ApplicationRecord
 
   # --- Validations ---
   validates :lucky_draw_session_id, presence: true
+  validates :round, numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
   validate :exactly_one_participant
   validate :participant_belongs_to_event
 

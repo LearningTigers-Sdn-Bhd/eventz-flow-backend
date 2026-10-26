@@ -102,7 +102,7 @@ module V1
       end
 
       def gift_params
-        params.permit(:name, :order, :winner_counts)
+        params.permit(:name, :order, :winner_counts, :draw_last)
       end
 
       def format_gift_response(gift)
@@ -112,6 +112,7 @@ module V1
           name: gift.name,
           order: gift.order,
           winner_counts: gift.winner_counts,
+          draw_last: gift.draw_last,
           winners: gift.gift_winners.map { |winner| format_winner_response(winner) },
           created_at: gift.created_at.iso8601,
           updated_at: gift.updated_at.iso8601
@@ -135,6 +136,7 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
+          round: winner.round,
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601

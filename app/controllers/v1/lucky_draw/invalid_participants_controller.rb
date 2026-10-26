@@ -23,9 +23,14 @@ module V1
       def create
         authorize InvalidParticipant.new(lucky_draw_session: @session)
 
-        @invalid_participant = @session.invalid_participants.build(invalid_participant_params)
+        @session.with_lock do
+          @invalid_participant = @session.invalid_participants.build(
+            invalid_participant_params.merge(round: @session.next_draw_round)
+          )
+          @invalid_participant.save
+        end
 
-        if @invalid_participant.save
+        if @invalid_participant.persisted?
           # Send webhook notification if webhook_url is configured
           send_winner_webhook(@invalid_participant)
 
@@ -39,6 +44,56 @@ module V1
             message: 'Validation failed',
             errors: format_validation_errors(@invalid_participant),
             status: :unprocessable_content
+          )
+        end
+      end
+
+      # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/invalid_participants/bulk
+      # Saves a whole multi-winner draw atomically: one bad row rolls everything back.
+      def bulk
+        authorize InvalidParticipant.new(lucky_draw_session: @session)
+
+        winners_data = bulk_params[:winners] || []
+        if winners_data.empty?
+          return error_response(
+            message: 'Validation failed',
+            errors: [{ message: 'winners array cannot be empty' }],
+            status: :unprocessable_content
+          )
+        end
+
+        records = []
+        errors = []
+
+        # The whole batch is one draw, so every winner shares one round.
+        @session.with_lock do
+          round = @session.next_draw_round
+
+          winners_data.each_with_index do |winner_data, index|
+            record = @session.invalid_participants.build(
+              ticket_id: winner_data[:ticket_id],
+              visitor_id: winner_data[:visitor_id],
+              round: round
+            )
+
+            if record.save
+              records << record
+            else
+              errors << { index: index, errors: record.errors.full_messages }
+              raise ActiveRecord::Rollback
+            end
+          end
+        end
+
+        if errors.any?
+          error_response(message: 'Validation failed', errors: errors, status: :unprocessable_content)
+        else
+          records.each { |record| send_winner_webhook(record) }
+
+          success_response(
+            data: records.map { |record| format_invalid_participant_response(record) },
+            message: 'Success',
+            status: :created
           )
         end
       end
@@ -99,6 +154,10 @@ module V1
         params.permit(:ticket_id, :visitor_id)
       end
 
+      def bulk_params
+        params.permit(winners: %i[ticket_id visitor_id])
+      end
+
       def format_invalid_participant_response(invalid_participant)
         participant = invalid_participant.ticket || invalid_participant.visitor
         participant_id = invalid_participant.ticket_id || invalid_participant.visitor_id
@@ -115,6 +174,7 @@ module V1
             id: participant_id,
             name: participant_name
           },
+          round: invalid_participant.round,
           created_at: invalid_participant.created_at.iso8601,
           updated_at: invalid_participant.updated_at.iso8601
         }

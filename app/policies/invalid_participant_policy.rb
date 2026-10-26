@@ -34,6 +34,11 @@ class InvalidParticipantPolicy < ApplicationPolicy
     index?
   end
 
+  # bulk? - same as create?
+  def bulk?
+    create?
+  end
+
   # destroy_all? - event admins, team members, org admins
   def destroy_all?
     index?

@@ -7,6 +7,7 @@ class GiftWinner < ApplicationRecord
   # --- Validations ---
   validates :gift_id, presence: true
   validates :drawn_at, presence: true
+  validates :round, numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
   validate :exactly_one_participant
   validate :participant_belongs_to_event
 
