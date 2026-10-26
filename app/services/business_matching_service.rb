@@ -241,14 +241,16 @@ class BusinessMatchingService < BaseService
     assignment = BusinessHostAssignment.find_by(event_id: event_id, business_matching_event_id: bm_event_id.to_s)
     host_user_id = assignment&.user_id
 
+    # Ordered by start time so a day with several windows lists its slots
+    # earliest first (start_time is zero-padded "HH:MM", so text order works).
     availabilities = if host_user_id
-                       BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id, day: parsed_date)
+                       BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: host_user_id, day: parsed_date).order(:start_time)
                      else
                        BusinessMatchingAvailability.none
                      end
 
     if availabilities.empty?
-      availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: nil, day: parsed_date)
+      availabilities = BusinessMatchingAvailability.where(business_matching_session_id: session.id, host_user_id: nil, day: parsed_date).order(:start_time)
     end
 
     if availabilities.empty?

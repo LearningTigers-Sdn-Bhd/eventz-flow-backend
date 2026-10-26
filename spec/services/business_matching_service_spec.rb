@@ -138,6 +138,21 @@ RSpec.describe BusinessMatchingService do
         expect(result.data[:slots].map { |s| s[:slot] }).to eq(["09:00 AM", "10:00 AM", "10:30 AM"])
       end
     end
+
+    context 'when the host has several windows saved out of time order' do
+      before do
+        BusinessHostAssignment.create!(user: user, event: event, business_matching_event_id: session.id.to_s)
+        day = event.start_date.to_date
+        # Afternoon window saved first, morning second.
+        BusinessMatchingAvailability.create!(business_matching_session: session, host_user_id: user.id, day: day, start_time: "14:00", end_time: "15:00")
+        BusinessMatchingAvailability.create!(business_matching_session: session, host_user_id: user.id, day: day, start_time: "09:00", end_time: "10:00")
+      end
+
+      it 'lists slots earliest first' do
+        result = service.fetch_detailed_slots(session.id, date_str, event.id)
+        expect(result.data[:slots].map { |s| s[:slot] }).to eq(["09:00 AM", "09:30 AM", "02:00 PM", "02:30 PM"])
+      end
+    end
   end
 
   describe '#create_booking' do
