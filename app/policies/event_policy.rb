@@ -119,6 +119,14 @@ class EventPolicy < ApplicationPolicy
     false
   end
 
+  # A seller (or staff member) can also book other sellers as a buyer; they
+  # see those bookings on the same business matching page.
+  def buyer_bookings?
+    return false if user.blank?
+
+    business_matching_events?
+  end
+
   # ============================================================
   # Analytics permissions
   # ============================================================

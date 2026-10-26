@@ -177,6 +177,23 @@ module V1
       end
 
       # PATCH /api/v1/business_matching/bookings/:id/approve
+      # GET /api/v1/business_matching/events/:event_id/buyer_bookings
+      # Bookings the current user made with other sellers (as a buyer).
+      def buyer_bookings
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :buyer_bookings?
+
+        service_result = BusinessMatchingService.new(current_user).fetch_buyer_bookings(event.id)
+
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
+        end
+      end
+
       # Staff/host action — authenticated, unlike the booker-facing
       # reschedule/cancel links below.
       def approve
