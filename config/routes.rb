@@ -703,7 +703,12 @@ Rails.application.routes.draw do
       end
     end
 
-    resources :vouchers, only: %i[index show create update destroy]
+    resources :vouchers, only: %i[index show create update destroy] do
+      member do
+        patch :restore
+        delete :force_delete
+      end
+    end
     resources :voucher_redemptions, only: [:create]
 
     # 7. GLOBAL METRICS

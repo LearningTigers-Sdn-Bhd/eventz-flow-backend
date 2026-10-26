@@ -10,6 +10,7 @@ class GiftWinner < ApplicationRecord
   validates :round, numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
   validate :exactly_one_participant
   validate :participant_belongs_to_event
+  validate :ticket_type_not_excluded, on: :create
 
   # --- Private Methods ---
   private
@@ -36,5 +37,11 @@ class GiftWinner < ApplicationRecord
         errors.add(:visitor_id, "must belong to the event")
       end
     end
+  end
+
+  def ticket_type_not_excluded
+    return unless ticket && gift&.lucky_draw_session&.excludes_ticket?(ticket)
+
+    errors.add(:ticket_id, "has a ticket type excluded from this draw")
   end
 end

@@ -35,6 +35,8 @@ class LuckyDrawSession < ApplicationRecord
   validate :acceptable_logo
   validate :acceptable_background_image
 
+  before_validation :normalize_excluded_ticket_type_ids
+
   # --- Scopes ---
   scope :ordered, -> { order(draw_date: :asc, created_at: :asc) }
 
@@ -58,7 +60,17 @@ class LuckyDrawSession < ApplicationRecord
     GiftWinner.where(gift_id: gifts.select(:id)).maximum(:round).to_i + 1
   end
 
+  # True when the ticket's type is left out of this draw
+  def excludes_ticket?(ticket)
+    ticket.present? && excluded_ticket_type_ids.include?(ticket.ticket_type_id)
+  end
+
   private
+
+  # Form posts send [""] to mean "none"; drop blanks and duplicates
+  def normalize_excluded_ticket_type_ids
+    self.excluded_ticket_type_ids = excluded_ticket_type_ids.compact_blank.map(&:to_i).uniq
+  end
 
   def validate_scanned_range
     return unless scanned_from && scanned_to && scanned_from > scanned_to

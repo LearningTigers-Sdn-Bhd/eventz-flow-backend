@@ -289,8 +289,8 @@ class UserActivityRecorder
       else
         case method
         when 'POST' then ['vouchers', 'Created Voucher']
-        when 'PATCH', 'PUT' then ['vouchers', 'Updated Voucher']
-        when 'DELETE' then ['vouchers', 'Deleted Voucher']
+        when 'PATCH', 'PUT' then ['vouchers', action == 'restore' ? 'Restored Voucher' : 'Updated Voucher']
+        when 'DELETE' then ['vouchers', action == 'force_delete' ? 'Deleted Voucher Permanently' : 'Archived Voucher']
         else ['vouchers', 'Browsing Vouchers']
         end
       end

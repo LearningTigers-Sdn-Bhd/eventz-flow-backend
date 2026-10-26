@@ -521,7 +521,7 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
   path '/v1/vouchers/{id}' do
     parameter name: :id, in: :path, type: :integer, required: true, description: 'Voucher ID'
 
-    delete 'Deletes a voucher' do
+    delete 'Archives a voucher (soft delete, restorable)' do
       tags 'Vouchers'
       security [{ BearerAuth: [] }]
       consumes 'application/json'
@@ -532,12 +532,13 @@ RSpec.describe 'V1::Vouchers', type: :request, openapi_spec: 'v1/swagger.yaml' d
       let(:Authorization) { auth_headers['Authorization'] }
       let!(:voucher) { create(:voucher, vendor: vendor_user) }
 
-      response '204', 'Voucher deleted successfully' do
+      response '200', 'Voucher archived successfully' do
         let(:id) { voucher.id }
 
         run_test! do |response|
-          expect(response.status).to eq(204)
+          expect(response.status).to eq(200)
           expect(Voucher.find_by(id: id)).to be_nil
+          expect(Voucher.only_deleted.find_by(id: id)).to be_present
         end
       end
 

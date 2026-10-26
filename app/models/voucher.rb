@@ -3,8 +3,9 @@ class Voucher < ApplicationRecord
   belongs_to :vendor, class_name: "User", foreign_key: "vendor_id"
   belongs_to :event
 
-  has_many :voucher_redemption_logs
-  has_many :voucher_usages
+  # Permanent delete (org owner only) removes the redemption history with it.
+  has_many :voucher_redemption_logs, dependent: :destroy
+  has_many :voucher_usages, dependent: :destroy
 
   # --- Active Storage ---
   # Auto-purge image when voucher is destroyed (uses background job)
@@ -19,6 +20,13 @@ class Voucher < ApplicationRecord
     free_item: 2
   }
 
+  # --- Soft Delete Scopes ---
+  # Archived vouchers are hidden everywhere (index, showcase, redemption, stats).
+  # Redemption logs/usages reach their voucher through `with_deleted`.
+  default_scope { where(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
+  scope :only_deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
+
   # --- Scopes ---
   scope :for_event, ->(event) { where(event: event) }
 
@@ -26,6 +34,14 @@ class Voucher < ApplicationRecord
   validate :acceptable_image
 
   # --- Instance Methods ---
+  def archive
+    update(deleted_at: Time.current)
+  end
+
+  def restore
+    update(deleted_at: nil)
+  end
+
   # Check if voucher has remaining quota for redemption
   # Returns true if unlimited, or if redeemed count is less than total available
   def has_quota_remaining?

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -393,12 +393,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.jsonb "disabled_categories", default: [], null: false
     t.jsonb "business_matching_ticket_type_ids", default: [], null: false
     t.boolean "thank_you_include_feedback", default: false, null: false
+    t.boolean "thank_you_exhibitors", default: false, null: false
     t.string "business_matching_sender_name"
     t.string "business_matching_host_invite_subject"
     t.text "business_matching_host_invite_message"
     t.string "business_matching_host_label"
     t.integer "thank_you_delay_minutes", default: 120, null: false
-    t.boolean "thank_you_exhibitors", default: false, null: false
     t.boolean "business_matching_reminder_enabled", default: true, null: false
     t.boolean "business_matching_reminder_2_day", default: true, null: false
     t.boolean "business_matching_reminder_1_day", default: true, null: false
@@ -511,7 +511,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.index ["ticket_id", "reminder_type", "reminder_period_key"], name: "index_event_reminder_logs_on_ticket_type_and_period", unique: true, where: "(reminder_period_key IS NOT NULL)"
     t.index ["ticket_id", "reminder_type"], name: "index_event_reminder_logs_on_ticket_and_type_when_period_null", unique: true, where: "(reminder_period_key IS NULL)"
     t.index ["ticket_id"], name: "index_event_reminder_logs_on_ticket_id"
-    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying, '1_day'::character varying]::text[])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
+    t.check_constraint "reminder_type::text = 'payment_pending_weekly'::text AND reminder_period_key::text = btrim(reminder_period_key::text) AND NULLIF(reminder_period_key::text, ''::text) IS NOT NULL OR (reminder_type::text = ANY (ARRAY['7_day'::character varying::text, '1_day'::character varying::text])) AND reminder_period_key IS NULL", name: "event_reminder_logs_type_period_key_match"
   end
 
   create_table "event_rentable_item_price_tiers", force: :cascade do |t|
@@ -853,6 +853,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.boolean "business_matching_linked_exhibitor_enabled", default: false, null: false
     t.integer "multiple_scan_mode", default: 0, null: false
     t.datetime "thank_you_sent_at"
+    t.datetime "exhibitor_thank_you_sent_at"
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
@@ -861,7 +862,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.integer "rfid_attendance_percent", default: 80, null: false
     t.boolean "use_rfid", default: false, null: false
     t.boolean "use_people_counter", default: false, null: false
-    t.datetime "exhibitor_thank_you_sent_at"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -1340,6 +1340,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.integer "winners_per_draw", default: 1, null: false
     t.string "gift_pick", default: "in_order", null: false
     t.boolean "round_sweep", default: false, null: false
+    t.bigint "excluded_ticket_type_ids", default: [], null: false, array: true
     t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
@@ -2216,6 +2217,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_090000) do
     t.integer "status", default: 0
     t.integer "voucher_type"
     t.boolean "is_unlimited", default: false, null: false
+    t.datetime "deleted_at"
+    t.index ["deleted_at"], name: "index_vouchers_on_deleted_at"
     t.index ["event_id"], name: "index_vouchers_on_event_id"
     t.index ["status"], name: "index_vouchers_on_status"
     t.index ["vendor_id"], name: "index_vouchers_on_vendor_id"

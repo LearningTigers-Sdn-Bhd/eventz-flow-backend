@@ -42,4 +42,13 @@ class VoucherPolicy < ApplicationPolicy
 	def destroy?
 		edit?
 	end
+
+	def restore?
+		edit?
+	end
+
+	# Permanent delete is org owner only.
+	def force_delete?
+		user&.is_org_owner? || false
+	end
 end

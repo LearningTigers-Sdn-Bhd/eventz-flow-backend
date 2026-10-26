@@ -25,6 +25,7 @@ module V1
           participants = exclude_invalid(participants)
         end
 
+        participants = exclude_ticket_types(participants)
         participants = exclude_null_names(participants)
         participants = filter_scanned(participants) if @session.scanned_only || @session.scanned_source == 'entries'
 
@@ -139,6 +140,13 @@ module V1
       def filter_entries(participants)
         column = participants.klass == Ticket ? :ticket_id : :visitor_id
         participants.where(id: @session.lucky_draw_entries.select(column))
+      end
+
+      # Tickets of a type the session leaves out can never be drawn
+      def exclude_ticket_types(participants)
+        return participants if participants.klass != Ticket || @session.excluded_ticket_type_ids.empty?
+
+        participants.where.not(ticket_type_id: @session.excluded_ticket_type_ids)
       end
 
       def exclude_null_names(participants)
