@@ -171,7 +171,7 @@ module V1
       end
 
       def session_params
-        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, :winners_per_draw, :gift_pick, :round_sweep, draw_styles: {}, wrapper_background: {})
+        params.permit(:title, :draw_date, :use_gifts, :scanned_only, :scanned_from, :scanned_to, :scanned_source, :winners_per_draw, :gift_pick, :round_sweep, excluded_ticket_type_ids: [], draw_styles: {}, wrapper_background: {})
       end
 
       def format_session_response(session)
@@ -191,6 +191,7 @@ module V1
           winners_per_draw: session.winners_per_draw,
           gift_pick: session.gift_pick,
           round_sweep: session.round_sweep,
+          excluded_ticket_type_ids: session.excluded_ticket_type_ids,
           created_at: session.created_at.iso8601,
           updated_at: session.updated_at.iso8601
         }

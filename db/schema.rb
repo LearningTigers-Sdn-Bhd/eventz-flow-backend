@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1340,6 +1340,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_100000) do
     t.integer "winners_per_draw", default: 1, null: false
     t.string "gift_pick", default: "in_order", null: false
     t.boolean "round_sweep", default: false, null: false
+    t.bigint "excluded_ticket_type_ids", default: [], null: false, array: true
     t.index ["created_by_id"], name: "index_lucky_draw_sessions_on_created_by_id"
     t.index ["draw_date"], name: "index_lucky_draw_sessions_on_draw_date"
     t.index ["draw_styles"], name: "index_lucky_draw_sessions_on_draw_styles", using: :gin
