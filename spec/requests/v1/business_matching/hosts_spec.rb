@@ -422,6 +422,32 @@ RSpec.describe "V1::BusinessMatching::Hosts", type: :request do
       expect(json_response['current_host_name']).to eq(host_user.full_name)
     end
 
+    it "works for a signed-in invitee and flags them once they are the host" do
+      invitee = create(:user)
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      get "/v1/business_matching/host_invites/#{token}", headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_current_user_admin']).to eq(false)
+      expect(json_response['is_current_user_host']).to eq(false)
+
+      BusinessHostAssignment.create!(event: event, user: invitee, business_matching_event_id: session.id.to_s)
+      get "/v1/business_matching/host_invites/#{token}", headers: auth_headers(invitee)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_current_user_host']).to eq(true)
+    end
+
+    it "flags a signed-in organizer as admin" do
+      token = BusinessHostInviteToken.issue(event_id: event.id, business_matching_event_id: session.id.to_s)
+
+      get "/v1/business_matching/host_invites/#{token}", headers: auth_headers(create(:user, :organizer))
+
+      expect(response).to have_http_status(:ok)
+      expect(json_response['is_current_user_admin']).to eq(true)
+    end
+
     it "returns 404 for invalid or expired token" do
       get "/v1/business_matching/host_invites/invalid-token"
 
