@@ -359,7 +359,10 @@ Rails.application.routes.draw do
       end
 
       resources :vendors, controller: 'event_vendors', only: %i[index create update destroy] do
-        collection { post :batch }
+        collection do
+          post :batch
+          get :exhibitor_kits
+        end
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'

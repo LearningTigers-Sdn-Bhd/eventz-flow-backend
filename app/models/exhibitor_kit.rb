@@ -124,7 +124,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of team members for this exhibitor kit
   def team_member_count
-    exhibitor_team_members.count
+    exhibitor_team_members.size
   end
 
   # Calculate total excess team members beyond the limit (regardless of payment status)
@@ -137,7 +137,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members already paid for (from verified payments)
   def paid_extra_member_count
-    exhibitor_team_member_payments.verified.sum(:extra_member_count)
+    sum_extra_members_with_status(%w[verified])
   end
 
   # Count of paid extra slots currently used by existing excess members.
@@ -147,7 +147,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
-    exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)
+    sum_extra_members_with_status(%w[pending submitted])
   end
 
   # Unpaid excess count (excludes members with verified or in-progress payments)
@@ -166,6 +166,16 @@ class ExhibitorKit < ApplicationRecord
   end
 
   private
+
+  # Sums from the loaded payments when they're preloaded (list endpoints), so the
+  # per-kit team counts don't cost one SUM query per kit.
+  def sum_extra_members_with_status(statuses)
+    if exhibitor_team_member_payments.loaded?
+      exhibitor_team_member_payments.select { |payment| statuses.include?(payment.status) }.sum(&:extra_member_count)
+    else
+      exhibitor_team_member_payments.where(status: statuses).sum(:extra_member_count)
+    end
+  end
 
   def set_public_id
     self.public_id ||= SecureRandom.base58(22)
