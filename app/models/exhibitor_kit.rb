@@ -18,6 +18,7 @@ class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
   belongs_to :exhibitor_package, optional: true
+belongs_to :tags_collected_by, class_name: 'User', optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
   has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy
@@ -84,6 +85,11 @@ class ExhibitorKit < ApplicationRecord
   validates :pic_email_address, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
+
+  # Exhibitor tags: every kit includes the event's tags_per_kit. Staff only record how many were
+  # collected; taking more than included simply counts as extra (see #extra_tags).
+  MAX_TAGS_COLLECTED = 1000
+  validates :tags_collected, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: MAX_TAGS_COLLECTED }
 
   before_save :remove_payment_option_when_payment_is_settled
   before_save :stamp_payment_recorded_at, if: :will_save_change_to_payment_status?
@@ -163,6 +169,15 @@ class ExhibitorKit < ApplicationRecord
   # Charges for unpaid excess team members
   def extra_team_member_charges
     unpaid_excess_team_member_count * extra_team_member_fee
+  end
+
+  def tags_included
+    event.exhibitor_tags_per_kit.to_i
+  end
+
+  # Tags taken beyond the included ones.
+  def extra_tags
+    [tags_collected.to_i - tags_included, 0].max
   end
 
   private

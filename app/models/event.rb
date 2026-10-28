@@ -111,6 +111,7 @@ class Event < ApplicationRecord
 
   # --- Validations ---
   validates :title, presence: true, length: { maximum: 100 }
+  validates :exhibitor_tags_per_kit, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 50 }
   validates :status, presence: true
   validates :start_date, presence: true
   validates :end_date, presence: true

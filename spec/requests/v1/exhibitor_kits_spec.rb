@@ -107,6 +107,37 @@ RSpec.describe 'V1::ExhibitorKits', type: :request do
       expect(rows.second.first).to eq(kit.company_name)
     end
 
+    it 'adds Total Revenue and tag counts to the Summary and tag columns to the kits sheet' do
+      kit.update!(tags_collected: event.exhibitor_tags_per_kit + 1)
+
+      get "/v1/events/#{event.id}/exhibitor_kits/export", headers: auth_headers(admin_user)
+
+      tempfile = Tempfile.new(['export', '.xlsx'], binmode: true)
+      tempfile.write(response.body)
+      tempfile.flush
+      workbook = Roo::Excelx.new(tempfile.path)
+      summary = workbook.sheet('Summary')
+
+      header_row = (1..summary.last_row).find { |r| summary.cell(r, 1) == 'Booths Booked' }
+      headers = (1..9).map { |c| summary.cell(header_row, c) }
+      expect(headers).to eq(['Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid', 'Collected Revenue',
+                             'Pending Revenue', 'Total Revenue', 'Tags Collected', 'Extra Tags'])
+      collected, pending, total = (5..7).map { |c| summary.cell(header_row + 1, c) }
+      expect(total).to eq((collected + pending).round(2))
+      expect(summary.cell(header_row + 1, 8)).to eq(event.exhibitor_tags_per_kit + 1)
+      expect(summary.cell(header_row + 1, 9)).to eq(1)
+
+      breakdown_header = (1..summary.last_row).find { |r| summary.cell(r, 1) == 'Pricing' }
+      expect(summary.cell(breakdown_header, 9)).to eq('Total Revenue')
+      total_row = (1..summary.last_row).find { |r| summary.cell(r, 1) == 'Total' }
+      expect(summary.cell(total_row, 9)).to eq((summary.cell(total_row, 7) + summary.cell(total_row, 8)).round(2))
+
+      kits = workbook.sheet('Registered Exhibitor')
+      expect((18..20).map { |c| kits.cell(1, c) }).to eq(['Tags Collected', 'Tags Included', 'Extra Tags'])
+      expect(kits.cell(2, 20)).to eq(1)
+      tempfile.close!
+    end
+
     it 'includes booth pricing tiers with zero bookings in the Summary breakdown' do
       unbooked = create(:exhibitor_booth_price, event: event, label: 'Untouched Tier')
 

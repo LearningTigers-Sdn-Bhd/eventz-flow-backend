@@ -422,8 +422,10 @@ Rails.application.routes.draw do
           get :export
           get :import_template
           post :import
+          post :bulk_tags
         end
         member do
+          patch :tags, action: :update_tags
           post :submit_order
           post :reject_payment_proof
           post :resync_team_members

@@ -8,6 +8,7 @@ module V1
     KIT_PRELOADS = [
       :exhibitor_booth_price,
       :exhibitor_package,
+      :tags_collected_by,
       :exhibitor_team_members,
       :exhibitor_kit_items,
       :exhibitor_kit_printings,
@@ -53,17 +54,20 @@ module V1
     # Exhibitors table. Search, filters, sort and paging happen here so the browser never
     # receives every kit of a large event.
     #   Params: page, per_page, q, payment_status, booth_type, booth_pricing, zone
+    #           tags_status (none | partial | complete)
     #           (zone=__unassigned__ for kits without a zone), sort_by (booth_number |
     #           company_name | created_at), sort_dir (asc | desc)
-    #   Pagination metadata is in X-Total-Count / X-Page / X-Per-Page / X-Total-Pages.
+    #   Pagination metadata is in X-Total-Count / X-Page / X-Per-Page / X-Total-Pages;
+    #   tag totals over every matching kit are in X-Tags-Collected (capped at the included
+    #   count per kit), X-Tags-Entitled (included tags) and X-Tags-Extra (taken beyond those).
     def exhibitor_kits
       # Staff only: rows carry every exhibitor's contact and payment details, and
       # :show? passes for any signed-in user on a public event.
       authorize @event, :analytics?
       return render json: [] unless @event.use_exhibitor_kit?
 
-      scope = filtered_exhibitor_kits
-      pagy_obj, kits = pagy(sorted_exhibitor_kits(scope), limit: pagination_params[:per_page] || 25)
+      query = ExhibitorKitListQuery.new(@event, params)
+      pagy_obj, kits = pagy(sorted_exhibitor_kits(query.scope), limit: pagination_params[:per_page] || 25)
       kits = ExhibitorKit.where(id: kits.map(&:id)).includes(KIT_PRELOADS, event_vendor: [:vendor, { event: %i[exhibitor_team_member_limit event_payment_gateway] }])
                          .index_by(&:id).values_at(*kits.map(&:id)).compact
 
@@ -71,6 +75,10 @@ module V1
       response.headers['X-Page']        = pagy_obj.page.to_s
       response.headers['X-Per-Page']    = pagy_obj.limit.to_s
       response.headers['X-Total-Pages'] = pagy_obj.pages.to_s
+      totals = query.tag_totals
+      response.headers['X-Tags-Collected'] = totals[:collected].to_s
+      response.headers['X-Tags-Entitled'] = totals[:entitled].to_s
+      response.headers['X-Tags-Extra'] = totals[:extra].to_s
 
       render json: kits.map { |kit|
         { vendor: format_event_vendor(kit.event_vendor, include_kits: false), kit: format_exhibitor_kit(kit) }
@@ -176,41 +184,6 @@ module V1
       @event = Event.with_deleted.find(params[:event_id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
-    end
-
-    # Same visibility as #index: every kit of an exhibitor that has at least one live booking.
-    def filtered_exhibitor_kits
-      scope = ExhibitorKit.joins(event_vendor: :vendor)
-                          .where(event_vendors: { event_id: @event.id, type: 'Exhibitor' })
-                          .where(event_vendor_id: @event.exhibitors.with_active_kit.select(:id))
-      scope = scope.where(payment_status: params[:payment_status]) if ExhibitorKit.payment_statuses.key?(params[:payment_status])
-      scope = scope.where(booth_type: params[:booth_type]) if params[:booth_type].present?
-      scope = filter_kits_by_price(scope)
-      scope = filter_kits_by_search(scope)
-      scope
-    end
-
-    def filter_kits_by_price(scope)
-      if params[:booth_pricing].present?
-        scope = scope.joins(:exhibitor_booth_price).where(exhibitor_booth_prices: { label: params[:booth_pricing] })
-      end
-      return scope if params[:zone].blank?
-
-      if params[:zone] == '__unassigned__'
-        scope.left_joins(exhibitor_booth_price: :exhibitor_zone).where(exhibitor_zones: { id: nil })
-      else
-        scope.joins(exhibitor_booth_price: :exhibitor_zone).where(exhibitor_zones: { zone: params[:zone] })
-      end
-    end
-
-    def filter_kits_by_search(scope)
-      return scope if params[:q].blank?
-
-      term = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].strip)}%"
-      scope.where(
-        'exhibitor_kits.company_name ILIKE :t OR exhibitor_kits.booth_number ILIKE :t OR users.full_name ILIKE :t',
-        t: term
-      )
     end
 
     def sorted_exhibitor_kits(scope)
@@ -395,6 +368,11 @@ module V1
         exhibitor_package_id: exhibitor_kit.exhibitor_package_id,
         exhibitor_package_name: exhibitor_kit.exhibitor_package&.name,
         exhibitor_package_inclusions: exhibitor_kit.exhibitor_package&.inclusions,
+        tags_collected: exhibitor_kit.tags_collected,
+        tags_included: exhibitor_kit.tags_included,
+        extra_tags: exhibitor_kit.extra_tags,
+        tags_collected_at: exhibitor_kit.tags_collected_at,
+        tags_collected_by_name: exhibitor_kit.tags_collected_by&.full_name,
         custom_fields_data: exhibitor_kit.custom_fields_data,
         ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         customs_declaration_uploaded: exhibitor_kit.customs_declaration_form.attached?,

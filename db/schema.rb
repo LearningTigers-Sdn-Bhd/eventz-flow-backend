@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_28_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -854,6 +854,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
     t.integer "multiple_scan_mode", default: 0, null: false
     t.datetime "thank_you_sent_at"
     t.datetime "exhibitor_thank_you_sent_at"
+    t.integer "exhibitor_tags_per_kit", default: 2, null: false
     t.boolean "vehicles_enabled", default: false, null: false
     t.string "rfid_mode", default: "bind", null: false
     t.boolean "rfid_require_check_in", default: false, null: false
@@ -1016,11 +1017,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
     t.integer "lock_version", default: 0, null: false
     t.bigint "exhibitor_package_id"
     t.datetime "payment_recorded_at"
+    t.integer "tags_collected", default: 0, null: false
+    t.datetime "tags_collected_at"
+    t.bigint "tags_collected_by_id"
     t.index ["event_vendor_id", "idempotency_key"], name: "idx_exhibitor_kits_on_vendor_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["event_vendor_id"], name: "index_exhibitor_kits_on_event_vendor_id"
     t.index ["exhibitor_booth_price_id"], name: "index_exhibitor_kits_on_exhibitor_booth_price_id"
     t.index ["exhibitor_package_id"], name: "index_exhibitor_kits_on_exhibitor_package_id"
     t.index ["public_id"], name: "index_exhibitor_kits_on_public_id", unique: true
+    t.index ["tags_collected_by_id"], name: "index_exhibitor_kits_on_tags_collected_by_id"
   end
 
   create_table "exhibitor_owners", force: :cascade do |t|
@@ -2348,6 +2353,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_110000) do
   add_foreign_key "exhibitor_kits", "event_vendors"
   add_foreign_key "exhibitor_kits", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_kits", "exhibitor_packages"
+  add_foreign_key "exhibitor_kits", "users", column: "tags_collected_by_id"
   add_foreign_key "exhibitor_packages", "events"
   add_foreign_key "exhibitor_packages", "exhibitor_booth_prices"
   add_foreign_key "exhibitor_registration_payments", "exhibitor_kits"

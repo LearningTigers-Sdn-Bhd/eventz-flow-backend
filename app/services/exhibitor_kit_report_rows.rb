@@ -5,7 +5,8 @@ class ExhibitorKitReportRows
     'Company Name', 'PIC Name', 'PIC Email', 'PIC Contact', 'PIC Position', 'Country',
     'Booth Number', 'Booth Type', 'Booth Pricing', 'Zone',
     'Unit Price', 'Booking Value', 'Amount Paid', 'Currency',
-    'Payment Status', 'Booking Status', 'Booked At'
+    'Payment Status', 'Booking Status', 'Booked At',
+    'Tags Collected', 'Tags Included', 'Extra Tags'
   ].freeze
 
   def self.for(kits)
@@ -27,7 +28,10 @@ class ExhibitorKitReportRows
         kit.currency,
         kit.payment_status.titleize,
         kit.booking_status.titleize,
-        kit.created_at
+        kit.created_at,
+        kit.tags_collected,
+        kit.tags_included,
+        kit.extra_tags
       ]
     end
   end
