@@ -392,6 +392,18 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
         end_date: Date.new(2026, 9, 1)
       )
     end
+    let!(:unassigned_session) do
+      BusinessMatchingSession.create!(
+        event: event,
+        title: "Beta Logistics",
+        location: "Table 2",
+        slot_duration: 30,
+        start_time: "10:00",
+        end_time: "17:00",
+        start_date: Date.new(2026, 9, 1),
+        end_date: Date.new(2026, 9, 1)
+      )
+    end
     let(:host_user) { create(:user, full_name: "Alice Host", email: "alice@alphatech.com", phone: "+60123456789") }
 
     before do
@@ -429,20 +441,22 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
       expect(xlsx.sheets).to eq(['Sellers & Profiles', 'seller_list'])
 
       xlsx.default_sheet = 'Sellers & Profiles'
-      expect(xlsx.row(1).length).to eq(11) # Only 11 columns since no exhibitors exist
-      expect(xlsx.row(1)).to include('Table', 'Seller Name', 'Session Schedule', 'Host Name', 'BM Profile Description')
+      expect(xlsx.row(1).length).to eq(12) # 12 columns with Status since no exhibitors exist
+      expect(xlsx.row(1)).to include('Table', 'Seller Name', 'Session Schedule', 'Status', 'Host Name', 'BM Profile Description')
       expect(xlsx.row(1)).not_to include('Exhibitor PIC Name')
-      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'Leading software vendor')
+      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Active', 'Alice Host', 'Leading software vendor')
+      expect(xlsx.row(3)).to include('Table 2', 'Beta Logistics', 'Not Activated')
 
       xlsx.default_sheet = 'seller_list'
-      expect(xlsx.row(1)).to eq(['Table', 'Seller Name', 'Session Schedule', 'Host', 'Email'])
-      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Alice Host', 'alice@alphatech.com')
+      expect(xlsx.row(1)).to eq(['Table', 'Seller Name', 'Session Schedule', 'Status', 'Host', 'Email'])
+      expect(xlsx.row(2)).to include('Table 1', 'Alpha Tech Solutions', 'Active', 'Alice Host', 'alice@alphatech.com')
+      expect(xlsx.row(3)).to include('Table 2', 'Beta Logistics', 'Not Activated')
 
       temp_file.close
       temp_file.unlink
     end
 
-    it "includes columns 12-19 when at least one exhibitor exists for the event" do
+    it "includes columns 13-20 when at least one exhibitor exists for the event" do
       vendor = create(:user, :vendor)
       exhibitor = Exhibitor.create!(event: event, vendor: vendor)
       ExhibitorKit.create!(
@@ -464,7 +478,7 @@ RSpec.describe "V1::BusinessMatching::Sessions", type: :request do
 
       xlsx = Roo::Excelx.new(temp_file.path)
       xlsx.default_sheet = 'Sellers & Profiles'
-      expect(xlsx.row(1).length).to eq(19)
+      expect(xlsx.row(1).length).to eq(20)
       expect(xlsx.row(1)).to include('Exhibitor PIC Name', 'Exhibitor PIC Email', 'Company Address', 'Industry / Category')
       expect(xlsx.row(2)).to include('PIC Bob', 'bob@alphatech.com')
 
