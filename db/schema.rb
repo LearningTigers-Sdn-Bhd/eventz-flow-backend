@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_28_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_28_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1240,6 +1240,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "round"
+    t.datetime "voided_at"
     t.index ["gift_id"], name: "index_gift_winners_on_gift_id"
     t.index ["ticket_id"], name: "index_gift_winners_on_ticket_id"
     t.index ["visitor_id"], name: "index_gift_winners_on_visitor_id"
@@ -1295,6 +1296,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "round"
+    t.datetime "voided_at"
     t.index ["lucky_draw_session_id", "round"], name: "index_invalid_participants_on_session_id_and_round"
     t.index ["lucky_draw_session_id", "ticket_id"], name: "index_invalid_participants_on_session_id_and_ticket_id_unique", unique: true, where: "(ticket_id IS NOT NULL)"
     t.index ["lucky_draw_session_id", "visitor_id"], name: "index_invalid_participants_on_session_id_and_visitor_id_unique", unique: true, where: "(visitor_id IS NOT NULL)"
@@ -1847,6 +1849,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_100000) do
     t.datetime "drawn_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "voided_at"
     t.index ["roulette_prize_id"], name: "index_roulette_winners_on_roulette_prize_id"
     t.index ["roulette_session_id"], name: "index_roulette_winners_on_roulette_session_id"
     t.index ["ticket_id"], name: "index_roulette_winners_on_ticket_id"

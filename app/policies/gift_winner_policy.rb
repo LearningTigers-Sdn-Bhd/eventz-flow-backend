@@ -29,6 +29,15 @@ class GiftWinnerPolicy < ApplicationPolicy
     create?
   end
 
+  # void? / unvoid? - same as create? (a no-show winner is voided, then redrawn)
+  def void?
+    create?
+  end
+
+  def unvoid?
+    create?
+  end
+
   # bulk? - same as create? (for bulk winner assignment)
   def bulk?
     create?

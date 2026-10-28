@@ -12,6 +12,9 @@ class GiftWinner < ApplicationRecord
   validate :participant_belongs_to_event
   validate :ticket_type_not_excluded, on: :create
 
+  # --- Scopes ---
+  scope :active, -> { where(voided_at: nil) }
+
   # --- Private Methods ---
   private
 

@@ -137,6 +137,7 @@ module V1
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
           round: winner.round,
+          voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601

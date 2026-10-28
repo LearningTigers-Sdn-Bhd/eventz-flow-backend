@@ -469,6 +469,8 @@ Rails.application.routes.draw do
             resources :winners, only: %i[create destroy], controller: 'gift_winners' do
               member do
                 post :notify
+                post :void
+                post :unvoid
               end
               collection do
                 post :bulk
@@ -480,6 +482,8 @@ Rails.application.routes.draw do
           resources :invalid_participants, only: %i[index create destroy] do
             member do
               post :notify
+              post :void
+              post :unvoid
             end
             collection do
               delete :destroy_all
@@ -501,6 +505,8 @@ Rails.application.routes.draw do
           resources :winners, only: %i[index create destroy], controller: 'roulette_winners' do
             member do
               post :notify
+              post :void
+              post :unvoid
             end
           end
           resources :participants, only: [:show], controller: 'roulette_participants'

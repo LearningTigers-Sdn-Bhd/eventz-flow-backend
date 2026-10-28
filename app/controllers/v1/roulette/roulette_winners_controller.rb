@@ -3,7 +3,7 @@ module V1
     class RouletteWinnersController < ApplicationController
       before_action :set_event
       before_action :set_session
-      before_action :set_winner, only: [:destroy, :notify]
+      before_action :set_winner, only: [:destroy, :notify, :void, :unvoid]
 
       # GET /v1/events/:event_id/roulette/sessions/:session_id/winners
       def index
@@ -141,6 +141,21 @@ module V1
         )
       end
 
+      # POST .../winners/:id/void
+      # The prize was not claimed. The winner stays recorded but the prize goes back in stock.
+      def void
+        authorize @winner, :void?
+        @winner.update!(voided_at: Time.current) unless @winner.voided_at
+        success_response(data: format_winner_response(@winner), message: 'Success')
+      end
+
+      # POST .../winners/:id/unvoid (undo a mis-tap)
+      def unvoid
+        authorize @winner, :unvoid?
+        @winner.update!(voided_at: nil)
+        success_response(data: format_winner_response(@winner), message: 'Success')
+      end
+
       # POST /v1/events/:event_id/roulette/sessions/:session_id/winners/:id/notify
       def notify
         authorize @winner, :notify?
@@ -196,6 +211,7 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: winner.ticket&.attendee_name || winner.visitor&.full_name,
+          voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601

@@ -123,6 +123,7 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: winner.ticket&.attendee_name || winner.visitor&.full_name,
+          voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601
         }
