@@ -20,12 +20,13 @@ class Gift < ApplicationRecord
 
   # --- Instance Methods ---
   # Check if this gift needs more winners
+  # (voided no-shows do not count)
   def needs_more_winners?
-    gift_winners.count < winner_counts
+    gift_winners.active.count < winner_counts
   end
 
   # Get the number of winners still needed
   def winners_needed
-    [winner_counts - gift_winners.count, 0].max
+    [winner_counts - gift_winners.active.count, 0].max
   end
 end

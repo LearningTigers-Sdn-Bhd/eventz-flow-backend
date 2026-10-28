@@ -18,6 +18,7 @@ class ExhibitorKit < ApplicationRecord
   belongs_to :event_vendor, class_name: 'Exhibitor', inverse_of: :exhibitor_kits
   belongs_to :exhibitor_booth_price, optional: true
   belongs_to :exhibitor_package, optional: true
+belongs_to :tags_collected_by, class_name: 'User', optional: true
   has_many :exhibitor_kit_payments, dependent: :destroy
   has_one :exhibitor_registration_payment, dependent: :destroy
   has_many :exhibitor_team_member_payments, dependent: :destroy
@@ -85,6 +86,11 @@ class ExhibitorKit < ApplicationRecord
   validates :amount_paid, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validates :booth_quantity, numericality: { only_integer: true, greater_than: 0 }
 
+  # Exhibitor tags: every kit includes the event's tags_per_kit. Staff only record how many were
+  # collected; taking more than included simply counts as extra (see #extra_tags).
+  MAX_TAGS_COLLECTED = 1000
+  validates :tags_collected, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: MAX_TAGS_COLLECTED }
+
   before_save :remove_payment_option_when_payment_is_settled
   before_save :stamp_payment_recorded_at, if: :will_save_change_to_payment_status?
   after_save :sync_booth_status, if: :saved_change_to_booking_status?
@@ -124,7 +130,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of team members for this exhibitor kit
   def team_member_count
-    exhibitor_team_members.count
+    exhibitor_team_members.size
   end
 
   # Calculate total excess team members beyond the limit (regardless of payment status)
@@ -137,7 +143,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members already paid for (from verified payments)
   def paid_extra_member_count
-    exhibitor_team_member_payments.verified.sum(:extra_member_count)
+    sum_extra_members_with_status(%w[verified])
   end
 
   # Count of paid extra slots currently used by existing excess members.
@@ -147,7 +153,7 @@ class ExhibitorKit < ApplicationRecord
 
   # Count of extra members with payments in progress (pending or submitted)
   def in_progress_extra_member_count
-    exhibitor_team_member_payments.where(status: %i[pending submitted]).sum(:extra_member_count)
+    sum_extra_members_with_status(%w[pending submitted])
   end
 
   # Unpaid excess count (excludes members with verified or in-progress payments)
@@ -165,7 +171,26 @@ class ExhibitorKit < ApplicationRecord
     unpaid_excess_team_member_count * extra_team_member_fee
   end
 
+  def tags_included
+    event.exhibitor_tags_per_kit.to_i
+  end
+
+  # Tags taken beyond the included ones.
+  def extra_tags
+    [tags_collected.to_i - tags_included, 0].max
+  end
+
   private
+
+  # Sums from the loaded payments when they're preloaded (list endpoints), so the
+  # per-kit team counts don't cost one SUM query per kit.
+  def sum_extra_members_with_status(statuses)
+    if exhibitor_team_member_payments.loaded?
+      exhibitor_team_member_payments.select { |payment| statuses.include?(payment.status) }.sum(&:extra_member_count)
+    else
+      exhibitor_team_member_payments.where(status: statuses).sum(:extra_member_count)
+    end
+  end
 
   def set_public_id
     self.public_id ||= SecureRandom.base58(22)

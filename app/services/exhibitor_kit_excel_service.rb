@@ -1,7 +1,8 @@
 require 'caxlsx'
 
 # Exports an event's exhibitor kit registrations as a multi-sheet Excel workbook:
-#   1. Summary            - headline stats + booth pricing breakdown (mirrors the analytics dashboard)
+#   1. Summary            - headline stats (revenue, total revenue, tags) + booth pricing breakdown
+#                            (mirrors the analytics dashboard)
 #   2. Registered Exhibitor - one row per exhibitor kit with company/PIC/booking/payment details
 #   3. Exhibitor Crew      - one row per crew member (team member) attached to a kit
 class ExhibitorKitExcelService
@@ -24,7 +25,7 @@ class ExhibitorKitExcelService
       .joins(:event_vendor)
       .where(event_vendors: { event_id: @event.id })
       .merge(ExhibitorKit.active_or_paid)
-      .includes(:event_vendor, :exhibitor_booth_price, :exhibitor_package,
+      .includes({ event_vendor: :event }, :exhibitor_booth_price, :exhibitor_package,
                 :exhibitor_registration_payment, :exhibitor_team_members)
       .order(:created_at)
       .to_a
@@ -101,34 +102,41 @@ class ExhibitorKitExcelService
   def build_summary_sheet(package)
     package.workbook.add_worksheet(name: 'Summary') do |sheet|
       sheet.sheet_pr.tab_color = BRAND_BLUE
-      sheet.column_widths 24, 18, 18, 18, 18, 18, 18, 18
-      sheet.merge_cells('A1:H1')
+      sheet.column_widths 24, 18, 18, 18, 18, 18, 18, 18, 18
+      sheet.merge_cells('A1:I1')
       sheet.add_row [@event.title], style: @styles[:title], height: 28
       sheet.add_row ["Exhibitor Kit Report  •  Generated #{Time.current.strftime('%d %b %Y, %I:%M %p')}"],
                     style: @styles[:subtitle]
       sheet.add_row []
 
       sheet.add_row ['Overview'], style: @styles[:section_header]
-      merge_row_across(sheet, 8)
+      merge_row_across(sheet, 9)
 
       sheet.add_row ['Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid',
-                     'Collected Revenue', 'Pending Revenue'],
-                    style: Array.new(6, @styles[:stat_label])
+                     'Collected Revenue', 'Pending Revenue', 'Total Revenue',
+                     'Tags Collected', 'Extra Tags'],
+                    style: Array.new(9, @styles[:stat_label])
+      collected = collected_revenue
+      pending = pending_revenue
       sheet.add_row [
         booth_count(@kits),
         booth_count(@kits.select(&:settled?)),
         booth_count(@kits.select(&:deposit?)),
         booth_count(@kits.select(&:unpaid?)),
-        collected_revenue,
-        pending_revenue
+        collected,
+        pending,
+        (collected + pending).round(2),
+        @kits.sum(&:tags_collected),
+        @kits.sum(&:extra_tags)
       ], style: [@styles[:stat_value], @styles[:stat_value], @styles[:stat_value], @styles[:stat_value],
-                 @styles[:currency], @styles[:currency]], height: 20
+                 @styles[:currency], @styles[:currency], @styles[:total_currency],
+                 @styles[:stat_value], @styles[:stat_value]], height: 20
 
       sheet.add_row []
       sheet.add_row ['Booth Pricing Breakdown'], style: @styles[:section_header]
-      merge_row_across(sheet, 8)
+      merge_row_across(sheet, 9)
 
-      headers = ['Pricing', 'Zone', 'Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid', 'Collected Revenue', 'Pending Revenue']
+      headers = ['Pricing', 'Zone', 'Booths Booked', 'Booths Paid', 'Booths Deposit', 'Booths Unpaid', 'Collected Revenue', 'Pending Revenue', 'Total Revenue']
       sheet.add_row headers, style: Array.new(headers.size, @styles[:table_header]), height: 18
       header_row_number = sheet.rows.size
 
@@ -139,17 +147,19 @@ class ExhibitorKitExcelService
         currency_style = index.even? ? @styles[:currency] : @styles[:currency_alt]
         sheet.add_row(
           [row[:label], row[:zone] || 'Unassigned', row[:booked], row[:paid], row[:deposit], row[:unpaid],
-           row[:collected], row[:pending]],
+           row[:collected], row[:pending], (row[:collected] + row[:pending]).round(2)],
           style: [style, style, number_style, number_style, number_style, number_style,
-                  currency_style, currency_style]
+                  currency_style, currency_style, currency_style]
         )
       end
 
       sheet.add_row(
         ['Total', '', rows.sum { |r| r[:booked] }, rows.sum { |r| r[:paid] }, rows.sum { |r| r[:deposit] },
-         rows.sum { |r| r[:unpaid] }, rows.sum { |r| r[:collected] }.round(2), rows.sum { |r| r[:pending] }.round(2)],
+         rows.sum { |r| r[:unpaid] }, rows.sum { |r| r[:collected] }.round(2), rows.sum { |r| r[:pending] }.round(2),
+         rows.sum { |r| r[:collected] + r[:pending] }.round(2)],
         style: [@styles[:total_label], @styles[:total_label], @styles[:total_number], @styles[:total_number],
-                @styles[:total_number], @styles[:total_number], @styles[:total_currency], @styles[:total_currency]]
+                @styles[:total_number], @styles[:total_number], @styles[:total_currency], @styles[:total_currency],
+                @styles[:total_currency]]
       )
 
       sheet.sheet_view.pane do |pane|
@@ -173,7 +183,7 @@ class ExhibitorKitExcelService
 
   def build_kits_sheet(package)
     headers = ExhibitorKitReportRows::HEADERS
-    column_widths = [24, 20, 26, 16, 14, 12, 14, 14, 20, 14, 13, 14, 13, 10, 14, 14, 21]
+    column_widths = [24, 20, 26, 16, 14, 12, 14, 14, 20, 14, 13, 14, 13, 10, 14, 14, 21, 15, 14, 12]
 
     package.workbook.add_worksheet(name: 'Registered Exhibitor') do |sheet|
       sheet.sheet_pr.tab_color = BRAND_BLUE
@@ -186,12 +196,13 @@ class ExhibitorKitExcelService
         text_style = index.even? ? @styles[:text] : @styles[:text_alt]
         currency_style = index.even? ? @styles[:currency] : @styles[:currency_alt]
         date_style = index.even? ? @styles[:date_cell] : @styles[:date_cell_alt]
+        number_style = index.even? ? @styles[:number] : @styles[:number_alt]
 
         sheet.add_row(
           row,
           style: [
             style, style, style, text_style, style, style, text_style, style, style, style,
-            currency_style, currency_style, currency_style, style, style, style, date_style
+            currency_style, currency_style, currency_style, style, style, style, date_style, number_style, number_style, number_style
           ]
         )
       end
@@ -201,9 +212,16 @@ class ExhibitorKitExcelService
       total_row[0] = 'Total'
       total_row[11] = kit_rows.sum { |row| row[11].to_f }.round(2)
       total_row[12] = kit_rows.sum { |row| row[12].to_f }.round(2)
+      # Tags Collected (17), Tags Included (18) and Extra Tags (19) are plain counts.
+      [17, 18, 19].each { |i| total_row[i] = kit_rows.sum { |row| row[i].to_i } }
       sheet.add_row(
         total_row,
-        style: Array.new(headers.size) { |i| [11, 12].include?(i) ? @styles[:total_currency] : @styles[:total_label] }
+        style: Array.new(headers.size) do |i|
+          if [11, 12].include?(i) then @styles[:total_currency]
+          elsif [17, 18, 19].include?(i) then @styles[:total_number]
+          else @styles[:total_label]
+          end
+        end
       )
 
       sheet.auto_filter = "A1:#{Axlsx.col_ref(headers.size - 1)}#{@kits.size + 1}"

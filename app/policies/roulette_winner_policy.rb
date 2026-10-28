@@ -25,6 +25,15 @@ class RouletteWinnerPolicy < ApplicationPolicy
     create?
   end
 
+  # void? / unvoid? - same permissions as create? (an unclaimed prize goes back in stock)
+  def void?
+    create?
+  end
+
+  def unvoid?
+    create?
+  end
+
   # notify? - same permissions as create?
   def notify?
     create?

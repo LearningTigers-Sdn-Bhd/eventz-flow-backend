@@ -13,7 +13,7 @@ class ExhibitorKitCsvService
       .joins(:event_vendor)
       .where(event_vendors: { event_id: @event.id })
       .merge(ExhibitorKit.active_or_paid)
-      .includes(:event_vendor, :exhibitor_booth_price, :exhibitor_package, :exhibitor_registration_payment)
+      .includes({ event_vendor: :event }, :exhibitor_booth_price, :exhibitor_package, :exhibitor_registration_payment)
       .order(:created_at)
       .to_a
   end

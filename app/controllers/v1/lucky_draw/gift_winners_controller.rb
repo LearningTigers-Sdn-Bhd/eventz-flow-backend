@@ -6,7 +6,7 @@ module V1
       before_action :set_session
       before_action :authorize_event
       before_action :set_gift, except: :sweep
-      before_action :set_winner, only: [:destroy, :notify]
+      before_action :set_winner, only: [:destroy, :notify, :void, :unvoid]
 
       # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/gifts/:gift_id/winners
       def create
@@ -95,6 +95,30 @@ module V1
         authorize @winner
         @winner.destroy
         head :no_content
+      end
+
+      # POST .../gifts/:gift_id/winners/:id/void
+      # The winner did not show up. The row stays (so they cannot win again and the
+      # history is kept) but the gift gets its slot back for a redraw.
+      def void
+        authorize @winner, :void?
+        @winner.update!(voided_at: Time.current) unless @winner.voided_at
+        success_response(data: format_winner_response(@winner), message: 'Success')
+      end
+
+      # POST .../gifts/:gift_id/winners/:id/unvoid (undo a mis-tap)
+      def unvoid
+        authorize @winner, :unvoid?
+
+        # Restoring fills a slot again, so the gift needs one free
+        @gift.with_lock do
+          if @winner.voided_at && !@gift.needs_more_winners?
+            return error_response(message: 'Every winner slot for this gift is taken', status: :unprocessable_content)
+          end
+
+          @winner.update!(voided_at: nil)
+        end
+        success_response(data: format_winner_response(@winner), message: 'Success')
       end
 
       # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/gifts/:gift_id/winners/:winner_id/notify
@@ -231,6 +255,7 @@ module V1
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
           round: winner.round,
+          voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,
           created_at: winner.created_at.iso8601,
           updated_at: winner.updated_at.iso8601

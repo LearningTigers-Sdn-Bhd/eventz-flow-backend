@@ -5,7 +5,7 @@ module V1
       before_action :set_event
       before_action :set_session
       before_action :authorize_event
-      before_action :set_invalid_participant, only: [:destroy, :notify]
+      before_action :set_invalid_participant, only: [:destroy, :notify, :void, :unvoid]
 
       # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/invalid_participants
       def index
@@ -105,6 +105,22 @@ module V1
         head :no_content
       end
 
+      # POST .../invalid_participants/:id/void
+      # The winner did not show up. The row stays (so they cannot win again and the
+      # history is kept) but the draw no longer counts them as a winner.
+      def void
+        authorize @invalid_participant, :void?
+        @invalid_participant.update!(voided_at: Time.current) unless @invalid_participant.voided_at
+        success_response(data: format_invalid_participant_response(@invalid_participant), message: 'Success')
+      end
+
+      # POST .../invalid_participants/:id/unvoid (undo a mis-tap)
+      def unvoid
+        authorize @invalid_participant, :unvoid?
+        @invalid_participant.update!(voided_at: nil)
+        success_response(data: format_invalid_participant_response(@invalid_participant), message: 'Success')
+      end
+
       # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/invalid_participants/:id/notify
       def notify
         authorize @invalid_participant, :notify?
@@ -175,6 +191,7 @@ module V1
             name: participant_name
           },
           round: invalid_participant.round,
+          voided_at: invalid_participant.voided_at&.iso8601,
           created_at: invalid_participant.created_at.iso8601,
           updated_at: invalid_participant.updated_at.iso8601
         }

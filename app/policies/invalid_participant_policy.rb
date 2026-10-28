@@ -34,6 +34,15 @@ class InvalidParticipantPolicy < ApplicationPolicy
     index?
   end
 
+  # void? / unvoid? - same as create? (a no-show winner is voided, then redrawn)
+  def void?
+    create?
+  end
+
+  def unvoid?
+    create?
+  end
+
   # bulk? - same as create?
   def bulk?
     create?

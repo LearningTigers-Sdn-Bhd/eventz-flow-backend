@@ -4,6 +4,32 @@ module V1
     before_action :set_event
     before_action :set_event_vendor, only: %i[update destroy]
 
+    # Everything format_exhibitor_kit touches, so serializing kits doesn't fire queries per kit.
+    KIT_PRELOADS = [
+      :exhibitor_booth_price,
+      :exhibitor_package,
+      :tags_collected_by,
+      :exhibitor_team_members,
+      :exhibitor_kit_items,
+      :exhibitor_kit_printings,
+      :custom_requests,
+      :exhibitor_team_member_payments,
+      { ic_copy_attachment: :blob },
+      { customs_declaration_form_attachment: :blob },
+      { customs_duty_estimate_attachment: :blob },
+      { indemnity_form_attachment: :blob },
+      { exhibitor_registration_payment: { payment_proof_attachment: :blob } },
+      { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } } },
+      { exhibitor_kit_printings: { printing_service: { image_attachment: :blob } } },
+      { exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
+    ].freeze
+
+    KIT_SORT_COLUMNS = {
+      'booth_number' => 'exhibitor_kits.booth_number',
+      'company_name' => "COALESCE(NULLIF(exhibitor_kits.company_name, ''), users.full_name)",
+      'created_at' => 'exhibitor_kits.created_at'
+    }.freeze
+
     # GET /v1/events/:event_id/vendors
     def index
       # Authorization is handled by event show policy
@@ -14,21 +40,49 @@ module V1
       exhibitors = exhibitors.with_active_kit if @event.use_exhibitor_kit?
       exhibitors = exhibitors.includes(
         :vendor,
-        exhibitor_kits: [
-          :exhibitor_team_members,
-          :exhibitor_kit_items,
-          :exhibitor_kit_printings,
-          :custom_requests,
-          :exhibitor_team_member_payments,
-          { exhibitor_kit_items: { rentable_item: { image_attachment: :blob } },
-            exhibitor_kit_printings: { printing_service: { image_attachment: :blob } },
-            exhibitor_team_member_payments: { payment_proof_attachment: :blob } }
-        ]
+        event: %i[exhibitor_team_member_limit event_payment_gateway],
+        exhibitor_kits: KIT_PRELOADS
       )
       event_vendors = (merchants + exhibitors).sort_by(&:id) # Combine and maintain order
 
       render json: event_vendors.map { |event_vendor| format_event_vendor(event_vendor) },
              status: :ok
+    end
+
+    # GET /v1/events/:event_id/vendors/exhibitor_kits
+    # One server-paginated page of exhibitor kits (a row per kit, with its vendor) for the
+    # Exhibitors table. Search, filters, sort and paging happen here so the browser never
+    # receives every kit of a large event.
+    #   Params: page, per_page, q, payment_status, booth_type, booth_pricing, zone
+    #           tags_status (none | partial | complete)
+    #           (zone=__unassigned__ for kits without a zone), sort_by (booth_number |
+    #           company_name | created_at), sort_dir (asc | desc)
+    #   Pagination metadata is in X-Total-Count / X-Page / X-Per-Page / X-Total-Pages;
+    #   tag totals over every matching kit are in X-Tags-Collected (capped at the included
+    #   count per kit), X-Tags-Entitled (included tags) and X-Tags-Extra (taken beyond those).
+    def exhibitor_kits
+      # Staff only: rows carry every exhibitor's contact and payment details, and
+      # :show? passes for any signed-in user on a public event.
+      authorize @event, :analytics?
+      return render json: [] unless @event.use_exhibitor_kit?
+
+      query = ExhibitorKitListQuery.new(@event, params)
+      pagy_obj, kits = pagy(sorted_exhibitor_kits(query.scope), limit: pagination_params[:per_page] || 25)
+      kits = ExhibitorKit.where(id: kits.map(&:id)).includes(KIT_PRELOADS, event_vendor: [:vendor, { event: %i[exhibitor_team_member_limit event_payment_gateway] }])
+                         .index_by(&:id).values_at(*kits.map(&:id)).compact
+
+      response.headers['X-Total-Count'] = pagy_obj.count.to_s
+      response.headers['X-Page']        = pagy_obj.page.to_s
+      response.headers['X-Per-Page']    = pagy_obj.limit.to_s
+      response.headers['X-Total-Pages'] = pagy_obj.pages.to_s
+      totals = query.tag_totals
+      response.headers['X-Tags-Collected'] = totals[:collected].to_s
+      response.headers['X-Tags-Entitled'] = totals[:entitled].to_s
+      response.headers['X-Tags-Extra'] = totals[:extra].to_s
+
+      render json: kits.map { |kit|
+        { vendor: format_event_vendor(kit.event_vendor, include_kits: false), kit: format_exhibitor_kit(kit) }
+      }, status: :ok
     end
 
     # POST /v1/events/:event_id/vendors
@@ -132,6 +186,14 @@ module V1
       render json: { error: 'Not Found', message: 'Event not found.' }, status: :not_found
     end
 
+    def sorted_exhibitor_kits(scope)
+      column = KIT_SORT_COLUMNS[params[:sort_by]]
+      return scope.order('event_vendors.id ASC, exhibitor_kits.created_at ASC, exhibitor_kits.id ASC') unless column
+
+      direction = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
+      scope.order(Arel.sql("#{column} #{direction}, exhibitor_kits.id ASC"))
+    end
+
     def set_event_vendor
       @event_vendor = @event.event_vendors.includes(:vendor).find(params[:id])
       if @event_vendor.is_a?(Exhibitor)
@@ -220,7 +282,7 @@ module V1
       :unprocessable_content
     end
 
-    def format_event_vendor(event_vendor)
+    def format_event_vendor(event_vendor, include_kits: true)
       response = {
         id: event_vendor.id,
         event_id: event_vendor.event_id,
@@ -241,7 +303,7 @@ module V1
         }
       }
 
-      if @event.use_exhibitor_kit? && event_vendor.is_a?(Exhibitor)
+      if include_kits && @event.use_exhibitor_kit? && event_vendor.is_a?(Exhibitor)
         response[:exhibitor_kits] = event_vendor.exhibitor_kits.map { |kit| format_exhibitor_kit(kit) }
         response[:exhibitor_kit] = response[:exhibitor_kits].first
       end
@@ -306,6 +368,11 @@ module V1
         exhibitor_package_id: exhibitor_kit.exhibitor_package_id,
         exhibitor_package_name: exhibitor_kit.exhibitor_package&.name,
         exhibitor_package_inclusions: exhibitor_kit.exhibitor_package&.inclusions,
+        tags_collected: exhibitor_kit.tags_collected,
+        tags_included: exhibitor_kit.tags_included,
+        extra_tags: exhibitor_kit.extra_tags,
+        tags_collected_at: exhibitor_kit.tags_collected_at,
+        tags_collected_by_name: exhibitor_kit.tags_collected_by&.full_name,
         custom_fields_data: exhibitor_kit.custom_fields_data,
         ic_copy_uploaded: exhibitor_kit.ic_copy.attached?,
         customs_declaration_uploaded: exhibitor_kit.customs_declaration_form.attached?,

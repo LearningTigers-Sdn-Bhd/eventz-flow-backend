@@ -9,8 +9,8 @@ class V1::ExhibitorKitsController < ApplicationController
 
   before_action :authenticate_user!
   before_action :set_event
-  before_action :set_exhibitor_kit, only: %i[show update destroy submit_order reject_payment_proof resync_team_members ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
-  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update submit_order resync_team_members export import_template import]
+  before_action :set_exhibitor_kit, only: %i[show update update_tags destroy submit_order reject_payment_proof resync_team_members ic_copy customs_declaration customs_duty_estimate indemnity_form permanently_delete force_delete]
+  before_action :ensure_event_has_exhibitor_kit_enabled, only: %i[index show create update update_tags bulk_tags submit_order resync_team_members export import_template import]
 
   def index
     authorize @event, :show_exhibitor_kits?
@@ -116,6 +116,45 @@ class V1::ExhibitorKitsController < ApplicationController
       render json: format_exhibitor_kit(result.data), status: result.status
     else
       render json: { errors: result.errors }, status: result.status
+    end
+  end
+
+  # PATCH /v1/events/:event_id/exhibitor_kits/:id/tags
+  # Records how many tags a kit has collected. Taking more than the event includes per kit
+  # is allowed and counts as extra. Body: { exhibitor_kit: { tags_collected } }.
+  def update_tags
+    authorize @event, :update?
+
+    attrs = params.require(:exhibitor_kit).permit(:tags_collected)
+    if @exhibitor_kit.booking_cancelled?
+      return render json: { errors: ["Cancelled kits can't collect tags"] }, status: :unprocessable_content
+    end
+
+    @exhibitor_kit.assign_attributes(attrs)
+    stamp_tag_collection(@exhibitor_kit) if @exhibitor_kit.will_save_change_to_tags_collected?
+
+    if @exhibitor_kit.save
+      render json: format_exhibitor_kit(@exhibitor_kit.reload), status: :ok
+    else
+      render json: { errors: @exhibitor_kit.errors.full_messages }, status: :unprocessable_content
+    end
+  end
+
+  # POST /v1/events/:event_id/exhibitor_kits/bulk_tags
+  # operation=collect: fill every targeted kit up to the included tag count (kits that took
+  #   extra stay as they are) and return the previous values so the caller can offer an undo.
+  # operation=reset: set every targeted kit back to 0 collected (also returns `previous`).
+  # operation=restore: put back the `items` ([{ id, tags_collected }]) from a collect or reset.
+  # Targets are `kit_ids` (the ticked rows) or, without them, every kit matching `filters`
+  # (the same params the Exhibitors table sends), so "select all matching" spans pages.
+  def bulk_tags
+    authorize @event, :update?
+
+    case params[:operation]
+    when 'collect' then render json: bulk_collect_tags, status: :ok
+    when 'reset' then render json: bulk_reset_tags, status: :ok
+    when 'restore' then render json: bulk_restore_tags, status: :ok
+    else render json: { errors: ['operation must be collect, reset or restore'] }, status: :unprocessable_content
     end
   end
 
@@ -262,6 +301,72 @@ class V1::ExhibitorKitsController < ApplicationController
     render json: { error: 'Exhibitor kits are not enabled for this event' }, status: :forbidden
   end
 
+  MAX_BULK_TAG_ITEMS = 2000
+
+  def stamp_tag_collection(kit)
+    collecting = kit.tags_collected.to_i.positive?
+    kit.tags_collected_at = collecting ? Time.current : nil
+    kit.tags_collected_by = collecting ? current_user : nil
+  end
+
+  def tag_targets
+    if params[:kit_ids].present?
+      ExhibitorKit.joins(:event_vendor)
+                  .where(event_vendors: { event_id: @event.id }, id: Array(params[:kit_ids]).first(MAX_BULK_TAG_ITEMS))
+    else
+      ExhibitorKitListQuery.new(@event, params[:filters] || {}).scope
+    end
+  end
+
+  def bulk_collect_tags
+    per_kit = @event.exhibitor_tags_per_kit
+    rows = tag_targets.reorder(nil).pluck(:id, :tags_collected, :booking_status, :payment_status)
+    live, cancelled = rows.partition { |row| row[2] != 'cancelled' }
+    changed = live.select { |row| row[1] < per_kit }
+
+    ExhibitorKit.where(id: changed.map(&:first)).update_all(
+      tags_collected: per_kit, tags_collected_at: Time.current,
+      tags_collected_by_id: current_user.id, updated_at: Time.current
+    )
+
+    {
+      updated: changed.size,
+      already_complete: live.size - changed.size,
+      skipped_cancelled: cancelled.size,
+      unpaid: changed.count { |row| row[3] == 'unpaid' },
+      previous: changed.map { |row| { id: row[0], tags_collected: row[1] } }
+    }
+  end
+
+  def bulk_reset_tags
+    rows = tag_targets.reorder(nil).pluck(:id, :tags_collected, :booking_status)
+    changed = rows.select { |row| row[2] != 'cancelled' && row[1].positive? }
+
+    ExhibitorKit.where(id: changed.map(&:first)).update_all(
+      tags_collected: 0, tags_collected_at: nil, tags_collected_by_id: nil, updated_at: Time.current
+    )
+
+    { updated: changed.size, previous: changed.map { |row| { id: row[0], tags_collected: row[1] } } }
+  end
+
+  def bulk_restore_tags
+    items = Array(params[:items]).first(MAX_BULK_TAG_ITEMS).map { |item| [item[:id].to_i, item[:tags_collected].to_i.clamp(0, 1000)] }
+    kits = ExhibitorKit.joins(:event_vendor).where(event_vendors: { event_id: @event.id }, id: items.map(&:first)).index_by(&:id)
+
+    restored = 0
+    items.group_by(&:last).each do |value, group|
+      ids = group.map(&:first).select { |id| kits[id] }
+      next if ids.empty?
+
+      ExhibitorKit.where(id: ids).update_all(
+        tags_collected: value, tags_collected_at: value.positive? ? Time.current : nil,
+        tags_collected_by_id: value.positive? ? current_user.id : nil, updated_at: Time.current
+      )
+      restored += ids.size
+    end
+    { restored: restored }
+  end
+
   def format_exhibitor_kit(kit)
     # Filter items and printings for contractors
     items = kit.exhibitor_kit_items
@@ -289,6 +394,11 @@ class V1::ExhibitorKitsController < ApplicationController
       customs_duty_estimate_uploaded: kit.customs_duty_estimate.attached?,
       indemnity_form_uploaded: kit.indemnity_form.attached?,
       booking_batch_id: kit.custom_fields_data['booking_batch_id'],
+      tags_collected: kit.tags_collected,
+      tags_included: kit.tags_included,
+      extra_tags: kit.extra_tags,
+      tags_collected_at: kit.tags_collected_at,
+      tags_collected_by_name: kit.tags_collected_by&.full_name,
       payment_proof_url: kit.exhibitor_registration_payment&.payment_proof&.attached? ? url_for(kit.exhibitor_registration_payment.payment_proof) : nil,
       payment_proof_status: kit.exhibitor_registration_payment&.status || 'pending',
       payment_note: kit.exhibitor_registration_payment&.note || kit.payment_note,

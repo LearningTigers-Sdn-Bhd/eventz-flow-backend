@@ -12,6 +12,9 @@ class RouletteWinner < ApplicationRecord
   validate :exactly_one_participant
   validate :participant_not_already_winner
 
+  # --- Scopes ---
+  scope :active, -> { where(voided_at: nil) }
+
   private
 
   def exactly_one_participant

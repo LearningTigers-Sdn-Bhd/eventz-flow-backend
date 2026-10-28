@@ -15,11 +15,12 @@ class RoulettePrize < ApplicationRecord
   scope :ordered, -> { order(created_at: :asc) }
 
   # --- Helper Methods ---
+  # Voided winners (unclaimed prizes) put the prize back in stock
   def remaining_quantity
-    quantity - roulette_winners.count
+    quantity - roulette_winners.active.count
   end
 
   def has_winner?
-    roulette_winners.exists?
+    roulette_winners.active.exists?
   end
 end

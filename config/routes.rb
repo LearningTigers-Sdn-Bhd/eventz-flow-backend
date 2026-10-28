@@ -359,7 +359,10 @@ Rails.application.routes.draw do
       end
 
       resources :vendors, controller: 'event_vendors', only: %i[index create update destroy] do
-        collection { post :batch }
+        collection do
+          post :batch
+          get :exhibitor_kits
+        end
         member do
           get :profile, to: 'event_vendor_profiles#show'
           patch :profile, to: 'event_vendor_profiles#update'
@@ -419,8 +422,10 @@ Rails.application.routes.draw do
           get :export
           get :import_template
           post :import
+          post :bulk_tags
         end
         member do
+          patch :tags, action: :update_tags
           post :submit_order
           post :reject_payment_proof
           post :resync_team_members
@@ -464,6 +469,8 @@ Rails.application.routes.draw do
             resources :winners, only: %i[create destroy], controller: 'gift_winners' do
               member do
                 post :notify
+                post :void
+                post :unvoid
               end
               collection do
                 post :bulk
@@ -475,6 +482,8 @@ Rails.application.routes.draw do
           resources :invalid_participants, only: %i[index create destroy] do
             member do
               post :notify
+              post :void
+              post :unvoid
             end
             collection do
               delete :destroy_all
@@ -496,6 +505,8 @@ Rails.application.routes.draw do
           resources :winners, only: %i[index create destroy], controller: 'roulette_winners' do
             member do
               post :notify
+              post :void
+              post :unvoid
             end
           end
           resources :participants, only: [:show], controller: 'roulette_participants'
