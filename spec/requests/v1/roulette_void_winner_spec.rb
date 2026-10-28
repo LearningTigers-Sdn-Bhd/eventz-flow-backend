@@ -49,6 +49,17 @@ RSpec.describe 'V1::Roulette void an unclaimed prize', type: :request do
     expect(prize.reload.remaining_quantity).to eq(0)
   end
 
+  it 'refuses to restore a winner when the prize stock was taken meanwhile' do
+    post "#{path}/void", headers: headers
+    other = create(:ticket, :paid, event: event, ticket_type: ticket.ticket_type)
+    create(:roulette_winner, roulette_session: session, roulette_prize: prize, ticket: other)
+
+    post "#{path}/unvoid", headers: headers
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(winner.reload.voided_at).to be_present
+  end
+
   it 'refuses a user who cannot manage the session' do
     outsider = create(:user)
     outsider_headers = { 'Authorization' => "Bearer #{JwtService.generate_tokens(outsider)[:access_token]}" }

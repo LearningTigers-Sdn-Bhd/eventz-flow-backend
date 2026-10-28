@@ -109,7 +109,15 @@ module V1
       # POST .../gifts/:gift_id/winners/:id/unvoid (undo a mis-tap)
       def unvoid
         authorize @winner, :unvoid?
-        @winner.update!(voided_at: nil)
+
+        # Restoring fills a slot again, so the gift needs one free
+        @gift.with_lock do
+          if @winner.voided_at && !@gift.needs_more_winners?
+            return error_response(message: 'Every winner slot for this gift is taken', status: :unprocessable_content)
+          end
+
+          @winner.update!(voided_at: nil)
+        end
         success_response(data: format_winner_response(@winner), message: 'Success')
       end
 

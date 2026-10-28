@@ -152,7 +152,16 @@ module V1
       # POST .../winners/:id/unvoid (undo a mis-tap)
       def unvoid
         authorize @winner, :unvoid?
-        @winner.update!(voided_at: nil)
+
+        # Restoring takes stock again, so it needs the same room a new winner would
+        prize = @winner.roulette_prize
+        prize.with_lock do
+          if @winner.voided_at && (prize.remaining_quantity <= 0 || (!@session.is_multiple && prize.has_winner?))
+            return error_response(message: 'No stock left for this prize', status: :unprocessable_content)
+          end
+
+          @winner.update!(voided_at: nil)
+        end
         success_response(data: format_winner_response(@winner), message: 'Success')
       end
 

@@ -41,6 +41,16 @@ RSpec.describe 'V1::LuckyDraw void a no-show winner', type: :request do
       expect(json['winners'].map { |w| w['voided_at'].present? }).to eq([true])
     end
 
+    it 'refuses to restore a winner when the slot was filled meanwhile' do
+      post "#{winner_path}/void", headers: headers
+      gift.gift_winners.create!(ticket: tickets.second, drawn_at: Time.current)
+
+      post "#{winner_path}/unvoid", headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(winner.reload.voided_at).to be_present
+    end
+
     it 'is idempotent and can be undone' do
       2.times { post "#{winner_path}/void", headers: headers }
       expect(response).to have_http_status(:ok)
