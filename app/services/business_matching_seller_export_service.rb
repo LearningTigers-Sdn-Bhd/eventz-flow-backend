@@ -161,6 +161,16 @@ class BusinessMatchingSellerExportService
     "#{date_str}, #{time_str}"
   end
 
+  def session_status(session, host_user)
+    if session.archived?
+      'Archived'
+    elsif host_user.blank?
+      'Not Activated'
+    else
+      'Active'
+    end
+  end
+
   def build_styles(workbook)
     wb_styles = workbook.styles
     {
@@ -192,6 +202,7 @@ class BusinessMatchingSellerExportService
       'Table',
       'Seller Name',
       'Session Schedule',
+      'Status',
       'Host Name',
       'Host Email',
       'Host Phone',
@@ -233,6 +244,7 @@ class BusinessMatchingSellerExportService
           session.location.presence || "Table #{session.id}",
           session.title,
           format_schedule(session),
+          session_status(session, host_user),
           host_user&.full_name,
           host_user&.email,
           host_user&.phone,
@@ -268,14 +280,14 @@ class BusinessMatchingSellerExportService
         sheet.add_row row, style: styles[:cell]
       end
 
-      widths = [12, 30, 26, 22, 26, 16, 35, 35, 35, 24, 24]
+      widths = [12, 30, 26, 16, 22, 26, 16, 35, 35, 35, 24, 24]
       widths += [22, 26, 16, 18, 35, 14, 18, 30] if include_exhibitors
       sheet.column_widths(*widths)
     end
   end
 
   def add_summary_sheet(workbook, styles, sessions, host_lookup)
-    headers = ['Table', 'Seller Name', 'Session Schedule', 'Host', 'Email']
+    headers = ['Table', 'Seller Name', 'Session Schedule', 'Status', 'Host', 'Email']
 
     workbook.add_worksheet(name: 'seller_list') do |sheet|
       sheet.add_row headers, style: styles[:summary_header], height: 26
@@ -286,13 +298,14 @@ class BusinessMatchingSellerExportService
           session.location.presence || "Table #{session.id}",
           session.title,
           format_schedule(session),
+          session_status(session, host_user),
           host_user&.full_name,
           host_user&.email
         ]
         sheet.add_row row, style: styles[:cell]
       end
 
-      sheet.column_widths 14, 32, 28, 24, 28
+      sheet.column_widths 14, 32, 28, 16, 24, 28
     end
   end
 end
