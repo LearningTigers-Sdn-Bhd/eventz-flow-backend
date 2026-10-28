@@ -19,6 +19,24 @@ class BusinessMatchingReportService
     32  # Capabilities
   ].freeze
 
+  ROW_TYPES = [
+    :string, # Table
+    :string, # Seller / Session
+    :string, # Host
+    :string, # Buyer Name
+    :string, # Buyer Email
+    :string, # Buyer Phone (force string to prevent scientific notation)
+    :string, # Date
+    :string, # Time
+    :string, # Status
+    :string, # Attendance
+    :float,  # Potential Deal Value
+    :string, # Host Comment
+    :string, # Description
+    :string, # Sourcing Intent
+    :string  # Capabilities
+  ].freeze
+
   def initialize(bookings, event_title = "Business Matching Report")
     @bookings = bookings || []
     @event_title = event_title
@@ -71,18 +89,18 @@ class BusinessMatchingReportService
       booking[:location].presence || "-",
       booking[:event_title].presence || "Matchmaking Session",
       booking[:host_name].presence || "-",
-      booking[:name],
-      booking[:email],
-      booking[:phone],
-      booking[:booking_date],
-      booking[:booking_time],
-      booking[:status],
+      booking[:name].to_s,
+      booking[:email].to_s,
+      booking[:phone].to_s,
+      booking[:booking_date].to_s,
+      booking[:booking_time].to_s,
+      booking[:status].to_s,
       booking[:attendance].presence || "-",
       booking[:potential_deal_value].to_f,
-      booking[:host_comment],
-      booking[:booker_description],
-      booking[:booker_sourcing_intent],
-      booking[:booker_capabilities]
+      booking[:host_comment].to_s,
+      booking[:booker_description].to_s,
+      booking[:booker_sourcing_intent].to_s,
+      booking[:booker_capabilities].to_s
     ]
   end
 
@@ -111,7 +129,7 @@ class BusinessMatchingReportService
 
       sorted = sort_bookings(bookings)
       sorted.each do |booking|
-        sheet.add_row row_data(booking), style: row_style_for(booking, styles), height: 22
+        sheet.add_row row_data(booking), style: row_style_for(booking, styles), types: ROW_TYPES, height: 22
       end
 
       sheet.column_widths(*COL_WIDTHS)
@@ -136,7 +154,7 @@ class BusinessMatchingReportService
 
         sorted = sort_bookings(session_bookings)
         sorted.each do |booking|
-          sheet.add_row row_data(booking), style: row_style_for(booking, styles), height: 22
+          sheet.add_row row_data(booking), style: row_style_for(booking, styles), types: ROW_TYPES, height: 22
         end
 
         sheet.column_widths(*COL_WIDTHS)
@@ -264,7 +282,7 @@ class BusinessMatchingReportService
       styles[:cell],          # Host
       styles[:cell],          # Buyer Name
       styles[:cell],          # Buyer Email
-      styles[:cell_center],   # Buyer Phone
+      styles[:cell_phone],    # Buyer Phone
       styles[:cell_center],   # Date
       styles[:cell_center],   # Time
       status_style,           # Status
@@ -360,6 +378,11 @@ class BusinessMatchingReportService
       cell: wb_styles.add_style(
         sz: 10,
         alignment: { vertical: :top, wrap_text: true }
+      ),
+      cell_phone: wb_styles.add_style(
+        sz: 10,
+        format_code: "@",
+        alignment: { horizontal: :left, vertical: :top }
       ),
       cell_center: wb_styles.add_style(
         sz: 10,

@@ -7,7 +7,7 @@ RSpec.describe BusinessMatchingReportService do
     {
       name: "Alice Visitor",
       email: "alice@example.com",
-      phone: "+6012",
+      phone: "601234567890123",
       booking_date: "10 August 2026",
       booking_time: "10:00 AM",
       status: "Approved",
@@ -59,6 +59,8 @@ RSpec.describe BusinessMatchingReportService do
       expect(row[headers.index("Host")]).to eq("John Host")
       expect(row[headers.index("Buyer Name")]).to eq("Alice Visitor")
       expect(row[headers.index("Buyer Email")]).to eq("alice@example.com")
+      expect(row[headers.index("Buyer Phone")]).to eq("601234567890123")
+      expect(sheet.celltype(2, headers.index("Buyer Phone") + 1)).to eq(:string)
       expect(row[headers.index("Status")]).to eq("Approved")
       expect(row[headers.index("Potential Deal Value")]).to eq(5000.0)
       expect(row[headers.index("Host Comment")]).to eq("Staff-only note")

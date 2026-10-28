@@ -187,9 +187,11 @@ class BusinessMatchingSellerExportService
         alignment: { horizontal: :center, vertical: :center }
       ),
       cell: wb_styles.add_style(
+        format_code: '@',
         alignment: { vertical: :top, wrap_text: true }
       ),
       cell_center: wb_styles.add_style(
+        format_code: '@',
         alignment: { horizontal: :center, vertical: :top }
       )
     }
@@ -258,7 +260,7 @@ class BusinessMatchingSellerExportService
         if include_exhibitors
           pic_name = kit&.pic_full_name.presence || vp&.person_in_charge
           pic_email = kit&.pic_email_address.presence
-          pic_phone = kit&.pic_contact_number.presence
+          pic_phone = kit&.pic_contact_number.to_s.presence
           pic_position = kit&.pic_position.presence
           company_address = kit&.company_address.presence || vp&.address
           country = kit&.country.presence
@@ -277,7 +279,7 @@ class BusinessMatchingSellerExportService
           ]
         end
 
-        sheet.add_row row, style: styles[:cell]
+        sheet.add_row row, style: styles[:cell], types: Array.new(row.size, :string)
       end
 
       widths = [12, 30, 26, 16, 22, 26, 16, 35, 35, 35, 24, 24]
@@ -302,7 +304,7 @@ class BusinessMatchingSellerExportService
           host_user&.full_name,
           host_user&.email
         ]
-        sheet.add_row row, style: styles[:cell]
+        sheet.add_row row, style: styles[:cell], types: Array.new(row.size, :string)
       end
 
       sheet.column_widths 14, 32, 28, 16, 24, 28
