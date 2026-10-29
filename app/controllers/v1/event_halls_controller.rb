@@ -33,11 +33,12 @@ module V1
       render json: PeopleCounter::EventDays.new(@event).call, status: :ok
     end
 
-    # GET /v1/events/:event_id/event_halls/analytics_export?date=YYYY-MM-DD&bucket=15|60
-    # The same day as a formatted Excel report for organizers.
+    # GET /v1/events/:event_id/event_halls/analytics_export?date=YYYY-MM-DD&bucket=15|60&hour12=1&all_days=1
+    # The same day as a formatted Excel report for organizers; all_days=1 gives the whole event instead.
     def analytics_export
       authorize EventHall.new(event: @event), :index?
-      report = PeopleCounter::ReportWorkbook.new(@event, date: params[:date], bucket: params[:bucket].to_i)
+      report = PeopleCounter::ReportWorkbook.new(@event, date: params[:date], bucket: params[:bucket].to_i,
+                                                 hour12: params[:hour12] == '1', all_days: params[:all_days] == '1')
       send_data report.call, filename: report.filename,
                              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     end

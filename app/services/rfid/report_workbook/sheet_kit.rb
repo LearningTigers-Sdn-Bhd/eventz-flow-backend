@@ -25,6 +25,7 @@ module Rfid
 
       KINDS = {
         text: { type: :string, format: '@' }, time: { type: :time, format: 'dd mmm yyyy, hh:mm' },
+        time12: { type: :time, format: 'dd mmm yyyy, h:mm AM/PM' },
         int: { type: :integer, format: '#,##0' }, pct: { type: :float, format: '0%' },
         duration: { type: :float, format: '[h]:mm' }
       }.freeze
