@@ -1,0 +1,10 @@
+<% style = @blast.style %>
+<%= email_page style[:theme], icon: style[:icon], label: (@blast.style_key == 'general' ? @event.title : style[:label]), title: @blast.subject, tagline: (@blast.style_key == 'general' ? nil : @event.title), footer: "You are receiving this because you registered for #{@event.title}.".html_safe %>
+<% if @blast.banner.attached? %>
+  <p style="margin:0 0 20px"><img src="<%= attachments['banner'].url %>" alt="" width="512" style="display:block;width:100%;max-width:512px;height:auto"></p>
+<% end %>
+<%= @blast.body.html_safe %>
+<% if @contact_email.present? %>
+  <p style="margin-top:28px">Questions? Write to <%= mail_to @contact_email, nil, class: 'link' %>.</p>
+<% end %>
+<%= render 'emails/signoff', closing: 'Regards,', name: @sender_name %>
