@@ -114,12 +114,15 @@ module V1
     end
 
     def audience_params
-      { 'ticket_type_ids' => Array(params[:ticket_type_ids]).map(&:to_i).select(&:positive?) }
+      {
+        'ticket_type_ids' => Array(params[:ticket_type_ids]).map(&:to_i).select(&:positive?),
+        'include_pending' => ActiveModel::Type::Boolean.new.cast(params[:include_pending]) == true
+      }
     end
 
     def blast_params
       permitted = params.permit(:subject, :body, :banner, :body_format, :style_key).to_h
-      permitted[:audience] = audience_params if params.key?(:ticket_type_ids)
+      permitted[:audience] = audience_params if params.key?(:ticket_type_ids) || params.key?(:include_pending)
       permitted
     end
 
@@ -156,6 +159,7 @@ module V1
         body: blast.body,
         status: blast.status,
         ticket_type_ids: blast.ticket_type_ids,
+        include_pending: blast.include_pending?,
         body_format: blast.body_format,
         style_key: blast.style_key,
         attachments: blast.attachments.map { |a| { id: a.id, filename: a.filename.to_s, byte_size: a.byte_size } },

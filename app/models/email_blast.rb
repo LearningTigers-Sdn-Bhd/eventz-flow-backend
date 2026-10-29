@@ -58,10 +58,16 @@ class EmailBlast < ApplicationRecord
     Array(audience['ticket_type_ids']).map(&:to_i)
   end
 
+  # Off by default: only paid tickets. On: unpaid (pending_payment) tickets get it too.
+  def include_pending?
+    audience['include_pending'] == true
+  end
+
   # One ticket per address (first wins), registered and not waitlisted. Mirrors
   # the rule the thank-you mail uses so group buyers get a single copy.
   def recipient_tickets
-    scope = event.tickets.where(status: %i[purchased scanned], waiting_list: false)
+    statuses = include_pending? ? %i[purchased scanned pending_payment] : %i[purchased scanned]
+    scope = event.tickets.where(status: statuses, waiting_list: false)
                  .where.not(attendee_email: [nil, ''])
     scope = scope.where(ticket_type_id: ticket_type_ids) if ticket_type_ids.any?
     scope.select('DISTINCT ON (LOWER(tickets.attendee_email)) tickets.*')

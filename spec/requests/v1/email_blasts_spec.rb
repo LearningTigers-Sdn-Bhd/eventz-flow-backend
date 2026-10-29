@@ -112,6 +112,20 @@ RSpec.describe 'V1::EmailBlasts', type: :request do
     expect(json['data']['status']).to eq('draft')
   end
 
+  it 'includes pending-payment tickets only when asked' do
+    create(:ticket, event: event, attendee_email: 'paid@example.com')
+    create(:ticket, event: event, attendee_email: 'pending@example.com', status: :pending_payment)
+
+    get "#{base}/audience", headers: owner_headers
+    expect(json['recipient_count']).to eq(1)
+    get "#{base}/audience", params: { include_pending: true }, headers: owner_headers
+    expect(json['recipient_count']).to eq(2)
+
+    post base, params: { subject: 'Hi', body: 'x', include_pending: true }, headers: owner_headers
+    expect(json['data']['include_pending']).to be(true)
+    expect(EmailBlast.last.recipient_tickets.to_a.size).to eq(2)
+  end
+
   it 'shows sender and per-recipient results' do
     get "#{base}/audience", headers: owner_headers
     expect(json).to include('sender_address' => ApplicationMailer::DEFAULT_SENDER_ADDRESS, 'sender_name' => event.title)
