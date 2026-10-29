@@ -114,8 +114,44 @@ RSpec.describe 'V1::LuckyDraw entries', type: :request do
       get "#{base}/entries/search", params: { q: 'entered' }, headers: headers
       rows = JSON.parse(response.body)['data'].index_by { |r| r['name'] }
       expect(rows.keys).to contain_exactly('Entered', 'Entered Unpaid')
-      expect(rows['Entered']).to include('entered' => true, 'public_id' => entered.public_id)
+      expect(rows['Entered']).to include('entered' => true, 'id' => entered.id)
       expect(rows['Entered Unpaid']['ineligible_reason']).to eq('Ticket payment is not confirmed')
+    end
+
+    it 'never returns the ticket QR value' do
+      get "#{base}/entries/search", params: { q: 'entered' }, headers: headers
+      expect(response.body).not_to include(entered.public_id)
+    end
+
+    it 'enters a searched person by participant_id' do
+      post "#{base}/entries", params: { participant_id: entered.id }, headers: headers
+      expect(response).to have_http_status(:created)
+      expect(LuckyDrawEntry.last.ticket).to eq(entered)
+
+      foreign = create(:ticket, :paid, ticket_type: create(:ticket_type), event: create(:event, use_ticket: true))
+      post "#{base}/entries", params: { participant_id: foreign.id }, headers: headers
+      expect(response).to have_http_status(:not_found)
+    end
+
+    context 'as an exhibitor on their own session' do
+      let(:exhibitor) { create(:user, :exhibitor) }
+      let(:ex_headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(exhibitor)[:access_token]}" } }
+      let(:ex_session) { create(:lucky_draw_session, event: event, created_by: exhibitor, scanned_source: 'entries') }
+      let(:ex_base) { "/v1/events/#{event.id}/lucky_draw/sessions/#{ex_session.id}" }
+
+      before { create(:exhibitor, event: event, vendor: exhibitor) }
+
+      it 'cannot search the event or enter by id, but can still scan a QR' do
+        get "#{ex_base}/entries/search", params: { q: 'entered' }, headers: ex_headers
+        expect(response).to have_http_status(:forbidden)
+        expect(response.body).not_to include('Entered')
+
+        post "#{ex_base}/entries", params: { participant_id: entered.id }, headers: ex_headers
+        expect(response).to have_http_status(:forbidden)
+
+        post "#{ex_base}/entries", params: { public_id: entered.public_id }, headers: ex_headers
+        expect(response).to have_http_status(:created)
+      end
     end
 
     it 'ignores short queries and other events' do
