@@ -62,9 +62,9 @@ RSpec.describe 'V1::EmailBlasts', type: :request do
       expect(mail.from).to eq([ApplicationMailer::DEFAULT_SENDER_ADDRESS])
       expect(mail.reply_to).to be_blank
 
-      EventEmailSetting.create!(event: event, sender_name: 'SCCC', sender_address: 'sccc@notify.eventzflow.com')
+      EventEmailSetting.create!(event: event, sender_name: 'SCCC', sender_address: 'sccc@updates.eventzflow.com')
       mail = EmailBlastMailer.blast_email(blast.reload, 'x@example.com')
-      expect(mail.from).to eq(['sccc@notify.eventzflow.com'])
+      expect(mail.from).to eq(['sccc@updates.eventzflow.com'])
       expect(mail[:from].to_s).to include('SCCC')
     end
 

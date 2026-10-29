@@ -104,7 +104,7 @@ class EventEmailSetting < ApplicationRecord
 
   # Organizers may only pick the local part; the domain is the one verified
   # with the mail provider. Checked only on change so legacy values still save.
-  SENDER_DOMAIN = 'notify.eventzflow.com'.freeze
+  SENDER_DOMAIN = ApplicationMailer::DEFAULT_SENDER_ADDRESS.split('@').last.freeze
   before_validation { self.sender_address = sender_address.to_s.strip.downcase.presence }
   validates :sender_address, format: { with: /\A[a-z0-9._+-]+@#{Regexp.escape(SENDER_DOMAIN)}\z/, message: "must end with @#{SENDER_DOMAIN}" },
                              allow_nil: true, if: :sender_address_changed?
