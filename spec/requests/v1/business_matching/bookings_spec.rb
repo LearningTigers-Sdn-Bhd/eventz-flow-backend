@@ -86,3 +86,31 @@ RSpec.describe 'V1::BusinessMatching::Bookings#generate_report', type: :request 
     expect(first_disposition).not_to eq(second_disposition)
   end
 end
+
+RSpec.describe 'V1::BusinessMatching::Bookings#all_bookings', type: :request do
+  let(:organizer) { create(:user, role: :organizer) }
+  let(:event) { create(:event, user: organizer) }
+  let(:regular_user) { create(:user, role: :member) }
+
+  def auth_header(user)
+    { 'Authorization' => "Bearer #{JwtService.generate_tokens(user)[:access_token]}" }
+  end
+
+  it 'allows event organizers to fetch all bookings across sessions' do
+    allow_any_instance_of(BusinessMatchingService).to receive(:fetch_all_bookings)
+      .with(event.id.to_s, force_refresh: false)
+      .and_return(BaseService::ServiceResult.new(success: true, data: { bookings: [{ 'id' => '1', 'name' => 'Buyer' }] }))
+
+    get "/v1/business_matching/events/#{event.id}/all_bookings", headers: auth_header(organizer)
+
+    expect(response).to have_http_status(:ok)
+    body = JSON.parse(response.body)
+    expect(body['bookings']).to be_an(Array)
+    expect(body['bookings'].first['name']).to eq('Buyer')
+  end
+
+  it 'rejects regular users or sellers who cannot manage sessions' do
+    get "/v1/business_matching/events/#{event.id}/all_bookings", headers: auth_header(regular_user)
+    expect(response).to have_http_status(:forbidden)
+  end
+end
