@@ -277,6 +277,20 @@ Rails.application.routes.draw do
         end
       end
 
+      # Email blasts (org_owner only)
+      resources :email_blasts, only: %i[index show create update destroy] do
+        collection do
+          get :audience
+          post :preview_draft
+        end
+        member do
+          get :preview
+          post :test
+          post :deliver
+          post :duplicate
+        end
+      end
+
       # E-Certificates
       resources :certificate_templates, only: %i[index show create update destroy]
       resources :certificates, only: [] do

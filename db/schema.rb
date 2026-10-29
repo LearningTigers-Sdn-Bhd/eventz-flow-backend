@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_28_130000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_29_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -311,6 +311,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_130000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["exhibitor_kit_id"], name: "index_custom_requests_on_exhibitor_kit_id"
+  end
+
+  create_table "email_blasts", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "created_by_id"
+    t.string "subject", null: false
+    t.text "body", default: "", null: false
+    t.jsonb "audience", default: {}, null: false
+    t.string "status", default: "draft", null: false
+    t.integer "recipient_count"
+    t.datetime "sent_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "name"
+    t.string "body_format", default: "rich", null: false
+    t.string "style_key", default: "general", null: false
+    t.index ["created_by_id"], name: "index_email_blasts_on_created_by_id"
+    t.index ["event_id", "created_at"], name: "index_email_blasts_on_event_id_and_created_at"
+    t.index ["event_id"], name: "index_email_blasts_on_event_id"
   end
 
   create_table "email_deliveries", force: :cascade do |t|
@@ -2277,6 +2296,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_130000) do
   add_foreign_key "credit_wallets", "users", column: "owner_id"
   add_foreign_key "custom_field_quotas", "events"
   add_foreign_key "custom_requests", "exhibitor_kits"
+  add_foreign_key "email_blasts", "events"
+  add_foreign_key "email_blasts", "users", column: "created_by_id"
   add_foreign_key "email_deliveries", "email_deliveries", column: "resend_of_id"
   add_foreign_key "email_verifications", "users"
   add_foreign_key "event_assignments", "events"

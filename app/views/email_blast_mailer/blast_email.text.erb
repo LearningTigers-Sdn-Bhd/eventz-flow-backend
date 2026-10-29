@@ -1,0 +1,13 @@
+<%= @blast.subject %>
+
+<%= strip_tags(@blast.body.gsub(%r{</(p|li|h\d|blockquote)>|<br\s*/?>}i, "\n")).gsub(/\n{3,}/, "\n\n").strip %>
+<% if @contact_email.present? %>
+
+Questions? Write to <%= @contact_email %>.
+<% end %>
+
+Regards,
+<%= @sender_name %>
+
+---
+You are receiving this because you registered for <%= @event.title %>.
