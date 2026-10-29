@@ -254,6 +254,7 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
+          participant_contact: (winner.ticket || winner.visitor)&.draw_contact,
           round: winner.round,
           voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,

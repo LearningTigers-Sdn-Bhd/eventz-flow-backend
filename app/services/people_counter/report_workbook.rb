@@ -1,11 +1,14 @@
 require 'caxlsx'
 
 module PeopleCounter
-  # One day of people-counter data as an Excel workbook an organizer can read
-  # without help: headline tiles, each level and hall against its capacity, and
-  # the day hour by hour (or 15 minutes by 15 minutes). Built from the same
-  # EventAnalytics and EventHeadcount reads as the panel, so figures match it.
-  # Look and feel come from the RFID report's SheetKit.
+  # People-counter data as an Excel workbook an organizer can read without help.
+  # Two reports that never mix their numbers:
+  #   * one day (default): that day's tiles, levels and halls against capacity, and
+  #     the day slot by slot. Nothing from other days.
+  #   * all days (all_days: true): the whole event: totals, visitors per day, hall
+  #     totals, the days side by side, and every day slot by slot.
+  # Built from the same EventAnalytics and EventHeadcount reads as the panel, so
+  # figures match it. Look and feel come from the RFID report's SheetKit.
   class ReportWorkbook
     Kit = Rfid::ReportWorkbook::SheetKit
 
@@ -17,6 +20,9 @@ module PeopleCounter
       'not_found' => ['Counter not found', :bad], 'unavailable' => ['Counter unreachable', :bad]
     }.freeze
 
+    # Which sheets each report has, in order. The day-by-day ones only make sense across days.
+    ALL_DAYS_ONLY = %i[days halls_by_day].freeze
+
     SHEETS = {
       days: ['By Day', 'Every event day side by side: arrivals, departures and the peak crowd.'],
       halls_by_day: ['Halls by Day', 'The same, hall by hall. Use the filter to follow one hall across the days.'],
@@ -24,17 +30,22 @@ module PeopleCounter
       halls: ['Hall Detail', 'Every hall, slot by slot. Use the filter on Hall or Level to focus.']
     }.freeze
 
-    def initialize(event, date: nil, bucket: 60, now: Time.current, client: nil)
+    def initialize(event, date: nil, bucket: 60, hour12: false, all_days: false, now: Time.current, client: nil)
       @event = event
+      @hour12 = hour12
       @now = now
       @data = EventAnalytics.new(event, date: date, bucket: bucket, client: client).call
       @headcount = EventHeadcount.new(event, client: client).call
       @days = EventDays.new(event, client: client).call[:days]
+      # With no day counted yet there is nothing to span, so fall back to the single day.
+      @all_days = all_days && @days.any?
+      # Each day is one cached read, the same ones the By Day figures came from.
+      @datas = @all_days ? @days.map { |day| EventAnalytics.new(event, date: day[:date], bucket: bucket, client: client).call } : [@data]
       @step = @data[:bucket] == 15 ? '15 minutes' : 'hour'
     end
 
     def filename
-      "people-counts-#{@event.id}-#{@data[:date]}.xlsx"
+      @all_days ? "people-counts-#{@event.id}-all-days.xlsx" : "people-counts-#{@event.id}-#{@data[:date]}.xlsx"
     end
 
     # The .xlsx file contents.
@@ -42,10 +53,10 @@ module PeopleCounter
       package = Axlsx::Package.new(author: 'EventzFlow')
       @kit = Kit.new(package)
       @names = { summary: @kit.claim_name('Summary') }
-      SHEETS.each { |key, (name, _)| @names[key] = @kit.claim_name(name) }
+      sheet_keys.each { |key| @names[key] = @kit.claim_name(SHEETS.fetch(key).first) }
       summary_sheet(package)
-      days_sheet
-      halls_by_day_sheet
+      days_sheet if @all_days
+      halls_by_day_sheet if @all_days
       traffic_sheet
       hall_sheet
       package.to_stream.read
@@ -57,16 +68,39 @@ module PeopleCounter
       Kit::Column.new(title, width, kind)
     end
 
+    # "14:15", or "2:15 PM" when the report is in 12-hour time.
     def clock(iso)
-      iso && iso[11, 5]
+      return unless iso
+      return iso[11, 5] unless @hour12
+
+      hour = iso[11, 2].to_i
+      "#{hour % 12 == 0 ? 12 : hour % 12}:#{iso[14, 2]} #{hour < 12 ? 'AM' : 'PM'}"
+    end
+
+    # Time-slot cells hold real dates, so the display format is what changes.
+    def time_kind
+      @hour12 ? :time12 : :time
     end
 
     def slot(iso)
       iso && Time.zone.parse(iso)
     end
 
+    def sheet_keys
+      @all_days ? SHEETS.keys : SHEETS.keys - ALL_DAYS_ONLY
+    end
+
     def day_label
       Date.iso8601(@data[:date]).strftime('%A, %d %B %Y')
+    end
+
+    # What the report covers, for the banner and sheet subtitles.
+    def scope_label
+      return day_label unless @all_days
+
+      first = Date.iso8601(@days.first[:date])
+      last = Date.iso8601(@days.last[:date])
+      first == last ? day_label : "All days, #{first.strftime('%-d %b')} to #{last.strftime('%-d %b %Y')}"
     end
 
     def entries(points)
@@ -75,10 +109,6 @@ module PeopleCounter
 
     def exits(points)
       points.sum { |p| p[:out] }
-    end
-
-    def closing(points)
-      points.last&.dig(:occupancy)
     end
 
     def capacity_of(rows, key, value)
@@ -103,12 +133,18 @@ module PeopleCounter
       @sheet.sheet_pr.tab_color = Kit::NAVY
       @sheet.sheet_view.show_grid_lines = false
       banner
-      tiles
-      levels_table
-      halls_table
+      if @all_days
+        all_days_tiles
+        days_table
+        hall_totals_table
+      else
+        day_tiles
+        levels_table
+        halls_table
+      end
       guide
       # Set after the rows: adding a long cell would otherwise widen the column.
-      @sheet.column_widths 2, 22, 18, 14, 14, 14, 14, 14, 20
+      @sheet.column_widths 2, 22, 18, 16, 16, 14, 20, 16, 20
       @sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
     end
 
@@ -139,34 +175,56 @@ module PeopleCounter
                    style: @kit.style(sz: 20, b: true, fg_color: Kit::WHITE, bg_color: Kit::NAVY,
                                      alignment: { vertical: :center, indent: 1 }), height: 40)
       merged(number, 1, LAST_COL)
-      text = "People counter report  •  #{day_label}  •  Generated #{@now.strftime('%d %b %Y, %I:%M %p')}"
+      text = "People counter report  •  #{scope_label}  •  Generated #{@now.strftime('%d %b %Y, %I:%M %p')}"
       number = row([text] + [nil] * 7,
                    style: @kit.style(sz: 10, i: true, fg_color: Kit::WHITE, bg_color: Kit::BLUE,
                                      alignment: { vertical: :center, indent: 1 }), height: 20)
       merged(number, 1, LAST_COL)
     end
 
-    def tiles
+    # One day only: nothing from other days appears here.
+    def day_tiles
       event = @data[:event]
       stats = event[:stats]
       whole = @headcount[:event]
+      number = @data[:days].index(@data[:date])
+      busy_hours = event[:points].count { |p| (p[:in] + p[:out]).positive? }
       section('The day at a glance')
-      tile_row([['PEAK CROWD', stats&.dig(:peak, :occupancy), stats ? "at #{clock(stats[:peak][:at])}" : 'No movement yet', '2766EC'],
-                ['CAME IN', entries(event[:points]), 'On this day', '16A34A'],
-                ['LEFT', exits(event[:points]), 'On this day', 'D97706'],
-                ['BUSIEST HOUR', stats&.dig(:busiest_entry_hour, :in), busiest_hint(stats), '2766EC']])
+      tile_row([['VISITORS', entries(event[:points]), 'Came in on this day', '16A34A'],
+                ['PEAK CROWD', stats&.dig(:peak, :occupancy), stats ? "at #{clock(stats[:peak][:at])}" : 'No movement yet', '2766EC'],
+                ['BUSIEST HOUR', stats&.dig(:busiest_entry_hour, :in), busiest_hint(stats), '2766EC'],
+                ['LEFT', exits(event[:points]), 'Went out on this day', 'D97706']])
       @sheet.add_row []
-      tile_row([['INSIDE AT LAST READING', closing(event[:points]), 'People still inside', '16A34A'],
+      tile_row([['AVERAGE PER HOUR', busy_hours.positive? ? (entries(event[:points]).to_f / busy_hours).round : nil, 'Over the hours with visitors', '2766EC'],
                 ['TOTAL CAPACITY', whole[:capacity], 'All counted halls added up', '6B7280'],
-                ['CAME IN, WHOLE EVENT', whole[:in_event], 'Event start to end', '2766EC'],
-                ['LEFT, WHOLE EVENT', whole[:out_event], 'Event start to end', '6B7280']])
+                ['HALLS COUNTING', "#{whole[:halls_counted]} of #{whole[:halls]}", 'Counters working', '16A34A'],
+                ['EVENT DAY', number ? "#{number + 1} of #{@data[:days].size}" : nil, short_day(@data[:date]), '2766EC']])
+    end
+
+    # Every day together.
+    def all_days_tiles
+      whole = @headcount[:event]
+      total = @days.sum { |day| day[:entries] }
+      best = @days.max_by { |day| day[:entries] }
+      quiet = @days.min_by { |day| day[:entries] }
+      crowded = @days.select { |day| day[:peak] }.max_by { |day| day[:peak][:occupancy] }
+      section('The whole event at a glance')
+      tile_row([['VISITORS · ALL DAYS', total, "#{@days.size} #{@days.size == 1 ? 'day' : 'days'} counted", '16A34A'],
+                ['BEST DAY', best[:entries], short_day(best[:date]), '2766EC'],
+                ['AVERAGE PER DAY', (total.to_f / @days.size).round, 'Visitors a day', '2766EC'],
+                ['MOST PEOPLE AT ONCE', crowded&.dig(:peak, :occupancy),
+                 crowded ? "#{short_day(crowded[:date])} at #{clock(crowded[:peak][:at])}" : 'No movement yet', 'D97706']])
+      @sheet.add_row []
+      tile_row([['LEFT · ALL DAYS', @days.sum { |day| day[:exits] }, 'Went out over the event', '6B7280'],
+                ['QUIETEST DAY', quiet[:entries], short_day(quiet[:date]), '6B7280'],
+                ['TOTAL CAPACITY', whole[:capacity], 'All counted halls added up', '6B7280'],
+                ['HALLS COUNTING', "#{whole[:halls_counted]} of #{whole[:halls]}", 'Counters working', '16A34A']])
     end
 
     def busiest_hint(stats)
       return 'Arrivals in the busiest hour' unless stats
 
-      hour = stats[:busiest_entry_hour][:at]
-      "Arrivals #{clock(hour)}–#{format('%02d', (hour[11, 2].to_i + 1) % 24)}:00"
+      "Arrivals #{hour_range(stats[:busiest_entry_hour][:at])}"
     end
 
     def tile_row(tiles)
@@ -206,24 +264,51 @@ module PeopleCounter
       row(cells.map(&:first), style: styles)
     end
 
+    # Every event day, so an organizer sees "how many came each day" without opening a sheet.
+    def days_table
+      section('Visitors per day')
+      return plain('No event day has been counted yet.') if @days.empty?
+
+      header(['Day', 'Visitors', 'Left', 'Peak crowd', 'Peak at', 'Busiest hour'])
+      @days.each_with_index do |day, index|
+        body([short_day(day[:date]), day[:entries], day[:exits], day[:peak]&.dig(:occupancy), clock(day[:peak]&.dig(:at)),
+              hour_range(day[:busiest_entry_hour]&.dig(:at))],
+             %i[text int int int text text], index.odd?)
+      end
+    end
+
+    # Who came in at each hall over the whole event, and each hall's share of the total.
+    def hall_totals_table
+      section('Hall totals')
+      halls = @headcount[:halls]
+      return plain('No halls yet.') if halls.empty?
+
+      total = halls.sum { |hall| hall[:in_event].to_i }
+      header(['Hall', 'Level', 'Visitors · whole event', 'Share'])
+      halls.each_with_index do |hall, index|
+        share = hall[:in_event] && total.positive? ? "#{(hall[:in_event] * 100.0 / total).round}%" : '—'
+        body([hall[:name], hall[:floor].presence || 'No level set', hall[:in_event], share], %i[text text int text], index.odd?)
+      end
+    end
+
     def levels_table
       section('By level')
       return plain('No levels yet.') if @data[:levels].empty?
 
-      header(['Level', 'Capacity', 'Peak crowd', 'Peak at', 'Came in', 'Left', 'Inside at last reading', 'Peak vs capacity'])
+      header(['Level', 'Capacity', 'Peak crowd', 'Peak at', 'Visitors', 'Left', 'Peak vs capacity'])
       @data[:levels].each_with_index do |level, index|
         stats = level[:stats]
         cap = capacity_of(@headcount[:levels], :floor, level[:floor])
         peak = stats&.dig(:peak, :occupancy)
         body([level[:floor].presence || 'No level set', cap, peak, clock(stats&.dig(:peak, :at)), entries(level[:points]),
-              exits(level[:points]), closing(level[:points]), capacity_chip(peak, cap)],
-             %i[text int int text int int int text], index.odd?)
+              exits(level[:points]), capacity_chip(peak, cap)],
+             %i[text int int text int int text], index.odd?)
       end
     end
 
     def halls_table
       section('By hall')
-      header(['Hall', 'Level', 'Capacity', 'Peak crowd', 'Came in', 'Left', 'Counter', 'Peak vs capacity'])
+      header(['Hall', 'Level', 'Capacity', 'Peak crowd', 'Visitors', 'Left', 'Counter', 'Peak vs capacity'])
       @data[:halls].each_with_index do |hall, index|
         stats = hall[:stats]
         cap = capacity_of(@headcount[:halls], :id, hall[:id])
@@ -237,7 +322,8 @@ module PeopleCounter
 
     def guide
       section('What is in this workbook')
-      SHEETS.each do |key, (_, text)|
+      sheet_keys.each do |key|
+        text = SHEETS.fetch(key).last
         name = @names[key]
         number = row([name, text] + [nil] * 6, style: [@kit.style(b: true, fg_color: Kit::BLUE),
                                                         @kit.style(fg_color: Kit::MUTED)] + [@kit.style] * 6)
@@ -253,19 +339,22 @@ module PeopleCounter
     end
 
     def hour_range(iso)
-      iso && "#{clock(iso)}–#{format('%02d', (iso[11, 2].to_i + 1) % 24)}:00"
+      return unless iso
+
+      next_hour = "#{iso[0, 11]}#{format('%02d', (iso[11, 2].to_i + 1) % 24)}:00:00"
+      "#{clock(iso)}–#{clock(next_hour)}"
     end
 
     def days_sheet
       rows = @days.map do |day|
         [short_day(day[:date]), day[:entries], day[:exits], day[:peak]&.dig(:occupancy), clock(day[:peak]&.dig(:at)),
-         day[:busiest_entry_hour]&.dig(:in), hour_range(day[:busiest_entry_hour]&.dig(:at)), day[:closing]]
+         day[:busiest_entry_hour]&.dig(:in), hour_range(day[:busiest_entry_hour]&.dig(:at))]
       end
       sheet, first, last = @kit.table(@names[:days], title: 'Day by day',
                                       subtitle: 'Each event day up to today. Peak crowd is the most people inside at once that day.',
                                       columns: [col('Day', 22), col('Came in', 12, :int), col('Left', 12, :int),
                                                 col('Peak crowd', 12, :int), col('Peak at', 10), col('Busiest hour arrivals', 14, :int),
-                                                col('Busiest hour', 14), col('Inside at close', 14, :int)],
+                                                col('Busiest hour', 14)],
                                       rows: rows, tab: 'FF2766EC', empty: 'No event day has been counted yet.')
       return if rows.empty?
 
@@ -291,37 +380,44 @@ module PeopleCounter
     end
 
     def traffic_sheet
-      rows = @data[:event][:points].map { |p| [slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy]] }
+      rows = @datas.flat_map { |data| data[:event][:points] }
+                   .map { |p| [slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy], slot_label(p[:bucket])] }
       sheet, first, last = @kit.table(@names[:traffic], title: 'Event traffic',
-                                      subtitle: "#{day_label}. Per #{@step}: people who came in, left, and were inside at the end of it.",
-                                      columns: [col('Time slot', 20, :time), col('Came in', 12, :int), col('Left', 12, :int),
-                                                col('Net', 12, :int), col('Inside', 12, :int)],
-                                      rows: rows, tab: 'FF0EA5E9', empty: 'No gate activity on this day.')
+                                      subtitle: "#{scope_label}. Per #{@step}: people who came in, left, and were inside at the end of it.",
+                                      columns: [col('Time slot', 20, time_kind), col('Came in', 12, :int), col('Left', 12, :int),
+                                                col('Net', 12, :int), col('Inside', 12, :int), col('Chart label', 18)],
+                                      rows: rows, tab: 'FF0EA5E9', empty: "No gate activity #{@all_days ? 'yet' : 'on this day'}.")
       add_traffic_charts(sheet, first, last) unless rows.empty?
+    end
+
+    # Text, not a date: a chart whose x-axis cells are real dates becomes a date axis, and slots that
+    # all fall on one day then stack into a single vertical line. All days add the date to keep slots apart.
+    def slot_label(iso)
+      @all_days ? "#{Date.iso8601(iso[0, 10]).strftime('%-d %b')}, #{clock(iso)}" : clock(iso)
     end
 
     def add_traffic_charts(sheet, first, last)
       sheet.add_chart(Axlsx::LineChart, start_at: 'G4', end_at: 'P21', title: 'People inside') do |chart|
-        chart.add_series data: sheet["E#{first}:E#{last}"], labels: sheet["A#{first}:A#{last}"], title: 'Inside',
+        chart.add_series data: sheet["E#{first}:E#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Inside',
                          color: Kit::BLUE.delete_prefix('FF')
         chart.show_legend = false
       end
       sheet.add_chart(Axlsx::BarChart, start_at: 'G23', end_at: 'P40', title: 'Came in and left', bar_dir: :col) do |chart|
-        chart.add_series data: sheet["B#{first}:B#{last}"], labels: sheet["A#{first}:A#{last}"], title: 'Came in', color: '16A34A'
-        chart.add_series data: sheet["C#{first}:C#{last}"], labels: sheet["A#{first}:A#{last}"], title: 'Left', color: 'D97706'
+        chart.add_series data: sheet["B#{first}:B#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Came in', color: '16A34A'
+        chart.add_series data: sheet["C#{first}:C#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Left', color: 'D97706'
         chart.gap_width = 40
       end
     end
 
     def hall_sheet
-      rows = @data[:halls].flat_map do |hall|
+      rows = @datas.flat_map { |data| data[:halls] }.flat_map do |hall|
         hall[:points].map do |p|
           [hall[:floor].presence || 'No level set', hall[:name], slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy]]
         end
       end
       @kit.table(@names[:halls], title: 'Hall detail',
-                 subtitle: "#{day_label}. One row per hall per #{@step}. Halls with no counter linked have no rows.",
-                 columns: [col('Level', 18), col('Hall', 24), col('Time slot', 20, :time), col('Came in', 12, :int),
+                 subtitle: "#{scope_label}. One row per hall per #{@step}. Halls with no counter linked have no rows.",
+                 columns: [col('Level', 18), col('Hall', 24), col('Time slot', 20, time_kind), col('Came in', 12, :int),
                            col('Left', 12, :int), col('Net', 12, :int), col('Inside', 12, :int)],
                  rows: rows, tab: 'FF16A34A', empty: 'No hall has counts on this day.')
     end

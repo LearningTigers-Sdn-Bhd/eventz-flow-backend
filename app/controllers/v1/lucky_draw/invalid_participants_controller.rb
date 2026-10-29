@@ -188,7 +188,8 @@ module V1
           lucky_draw_session_id: invalid_participant.lucky_draw_session_id,
           participant: {
             id: participant_id,
-            name: participant_name
+            name: participant_name,
+            contact: participant&.draw_contact
           },
           round: invalid_participant.round,
           voided_at: invalid_participant.voided_at&.iso8601,

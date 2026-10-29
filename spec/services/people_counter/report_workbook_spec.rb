@@ -37,13 +37,14 @@ RSpec.describe PeopleCounter::ReportWorkbook do
     sheet.each_row_streaming.map { |r| r.map { |c| c&.value } }
   end
 
-  it "has a Summary, the day-by-day sheets, then Event Traffic and Hall Detail" do
-    expect(workbook.sheets).to eq(["Summary", "By Day", "Halls by Day", "Event Traffic", "Hall Detail"])
+  it "has only Summary, Event Traffic and Hall Detail for one day" do
+    expect(workbook.sheets).to eq(["Summary", "Event Traffic", "Hall Detail"])
   end
 
-  it "lists every event day up to today on By Day" do
-    days = cells(workbook.sheet("By Day")).drop(4).map(&:first)
-    expect(days).to eq(["Fri, 11 Sep 2026", "Sat, 12 Sep 2026"])
+  it "adds the day-by-day sheets, and lists every event day up to today, for all days" do
+    book = workbook(all_days: true)
+    expect(book.sheets).to eq(["Summary", "By Day", "Halls by Day", "Event Traffic", "Hall Detail"])
+    expect(cells(book.sheet("By Day")).drop(4).map(&:first)).to eq(["Fri, 11 Sep 2026", "Sat, 12 Sep 2026"])
   end
 
   it "names the event and the day on the Summary" do
@@ -58,13 +59,39 @@ RSpec.describe PeopleCounter::ReportWorkbook do
 
   it "lists the event's traffic slot by slot with net and inside" do
     rows = cells(workbook.sheet("Event Traffic")).drop(4) # banner, subtitle, spacer, header
-    expect(rows.first.last(4)).to eq([34, 5, 29, 29]) # 09:00 hour, both halls
-    expect(rows.last.last(4)).to eq([0, 25, -25, 4])
+    expect(rows.first[1, 4]).to eq([34, 5, 29, 29]) # 09:00 hour, both halls
+    expect(rows.last[1, 4]).to eq([0, 25, -25, 4])
+    expect(rows.map(&:last)).to eq(["09:00", "10:00"]) # plain-text chart labels, not dates
   end
 
   it "lists every hall's slots on Hall Detail and keeps typed names as text" do
     names = cells(workbook.sheet("Hall Detail")).map { |r| r[1] }
     expect(names).to include("Hall A", "=SUM(A1)")
+  end
+
+  it "keeps a single day to that day: no whole-event totals or per-day tables" do
+    text = cells(workbook.sheet("Summary")).flatten.compact.join(" | ")
+    expect(text).to include("VISITORS", "PEAK CROWD", "EVENT DAY", "By level", "By hall")
+    expect(text).not_to include("WHOLE EVENT", "BEST DAY", "Visitors per day", "Hall totals")
+  end
+
+  it "gives the whole event for all days: totals, best day, visitors per day and hall totals with share" do
+    text = cells(workbook(all_days: true).sheet("Summary")).flatten.compact.join(" | ")
+    expect(text).to include("VISITORS · ALL DAYS", "BEST DAY", "AVERAGE PER DAY", "Visitors per day", "Hall totals", "Share")
+    expect(text).to include("All days, 11 Sep to 12 Sep 2026")
+    expect(text).not_to include("By level")
+  end
+
+  it "names the all-days file for the event, not a day" do
+    expect(described_class.new(event, date: "2026-09-11", all_days: true, client: client).filename)
+      .to eq("people-counts-#{event.id}-all-days.xlsx")
+  end
+
+  it "writes times in 12-hour form only when asked" do
+    summary = ->(**opts) { cells(workbook(**opts).sheet("Summary")).flatten.compact.join(" | ") }
+    expect(summary.call).to match(/at 09:\d\d/)
+    expect(summary.call(hour12: true)).to match(/at 9:\d\d AM/)
+    expect(summary.call(hour12: true)).not_to match(/at 09:\d\d/)
   end
 
   it "is a readable workbook, not an error, when nothing was counted" do

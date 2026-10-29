@@ -104,4 +104,84 @@ RSpec.describe 'V1::LuckyDraw entries', type: :request do
     expect(response).to have_http_status(:forbidden)
     expect(LuckyDrawEntry.count).to eq(0)
   end
+
+  describe 'GET entries/search' do
+    it 'finds by name and flags entered and ineligible people' do
+      post "#{base}/entries", params: { public_id: entered.public_id }, headers: headers
+      create(:ticket, :paid, event: event, ticket_type: ticket_type,
+                             attendee_name: 'Entered Unpaid', payment_status: :pending)
+
+      get "#{base}/entries/search", params: { q: 'entered' }, headers: headers
+      rows = JSON.parse(response.body)['data'].index_by { |r| r['name'] }
+      expect(rows.keys).to contain_exactly('Entered', 'Entered Unpaid')
+      expect(rows['Entered']).to include('entered' => true, 'id' => entered.id)
+      expect(rows['Entered Unpaid']['ineligible_reason']).to eq('Ticket payment is not confirmed')
+    end
+
+    it 'never returns the ticket QR value' do
+      get "#{base}/entries/search", params: { q: 'entered' }, headers: headers
+      expect(response.body).not_to include(entered.public_id)
+    end
+
+    it 'enters a searched person by participant_id' do
+      post "#{base}/entries", params: { participant_id: entered.id }, headers: headers
+      expect(response).to have_http_status(:created)
+      expect(LuckyDrawEntry.last.ticket).to eq(entered)
+
+      foreign = create(:ticket, :paid, ticket_type: create(:ticket_type), event: create(:event, use_ticket: true))
+      post "#{base}/entries", params: { participant_id: foreign.id }, headers: headers
+      expect(response).to have_http_status(:not_found)
+    end
+
+    context 'as an exhibitor on their own session' do
+      let(:exhibitor) { create(:user, :exhibitor) }
+      let(:ex_headers) { { 'Authorization' => "Bearer #{JwtService.generate_tokens(exhibitor)[:access_token]}" } }
+      let(:ex_session) { create(:lucky_draw_session, event: event, created_by: exhibitor, scanned_source: 'entries') }
+      let(:ex_base) { "/v1/events/#{event.id}/lucky_draw/sessions/#{ex_session.id}" }
+
+      before { create(:exhibitor, event: event, vendor: exhibitor) }
+
+      it 'cannot search the event or enter by id, but can still scan a QR' do
+        get "#{ex_base}/entries/search", params: { q: 'entered' }, headers: ex_headers
+        expect(response).to have_http_status(:forbidden)
+        expect(response.body).not_to include('Entered')
+
+        post "#{ex_base}/entries", params: { participant_id: entered.id }, headers: ex_headers
+        expect(response).to have_http_status(:forbidden)
+
+        post "#{ex_base}/entries", params: { public_id: entered.public_id }, headers: ex_headers
+        expect(response).to have_http_status(:created)
+      end
+    end
+
+    it 'ignores short queries and other events' do
+      create(:ticket, :paid, ticket_type: create(:ticket_type), event: create(:event, use_ticket: true),
+                             attendee_name: 'Entered Foreign')
+
+      get "#{base}/entries/search", params: { q: 'e' }, headers: headers
+      expect(JSON.parse(response.body)['data']).to be_blank
+      get "#{base}/entries/search", params: { q: 'foreign' }, headers: headers
+      expect(JSON.parse(response.body)['data']).to be_blank
+    end
+
+    it 'refuses users without access to the draw session' do
+      outsider = create(:user)
+      get "#{base}/entries/search", params: { q: 'entered' },
+                                    headers: { 'Authorization' => "Bearer #{JwtService.generate_tokens(outsider)[:access_token]}" }
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe 'contact for telling same-name people apart' do
+    it 'prefers phone, then email, then nothing' do
+      both = create(:ticket, :paid, event: event, ticket_type: ticket_type, attendee_name: 'Ali A',
+                                    attendee_phone: '0123456789', attendee_email: 'a@x.com')
+      email_only = create(:ticket, :paid, event: event, ticket_type: ticket_type, attendee_name: 'Ali B',
+                                          attendee_phone: nil, attendee_email: 'b@x.com')
+      neither = create(:ticket, :paid, event: event, ticket_type: ticket_type, attendee_name: 'Ali C',
+                                      attendee_phone: nil, attendee_email: nil)
+
+      expect([both, email_only, neither].map(&:draw_contact)).to eq(['0123456789', 'b@x.com', nil])
+    end
+  end
 end

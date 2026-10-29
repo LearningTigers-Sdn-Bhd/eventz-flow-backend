@@ -53,6 +53,11 @@ class Visitor < ApplicationRecord
 
   attr_accessor :skip_webhooks
 
+  # Tells same-name people apart on a winner screen: phone, else email, else nil
+  def draw_contact
+    phone.presence || email.presence
+  end
+
   # --- Private Methods ---
   private
 
