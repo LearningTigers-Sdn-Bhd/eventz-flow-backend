@@ -88,6 +88,24 @@ RSpec.describe BusinessMatchingReportService do
       expect(summary_sheet.row(1).first).to include("Executive Summary")
     end
 
+    it 'sorts bookings in chronological time sequence grouping by date, time of day, and table' do
+      b1 = booking.merge(name: "Late Guy", booking_time: "02:00 PM", location: "Table 1")
+      b2 = booking.merge(name: "Morning Table 2", booking_time: "09:00 AM", location: "Table 2")
+      b3 = booking.merge(name: "Morning Table 1", booking_time: "09:00 AM", location: "Table 1")
+      b4 = booking.merge(name: "Midday Guy", booking_time: "10:30 AM", location: "Table 1")
+
+      xlsx_data = described_class.new([b1, b2, b3, b4]).generate_xlsx
+      doc = Roo::Excelx.new(StringIO.new(xlsx_data), file_warning: :ignore)
+      sheet = doc.sheet("All Bookings")
+      headers = sheet.row(1)
+      name_idx = headers.index("Buyer Name") + 1
+
+      expect(sheet.cell(2, name_idx)).to eq("Morning Table 1")
+      expect(sheet.cell(3, name_idx)).to eq("Morning Table 2")
+      expect(sheet.cell(4, name_idx)).to eq("Midday Guy")
+      expect(sheet.cell(5, name_idx)).to eq("Late Guy")
+    end
+
     it 'handles empty bookings gracefully' do
       xlsx_data = described_class.new([]).generate_xlsx
       doc = Roo::Excelx.new(StringIO.new(xlsx_data), file_warning: :ignore)

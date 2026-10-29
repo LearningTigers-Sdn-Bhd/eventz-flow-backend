@@ -106,21 +106,31 @@ class BusinessMatchingReportService
 
   def sort_bookings(list)
     list.sort_by do |b|
-      # 1. Sort by Comment Presence (sessions with feedback first)
-      has_comment = b[:host_comment].present? || b[:attendance].present? ? 0 : 1
+      date = parse_date(b[:booking_date])
+      minutes = slot_minutes(b[:booking_time])
+      table_num = b[:location].to_s.gsub(/\D/, '').to_i
+      table_sort = table_num.zero? ? 999_999 : table_num
 
-      # 2. Deal value descending
-      deal_value = -1 * (b[:potential_deal_value].to_f rescue 0.0)
-
-      # 3. Active / confirmed first, absent/cancelled last
-      is_cancelled = %w[absent cancelled].include?(b[:status].to_s.downcase) ? 1 : 0
-
-      # 4. Chronological by date & time
-      date_val = b[:booking_date].to_s
-      time_val = b[:booking_time].to_s
-
-      [is_cancelled, has_comment, deal_value, date_val, time_val]
+      # Order chronologically: Date -> Time of day -> Table number -> Session -> Name
+      [date, minutes, table_sort, b[:event_title].to_s.downcase, b[:name].to_s.downcase]
     end
+  end
+
+  def parse_date(date_str)
+    return Date.new(9999, 12, 31) if date_str.blank?
+
+    Date.parse(date_str.to_s)
+  rescue ArgumentError
+    Date.new(9999, 12, 31)
+  end
+
+  def slot_minutes(booking_time)
+    return 24 * 60 if booking_time.blank?
+
+    t = Time.strptime(booking_time.to_s.strip, "%I:%M %p")
+    t.hour * 60 + t.min
+  rescue ArgumentError
+    24 * 60
   end
 
   def add_master_sheet(workbook, styles)
