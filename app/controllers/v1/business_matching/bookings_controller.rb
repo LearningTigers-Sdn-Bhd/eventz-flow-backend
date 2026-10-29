@@ -154,6 +154,25 @@ module V1
         render json: { errors: e.message }, status: :internal_server_error
       end
 
+      # GET /api/v1/business_matching/events/:event_id/all_bookings
+      def all_bookings
+        event = Event.find_by(id: params[:event_id])
+        return render json: { error: 'Event not found' }, status: :not_found unless event
+
+        authorize event, :manage_business_matching_sessions?
+
+        service_result = BusinessMatchingService.new(current_user).fetch_all_bookings(
+          params[:event_id],
+          force_refresh: params[:force_refresh] == 'true'
+        )
+
+        if service_result.success?
+          render json: service_result.data, status: :ok
+        else
+          render json: { errors: service_result.errors }, status: service_result.status || :internal_server_error
+        end
+      end
+
       # GET /api/v1/business_matching/bookings/:id/public
       def public_show
         booking = BusinessMatchingBooking.find_by(id: params[:id])

@@ -741,6 +741,8 @@ class BusinessMatchingService < BaseService
         host_comment: b.host_comment || "",
         potential_deal_value: b.potential_deal_value.to_f,
         host_user_id: b.host_user_id.to_s,
+        host_name: b.host_user&.full_name || "",
+        host_email: b.host_user&.email || "",
         booker_description: b.booker_description || "",
         booker_sourcing_intent: b.booker_sourcing_intent || "",
         booker_capabilities: b.booker_capabilities || ""
