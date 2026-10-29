@@ -146,6 +146,11 @@ class Ticket < ApplicationRecord
     ticket_type&.name.to_s.match?(/exhibitor/i)
   end
 
+  # Tells same-name people apart on a winner screen: phone, else email, else nil
+  def draw_contact
+    attendee_phone.presence || attendee_email.presence
+  end
+
   # Uploaded documents (IC/passport copy, selfie, etc.) for admin display.
   def registration_documents_data
     registration_documents.map do |attachment|

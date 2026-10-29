@@ -160,7 +160,8 @@ module V1
       def format_participant_response(participant)
         {
           id: participant.id,
-          name: participant.is_a?(Ticket) ? participant.attendee_name : participant.full_name
+          name: participant.is_a?(Ticket) ? participant.attendee_name : participant.full_name,
+          contact: participant.draw_contact
         }
       end
     end
