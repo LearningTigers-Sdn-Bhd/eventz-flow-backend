@@ -151,6 +151,13 @@ RSpec.describe 'V1::EmailBlasts', type: :request do
     end
   end
 
+  it 'escapes the event title everywhere in the layout' do
+    event.update_columns(title: 'Fish <b>& Chips</b>')
+    html = EmailBlastMailer.blast_email(event.email_blasts.create!(subject: 'Hi', body: 'x'), 'x@example.com').html_part.body.decoded
+    expect(html).to include('Fish &lt;b&gt;&amp; Chips&lt;/b&gt;')
+    expect(html).not_to include('Fish <b>')
+  end
+
   describe 'style and live preview' do
     it 'shows the style label with the event name underneath, and the plain look for general' do
       post base, params: { subject: 'Hi', body: 'x', style_key: 'important' }, headers: owner_headers
