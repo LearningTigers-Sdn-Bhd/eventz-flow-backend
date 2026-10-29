@@ -79,13 +79,42 @@ RSpec.describe BusinessMatchingReportService do
       xlsx_data = described_class.new([booking, second_booking]).generate_xlsx
       doc = Roo::Excelx.new(StringIO.new(xlsx_data), file_warning: :ignore)
 
-      expect(doc.sheets).to eq(["All Bookings", "Summary", "Speed Matchmaking", "Fintech Pitch"])
+      expect(doc.sheets).to eq(["All Bookings", "Buyer Matrix", "Summary", "Speed Matchmaking", "Fintech Pitch"])
 
       all_bookings_sheet = doc.sheet("All Bookings")
       expect(all_bookings_sheet.last_row).to eq(3) # header + 2 bookings
 
       summary_sheet = doc.sheet("Summary")
       expect(summary_sheet.row(1).first).to include("Executive Summary")
+    end
+
+    it 'generates a buyer schedule matrix sheet showing sellers and dashes for empty slots' do
+      b1 = booking.merge(name: "Alice", email: "alice@test.com", booking_time: "09:00 AM", location: "Table 1", event_title: "Seller 1")
+      b2 = booking.merge(name: "Alice", email: "alice@test.com", booking_time: "09:30 AM", location: "Table 2", event_title: "Seller 2")
+      b3 = booking.merge(name: "Bob", email: "bob@test.com", booking_time: "09:00 AM", location: "Table 2", event_title: "Seller 2")
+
+      xlsx_data = described_class.new([b1, b2, b3]).generate_xlsx
+      doc = Roo::Excelx.new(StringIO.new(xlsx_data), file_warning: :ignore)
+
+      expect(doc.sheets).to include("Buyer Matrix")
+      matrix_sheet = doc.sheet("Buyer Matrix")
+
+      headers = matrix_sheet.row(1)
+      expect(headers[0..2]).to eq(["Buyer Name", "Buyer Email", "Buyer Phone"])
+      expect(headers).to include("9:00 AM – 9:30 AM", "9:30 AM – 10:00 AM")
+
+      slot1_idx = headers.index("9:00 AM – 9:30 AM") + 1
+      slot2_idx = headers.index("9:30 AM – 10:00 AM") + 1
+
+      # Row 2 is Alice: booked at 9am (Seller 1), booked at 9:30am (Seller 2)
+      expect(matrix_sheet.cell(2, 1)).to eq("Alice")
+      expect(matrix_sheet.cell(2, slot1_idx)).to eq("[Table 1] Seller 1")
+      expect(matrix_sheet.cell(2, slot2_idx)).to eq("[Table 2] Seller 2")
+
+      # Row 3 is Bob: booked at 9am (Seller 2), empty at 9:30am ("-")
+      expect(matrix_sheet.cell(3, 1)).to eq("Bob")
+      expect(matrix_sheet.cell(3, slot1_idx)).to eq("[Table 2] Seller 2")
+      expect(matrix_sheet.cell(3, slot2_idx)).to eq("-")
     end
 
     it 'sorts bookings in chronological time sequence grouping by date, time of day, and table' do

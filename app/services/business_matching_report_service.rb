@@ -51,10 +51,13 @@ class BusinessMatchingReportService
     # 1. Master sheet containing all bookings
     add_master_sheet(workbook, styles)
 
-    # 2. Executive Summary sheet with KPI cards & seller breakdown
+    # 2. Buyer Schedule Matrix sheets (cross-tab of buyers x time slots)
+    add_buyer_matrix_sheets(workbook, styles)
+
+    # 3. Executive Summary sheet with KPI cards & seller breakdown
     add_summary_sheet(workbook, styles)
 
-    # 3. Individual session tabs (when there are multiple sessions)
+    # 4. Individual session tabs (when there are multiple sessions)
     add_session_sheets(workbook, styles)
 
     package.to_stream.read
@@ -151,7 +154,7 @@ class BusinessMatchingReportService
     grouped = bookings.group_by { |b| b[:event_title].presence || "General" }
     return if grouped.size <= 1 # If only 1 session, Master Sheet is sufficient
 
-    used_names = Set.new(["All Bookings", "Summary"])
+    used_names = Set.new(workbook.worksheets.map(&:name))
 
     grouped.each do |group_title, session_bookings|
       next if session_bookings.empty?
@@ -171,6 +174,95 @@ class BusinessMatchingReportService
         setup_sheet_view(sheet, sorted.size + 1, headers.size)
       end
     end
+  end
+
+  def add_buyer_matrix_sheets(workbook, styles)
+    return if bookings.empty?
+
+    used_names = Set.new(workbook.worksheets.map(&:name))
+    dates = bookings.map { |b| b[:booking_date].presence || "General" }.uniq
+
+    dates.each do |date_val|
+      date_bookings = bookings.select { |b| (b[:booking_date].presence || "General") == date_val }
+      next if date_bookings.empty?
+
+      sheet_name_base = dates.size > 1 ? "Matrix - #{date_val}" : "Buyer Matrix"
+      sheet_name = sanitize_sheet_name(sheet_name_base, used_names)
+      used_names.add(sheet_name)
+
+      # Extract unique time slots for this date
+      time_slots = date_bookings.map { |b| b[:booking_time].to_s.strip }.reject(&:blank?).uniq
+      time_slots = time_slots.sort_by { |t| slot_minutes(t) }
+      next if time_slots.empty?
+
+      first_duration = date_bookings.map { |b| b[:duration].to_i }.find(&:positive?) || 30
+      matrix_headers = ["Buyer Name", "Buyer Email", "Buyer Phone"] + time_slots.map { |t| time_slot_label(t, first_duration) }
+
+      # Extract unique buyers
+      buyers = date_bookings.map do |b|
+        {
+          name: b[:name].to_s.strip,
+          email: b[:email].to_s.strip,
+          phone: b[:phone].to_s.strip
+        }
+      end.uniq { |b| [b[:email].downcase, b[:name].downcase] }
+      buyers = buyers.sort_by { |b| b[:name].downcase }
+
+      # Lookup table: [buyer_email, slot_minutes] -> booking
+      lookup = {}
+      date_bookings.each do |b|
+        key = [b[:email].to_s.downcase.strip, slot_minutes(b[:booking_time])]
+        lookup[key] = b
+      end
+
+      workbook.add_worksheet(name: sheet_name) do |sheet|
+        sheet.add_row matrix_headers, style: styles[:header], height: 28
+
+        buyers.each do |buyer|
+          row = [buyer[:name], buyer[:email], buyer[:phone]]
+          row_styles = [styles[:cell], styles[:cell], styles[:cell_phone]]
+          types = [:string, :string, :string]
+
+          time_slots.each do |slot|
+            b_match = lookup[[buyer[:email].downcase, slot_minutes(slot)]]
+            if b_match
+              seller_info = b_match[:location].present? ? "[#{b_match[:location]}] #{b_match[:event_title]}" : b_match[:event_title].to_s
+              row << seller_info
+              row_styles << styles[:matrix_filled]
+            else
+              row << "-"
+              row_styles << styles[:matrix_empty]
+            end
+            types << :string
+          end
+
+          sheet.add_row row, style: row_styles, types: types, height: 24
+        end
+
+        col_widths = [24, 28, 16] + Array.new(time_slots.size, 26)
+        sheet.column_widths(*col_widths)
+
+        sheet.sheet_view.pane do |pane|
+          pane.top_left_cell = "D2"
+          pane.state = :frozen_split
+          pane.x_split = 3
+          pane.y_split = 1
+        end
+
+        if buyers.any?
+          last_col = Axlsx.col_ref(matrix_headers.size - 1)
+          sheet.auto_filter = "A1:#{last_col}#{buyers.size + 1}"
+        end
+      end
+    end
+  end
+
+  def time_slot_label(time_str, duration = 30)
+    t = Time.strptime(time_str.to_s.strip, "%I:%M %p")
+    end_t = t + (duration || 30).minutes
+    "#{t.strftime('%-I:%M %p')} – #{end_t.strftime('%-I:%M %p')}"
+  rescue ArgumentError
+    time_str
   end
 
   def add_summary_sheet(workbook, styles)
@@ -423,6 +515,18 @@ class BusinessMatchingReportService
         b: true,
         sz: 10,
         alignment: { horizontal: :center, vertical: :top }
+      ),
+      matrix_filled: wb_styles.add_style(
+        bg_color: "F0FDF4",
+        fg_color: "166534",
+        b: true,
+        sz: 9,
+        alignment: { horizontal: :center, vertical: :center, wrap_text: true }
+      ),
+      matrix_empty: wb_styles.add_style(
+        fg_color: "94A3B8",
+        sz: 11,
+        alignment: { horizontal: :center, vertical: :center }
       )
     }
   end
