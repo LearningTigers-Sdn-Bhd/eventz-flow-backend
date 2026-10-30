@@ -19,7 +19,7 @@ module V1
       render json: PeopleCounter::EventHeadcount.new(@event).call, status: :ok
     end
 
-    # GET /v1/events/:event_id/event_halls/analytics?date=YYYY-MM-DD&bucket=15|60
+    # GET /v1/events/:event_id/event_halls/analytics?date=YYYY-MM-DD&bucket=15|60&cumulative=1
     # One day of counts over time, per hall, level and event, with peak stats.
     def analytics
       authorize EventHall.new(event: @event), :index?
@@ -89,7 +89,8 @@ module V1
     end
 
     def analytics_service
-      PeopleCounter::EventAnalytics.new(@event, date: params[:date], bucket: params[:bucket].to_i)
+      PeopleCounter::EventAnalytics.new(@event, date: params[:date], bucket: params[:bucket].to_i,
+                                        cumulative: params[:cumulative] == "1")
     end
 
     def set_event_hall

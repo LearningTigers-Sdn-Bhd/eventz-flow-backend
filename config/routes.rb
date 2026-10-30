@@ -492,7 +492,7 @@ Rails.application.routes.draw do
             end
           end
           resources :participants, only: [:index], controller: 'lucky_draw_participants'
-          resources :entries, only: %i[index create], controller: 'lucky_draw_entries' do
+          resources :entries, only: %i[index create destroy], controller: 'lucky_draw_entries' do
             get :search, on: :collection
           end
           resources :invalid_participants, only: %i[index create destroy] do

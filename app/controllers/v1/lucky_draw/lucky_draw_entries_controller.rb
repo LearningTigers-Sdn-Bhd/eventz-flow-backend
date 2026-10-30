@@ -30,14 +30,23 @@ module V1
         error_response(message: 'Already entered into this lucky draw', status: :unprocessable_content)
       end
 
-      # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/entries?limit=20
-      # Latest entries (newest first) plus meta.total; never returns the full list.
+      # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/entries?page=1&per_page=20
+      # One page of entries, newest first (pagy; the list can reach thousands)
       def index
         authorize LuckyDrawEntry.new(lucky_draw_session: @session)
 
-        scope = @session.lucky_draw_entries
-        entries = scope.includes(:ticket, :visitor).order(created_at: :desc, id: :desc).limit(index_limit)
-        success_response(data: entries.map { |e| format_entry(e) }, message: 'Success', meta: { total: scope.count })
+        scope = @session.lucky_draw_entries.includes(:ticket, :visitor).order(created_at: :desc, id: :desc)
+        pagy, entries = pagy(scope, limit: pagination_params[:per_page])
+        success_response(data: entries.map { |e| format_entry(e) }, pagination: pagy_metadata(pagy))
+      end
+
+      # DELETE /v1/events/:event_id/lucky_draw/sessions/:session_id/entries/:id
+      # Takes a scanned participant back out of the draw pool (wrong scan, or left early)
+      def destroy
+        entry = @session.lucky_draw_entries.find(params[:id])
+        authorize entry
+        entry.destroy!
+        success_response(data: nil, message: 'Entry removed')
       end
 
       # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/entries/search?q=ali
@@ -73,10 +82,6 @@ module V1
 
       def participant_name(participant)
         participant.is_a?(Ticket) ? participant.attendee_name : participant.full_name
-      end
-
-      def index_limit
-        params.fetch(:limit, 20).to_i.clamp(1, 100)
       end
 
       def set_event
