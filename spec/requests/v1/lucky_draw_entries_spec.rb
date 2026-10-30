@@ -20,15 +20,39 @@ RSpec.describe 'V1::LuckyDraw entries', type: :request do
     expect(LuckyDrawEntry.count).to eq(1)
   end
 
-  it 'lists only the latest entries with the full total' do
+  it 'lists entries newest first, one page at a time' do
     tickets = create_list(:ticket, 3, :paid, event: event, ticket_type: ticket_type)
     tickets.each { |t| post "#{base}/entries", params: { public_id: t.public_id }, headers: headers }
 
-    get "#{base}/entries", params: { limit: 2 }, headers: headers
+    get "#{base}/entries", params: { per_page: 2 }, headers: headers
     body = JSON.parse(response.body)
     expect(body['data'].size).to eq(2)
-    expect(body['meta']['total']).to eq(3)
+    expect(body['pagination']).to include('total_count' => 3, 'total_pages' => 2)
     expect(body['data'].first['participant_id']).to eq(tickets.last.id)
+
+    get "#{base}/entries", params: { per_page: 2, page: 2 }, headers: headers
+    expect(JSON.parse(response.body)['data'].map { |e| e['participant_id'] }).to eq([tickets.first.id])
+  end
+
+  it 'removes an entry so the person can be scanned in again' do
+    post "#{base}/entries", params: { public_id: entered.public_id }, headers: headers
+    entry = LuckyDrawEntry.last
+
+    delete "#{base}/entries/#{entry.id}", headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(LuckyDrawEntry.count).to eq(0)
+
+    post "#{base}/entries", params: { public_id: entered.public_id }, headers: headers
+    expect(response).to have_http_status(:created)
+  end
+
+  it 'will not remove an entry that belongs to another session' do
+    other_session = create(:lucky_draw_session, event: event, created_by: org_owner, scanned_source: 'entries')
+    foreign = LuckyDrawEntry.create!(lucky_draw_session: other_session, ticket: entered)
+
+    delete "#{base}/entries/#{foreign.id}", headers: headers
+    expect(response).to have_http_status(:not_found)
+    expect(LuckyDrawEntry.exists?(foreign.id)).to be(true)
   end
 
   it 'returns not found for an unknown QR' do
