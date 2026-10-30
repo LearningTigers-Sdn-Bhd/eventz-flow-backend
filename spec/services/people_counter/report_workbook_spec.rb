@@ -43,7 +43,7 @@ RSpec.describe PeopleCounter::ReportWorkbook do
 
   it "adds the day-by-day sheets, and lists every event day up to today, for all days" do
     book = workbook(all_days: true)
-    expect(book.sheets).to eq(["Summary", "By Day", "Halls by Day", "Event Traffic", "Hall Detail"])
+    expect(book.sheets).to eq(["Summary", "By Day", "Day Comparison", "Halls by Day", "Event Traffic", "Hall Detail"])
     expect(cells(book.sheet("By Day")).drop(4).map(&:first)).to eq(["Fri, 11 Sep 2026", "Sat, 12 Sep 2026"])
   end
 
@@ -62,6 +62,46 @@ RSpec.describe PeopleCounter::ReportWorkbook do
     expect(rows.first[1, 4]).to eq([34, 5, 29, 29]) # 09:00 hour, both halls
     expect(rows.last[1, 4]).to eq([0, 25, -25, 4])
     expect(rows.map(&:last)).to eq(["09:00", "10:00"]) # plain-text chart labels, not dates
+  end
+
+  describe "visitors so far" do
+    def book(date, **opts)
+      file = Tempfile.new(["people", ".xlsx"], binmode: true)
+      file.write(described_class.new(event, date: date, client: client, **opts).call)
+      file.flush
+      Roo::Excelx.new(file.path)
+    end
+
+    it "starts the traffic slots from zero on the first day" do
+      rows = cells(book("2026-09-11").sheet("Event Traffic")).drop(4)
+      expect(rows.map { |r| r[5] }).to eq([34, 34]) # arrivals so far after each hour
+    end
+
+    it "carries the earlier days into the slots, tiles and halls from the second day" do
+      book = book("2026-09-12")
+      rows = cells(book.sheet("Event Traffic")).drop(4)
+      expect(rows.map { |r| r[5] }).to eq([68, 68]) # 34 before + 34 that day
+      expect(cells(book.sheet("Summary")).flatten.compact.join(" | ")).to include("VISITORS SO FAR", "68")
+      a = cells(book.sheet("Hall Detail")).drop(4).select { |r| r[1] == "Hall A" }
+      expect(a.map(&:last)).to eq([60, 60]) # 30 before + the 30 Hall A counted that day
+    end
+
+    it "lays the days side by side on a comparison sheet" do
+      sheet = cells(book("2026-09-11", all_days: true).sheet("Day Comparison")).drop(3)
+      expect(sheet.first).to eq(["Time of day", "Fri, 11 Sep 2026 · came in", "Sat, 12 Sep 2026 · came in",
+                                 "Fri, 11 Sep 2026 · inside", "Sat, 12 Sep 2026 · inside"])
+      expect(sheet[1]).to eq(["09:00", 34, 34, 29, 29]) # hour 09 for both days (the stub repeats the day)
+    end
+
+    it "leaves the comparison sheet out for a single day" do
+      expect(book("2026-09-11").sheets).not_to include("Day Comparison")
+    end
+
+    it "adds a running total per day for all days" do
+      book = book("2026-09-11", all_days: true)
+      expect(cells(book.sheet("By Day")).drop(4).map(&:last)).to eq([34, 68])
+      expect(cells(book.sheet("Event Traffic")).drop(4).map { |r| r[5] }).to eq([34, 34, 68, 68])
+    end
   end
 
   it "lists every hall's slots on Hall Detail and keeps typed names as text" do

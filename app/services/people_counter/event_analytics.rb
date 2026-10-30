@@ -6,6 +6,10 @@ module PeopleCounter
   # running In minus Out through the day, never below zero. Level and event
   # lines are the sum of their halls' lines, so the three always agree.
   #
+  # With cumulative: true, every scope also carries before_days (arrivals on each
+  # earlier event day) and before_in (their sum, 0 on the first day), so "so far"
+  # figures can run on across days. Off by default; it costs one extra read per hall.
+  #
   # Bucket strings are the counter's local clock ("2026-10-13T14:15:00"); they
   # are passed through untouched so no timezone conversion can shift them.
   class EventAnalytics
@@ -15,16 +19,17 @@ module PeopleCounter
 
     attr_reader :date, :bucket, :days
 
-    def initialize(event, date: nil, bucket: 60, client: nil)
+    def initialize(event, date: nil, bucket: 60, cumulative: false, client: nil)
       @event = event
       @client = client
+      @cumulative = cumulative
       @days = event_days
       @date = pick_date(date)
       @bucket = BUCKETS.include?(bucket) ? bucket : 60
     end
 
     def call
-      Rails.cache.fetch("people_counter/analytics/#{@event.id}/#{@date}/#{@bucket}", expires_in: CACHE_TTL) { build }
+      Rails.cache.fetch("people_counter/analytics/#{@event.id}/#{@date}/#{@bucket}/#{@cumulative}", expires_in: CACHE_TTL) { build }
     end
 
     def configured?
@@ -67,27 +72,36 @@ module PeopleCounter
       entries.each { |e| e[:fine] = e[:series] ? fine_points(e[:series], timeline) : nil }
 
       base.merge(
-        event: scope(entries.filter_map { |e| e[:fine] }),
-        levels: entries.group_by { |e| e[:hall].floor }.map do |floor, group|
-          { floor: floor }.merge(scope(group.filter_map { |e| e[:fine] }))
-        end,
+        event: scope(entries),
+        levels: entries.group_by { |e| e[:hall].floor }.map { |floor, group| { floor: floor }.merge(scope(group)) },
         halls: entries.map do |e|
-          { id: e[:hall].id, name: e[:hall].name, floor: e[:hall].floor, status: e[:status] }
-            .merge(scope([e[:fine]].compact))
+          { id: e[:hall].id, name: e[:hall].name, floor: e[:hall].floor, status: e[:status] }.merge(scope([e]))
         end
       )
     end
 
-    # { hall:, status:, series: { bucket => { in:, out: } } | nil }
+    # { hall:, status:, series: { bucket => { in:, out: } } | nil, before_days: [{ date:, in: }] | nil }
     def entry(hall)
       return { hall: hall, status: "unlinked", series: nil } if hall.counter_venue_id.nil?
 
       day = Date.iso8601(@date)
       rows = client.venue_series(hall.counter_venue_id, from: day, to: day, bucket: 15)
       series = rows.to_h { |r| [r["bucket"], { in: r["in"].to_i, out: r["out"].to_i }] }
-      { hall: hall, status: "ok", series: series }
+      { hall: hall, status: "ok", series: series, before_days: before_days(hall) }
     rescue Client::Error
       { hall: hall, status: "unavailable", series: nil }
+    end
+
+    # Arrivals on each event day before the chosen one, from one read of the whole stretch; nil unless cumulative.
+    def before_days(hall)
+      return unless @cumulative
+
+      earlier = @days.take_while { |day| day < @date }
+      return [] if earlier.empty?
+
+      rows = client.venue_series(hall.counter_venue_id, from: Date.iso8601(earlier.first), to: Date.iso8601(earlier.last), bucket: 60)
+      arrivals = rows.group_by { |r| r["bucket"][0, 10] }.transform_values { |group| group.sum { |r| r["in"].to_i } }
+      earlier.map { |day| { date: day, in: arrivals.fetch(day, 0) } }
     end
 
     # Every hall is laid over the same timeline so level sums line up bucket for bucket.
@@ -101,9 +115,21 @@ module PeopleCounter
       end
     end
 
-    def scope(fines)
-      fine = sum_points(fines)
-      { points: downsample(fine), stats: stats(fine) }
+    # Entries are the halls in the scope; halls without readable counts add nothing.
+    def scope(entries)
+      readable = entries.select { |e| e[:fine] }
+      fine = sum_points(readable.map { |e| e[:fine] })
+      result = { points: downsample(fine), stats: stats(fine) }
+      add_before(result, readable) if @cumulative
+      result
+    end
+
+    # The halls' earlier-day arrivals added up day by day.
+    def add_before(result, readable)
+      days = readable.flat_map { |e| e[:before_days] }.group_by { |d| d[:date] }
+                     .map { |date, group| { date: date, in: group.sum { |d| d[:in] } } }
+      result[:before_days] = days
+      result[:before_in] = days.sum { |d| d[:in] }
     end
 
     def sum_points(fines)

@@ -21,12 +21,17 @@ module PeopleCounter
     }.freeze
 
     # Which sheets each report has, in order. The day-by-day ones only make sense across days.
-    ALL_DAYS_ONLY = %i[days halls_by_day].freeze
+    ALL_DAYS_ONLY = %i[days compare halls_by_day].freeze
+
+    # Days drawn side by side on the comparison sheet: the most recent, so a long event stays readable.
+    MAX_COMPARE_DAYS = 7
+    DAY_COLORS = %w[2766EC 16A34A D97706 7C3AED DC2626 0891B2 64748B].freeze
 
     SHEETS = {
       days: ['By Day', 'Every event day side by side: arrivals, departures and the peak crowd.'],
       halls_by_day: ['Halls by Day', 'The same, hall by hall. Use the filter to follow one hall across the days.'],
-      traffic: ['Event Traffic', 'The selected day, slot by slot: arrivals, departures and people inside.'],
+      compare: ['Day Comparison', 'The event days side by side on the same time-of-day axis, so you can see the pattern across days.'],
+      traffic: ['Event Traffic', 'The selected day, slot by slot: arrivals, departures, people inside and visitors so far.'],
       halls: ['Hall Detail', 'Every hall, slot by slot. Use the filter on Hall or Level to focus.']
     }.freeze
 
@@ -34,7 +39,9 @@ module PeopleCounter
       @event = event
       @hour12 = hour12
       @now = now
-      @data = EventAnalytics.new(event, date: date, bucket: bucket, client: client).call
+      # One day also asks for what came in on the days before it, so the slots can carry a running total.
+      @data = EventAnalytics.new(event, date: date, bucket: bucket, cumulative: !all_days, client: client).call
+      @before = @data[:event][:before_in].to_i
       @headcount = EventHeadcount.new(event, client: client).call
       @days = EventDays.new(event, client: client).call[:days]
       # With no day counted yet there is nothing to span, so fall back to the single day.
@@ -56,6 +63,7 @@ module PeopleCounter
       sheet_keys.each { |key| @names[key] = @kit.claim_name(SHEETS.fetch(key).first) }
       summary_sheet(package)
       days_sheet if @all_days
+      compare_sheet
       halls_by_day_sheet if @all_days
       traffic_sheet
       hall_sheet
@@ -87,7 +95,13 @@ module PeopleCounter
     end
 
     def sheet_keys
-      @all_days ? SHEETS.keys : SHEETS.keys - ALL_DAYS_ONLY
+      keys = @all_days ? SHEETS.keys : SHEETS.keys - ALL_DAYS_ONLY
+      compare? ? keys : keys - [:compare]
+    end
+
+    # Comparing needs at least two days to lay next to each other.
+    def compare?
+      @all_days && @datas.size > 1
     end
 
     def day_label
@@ -198,7 +212,15 @@ module PeopleCounter
       tile_row([['AVERAGE PER HOUR', busy_hours.positive? ? (entries(event[:points]).to_f / busy_hours).round : nil, 'Over the hours with visitors', '2766EC'],
                 ['TOTAL CAPACITY', whole[:capacity], 'All counted halls added up', '6B7280'],
                 ['HALLS COUNTING', "#{whole[:halls_counted]} of #{whole[:halls]}", 'Counters working', '16A34A'],
-                ['EVENT DAY', number ? "#{number + 1} of #{@data[:days].size}" : nil, short_day(@data[:date]), '2766EC']])
+                last_day_tile(event, number)])
+    end
+
+    # From the second day on, what came in since the event opened; the first day just names itself.
+    def last_day_tile(event, number)
+      return ['EVENT DAY', number ? "#{number + 1} of #{@data[:days].size}" : nil, short_day(@data[:date]), '2766EC'] unless number&.positive?
+
+      ['VISITORS SO FAR', @before + entries(event[:points]),
+       "#{short_day(@data[:days].first)} to #{short_day(@data[:date])}", '16A34A']
     end
 
     # Every day together.
@@ -269,11 +291,19 @@ module PeopleCounter
       section('Visitors per day')
       return plain('No event day has been counted yet.') if @days.empty?
 
-      header(['Day', 'Visitors', 'Left', 'Peak crowd', 'Peak at', 'Busiest hour'])
+      header(['Day', 'Visitors', 'Total so far', 'Left', 'Peak crowd', 'Peak at', 'Busiest hour'])
       @days.each_with_index do |day, index|
-        body([short_day(day[:date]), day[:entries], day[:exits], day[:peak]&.dig(:occupancy), clock(day[:peak]&.dig(:at)),
-              hour_range(day[:busiest_entry_hour]&.dig(:at))],
-             %i[text int int int text text], index.odd?)
+        body([short_day(day[:date]), day[:entries], days_so_far[index], day[:exits], day[:peak]&.dig(:occupancy),
+              clock(day[:peak]&.dig(:at)), hour_range(day[:busiest_entry_hour]&.dig(:at))],
+             %i[text int int int int text text], index.odd?)
+      end
+    end
+
+    # Arrivals since the event opened, at the end of each day.
+    def days_so_far
+      @days_so_far ||= begin
+        total = 0
+        @days.map { |day| total += day[:entries] }
       end
     end
 
@@ -346,15 +376,15 @@ module PeopleCounter
     end
 
     def days_sheet
-      rows = @days.map do |day|
+      rows = @days.each_with_index.map do |day, index|
         [short_day(day[:date]), day[:entries], day[:exits], day[:peak]&.dig(:occupancy), clock(day[:peak]&.dig(:at)),
-         day[:busiest_entry_hour]&.dig(:in), hour_range(day[:busiest_entry_hour]&.dig(:at))]
+         day[:busiest_entry_hour]&.dig(:in), hour_range(day[:busiest_entry_hour]&.dig(:at)), days_so_far[index]]
       end
       sheet, first, last = @kit.table(@names[:days], title: 'Day by day',
                                       subtitle: 'Each event day up to today. Peak crowd is the most people inside at once that day.',
                                       columns: [col('Day', 22), col('Came in', 12, :int), col('Left', 12, :int),
                                                 col('Peak crowd', 12, :int), col('Peak at', 10), col('Busiest hour arrivals', 14, :int),
-                                                col('Busiest hour', 14)],
+                                                col('Busiest hour', 14), col('Total so far', 12, :int)],
                                       rows: rows, tab: 'FF2766EC', empty: 'No event day has been counted yet.')
       return if rows.empty?
 
@@ -362,6 +392,41 @@ module PeopleCounter
         chart.add_series data: sheet["B#{first}:B#{last}"], labels: sheet["A#{first}:A#{last}"], title: 'Came in', color: '16A34A'
         chart.add_series data: sheet["C#{first}:C#{last}"], labels: sheet["A#{first}:A#{last}"], title: 'Left', color: 'D97706'
         chart.gap_width = 40
+      end
+    end
+
+    # Hour of the day down the side, one column per day: arrivals first, then people inside.
+    def compare_sheet
+      return unless compare?
+
+      datas = @datas.last(MAX_COMPARE_DAYS)
+      names = datas.map { |data| short_day(data[:date]) }
+      by_day = datas.map { |data| data[:event][:points].index_by { |p| p[:bucket][11, 5] } }
+      rows = by_day.flat_map(&:keys).uniq.sort.map do |at|
+        [clock("2000-01-01T#{at}:00")] + by_day.map { |points| points[at]&.dig(:in) } + by_day.map { |points| points[at]&.dig(:occupancy) }
+      end
+      columns = [col('Time of day', 14)] + names.map { |name| col("#{name} · came in", 16, :int) } +
+                names.map { |name| col("#{name} · inside", 16, :int) }
+      sheet, first, last = @kit.table(@names[:compare], title: 'Day comparison',
+                                      subtitle: "Per #{@step}, one column per day. A day still in progress stops where its counts stop.",
+                                      columns: columns, rows: rows, tab: 'FFF59E0B', empty: 'No event day has been counted yet.')
+      add_compare_charts(sheet, first, last, names) unless rows.empty?
+    end
+
+    # A line per day on the same axis. Time labels are text, not dates, so the axis stays a plain list of slots.
+    def add_compare_charts(sheet, first, last, names)
+      days = names.size
+      left = Axlsx.col_ref((2 * days) + 2)
+      right = Axlsx.col_ref((2 * days) + 11)
+      labels = sheet["A#{first}:A#{last}"]
+      { 'Came in, day by day' => [1, 4, 21], 'People inside, day by day' => [days + 1, 23, 40] }.each do |title, (offset, top, bottom)|
+        sheet.add_chart(Axlsx::LineChart, start_at: "#{left}#{top}", end_at: "#{right}#{bottom}", title: title) do |chart|
+          names.each_with_index do |name, i|
+            column = Axlsx.col_ref(offset + i)
+            chart.add_series data: sheet["#{column}#{first}:#{column}#{last}"], labels: labels, title: name,
+                             color: DAY_COLORS[i % DAY_COLORS.size]
+          end
+        end
       end
     end
 
@@ -380,12 +445,16 @@ module PeopleCounter
     end
 
     def traffic_sheet
-      rows = @datas.flat_map { |data| data[:event][:points] }
-                   .map { |p| [slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy], slot_label(p[:bucket])] }
+      points = @datas.flat_map { |data| data[:event][:points] }
+      so_far = running_total(points, @before)
+      rows = points.each_with_index.map do |p, i|
+        [slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy], so_far[i], slot_label(p[:bucket])]
+      end
       sheet, first, last = @kit.table(@names[:traffic], title: 'Event traffic',
                                       subtitle: "#{scope_label}. Per #{@step}: people who came in, left, and were inside at the end of it.",
                                       columns: [col('Time slot', 20, time_kind), col('Came in', 12, :int), col('Left', 12, :int),
-                                                col('Net', 12, :int), col('Inside', 12, :int), col('Chart label', 18)],
+                                                col('Net', 12, :int), col('Inside', 12, :int), col('Visitors so far', 14, :int),
+                                                col('Chart label', 18)],
                                       rows: rows, tab: 'FF0EA5E9', empty: "No gate activity #{@all_days ? 'yet' : 'on this day'}.")
       add_traffic_charts(sheet, first, last) unless rows.empty?
     end
@@ -396,29 +465,43 @@ module PeopleCounter
       @all_days ? "#{Date.iso8601(iso[0, 10]).strftime('%-d %b')}, #{clock(iso)}" : clock(iso)
     end
 
+    # Running arrivals after each point, starting from what came in before the first one.
+    def running_total(points, start)
+      total = start
+      points.map { |p| total += p[:in] }
+    end
+
     def add_traffic_charts(sheet, first, last)
-      sheet.add_chart(Axlsx::LineChart, start_at: 'G4', end_at: 'P21', title: 'People inside') do |chart|
-        chart.add_series data: sheet["E#{first}:E#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Inside',
-                         color: Kit::BLUE.delete_prefix('FF')
+      labels = sheet["G#{first}:G#{last}"]
+      sheet.add_chart(Axlsx::LineChart, start_at: 'I4', end_at: 'R21', title: 'People inside') do |chart|
+        chart.add_series data: sheet["E#{first}:E#{last}"], labels: labels, title: 'Inside', color: Kit::BLUE.delete_prefix('FF')
         chart.show_legend = false
       end
-      sheet.add_chart(Axlsx::BarChart, start_at: 'G23', end_at: 'P40', title: 'Came in and left', bar_dir: :col) do |chart|
-        chart.add_series data: sheet["B#{first}:B#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Came in', color: '16A34A'
-        chart.add_series data: sheet["C#{first}:C#{last}"], labels: sheet["F#{first}:F#{last}"], title: 'Left', color: 'D97706'
+      sheet.add_chart(Axlsx::BarChart, start_at: 'I23', end_at: 'R40', title: 'Came in and left', bar_dir: :col) do |chart|
+        chart.add_series data: sheet["B#{first}:B#{last}"], labels: labels, title: 'Came in', color: '16A34A'
+        chart.add_series data: sheet["C#{first}:C#{last}"], labels: labels, title: 'Left', color: 'D97706'
         chart.gap_width = 40
+      end
+      sheet.add_chart(Axlsx::LineChart, start_at: 'I42', end_at: 'R59', title: 'Visitors so far') do |chart|
+        chart.add_series data: sheet["F#{first}:F#{last}"], labels: labels, title: 'Visitors so far', color: '16A34A'
+        chart.show_legend = false
       end
     end
 
     def hall_sheet
+      # Each hall's arrivals so far: from what came in before the day, or from zero across all days.
+      so_far = Hash.new(0)
+      @data[:halls].each { |hall| so_far[hall[:id]] = hall[:before_in].to_i }
       rows = @datas.flat_map { |data| data[:halls] }.flat_map do |hall|
         hall[:points].map do |p|
-          [hall[:floor].presence || 'No level set', hall[:name], slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy]]
+          [hall[:floor].presence || 'No level set', hall[:name], slot(p[:bucket]), p[:in], p[:out], p[:in] - p[:out], p[:occupancy],
+           so_far[hall[:id]] += p[:in]]
         end
       end
       @kit.table(@names[:halls], title: 'Hall detail',
                  subtitle: "#{scope_label}. One row per hall per #{@step}. Halls with no counter linked have no rows.",
                  columns: [col('Level', 18), col('Hall', 24), col('Time slot', 20, time_kind), col('Came in', 12, :int),
-                           col('Left', 12, :int), col('Net', 12, :int), col('Inside', 12, :int)],
+                           col('Left', 12, :int), col('Net', 12, :int), col('Inside', 12, :int), col('Visitors so far', 14, :int)],
                  rows: rows, tab: 'FF16A34A', empty: 'No hall has counts on this day.')
     end
   end

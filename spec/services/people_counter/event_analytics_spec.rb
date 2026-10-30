@@ -61,6 +61,37 @@ RSpec.describe PeopleCounter::EventAnalytics do
     expect(stats[:recent_flow]).to eq(net: -25, in: 0, out: 25, at: "2026-09-11T10:00:00")
   end
 
+  describe "cumulative" do
+    def cumulative(date)
+      described_class.new(event, date: date, bucket: 60, cumulative: true, client: client).call
+    end
+
+    it "adds up arrivals on each earlier day for every scope" do
+      data = cumulative("2026-09-12")
+      expect(data[:event]).to include(before_in: 40, before_days: [{ date: "2026-09-11", in: 40 }])
+      expect(data[:levels].find { |l| l[:floor] == "Level 1" }[:before_in]).to eq(40)
+      expect(data[:halls].map { |h| h[:before_in] }).to eq([30, 10, 0])
+      expect(client).to have_received(:venue_series).with(1, from: Date.new(2026, 9, 11), to: Date.new(2026, 9, 11), bucket: 60)
+    end
+
+    it "is empty on the first day without asking the counter" do
+      expect(cumulative("2026-09-11")[:event]).to include(before_in: 0, before_days: [])
+      expect(client).not_to have_received(:venue_series).with(1, hash_including(bucket: 60))
+    end
+
+    it "leaves out a hall whose earlier days can't be read" do
+      allow(client).to receive(:venue_series).with(2, hash_including(bucket: 60)).and_raise(PeopleCounter::Client::Error)
+      data = cumulative("2026-09-12")
+      expect(data[:halls].map { |h| h[:status] }).to eq(%w[ok unavailable unlinked])
+      expect(data[:event][:before_in]).to eq(30)
+    end
+
+    it "adds nothing unless asked" do
+      expect(result[:event]).not_to have_key(:before_in)
+      expect(result[:event]).not_to have_key(:before_days)
+    end
+  end
+
   it "marks a hall without a counter as unlinked and leaves it out of the sums" do
     hall = result[:halls].find { |h| h[:name] == "Hall C" }
     expect(hall).to include(status: "unlinked", points: [], stats: nil)
