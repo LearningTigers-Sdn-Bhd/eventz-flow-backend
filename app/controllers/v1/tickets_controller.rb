@@ -232,6 +232,7 @@ module V1
         quantity.times do |i|
           ticket = @event.tickets.build(
             attendee_name: "#{label} Pax #{i + 1}/#{quantity}",
+            guest_pass_label: label,
             attendee_email: attendee_email,
             attendee_phone: attendee_phone,
             role: role,
@@ -260,6 +261,31 @@ module V1
       else
         render json: { errors: tickets.last&.errors&.full_messages || ['Failed to create guest passes'] },
                status: :unprocessable_content
+      end
+    end
+
+    # POST /v1/events/:event_id/tickets/resize_guest_passes
+    # Grows or shrinks an existing guest pass pack to `quantity` total passes.
+    # Existing passes keep their QR codes; shrinking (org_owner/organizer only)
+    # archives only untouched placeholder passes. See GuestPassResizer.
+    def resize_guest_passes
+      authorize @event, :create_ticket?
+
+      result = GuestPassResizer.call(
+        @event,
+        batch_id: params[:registration_batch_id].to_s,
+        quantity: params[:quantity].to_i,
+        can_remove: current_user.is_org_owner_or_organizer?
+      )
+
+      if result.success?
+        render json: {
+          quantity: result.quantity,
+          added: result.added.map { |t| ticket_response(t) },
+          removed_public_ids: result.removed.map(&:public_id)
+        }, status: :ok
+      else
+        render json: { errors: result.errors }, status: result.status
       end
     end
 

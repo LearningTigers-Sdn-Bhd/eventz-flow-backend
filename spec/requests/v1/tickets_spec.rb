@@ -566,6 +566,11 @@ RSpec.describe 'V1::Tickets', type: :request do
           batch_ids = json['tickets'].map { |t| Ticket.find_by(public_id: t['public_id']).registration_batch_id }
           expect(batch_ids.uniq.size).to eq(1)
           expect(batch_ids.first).to be_present
+
+          # The raw label is stored (names get title-cased) so passes can be told
+          # apart from group-registration tickets even after a rename.
+          labels = json['tickets'].map { |t| Ticket.find_by(public_id: t['public_id']).guest_pass_label }
+          expect(labels.uniq).to eq(['Borneo 4WD'])
         end
       end
 
@@ -623,6 +628,66 @@ RSpec.describe 'V1::Tickets', type: :request do
           json = JSON.parse(response.body)
           expect(json['errors'].first).to match(/Not enough capacity/)
         end
+      end
+
+      response '403', 'Forbidden for event staff (Team Member)' do
+        let(:Authorization) { "Bearer #{staff_token}" }
+        run_test!
+      end
+    end
+  end
+
+  # =========================================================================
+  # POST /v1/events/:event_id/tickets/resize_guest_passes
+  # =========================================================================
+
+  path '/v1/events/{event_id}/tickets/resize_guest_passes' do
+    parameter name: :event_id, in: :path, type: :integer, description: 'ID of the parent Event'
+
+    post 'Grows or shrinks an existing guest pass pack to a new total' do
+      tags 'Tickets'
+      consumes 'application/json'
+      produces 'application/json'
+      security [{ BearerAuth: [] }]
+
+      parameter name: :Authorization, in: :header, type: :string, required: true
+      parameter name: :body, in: :body, schema: {
+        type: :object,
+        properties: {
+          registration_batch_id: { type: :string, description: 'Batch id shared by the pack\'s passes' },
+          quantity: { type: :integer, example: 12, description: 'New total number of passes in the pack' }
+        },
+        required: %w[registration_batch_id quantity]
+      }
+
+      let(:event_id) { organizer_event.id }
+      let(:batch_id) do
+        Array.new(2) do |i|
+          create(:ticket, event: organizer_event, ticket_type: general_ticket_type,
+                          attendee_name: "Acme Sdn Bhd Pax #{i + 1}/2", guest_pass_label: 'Acme Sdn Bhd',
+                          attendee_email: nil, attendee_phone: nil, payment_status: :paid,
+                          registration_batch_id: '6c1f3a9e-6d4b-4a45-9a52-0d1d2d9c8f10')
+        end
+        '6c1f3a9e-6d4b-4a45-9a52-0d1d2d9c8f10'
+      end
+      let(:body) { { registration_batch_id: batch_id, quantity: 4 } }
+
+      response '200', 'Adds passes to the pack, keeping the existing ones' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+
+        run_test! do
+          json = JSON.parse(response.body)
+          expect(json['quantity']).to eq(4)
+          expect(json['added'].size).to eq(2)
+          expect(json['removed_public_ids']).to eq([])
+        end
+      end
+
+      response '404', 'Unknown batch' do
+        let(:Authorization) { "Bearer #{organizer_token}" }
+        let(:body) { { registration_batch_id: SecureRandom.uuid, quantity: 4 } }
+
+        run_test!
       end
 
       response '403', 'Forbidden for event staff (Team Member)' do
