@@ -271,6 +271,7 @@ Rails.application.routes.draw do
         end
         collection do
           post :create_guest_passes
+          post :resize_guest_passes
           patch :bulk_update_ticket_type
           patch :bulk_archive
           delete :bulk_delete
