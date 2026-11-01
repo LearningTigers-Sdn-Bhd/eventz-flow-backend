@@ -46,6 +46,18 @@ RSpec.describe PeopleCounter::EventAnalytics do
     expect(data[:event][:points].last[:occupancy]).to eq(9)
   end
 
+  it "runs event occupancy over all halls' In/Out, so exits through one hall offset entries through another" do
+    allow(client).to receive(:venue_series).with(1, any_args).and_return(
+      [row("14:00:00", 100, 0), row("15:00:00", 50, 0), row("22:00:00", 30, 0)]
+    )
+    allow(client).to receive(:venue_series).with(2, any_args).and_return(
+      [row("14:00:00", 20, 60), row("15:00:00", 10, 90), row("22:00:00", 0, 40)]
+    )
+    event = result(bucket: 15)[:event]
+    expect(event[:points].map { |p| p[:occupancy] }).to eq([60, 30, 20])
+    expect(event[:stats][:peak]).to eq(occupancy: 60, at: "2026-09-11T14:00:00")
+  end
+
   it "shows hourly points with In/Out summed and occupancy at the end of the hour" do
     a = result(bucket: 60)[:halls].find { |h| h[:name] == "Hall A" }
     expect(a[:points]).to eq([
