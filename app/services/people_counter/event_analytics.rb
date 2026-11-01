@@ -4,7 +4,11 @@ module PeopleCounter
   # Always read from the counter service in 15-minute buckets; the requested
   # bucket (15 or 60) only changes how the points are shown. Occupancy is the
   # running In minus Out through the day, never below zero. Level and event
-  # lines are the sum of their halls' lines, so the three always agree.
+  # In/Out are the sum of their halls'; their occupancy is run once over those
+  # sums, not added up from each hall's floored occupancy. People often enter
+  # through one hall and leave through another (an entrance-only door), and
+  # flooring hall by hall would keep the arrivals while dropping the departures,
+  # so the crowd would only grow and peak at closing.
   #
   # With cumulative: true, every scope also carries before_days (arrivals on each
   # earlier event day) and before_in (their sum, 0 on the first day), so "so far"
@@ -132,12 +136,16 @@ module PeopleCounter
       result[:before_in] = days.sum { |d| d[:in] }
     end
 
+    # In/Out added bucket by bucket, then occupancy run over the totals (see the class note).
     def sum_points(fines)
       return [] if fines.empty?
 
+      occupancy = 0
       fines.transpose.map do |column|
-        { bucket: column.first[:bucket], in: column.sum { |p| p[:in] }, out: column.sum { |p| p[:out] },
-          occupancy: column.sum { |p| p[:occupancy] } }
+        i = column.sum { |p| p[:in] }
+        o = column.sum { |p| p[:out] }
+        occupancy = [occupancy + i - o, 0].max
+        { bucket: column.first[:bucket], in: i, out: o, occupancy: occupancy }
       end
     end
 
