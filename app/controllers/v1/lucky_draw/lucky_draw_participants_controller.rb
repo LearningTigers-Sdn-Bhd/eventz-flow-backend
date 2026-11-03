@@ -1,6 +1,7 @@
 module V1
   module LuckyDraw
     class LuckyDrawParticipantsController < ApplicationController
+      include LuckyDrawIdentity
       # Load and authorize the parent event and session before every action
       before_action :set_event
       before_action :set_session
@@ -161,7 +162,7 @@ module V1
         {
           id: participant.id,
           name: participant.is_a?(Ticket) ? participant.attendee_name : participant.full_name,
-          contact: participant.draw_contact
+          **draw_identity(participant)
         }
       end
     end

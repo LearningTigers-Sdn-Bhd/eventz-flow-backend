@@ -1,11 +1,13 @@
 module V1
   module LuckyDraw
     class InvalidParticipantsController < ApplicationController
+      include LuckyDrawIdentity
+      include LuckyDrawCollection
       # Load and authorize the parent event and session before every action
       before_action :set_event
       before_action :set_session
       before_action :authorize_event
-      before_action :set_invalid_participant, only: [:destroy, :notify, :void, :unvoid]
+      before_action :set_invalid_participant, only: [:destroy, :notify, :void, :unvoid, :collection]
 
       # GET /v1/events/:event_id/lucky_draw/sessions/:session_id/invalid_participants
       def index
@@ -148,6 +150,10 @@ module V1
         head :no_content
       end
 
+      def collection
+        save_collection(@invalid_participant)
+      end
+
       private
 
       def set_event
@@ -189,8 +195,9 @@ module V1
           participant: {
             id: participant_id,
             name: participant_name,
-            contact: participant&.draw_contact
+            **draw_identity(participant, winner: true)
           },
+          **collection_details(invalid_participant),
           round: invalid_participant.round,
           voided_at: invalid_participant.voided_at&.iso8601,
           created_at: invalid_participant.created_at.iso8601,

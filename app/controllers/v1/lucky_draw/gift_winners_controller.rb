@@ -1,12 +1,14 @@
 module V1
   module LuckyDraw
     class GiftWinnersController < ApplicationController
+      include LuckyDrawIdentity
+      include LuckyDrawCollection
       # Load and authorize the parent event before every action
       before_action :set_event
       before_action :set_session
       before_action :authorize_event
       before_action :set_gift, except: :sweep
-      before_action :set_winner, only: [:destroy, :notify, :void, :unvoid]
+      before_action :set_winner, only: [:destroy, :notify, :void, :unvoid, :collection]
 
       # POST /v1/events/:event_id/lucky_draw/sessions/:session_id/gifts/:gift_id/winners
       def create
@@ -141,6 +143,10 @@ module V1
         )
       end
 
+      def collection
+        save_collection(@winner)
+      end
+
       private
 
       def set_event
@@ -254,7 +260,9 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
-          participant_contact: (winner.ticket || winner.visitor)&.draw_contact,
+          **collection_details(winner),
+          participant_contact: draw_identity(winner.ticket || winner.visitor)[:contact],
+          **draw_identity(winner.ticket || winner.visitor, winner: true).except(:contact),
           round: winner.round,
           voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,

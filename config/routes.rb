@@ -483,6 +483,7 @@ Rails.application.routes.draw do
           resources :gifts, only: %i[index show create update destroy] do
             resources :winners, only: %i[create destroy], controller: 'gift_winners' do
               member do
+                post :collection
                 post :notify
                 post :void
                 post :unvoid
@@ -498,6 +499,7 @@ Rails.application.routes.draw do
           end
           resources :invalid_participants, only: %i[index create destroy] do
             member do
+              post :collection
               post :notify
               post :void
               post :unvoid

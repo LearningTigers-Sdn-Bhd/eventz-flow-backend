@@ -1,6 +1,8 @@
 module V1
   module LuckyDraw
     class GiftsController < ApplicationController
+      include LuckyDrawIdentity
+      include LuckyDrawCollection
       # Load and authorize the parent event and session before every action
       before_action :set_event
       before_action :set_session
@@ -136,6 +138,9 @@ module V1
           ticket_id: winner.ticket_id,
           visitor_id: winner.visitor_id,
           participant_name: participant_name,
+          **collection_details(winner),
+          participant_contact: draw_identity(winner.ticket || winner.visitor)[:contact],
+          **draw_identity(winner.ticket || winner.visitor, winner: true).except(:contact),
           round: winner.round,
           voided_at: winner.voided_at&.iso8601,
           drawn_at: winner.drawn_at.iso8601,
