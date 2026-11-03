@@ -22,7 +22,8 @@ class EmailDelivery::FailureClassifier
     message = @error.message.to_s.downcase
 
     return 'provider_daily_limit' if message.include?('daily') && message.include?('limit')
-    return 'rate_limit' if @error.is_a?(Resend::Error::RateLimitExceededError)
+    return 'rate_limit' if @error.is_a?(Resend::Error::RateLimitExceededError) ||
+                           @error.is_a?(EmailDelivery::AuditedDelivery::SendSlotUnavailable)
     # MillionSend rejects sends to suppressed addresses up front (422
     # all_recipients_suppressed) instead of emitting an email.suppressed event.
     return 'suppressed' if message.include?('suppressed')
