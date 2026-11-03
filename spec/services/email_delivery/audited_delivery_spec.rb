@@ -3,8 +3,6 @@ require 'rails_helper'
 RSpec.describe EmailDelivery::AuditedDelivery do
   include ActiveJob::TestHelper
 
-  before { allow(described_class).to receive(:wait_for_send_slot) }
-
   let(:ticket) { create(:ticket, attendee_email: 'attendee@example.com') }
 
   describe '.deliver_now' do
