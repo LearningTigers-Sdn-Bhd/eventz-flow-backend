@@ -66,7 +66,10 @@ RSpec.describe PublicExhibitorBookingService do
   # is a User with no association back to its event — the welcome email is
   # only gated because the service passes `event:` explicitly).
   context 'with EventEmailSetting gating (not stubbed)' do
-    before { RSpec::Mocks.space.proxy_for(EmailDelivery::AuditedDelivery).reset }
+    before do
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_later).and_call_original
+      allow(EmailDelivery::AuditedDelivery).to receive(:deliver_now).and_call_original
+    end
 
     it 'does not send the welcome email when exhibitor_welcome is disabled' do
       access.update!(normalized_email: 'gated@example.com')

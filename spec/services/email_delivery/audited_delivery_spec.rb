@@ -9,7 +9,8 @@ RSpec.describe EmailDelivery::AuditedDelivery do
     it 'creates a sent audit row when the provider accepts the email' do
       message_delivery = TicketMailer.confirmation_email(ticket)
       allow(TicketMailer).to receive(:confirmation_email).with(ticket).and_return(message_delivery)
-      allow(message_delivery).to receive(:deliver_now) do
+      expect(described_class).to receive(:wait_for_send_slot).ordered
+      expect(message_delivery).to receive(:deliver_now).ordered do
         message_delivery.message.message_id = 'email_resend_123'
       end
 
@@ -118,43 +119,46 @@ RSpec.describe EmailDelivery::AuditedDelivery do
     end
   end
 
-  describe '.send_delay (provider rate-limit spacing)' do
-    # Stands in for the Redis Lua script: hands out consecutive slots.
-    def fake_slots(start, spacing)
-      next_slot = start
-      conn = double('redis')
-      allow(conn).to receive(:call) do
-        slot = next_slot
-        next_slot += spacing
-        slot.to_s
-      end
-      allow(Sidekiq).to receive(:redis).and_yield(conn)
+  describe '.wait_for_send_slot' do
+    let(:redis) { double('redis') }
+
+    before do
+      allow(described_class).to receive(:wait_for_send_slot).and_call_original
+      allow(Sidekiq).to receive(:redis).and_yield(redis)
     end
 
-    it 'spaces a burst one slot apart and gives the first email no delay' do
-      fake_slots(Time.current.to_f, described_class::SEND_SPACING)
+    it 'rechecks the shared gate after every wait, including when another worker wins' do
+      allow(redis).to receive(:call).with(
+        'EVAL', described_class::SLOT_SCRIPT, 1, described_class::SLOT_KEY, described_class::SEND_SPACING
+      ).and_return('0.6', '0.3', '0')
+      expect(described_class).to receive(:sleep).with(0.6).ordered
+      expect(described_class).to receive(:sleep).with(0.3).ordered
 
-      delays = Array.new(3) { described_class.send_delay }
-      expect(delays[0]).to be_nil
-      expect(delays[1]).to be_within(0.2).of(described_class::SEND_SPACING)
-      expect(delays[2]).to be_within(0.2).of(described_class::SEND_SPACING * 2)
+      described_class.wait_for_send_slot
+
+      expect(redis).to have_received(:call).exactly(3).times
     end
 
-    it 'schedules the job for later when a slot is not free yet' do
-      allow(described_class).to receive(:send_delay).and_return(1.5)
-      clear_enqueued_jobs
+    it 'does not wait when the gate is free' do
+      allow(redis).to receive(:call).and_return('0')
+      expect(described_class).not_to receive(:sleep)
 
-      described_class.deliver_later(
+      described_class.wait_for_send_slot
+    end
+
+    it 'does not send and leaves a retryable failure when Redis is down' do
+      allow(Sidekiq).to receive(:redis).and_raise(RedisClient::CannotConnectError)
+      message_delivery = TicketMailer.confirmation_email(ticket)
+      allow(TicketMailer).to receive(:confirmation_email).with(ticket).and_return(message_delivery)
+      expect(message_delivery).not_to receive(:deliver_now)
+
+      delivery = described_class.deliver_now(
         mailer_name: 'TicketMailer', mailer_action: 'confirmation_email', args: [ticket], related: ticket
       )
 
-      expect(enqueued_jobs.last[:at]).to be > Time.current.to_f
-    end
-
-    it 'fails open (no delay) when Redis is down' do
-      allow(Sidekiq).to receive(:redis).and_raise(RedisClient::CannotConnectError)
-
-      expect(described_class.send_delay).to be_nil
+      expect(delivery.status).to eq('failed')
+      expect(delivery.failure_reason).to eq('rate_limit')
+      expect(delivery.next_retry_at).to be_present
     end
   end
 

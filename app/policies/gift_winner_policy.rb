@@ -20,6 +20,10 @@ class GiftWinnerPolicy < ApplicationPolicy
   end
 
   # destroy? - event admins, team members, org admins
+  def update?
+    create?
+  end
+
   def destroy?
     create?
   end

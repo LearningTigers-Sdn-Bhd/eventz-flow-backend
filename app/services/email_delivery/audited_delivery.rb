@@ -5,37 +5,37 @@ class EmailDelivery::AuditedDelivery
   IN_FLIGHT_STATUSES = %w[queued sending sent delivered].freeze
   DEDUPE_WINDOW = 24.hours
 
-  # Resend allows ~2 API calls/second per team and rejects the rest (429), so a
-  # bulk send that enqueues thousands of jobs at once loses emails. Every
-  # deliver_later reserves the next free send slot in Redis, which spaces
-  # sends app-wide: concurrent bulk runs (certificates + thank-you cron) share
-  # the same queue of slots, and a lone email gets no delay. Calibration knob:
-  # lower EMAIL_SEND_SPACING_SECONDS if the Resend plan allows a higher rate.
+  class SendSlotUnavailable < StandardError; end
+
+  # Scheduled jobs can become runnable together. Gate actual sends across all
+  # workers, including synchronous sends and retries, rather than enqueue times.
   SEND_SPACING = ENV.fetch('EMAIL_SEND_SPACING_SECONDS', '0.6').to_f
-  SLOT_KEY = 'email_delivery:next_send_slot'.freeze
+  SLOT_KEY = 'email_delivery:send_gate'.freeze
   # Label stored on each EmailDelivery row. MillionSend speaks the Resend API,
   # so the switch is RESEND_BASE_URL + RESEND_API_KEY; set EMAIL_PROVIDER=millionsend
   # alongside them so the Email page can tell old and new rows apart.
   PROVIDER = ENV.fetch('EMAIL_PROVIDER', 'resend').freeze
-  # Atomically: slot = max(stored next slot, now); store slot + spacing; return slot.
+  # Only the winning worker advances the gate. Redis time avoids host clock skew.
   SLOT_SCRIPT = <<~LUA.freeze
-    local slot = math.max(tonumber(redis.call('GET', KEYS[1]) or '0'), tonumber(ARGV[1]))
-    redis.call('SET', KEYS[1], tostring(slot + tonumber(ARGV[2])), 'EX', 86400)
-    return tostring(slot)
+    local time = redis.call('TIME')
+    local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
+    local next_slot = tonumber(redis.call('GET', KEYS[1]) or '0')
+    if next_slot > now then return tostring(next_slot - now) end
+    redis.call('SET', KEYS[1], tostring(now + tonumber(ARGV[1])), 'EX', 86400)
+    return '0'
   LUA
 
-  # Seconds to wait before this email's job may run (nil = run now). Fails open:
-  # if Redis is unreachable the email goes out immediately rather than not at all.
-  def self.send_delay
-    return nil unless SEND_SPACING.positive?
+  def self.wait_for_send_slot
+    return unless SEND_SPACING.positive?
 
-    now = Time.current.to_f
-    slot = Sidekiq.redis { |conn| conn.call('EVAL', SLOT_SCRIPT, 1, SLOT_KEY, now, SEND_SPACING) }.to_f
-    delay = slot - now
-    delay > 0.05 ? delay : nil
+    loop do
+      delay = Sidekiq.redis { |conn| conn.call('EVAL', SLOT_SCRIPT, 1, SLOT_KEY, SEND_SPACING) }.to_f
+      break unless delay.positive?
+
+      sleep(delay)
+    end
   rescue StandardError => e
-    Rails.logger.warn("[EmailDelivery::AuditedDelivery] send slot unavailable: #{e.message}")
-    nil
+    raise SendSlotUnavailable, "Email send slot unavailable: #{e.message}"
   end
 
   def self.deliver_now(mailer_name:, mailer_action:, args:, related: nil, metadata: {}, dedupe: false, event: nil)
@@ -50,7 +50,7 @@ class EmailDelivery::AuditedDelivery
     return instance.build_skipped_record if instance.disabled_by_event_settings?
 
     delivery = instance.build_record
-    EmailDeliveryJob.set(wait: send_delay).perform_later(delivery.id, mailer_name, mailer_action, args)
+    EmailDeliveryJob.perform_later(delivery.id, mailer_name, mailer_action, args)
     EmailDelivery::VoucherFollowUp.enqueue_after(mailer_name, mailer_action, args)
     EmailDelivery::BusinessMatchingFollowUp.enqueue_after(mailer_name, mailer_action, args)
     delivery
@@ -146,6 +146,7 @@ class EmailDelivery::AuditedDelivery
     message = message_delivery.respond_to?(:message) ? message_delivery.message : nil
 
     delivery.update!(status: 'sending')
+    self.class.wait_for_send_slot
     message_delivery.deliver_now
 
     delivery.update!(

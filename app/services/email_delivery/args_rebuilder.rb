@@ -15,6 +15,10 @@ class EmailDelivery::ArgsRebuilder
          ['TicketMailer', 'group_confirmation_email'], ['TicketMailer', 'voucher_showcase_email'],
          ['TicketMailer', 'business_matching_email']
       [@delivery.related].compact if @delivery.related.is_a?(Ticket)
+    when ['ThankYouMailer', 'thank_you_email'], ['ThankYouMailer', 'feedback_reminder_email']
+      [@delivery.related] if @delivery.related.is_a?(Ticket)
+    when ['ThankYouMailer', 'exhibitor_thank_you_email'], ['ThankYouMailer', 'exhibitor_feedback_reminder_email']
+      [@delivery.related] if @delivery.related.is_a?(EventVendor)
     when ['ExhibitorRegistrationMailer', 'registration_received_email'],
          ['ExhibitorRegistrationMailer', 'payment_confirmed_email']
       [@delivery.related].compact if @delivery.related.is_a?(ExhibitorKit)

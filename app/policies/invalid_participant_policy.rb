@@ -25,6 +25,10 @@ class InvalidParticipantPolicy < ApplicationPolicy
   end
 
   # destroy? - event admins, team members, org admins
+  def update?
+    create?
+  end
+
   def destroy?
     index?
   end

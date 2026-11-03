@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_31_150000) do
+ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1260,6 +1260,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_31_150000) do
     t.datetime "updated_at", null: false
     t.integer "round"
     t.datetime "voided_at"
+    t.datetime "claimed_at"
+    t.string "gift_taken", limit: 500
+    t.datetime "collection_updated_at"
     t.index ["gift_id"], name: "index_gift_winners_on_gift_id"
     t.index ["ticket_id"], name: "index_gift_winners_on_ticket_id"
     t.index ["visitor_id"], name: "index_gift_winners_on_visitor_id"
@@ -1316,6 +1319,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_31_150000) do
     t.datetime "updated_at", null: false
     t.integer "round"
     t.datetime "voided_at"
+    t.datetime "claimed_at"
+    t.string "gift_taken", limit: 500
+    t.datetime "collection_updated_at"
     t.index ["lucky_draw_session_id", "round"], name: "index_invalid_participants_on_session_id_and_round"
     t.index ["lucky_draw_session_id", "ticket_id"], name: "index_invalid_participants_on_session_id_and_ticket_id_unique", unique: true, where: "(ticket_id IS NOT NULL)"
     t.index ["lucky_draw_session_id", "visitor_id"], name: "index_invalid_participants_on_session_id_and_visitor_id_unique", unique: true, where: "(visitor_id IS NOT NULL)"
