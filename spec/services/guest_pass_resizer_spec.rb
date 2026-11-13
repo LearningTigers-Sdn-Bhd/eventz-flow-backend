@@ -38,6 +38,17 @@ RSpec.describe GuestPassResizer do
       expect(result.added.map(&:role).uniq).to eq(['Sponsor Guest'])
     end
 
+    it 'copies contact details from a placeholder pass, not from a renamed one' do
+      pack = create_pack(3)
+      pack[0].update_columns(attendee_name: 'Real Person', attendee_email: 'real@x.com', attendee_phone: '0111')
+      pack[1].update_columns(attendee_email: 'hr@acme.com', attendee_phone: '0123')
+
+      result = resize(5)
+
+      expect(result.added.map(&:attendee_email).uniq).to eq(['hr@acme.com'])
+      expect(result.added.map(&:attendee_phone).uniq).to eq(['0123'])
+    end
+
     it 'refuses when the ticket type lacks capacity' do
       ticket_type.update!(quantity: 4)
       create_pack(3)
@@ -71,6 +82,29 @@ RSpec.describe GuestPassResizer do
       expect(result.status).to eq(:unprocessable_content)
       expect(result.errors.first).to match(/Can only remove 2 of 3/)
       expect(active_names.size).to eq(4)
+    end
+
+    it 'reports an error and changes nothing when a pass cannot be archived' do
+      create_pack(4)
+      allow_any_instance_of(Ticket).to receive(:archive).and_return(false)
+
+      result = resize(2)
+
+      expect(result.status).to eq(:unprocessable_content)
+      expect(result.errors.first).to match(/Could not remove/)
+      expect(active_names).to eq((1..4).map { |i| "Acme Sdn Bhd Pax #{i}/4" })
+    end
+
+    it 'never removes a pass that has a payment record' do
+      pack = create_pack(3)
+      create(:ticket_payment, ticket: pack[2])
+      create(:ticket_payment, ticket: pack[1])
+
+      result = resize(1)
+
+      expect(result.status).to eq(:unprocessable_content)
+      expect(result.errors.first).to match(/Can only remove 1 of 2/)
+      expect(active_names.size).to eq(3)
     end
 
     it 'is forbidden without remove rights' do
