@@ -1073,15 +1073,18 @@ class TicketExcelService
 
   # Remove any legacy custom field keys that are not part of preferred label keys
   def self.sanitize_custom_fields(custom_fields, labels_data)
-    allowed_keys = self.preferred_label_keys(labels_data)
-    return {} if allowed_keys.empty?
-    custom_fields.slice(*allowed_keys)
+    # Reserved keys (_terms_agreement, _indemnity, ...) are server-written, never
+    # label fields: dropping them here erased signed terms on every reimport.
+    custom_fields.slice(*self.preferred_label_keys(labels_data), *Ticket::RESERVED_CUSTOM_FIELD_KEYS)
   end
 
   # Remove keys whose values are nil/blank strings after trimming
   def self.strip_empty_custom_fields(custom_fields)
     # Preserve empty-string values for defined label keys; normalize nil to ""
-    custom_fields.transform_values { |v| v.nil? ? '' : v.to_s }
+    # Reserved values are hashes - to_s would corrupt them, so leave them as is.
+    custom_fields.to_h do |k, v|
+      [k, Ticket::RESERVED_CUSTOM_FIELD_KEYS.include?(k) ? v : (v.nil? ? '' : v.to_s)]
+    end
   end
 
   # Merge imported custom fields over the ticket's stored ones. By default a

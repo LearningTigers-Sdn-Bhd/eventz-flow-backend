@@ -62,4 +62,27 @@ RSpec.describe TicketExcelService do
       expect(xlsx.sheet('Entry Timeline').row(2)[1]).to eq(ticket.attendee_name)
     end
   end
+
+  describe 'reimport keeps server-written custom fields' do
+    let(:terms) do
+      { 'accepted' => true, 'method' => 'checkbox_typed_name', 'acknowledged_name' => 'Ali',
+        'terms_version' => 'v1', 'accepted_at' => '2026-08-23T03:33:00Z' }
+    end
+    let(:stored) { { 'address' => 'KK', 'legacy' => 'x', '_terms_agreement' => terms, '_indemnity' => { 'accepted' => true } } }
+    let(:labels) { { 'address' => 'Address' } }
+
+    it 'sanitize drops unknown keys but keeps reserved ones, even with no labels' do
+      expect(described_class.sanitize_custom_fields(stored, labels).keys)
+        .to contain_exactly('address', '_terms_agreement', '_indemnity')
+      expect(described_class.sanitize_custom_fields(stored, {}).keys)
+        .to contain_exactly('_terms_agreement', '_indemnity')
+    end
+
+    it 'strip_empty leaves reserved hash values intact and stringifies labels' do
+      result = described_class.strip_empty_custom_fields(stored.merge('address' => nil))
+
+      expect(result['_terms_agreement']).to eq(terms)
+      expect(result['address']).to eq('')
+    end
+  end
 end
