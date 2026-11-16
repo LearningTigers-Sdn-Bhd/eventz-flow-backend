@@ -30,6 +30,8 @@ class GuestPassResizer
     passes = @event.tickets.where(registration_batch_id: @batch_id).where.not(guest_pass_label: nil).order(:id).to_a
     return failure(:not_found, 'Guest pass batch not found') if passes.empty?
 
+    @passes = passes
+
     current = passes.size
     return failure(:forbidden, 'Not authorized to remove passes') if @quantity < current && !@can_remove
 
@@ -44,10 +46,16 @@ class GuestPassResizer
       elsif @quantity < current
         removed = removable_passes(passes, current - @quantity)
         problem = removal_error(removed.size, current - @quantity) if removed.size < current - @quantity
-        removed.each { |ticket| raise ActiveRecord::Rollback unless ticket.archive } unless problem
+        problem ||= archive_all(removed)
       end
 
-      renumber(passes - removed) unless problem
+      if problem
+        added = []
+        removed = []
+        raise ActiveRecord::Rollback
+      end
+
+      renumber(passes - removed)
     end
 
     return failure(:unprocessable_content, problem) if problem
@@ -70,12 +78,16 @@ class GuestPassResizer
   end
 
   def add_passes(template, current)
+    # Pack contact details live on the untouched placeholders; a pass renamed to
+    # a real person carries that person's own email/phone, which must not spread.
+    contact = @passes.find { |t| t.attendee_name.match?(PLACEHOLDER_NAME) }
+
     (current + 1..@quantity).map do |i|
       ticket = @event.tickets.build(
         attendee_name: "#{template.guest_pass_label} Pax #{i}/#{@quantity}",
         guest_pass_label: template.guest_pass_label,
-        attendee_email: template.attendee_email,
-        attendee_phone: template.attendee_phone,
+        attendee_email: contact&.attendee_email,
+        attendee_phone: contact&.attendee_phone,
         role: template.role,
         ticket_type: template.ticket_type,
         registration_batch_id: @batch_id,
@@ -92,8 +104,14 @@ class GuestPassResizer
   # passes belong to real people now, so they are never removed.
   def removable_passes(passes, count)
     passes.reverse
-          .select { |t| !t.checked_in? && !t.scanned? && t.attendee_name.match?(PLACEHOLDER_NAME) }
+          .select { |t| !t.checked_in? && !t.scanned? && t.ticket_payment.nil? && t.attendee_name.match?(PLACEHOLDER_NAME) }
           .first(count)
+  end
+
+  # Returns an error message when a pass can't be archived (caller rolls back).
+  def archive_all(tickets)
+    failed = tickets.find { |ticket| !ticket.archive }
+    "Could not remove #{failed.public_id}: #{failed.errors.full_messages.to_sentence}" if failed
   end
 
   def removal_error(found, wanted)

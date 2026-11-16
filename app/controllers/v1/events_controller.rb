@@ -326,6 +326,8 @@ module V1
         :use_certificate,
         :use_rfid,
         :use_people_counter,
+        :use_ticket_groups,
+        :auto_assign_ticket_groups,
         :use_feedback,
         :use_api_access,
         :vehicles_enabled,

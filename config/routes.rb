@@ -278,6 +278,15 @@ Rails.application.routes.draw do
         end
       end
 
+      resources :ticket_groups, only: %i[index update destroy] do
+        collection do
+          post :setup
+          post :preview
+          post :assign
+          patch :move
+        end
+      end
+
       # Email blasts (org_owner only)
       resources :email_blasts, only: %i[index show create update destroy] do
         collection do

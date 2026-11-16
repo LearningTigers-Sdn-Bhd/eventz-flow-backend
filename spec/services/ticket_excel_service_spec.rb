@@ -32,6 +32,20 @@ RSpec.describe TicketExcelService do
       expect(sheet_names(result[:file_path])).to include('General Admission', 'VIP', 'Summary')
     end
 
+    it 'adds a Group List sheet only when the event has ticket groups' do
+      create(:ticket, event: event, ticket_type: general, attendee_name: 'Siti')
+      expect(sheet_names(described_class.export(event.id)[:file_path])).not_to include('Group List')
+
+      event.update!(use_ticket_groups: true)
+      room = event.ticket_groups.create!(name: 'Room A', position: 1)
+      create(:ticket, event: event, ticket_type: vip, attendee_name: 'Ali', ticket_group: room)
+
+      xlsx = Roo::Spreadsheet.open(described_class.export(event.id)[:file_path])
+      rows = xlsx.sheet('Group List').parse(headers: true).map { |r| r.values_at('Group', 'Attendee Name') }
+      expect(rows).to eq([['Group', 'Attendee Name'], ['Room A', 'Ali'], ['No group', 'Siti']])
+      expect(xlsx.sheet('Tickets').row(1)).to eq(TicketExcelService::FLAT_HEADERS)
+    end
+
     it 'scopes to a single ticket type when ticket_type_id is given' do
       create(:ticket, event: event, ticket_type: general)
       create(:ticket, event: event, ticket_type: vip)
@@ -60,6 +74,29 @@ RSpec.describe TicketExcelService do
       xlsx = Roo::Spreadsheet.open(with_rescans[:file_path])
       expect(sheet_names(with_rescans[:file_path])).to include('Entry Timeline')
       expect(xlsx.sheet('Entry Timeline').row(2)[1]).to eq(ticket.attendee_name)
+    end
+  end
+
+  describe 'reimport keeps server-written custom fields' do
+    let(:terms) do
+      { 'accepted' => true, 'method' => 'checkbox_typed_name', 'acknowledged_name' => 'Ali',
+        'terms_version' => 'v1', 'accepted_at' => '2026-08-23T03:33:00Z' }
+    end
+    let(:stored) { { 'address' => 'KK', 'legacy' => 'x', '_terms_agreement' => terms, '_indemnity' => { 'accepted' => true } } }
+    let(:labels) { { 'address' => 'Address' } }
+
+    it 'sanitize drops unknown keys but keeps reserved ones, even with no labels' do
+      expect(described_class.sanitize_custom_fields(stored, labels).keys)
+        .to contain_exactly('address', '_terms_agreement', '_indemnity')
+      expect(described_class.sanitize_custom_fields(stored, {}).keys)
+        .to contain_exactly('_terms_agreement', '_indemnity')
+    end
+
+    it 'strip_empty leaves reserved hash values intact and stringifies labels' do
+      result = described_class.strip_empty_custom_fields(stored.merge('address' => nil))
+
+      expect(result['_terms_agreement']).to eq(terms)
+      expect(result['address']).to eq('')
     end
   end
 end

@@ -126,6 +126,47 @@ RSpec.describe 'V1::EmailBlasts', type: :request do
     expect(EmailBlast.last.recipient_tickets.to_a.size).to eq(2)
   end
 
+  describe 'audience by ticket group' do
+    let(:room_a) { event.ticket_groups.create!(name: 'Room A', position: 1) }
+    let(:room_b) { event.ticket_groups.create!(name: 'Room B', position: 2) }
+    let(:vip) { create(:ticket_type, event: event, name: 'VIP') }
+
+    before do
+      create(:ticket, event: event, attendee_email: 'a1@example.com', ticket_group: room_a)
+      create(:ticket, event: event, attendee_email: 'a2@example.com', ticket_group: room_a, ticket_type: vip)
+      create(:ticket, event: event, attendee_email: 'b1@example.com', ticket_group: room_b)
+      create(:ticket, event: event, attendee_email: 'none@example.com')
+    end
+
+    it 'counts everyone when no group is picked, and only the picked groups otherwise' do
+      get "#{base}/audience", headers: owner_headers
+      expect(json['recipient_count']).to eq(4)
+
+      get "#{base}/audience", params: { ticket_group_ids: [room_a.id] }, headers: owner_headers
+      expect(json['recipient_count']).to eq(2)
+
+      get "#{base}/audience", params: { ticket_group_ids: [room_a.id, room_b.id] }, headers: owner_headers
+      expect(json['recipient_count']).to eq(3)
+    end
+
+    it 'needs both the ticket type and the group to match when both are picked' do
+      get "#{base}/audience", params: { ticket_group_ids: [room_a.id], ticket_type_ids: [vip.id] }, headers: owner_headers
+      expect(json['recipient_count']).to eq(1)
+    end
+
+    it 'saves the groups on a draft and sends only to them' do
+      post base, params: { subject: 'Room A only', body: 'x', ticket_group_ids: [room_a.id] }, headers: owner_headers
+      expect(json['data']['ticket_group_ids']).to eq([room_a.id])
+      expect(EmailBlast.last.recipient_tickets.map(&:attendee_email)).to contain_exactly('a1@example.com', 'a2@example.com')
+    end
+
+    it "ignores a group id from another event" do
+      foreign = create(:event).ticket_groups.create!(name: 'X', position: 1)
+      get "#{base}/audience", params: { ticket_group_ids: [foreign.id] }, headers: owner_headers
+      expect(json['recipient_count']).to eq(4)
+    end
+  end
+
   it 'shows sender and per-recipient results' do
     get "#{base}/audience", headers: owner_headers
     expect(json).to include('sender_address' => ApplicationMailer::DEFAULT_SENDER_ADDRESS, 'sender_name' => event.title)

@@ -58,6 +58,11 @@ class EmailBlast < ApplicationRecord
     Array(audience['ticket_type_ids']).map(&:to_i)
   end
 
+  # Empty = every group (and tickets with no group). Combined with ticket types, both must match.
+  def ticket_group_ids
+    Array(audience['ticket_group_ids']).map(&:to_i)
+  end
+
   # Off by default: only paid tickets. On: unpaid (pending_payment) tickets get it too.
   def include_pending?
     audience['include_pending'] == true
@@ -70,6 +75,7 @@ class EmailBlast < ApplicationRecord
     scope = event.tickets.where(status: statuses, waiting_list: false)
                  .where.not(attendee_email: [nil, ''])
     scope = scope.where(ticket_type_id: ticket_type_ids) if ticket_type_ids.any?
+    scope = scope.where(ticket_group_id: ticket_group_ids) if ticket_group_ids.any?
     scope.select('DISTINCT ON (LOWER(tickets.attendee_email)) tickets.*')
          .order(Arel.sql('LOWER(tickets.attendee_email), tickets.id'))
   end

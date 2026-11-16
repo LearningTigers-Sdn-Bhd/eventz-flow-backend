@@ -766,6 +766,29 @@ RSpec.describe 'V1::Events', type: :request do
     end
   end
 
+  describe 'Ticket groups toggle' do
+    let(:event) do
+      create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|
+        create(:event_assignment, role: :event_admin, event: record, user: organizer_user)
+      end
+    end
+
+    it 'is off by default, blocks the groups API, and can be switched on' do
+      expect(event.use_ticket_groups).to be(false)
+
+      get "/v1/events/#{event.id}/ticket_groups", headers: auth_headers(organizer_user), as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      put "/v1/events/#{event.id}", params: { event: { use_ticket_groups: true } },
+                                    headers: auth_headers(organizer_user), as: :json
+      expect(json['use_ticket_groups']).to be(true)
+
+      get "/v1/events/#{event.id}/ticket_groups", headers: auth_headers(organizer_user), as: :json
+      expect(response).to have_http_status(:ok)
+      expect(json['groups']).to eq([])
+    end
+  end
+
   describe 'wish wall style settings API' do
     let(:event) do
       create(:event, payment_status: :paid, published: false, visibility: true).tap do |record|

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
+ActiveRecord::Schema[8.0].define(version: 2026_11_16_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -882,6 +882,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
     t.integer "rfid_attendance_percent", default: 80, null: false
     t.boolean "use_rfid", default: false, null: false
     t.boolean "use_people_counter", default: false, null: false
+    t.boolean "use_ticket_groups", default: false, null: false
+    t.boolean "auto_assign_ticket_groups", default: false, null: false
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end
@@ -2012,6 +2014,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
     t.index ["ticket_type_id"], name: "index_ticket_type_price_tiers_on_ticket_type_id"
   end
 
+  create_table "ticket_groups", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.string "name", null: false
+    t.integer "position", null: false
+    t.integer "priority_ticket_type_ids", default: [], null: false, array: true
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "position"], name: "index_ticket_groups_on_event_id_and_position", unique: true
+    t.index ["event_id"], name: "index_ticket_groups_on_event_id"
+  end
+
   create_table "ticket_types", force: :cascade do |t|
     t.bigint "event_id"
     t.string "name", null: false
@@ -2061,6 +2074,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
     t.uuid "registration_batch_id"
     t.boolean "require_unique_membership_numbers", default: true, null: false
     t.string "guest_pass_label"
+    t.bigint "ticket_group_id"
     t.index "event_id, lower((custom_fields_data ->> 'ic_passport_no'::text))", name: "idx_tickets_unique_ic_passport_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'ic_passport_no'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
     t.index "event_id, lower((custom_fields_data ->> 'membership_no'::text))", name: "idx_tickets_unique_membership_no", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'membership_no'::text), ''::text) IS NOT NULL) AND (require_unique_membership_numbers = true))"
     t.index "event_id, lower((custom_fields_data ->> 'no_ic'::text))", name: "idx_tickets_unique_no_ic", unique: true, where: "((deleted_at IS NULL) AND (status <> 3) AND (NULLIF((custom_fields_data ->> 'no_ic'::text), ''::text) IS NOT NULL) AND (allow_multiple_tickets_per_email IS NOT TRUE))"
@@ -2075,6 +2089,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
     t.index ["public_id"], name: "index_tickets_on_public_id", unique: true
     t.index ["registration_batch_id"], name: "index_tickets_on_registration_batch_id"
     t.index ["scanned_by_id"], name: "index_tickets_on_scanned_by_id"
+    t.index ["ticket_group_id"], name: "index_tickets_on_ticket_group_id"
     t.index ["ticket_type_id"], name: "index_tickets_on_ticket_type_id"
     t.index ["user_id"], name: "index_tickets_on_user_id"
     t.index ["vehicle_registration_id"], name: "index_tickets_on_vehicle_registration_id"
@@ -2492,12 +2507,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_03_090000) do
   add_foreign_key "ticket_applications", "registration_forms"
   add_foreign_key "ticket_applications", "tickets"
   add_foreign_key "ticket_applications", "users", column: "reviewed_by_id"
+  add_foreign_key "ticket_groups", "events"
   add_foreign_key "ticket_payments", "tickets"
   add_foreign_key "ticket_payments", "users", column: "received_by_id"
   add_foreign_key "ticket_type_price_tiers", "ticket_types"
   add_foreign_key "ticket_types", "events"
   add_foreign_key "tickets", "events"
   add_foreign_key "tickets", "pass_bundles"
+  add_foreign_key "tickets", "ticket_groups", on_delete: :nullify
   add_foreign_key "tickets", "ticket_types"
   add_foreign_key "tickets", "users"
   add_foreign_key "tickets", "users", column: "scanned_by_id"
