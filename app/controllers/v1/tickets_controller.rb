@@ -46,7 +46,7 @@ module V1
     #     (X-Total-Count, X-Page, X-Per-Page, X-Total-Pages). Root JSON shape
     #     remains a bare array for backwards compatibility.
     def index
-      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, :ticket_payment, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
+      @tickets = policy_scope(Ticket).where(event: @event).includes(:ticket_type, :scanned_by, :pass_bundle, :ticket_group, :ticket_payment, vehicle_registration: :registration_form, registration_documents_attachments: :blob)
 
       if params[:archived] == 'true'
         @tickets = @tickets.only_deleted
@@ -72,6 +72,7 @@ module V1
       @tickets = filter_by_status(@tickets, params[:status]) if params[:status].present?
       @tickets = filter_by_ticket_type_name(@tickets, params[:ticket_type_name]) if params[:ticket_type_name].present?
       @tickets = @tickets.where(payment_status: params[:payment_status]) if params[:payment_status].present?
+      @tickets = @tickets.where(ticket_group_id: params[:ticket_group_id] == 'none' ? nil : params[:ticket_group_id]) if params[:ticket_group_id].present?
       @tickets = filter_by_review_status(@tickets, params[:review_status]) if params[:review_status].present?
       @tickets = filter_by_rsvp_status(@tickets, params[:rsvp_status]) if params[:rsvp_status].present?
 
@@ -81,6 +82,7 @@ module V1
           ticket_type: { only: [:id, :name, :price] },
           scanned_by: { only: [:id, :full_name] },
           pass_bundle: { only: [:id, :name] },
+          ticket_group: { only: [:id, :name] },
           ticket_application: {
             only: %i[review_status rsvp_status reviewed_at rejection_reason rsvp_sent_at rsvp_confirmed_at rsvp_expires_at]
           }

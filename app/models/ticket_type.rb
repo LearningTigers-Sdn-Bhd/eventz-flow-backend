@@ -4,6 +4,7 @@ class TicketType < ApplicationRecord
   belongs_to :event, optional: true
   has_many :tickets # Assuming a future Ticket model
   has_many :ticket_type_price_tiers, dependent: :destroy
+  after_destroy :remove_from_ticket_groups
   has_many :registration_form_ticket_types, dependent: :destroy
   has_many :registration_forms, through: :registration_form_ticket_types
   has_many :pass_bundles, dependent: :restrict_with_error
@@ -157,6 +158,13 @@ class TicketType < ApplicationRecord
     end
     
     payload.compact
+  end
+
+  # Keep groups' priority lists free of ids that no longer exist.
+  def remove_from_ticket_groups
+    TicketGroup.where(event_id: event_id).where('? = ANY(priority_ticket_type_ids)', id).find_each do |group|
+      group.update_columns(priority_ticket_type_ids: group.priority_ticket_type_ids - [id])
+    end
   end
 
   def format_changes

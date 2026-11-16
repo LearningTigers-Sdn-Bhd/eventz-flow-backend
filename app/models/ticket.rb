@@ -28,6 +28,7 @@ class Ticket < ApplicationRecord
   belongs_to :event
   belongs_to :ticket_type
   belongs_to :pass_bundle, optional: true
+  belongs_to :ticket_group, optional: true
   belongs_to :vehicle_registration, optional: true
   belongs_to :user, optional: true
   # belongs_to :order, optional: true
@@ -101,6 +102,7 @@ class Ticket < ApplicationRecord
 
   after_commit :send_webhook_notification, on: %i[create update]
   after_commit :send_confirmation_email, if: :should_send_confirmation?
+  after_commit :auto_assign_ticket_group, on: %i[create update], if: :auto_assign_ticket_group?
 
   attr_accessor :skip_webhooks
   attr_accessor :suppress_confirmation_email
@@ -367,6 +369,20 @@ class Ticket < ApplicationRecord
   def significant_changes?
     significant_fields = %w[status payment_status attendee_name attendee_email attendee_phone checked_in]
     (previous_changes.keys & significant_fields).any?
+  end
+
+  def auto_assign_ticket_group?
+    ticket_group_id.nil? && paid? && (purchased? || scanned?) && !waiting_list? &&
+      event.use_ticket_groups? && event.auto_assign_ticket_groups?
+  end
+
+  # A grouping problem must never block a registration or payment.
+  # ponytail: re-reads the event's tickets per paid ticket, fine for normal sales,
+  # move to a debounced job if huge imports with auto-assign on get slow.
+  def auto_assign_ticket_group
+    TicketGroupAssigner.assign_new!(event)
+  rescue StandardError => e
+    Rails.logger.error("[ticket_groups] auto-assign failed for event #{event_id}: #{e.message}")
   end
 
   def should_send_confirmation?

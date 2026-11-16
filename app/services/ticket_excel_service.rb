@@ -57,6 +57,7 @@ class TicketExcelService
     # otherwise would just repeat the single check-in already on each ticket row.
     build_scan_history_sheet(package, tickets) if @event.multiple_scans?
     build_detail_sheets(package, tickets)
+    build_group_sheet(package, tickets)
     build_summary_sheet(package, tickets)
 
     # Tickets must stay physical sheet 0 (#import blindly reads sheet(0)), but
@@ -79,7 +80,7 @@ class TicketExcelService
   private
 
   def scoped_tickets
-    tickets = @event.tickets.includes(:ticket_type, :event, :ticket_application, :scanned_by)
+    tickets = @event.tickets.includes(:ticket_type, :event, :ticket_application, :scanned_by, :ticket_group)
     tickets = tickets.where('created_at >= ?', @from.beginning_of_day) if @from.present?
     tickets = tickets.where('created_at <= ?', @to.end_of_day) if @to.present?
     tickets = tickets.where(ticket_type_id: @ticket_type_id) if @ticket_type_id.present?
@@ -224,6 +225,38 @@ class TicketExcelService
         sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
         sheet.page_setup.set(orientation: :landscape, fit_to_width: 1, fit_to_height: 0)
       end
+    end
+  end
+
+  # --- Group List (report-only; only for events that use ticket groups) ---
+  # Kept off the "Tickets" sheet on purpose: that sheet's column order is the
+  # import contract.
+
+  GROUP_HEADERS = ['Group', 'Attendee Name', 'Attendee Email', 'Attendee Phone', 'Ticket Type', 'Public ID'].freeze
+
+  def build_group_sheet(package, tickets)
+    return unless @event.use_ticket_groups? && @event.ticket_groups.exists?
+
+    rows = tickets.sort_by do |t|
+      [t.ticket_group&.position || Float::INFINITY, t.ticket_type&.name.to_s, t.attendee_name.to_s]
+    end
+    package.workbook.add_worksheet(name: 'Group List') do |sheet|
+      sheet.sheet_pr.tab_color = BRAND_BLUE
+      sheet.add_row GROUP_HEADERS, style: Array.new(GROUP_HEADERS.size, @styles[:table_header]), height: 18
+      sheet.column_widths 20, 26, 30, 18, 26, 22
+
+      rows.each_with_index do |ticket, index|
+        style = index.even? ? @styles[:cell] : @styles[:cell_alt]
+        text_style = index.even? ? @styles[:text] : @styles[:text_alt]
+        sheet.add_row(
+          [ticket.ticket_group&.name || 'No group', ticket.attendee_name, ticket.attendee_email,
+           ticket.attendee_phone, ticket.ticket_type&.name, ticket.public_id],
+          style: [style, style, style, text_style, style, text_style]
+        )
+      end
+
+      sheet.sheet_view.pane { |pane| pane.top_left_cell = 'A2'; pane.state = :frozen; pane.y_split = 1 }
+      sheet.auto_filter = "A1:F#{rows.size + 1}"
     end
   end
 

@@ -14,7 +14,7 @@ module V1
       render json: { data: blasts.map { |b| serialize(b) } }
     end
 
-    # GET /v1/events/:event_id/email_blasts/audience?ticket_type_ids[]=
+    # GET /v1/events/:event_id/email_blasts/audience?ticket_type_ids[]=&ticket_group_ids[]=
     def audience
       authorize EmailBlast, :index?
       blast = @event.email_blasts.new(audience: audience_params)
@@ -116,13 +116,15 @@ module V1
     def audience_params
       {
         'ticket_type_ids' => Array(params[:ticket_type_ids]).map(&:to_i).select(&:positive?),
+        # Only this event's groups count; anything else is dropped.
+        'ticket_group_ids' => @event.ticket_groups.where(id: Array(params[:ticket_group_ids]).map(&:to_i)).pluck(:id),
         'include_pending' => ActiveModel::Type::Boolean.new.cast(params[:include_pending]) == true
       }
     end
 
     def blast_params
       permitted = params.permit(:subject, :body, :banner, :body_format, :style_key).to_h
-      permitted[:audience] = audience_params if params.key?(:ticket_type_ids) || params.key?(:include_pending)
+      permitted[:audience] = audience_params if params.key?(:ticket_type_ids) || params.key?(:ticket_group_ids) || params.key?(:include_pending)
       permitted
     end
 
@@ -159,6 +161,7 @@ module V1
         body: blast.body,
         status: blast.status,
         ticket_type_ids: blast.ticket_type_ids,
+        ticket_group_ids: blast.ticket_group_ids,
         include_pending: blast.include_pending?,
         body_format: blast.body_format,
         style_key: blast.style_key,

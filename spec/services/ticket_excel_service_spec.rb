@@ -32,6 +32,20 @@ RSpec.describe TicketExcelService do
       expect(sheet_names(result[:file_path])).to include('General Admission', 'VIP', 'Summary')
     end
 
+    it 'adds a Group List sheet only when the event has ticket groups' do
+      create(:ticket, event: event, ticket_type: general, attendee_name: 'Siti')
+      expect(sheet_names(described_class.export(event.id)[:file_path])).not_to include('Group List')
+
+      event.update!(use_ticket_groups: true)
+      room = event.ticket_groups.create!(name: 'Room A', position: 1)
+      create(:ticket, event: event, ticket_type: vip, attendee_name: 'Ali', ticket_group: room)
+
+      xlsx = Roo::Spreadsheet.open(described_class.export(event.id)[:file_path])
+      rows = xlsx.sheet('Group List').parse(headers: true).map { |r| r.values_at('Group', 'Attendee Name') }
+      expect(rows).to eq([['Group', 'Attendee Name'], ['Room A', 'Ali'], ['No group', 'Siti']])
+      expect(xlsx.sheet('Tickets').row(1)).to eq(TicketExcelService::FLAT_HEADERS)
+    end
+
     it 'scopes to a single ticket type when ticket_type_id is given' do
       create(:ticket, event: event, ticket_type: general)
       create(:ticket, event: event, ticket_type: vip)
