@@ -14,7 +14,7 @@ module V1
     # POST /v1/events/:event_id/ticket_groups/setup  { count: 4 } - adds `count` more groups
     def setup
       authorize_groups(:setup?)
-      count = params[:count].to_i
+      count = params[:count].to_s.to_i
       return render json: { error: 'count must be 1-20' }, status: :unprocessable_content unless count.between?(1, 20)
 
       last = @event.ticket_groups.maximum(:position) || 0
@@ -58,10 +58,14 @@ module V1
     # PATCH /v1/events/:event_id/ticket_groups/move  { public_ids: [], ticket_group_id: id|null }
     def move
       authorize_groups(:move?)
-      group_id = params[:ticket_group_id].presence
-      return render json: { error: 'Group not found' }, status: :not_found if group_id && !@event.ticket_groups.exists?(group_id)
+      # The id is cast to an integer before any lookup: a JSON array or hash here
+      # must never reach `exists?`, which would read it as a raw SQL condition.
+      raw = params[:ticket_group_id]
+      group = raw.present? ? @event.ticket_groups.find_by(id: Integer(raw.to_s, exception: false)) : nil
+      return render json: { error: 'Group not found' }, status: :not_found if raw.present? && group.nil?
 
-      moved = @event.tickets.where(public_id: Array(params[:public_ids])).update_all(ticket_group_id: group_id, updated_at: Time.current)
+      public_ids = Array(params[:public_ids]).map(&:to_s)
+      moved = @event.tickets.where(public_id: public_ids).update_all(ticket_group_id: group&.id, updated_at: Time.current)
       render json: payload.merge(moved: moved)
     end
 

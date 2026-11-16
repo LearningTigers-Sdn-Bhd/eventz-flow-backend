@@ -69,8 +69,8 @@ RSpec.describe 'V1::TicketGroups', type: :request do
       expect(json['groups'].map { |g| g['position'] }).to eq([1, 2, 3, 4])
     end
 
-    it 'rejects a count outside 1-20' do
-      [0, 21, nil].each do |count|
+    it 'rejects a count outside 1-20, or one that is not a number' do
+      [0, 21, nil, [3], { 'a' => 1 }].each do |count|
         post "#{base}/setup", params: { count: count }, headers: headers_for(org_owner), as: :json
         expect(response).to have_http_status(:unprocessable_content)
       end
@@ -148,6 +148,16 @@ RSpec.describe 'V1::TicketGroups', type: :request do
       patch "#{base}/move", params: { public_ids: [ticket.public_id], ticket_group_id: other.id },
                             headers: headers_for(org_owner), as: :json
       expect(response).to have_http_status(:not_found)
+      expect(ticket.reload.ticket_group_id).to be_nil
+    end
+
+    it 'treats a non-numeric group id (array, hash, SQL text) as not found, never as SQL' do
+      ticket = paid_ticket(type_a, 97)
+      ["1) OR (1=1", ['id = 1) OR (1=1'], { 'id' => '1' }].each do |bad|
+        patch "#{base}/move", params: { public_ids: [ticket.public_id], ticket_group_id: bad },
+                              headers: headers_for(org_owner), as: :json
+        expect(response).to have_http_status(:not_found)
+      end
       expect(ticket.reload.ticket_group_id).to be_nil
     end
 
