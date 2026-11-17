@@ -315,6 +315,11 @@ class Ticket < ApplicationRecord
     # Include check_in_url if provided (from Thread local storage set in controller)
     payload[:check_in_url] = Thread.current[:check_in_url] if Thread.current[:check_in_url].present?
 
+    # Rooms/groups for events that use them (badge printers print the name).
+    # Left out (payload.compact drops nil) when the ticket has no group or the
+    # event does not use groups, so other events' payloads are unchanged.
+    payload[:ticket_group] = ticket_group && { id: ticket_group.id, name: ticket_group.name } if event.use_ticket_groups
+
     # Add scanned_by information if ticket was scanned by a user
     if scanned_by_id.present? && scanned_by
       payload[:scanned_by] = {
