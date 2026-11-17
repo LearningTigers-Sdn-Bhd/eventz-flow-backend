@@ -328,6 +328,7 @@ module V1
         :use_people_counter,
         :use_ticket_groups,
         :auto_assign_ticket_groups,
+        :ticket_group_fill_mode,
         :use_feedback,
         :use_api_access,
         :vehicles_enabled,

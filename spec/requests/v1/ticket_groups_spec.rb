@@ -129,6 +129,17 @@ RSpec.describe 'V1::TicketGroups', type: :request do
       expect(json['unassigned_count']).to eq(0)
     end
 
+    it 'reports how many tickets of each type a group holds, and the unassigned ones' do
+      paid_ticket(type_b, 50)
+      ticket = paid_ticket(type_a, 51)
+      ticket.update_column(:ticket_group_id, groups.first.id)
+
+      get base, headers: headers_for(org_owner)
+      first = json['groups'].find { |g| g['id'] == groups.first.id }
+      expect(first['type_counts']).to eq(type_a.id.to_s => 1)
+      expect(json['unassigned_by_type']).to eq(type_a.id.to_s => 4, type_b.id.to_s => 1)
+    end
+
     it 'moves tickets by public id, to a group or to none' do
       ticket = paid_ticket(type_a, 99)
 

@@ -4,7 +4,7 @@ class CreateTicketGroups < ActiveRecord::Migration[8.0]
       t.references :event, null: false, foreign_key: true
       t.string :name, null: false
       t.integer :position, null: false
-      # Ticket type ids this group fills first, in the order they are filled.
+      # Ticket type ids this group fills first (mixed evenly across the picks).
       t.integer :priority_ticket_type_ids, array: true, default: [], null: false
       t.timestamps
     end
