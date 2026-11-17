@@ -311,6 +311,32 @@ RSpec.describe Ticket, type: :model do
     end
   end
 
+  describe 'ticket_group on the webhook payload' do
+    let(:event) { create(:event, webhook_url: 'https://example.com/print', use_ticket_groups: true) }
+    let!(:group) { event.ticket_groups.create!(name: 'Room A', position: 1) }
+    let(:ticket) { create(:ticket, :paid, event: event) }
+
+    def payload_for(ticket)
+      ticket.send(:build_webhook_payload, 'ticket.scanned')
+    end
+
+    it 'names the group when the event uses groups' do
+      ticket.update_columns(ticket_group_id: group.id)
+
+      expect(payload_for(ticket.reload)[:ticket_group]).to eq(id: group.id, name: 'Room A')
+    end
+
+    it 'is left out for a ticket without a group' do
+      expect(payload_for(ticket)).not_to have_key(:ticket_group)
+    end
+
+    it 'is left out when the event does not use groups' do
+      event.update!(use_ticket_groups: false)
+
+      expect(payload_for(ticket.reload)).not_to have_key(:ticket_group)
+    end
+  end
+
   describe 'unique custom fields within event' do
     let(:event) { create(:event) }
     let(:ticket_type) { create(:ticket_type, event: event) }
