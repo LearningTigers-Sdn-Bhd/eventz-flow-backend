@@ -38,19 +38,65 @@ RSpec.describe TicketGroupAssigner do
     expect(result.counts.values).to all(eq(10))
   end
 
-  it 'fills several priority types in the order listed' do
+  it 'mixes several priority types evenly instead of draining the first one' do
     groups.first.update!(priority_ticket_type_ids: [vip.id, student.id])
     result = described_class.new(event).call
 
-    expect(result.by_type[groups.first.id]).to eq(vip.id => 6, student.id => 4)
+    expect(result.by_type[groups.first.id]).to eq(vip.id => 5, student.id => 5)
     expect(result.counts.values).to all(eq(10))
   end
 
-  it 'respects the listed order when the first type is bigger' do
+  it 'does not depend on the order the types were picked' do
     groups.first.update!(priority_ticket_type_ids: [student.id, vip.id])
     result = described_class.new(event).call
 
-    expect(result.by_type[groups.first.id]).to eq(student.id => 9, vip.id => 1)
+    expect(result.by_type[groups.first.id]).to eq(student.id => 5, vip.id => 5)
+  end
+
+  it 'takes the rest from the other picked types once one runs out' do
+    tiny = create(:ticket_type, event: event, name: 'Tiny')
+    make_tickets(tiny, 2) # 42 tickets, target 11
+    groups.first.update!(priority_ticket_type_ids: [tiny.id, delegate.id])
+    result = described_class.new(event).call
+
+    expect(result.by_type[groups.first.id]).to eq(tiny.id => 2, delegate.id => 9)
+  end
+
+  describe 'fill mode "ordered" (the original behaviour)' do
+    before { event.update!(ticket_group_fill_mode: 'ordered') }
+
+    it 'drains the picked types in the order listed' do
+      groups.first.update!(priority_ticket_type_ids: [vip.id, student.id])
+      result = described_class.new(event).call
+
+      expect(result.by_type[groups.first.id]).to eq(vip.id => 6, student.id => 4)
+      expect(result.counts.values).to all(eq(10))
+    end
+
+    it 'respects the listed order when the first type is bigger' do
+      groups.first.update!(priority_ticket_type_ids: [student.id, vip.id])
+      result = described_class.new(event).call
+
+      expect(result.by_type[groups.first.id]).to eq(student.id => 9, vip.id => 1)
+    end
+
+    it 'splits a type evenly between groups that share it' do
+      groups.first(2).each { |g| g.update!(priority_ticket_type_ids: [vip.id]) }
+      result = described_class.new(event).call
+
+      expect(result.by_type[groups[0].id][vip.id]).to eq(3)
+      expect(result.by_type[groups[1].id][vip.id]).to eq(3)
+    end
+  end
+
+  it 'only accepts the two known fill modes' do
+    expect(event.update(ticket_group_fill_mode: 'random')).to be(false)
+    expect(event.update(ticket_group_fill_mode: 'ordered')).to be(true)
+  end
+
+  it 'gives the same answer every time (preview matches assign)' do
+    groups.first.update!(priority_ticket_type_ids: [vip.id, student.id, delegate.id])
+    expect(described_class.new(event).call.assignments).to eq(described_class.new(event).call.assignments)
   end
 
   it 'splits a type evenly between groups that share it' do

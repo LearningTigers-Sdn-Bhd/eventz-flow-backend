@@ -782,6 +782,11 @@ RSpec.describe 'V1::Events', type: :request do
       put "/v1/events/#{event.id}", params: { event: { use_ticket_groups: true } },
                                     headers: auth_headers(organizer_user), as: :json
       expect(json['use_ticket_groups']).to be(true)
+      expect(json['ticket_group_fill_mode']).to eq('mixed')
+
+      put "/v1/events/#{event.id}", params: { event: { ticket_group_fill_mode: 'ordered' } },
+                                    headers: auth_headers(organizer_user), as: :json
+      expect(json['ticket_group_fill_mode']).to eq('ordered')
 
       get "/v1/events/#{event.id}/ticket_groups", headers: auth_headers(organizer_user), as: :json
       expect(response).to have_http_status(:ok)

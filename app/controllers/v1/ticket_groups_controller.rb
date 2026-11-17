@@ -92,7 +92,13 @@ module V1
 
     def payload
       counts = TicketGroupAssigner.eligible(@event).group(:ticket_group_id).count
-      { groups: TicketGroupSerializer.rows(@event.ticket_groups, counts), unassigned_count: counts[nil] || 0 }
+      by_type = TicketGroupAssigner.eligible(@event).group(:ticket_group_id, :ticket_type_id).count
+                                   .each_with_object(Hash.new { |h, k| h[k] = {} }) { |((gid, type_id), n), h| h[gid][type_id] = n }
+      {
+        groups: TicketGroupSerializer.rows(@event.ticket_groups, counts, by_type),
+        unassigned_count: counts[nil] || 0,
+        unassigned_by_type: by_type[nil] || {}
+      }
     end
 
     def summarize(result)

@@ -113,6 +113,7 @@ class Event < ApplicationRecord
 
   # --- Validations ---
   validates :title, presence: true, length: { maximum: 100 }
+  validates :ticket_group_fill_mode, inclusion: { in: %w[mixed ordered] }
   validates :exhibitor_tags_per_kit, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 50 }
   validates :status, presence: true
   validates :start_date, presence: true
