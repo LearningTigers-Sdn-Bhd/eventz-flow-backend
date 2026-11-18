@@ -129,6 +129,19 @@ RSpec.describe 'V1::TicketGroups', type: :request do
       expect(json['unassigned_count']).to eq(0)
     end
 
+    it 'does not count or assign excluded ticket types' do
+      paid_ticket(type_b, 60)
+      event.update!(ticket_group_excluded_type_ids: [type_b.id])
+
+      get base, headers: headers_for(org_owner), as: :json
+      expect(json['unassigned_count']).to eq(4)
+      expect(json['excluded_count']).to eq(1)
+
+      post "#{base}/assign", params: { mode: 'new' }, headers: headers_for(org_owner), as: :json
+      expect(json['assigned']).to eq(4)
+      expect(json['unassigned_count']).to eq(0)
+    end
+
     it 'reports how many tickets of each type a group holds, and the unassigned ones' do
       paid_ticket(type_b, 50)
       ticket = paid_ticket(type_a, 51)

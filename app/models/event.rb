@@ -103,6 +103,8 @@ class Event < ApplicationRecord
   # --- Callbacks ---
   after_update :sync_membership_uniqueness, if: :saved_change_to_require_unique_membership_numbers?
   after_commit :send_webhook_notification, on: %i[create update]
+  before_validation { self.ticket_group_excluded_type_ids = ticket_group_excluded_type_ids.map(&:to_i).uniq }
+  after_update :release_excluded_ticket_group_tickets, if: :saved_change_to_ticket_group_excluded_type_ids?
   after_update :sync_custom_labels_to_attendees, if: :saved_change_to_labels_data?
   after_update :sync_custom_labels_to_exhibitor_kits, if: :saved_change_to_exhibitor_labels_data?
 
@@ -303,6 +305,14 @@ class Event < ApplicationRecord
     webhook_urls.each do |url|
       WebhookSenderJob.perform_later(url, payload)
     end
+  end
+
+  # Excluded ticket types never sit in a group: taking one out of its group is part of excluding it.
+  def release_excluded_ticket_group_tickets
+    return if ticket_group_excluded_type_ids.empty?
+
+    tickets.where(ticket_type_id: ticket_group_excluded_type_ids).where.not(ticket_group_id: nil)
+           .update_all(ticket_group_id: nil, updated_at: Time.current)
   end
 
   # Sync custom label keys to tickets and visitors when labels_data changes

@@ -89,6 +89,27 @@ RSpec.describe TicketGroupAssigner do
     end
   end
 
+  describe 'excluded ticket types' do
+    before { event.update!(ticket_group_excluded_type_ids: [vip.id]) }
+
+    it 'never places them and balances the rest' do
+      result = described_class.new(event).call
+
+      expect(result.assignments.size).to eq(34)
+      expect(result.counts.values.sum).to eq(34)
+      expect(result.by_type.values.flat_map(&:keys)).not_to include(vip.id)
+    end
+
+    it 'takes already grouped tickets of that type out of their group' do
+      ticket = event.tickets.find_by!(ticket_type: vip)
+      ticket.update_columns(ticket_group_id: groups.first.id)
+      event.update!(ticket_group_excluded_type_ids: [vip.id, student.id])
+      event.update!(ticket_group_excluded_type_ids: [vip.id])
+
+      expect(ticket.reload.ticket_group_id).to be_nil
+    end
+  end
+
   it 'only accepts the two known fill modes' do
     expect(event.update(ticket_group_fill_mode: 'random')).to be(false)
     expect(event.update(ticket_group_fill_mode: 'ordered')).to be(true)

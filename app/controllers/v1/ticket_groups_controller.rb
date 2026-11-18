@@ -92,18 +92,25 @@ module V1
 
     def payload
       counts = TicketGroupAssigner.eligible(@event).group(:ticket_group_id).count
-      by_type = TicketGroupAssigner.eligible(@event).group(:ticket_group_id, :ticket_type_id).count
-                                   .each_with_object(Hash.new { |h, k| h[k] = {} }) { |((gid, type_id), n), h| h[gid][type_id] = n }
+      by_type = tally_by_type(TicketGroupAssigner.eligible(@event))
+      # Excluded ticket types are never expected in a group, so they don't count as unassigned.
+      unassigned = TicketGroupAssigner.assignable(@event).where(ticket_group_id: nil)
       {
         groups: TicketGroupSerializer.rows(@event.ticket_groups, counts, by_type),
-        unassigned_count: counts[nil] || 0,
-        unassigned_by_type: by_type[nil] || {}
+        unassigned_count: unassigned.count,
+        unassigned_by_type: unassigned.group(:ticket_type_id).count,
+        excluded_count: TicketGroupAssigner.eligible(@event).where(ticket_group_id: nil).count - unassigned.count
       }
+    end
+
+    def tally_by_type(scope)
+      scope.group(:ticket_group_id, :ticket_type_id).count
+           .each_with_object(Hash.new { |h, k| h[k] = {} }) { |((gid, type_id), n), h| h[gid][type_id] = n }
     end
 
     def summarize(result)
       groups = @event.ticket_groups.index_by(&:id)
-      current = TicketGroupAssigner.eligible(@event).group(:ticket_group_id).count
+      current = TicketGroupAssigner.assignable(@event).group(:ticket_group_id).count
       {
         moves: result.assignments.size,
         groups: result.counts.map do |gid, count|

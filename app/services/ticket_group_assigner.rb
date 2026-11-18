@@ -14,6 +14,8 @@
 #    the group with the fewest tickets, so sizes end within 1 of each other.
 #    Balance beats priority.
 #
+# Excluded ticket types (events.ticket_group_excluded_type_ids) are never placed.
+#
 # mode :new  - only unassigned tickets move; existing assignments count toward size.
 # mode :all  - every eligible ticket is re-sorted from scratch.
 class TicketGroupAssigner
@@ -22,6 +24,13 @@ class TicketGroupAssigner
 
   def self.eligible(event)
     event.tickets.active.where(payment_status: :paid, waiting_list: false)
+  end
+
+  # Eligible tickets minus the event's excluded ticket types: what Assign may place.
+  def self.assignable(event)
+    excluded = event.ticket_group_excluded_type_ids
+    scope = eligible(event)
+    excluded.empty? ? scope : scope.where.not(ticket_type_id: excluded)
   end
 
   # Saves a #call result onto the tickets.
@@ -39,7 +48,7 @@ class TicketGroupAssigner
 
   def initialize(event, mode: :new)
     @groups = event.ticket_groups.to_a
-    @tickets = self.class.eligible(event).pluck(:id, :ticket_type_id, :ticket_group_id)
+    @tickets = self.class.assignable(event).pluck(:id, :ticket_type_id, :ticket_group_id)
     @mode = mode.to_sym
     @fill_mode = event.ticket_group_fill_mode
   end
