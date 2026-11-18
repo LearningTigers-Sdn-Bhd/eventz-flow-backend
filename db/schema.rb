@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_11_17_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_11_18_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -885,6 +885,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_17_100000) do
     t.boolean "use_ticket_groups", default: false, null: false
     t.boolean "auto_assign_ticket_groups", default: false, null: false
     t.string "ticket_group_fill_mode", default: "mixed", null: false
+    t.integer "ticket_group_excluded_type_ids", default: [], null: false, array: true
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
     t.index ["slug"], name: "index_events_on_slug", unique: true
   end

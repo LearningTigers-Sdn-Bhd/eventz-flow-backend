@@ -346,6 +346,7 @@ module V1
         labels_data: {}, # Allows JSONB hash updates
         exhibitor_labels_data: {}, # Allows JSONB hash updates
         booth_types: [], # Allows JSONB array updates
+        ticket_group_excluded_type_ids: [],
         event_email_setting_attributes: [
           :sender_name, :sender_address, :contact_email, :payment_receipt_email,
           :business_matching_sender_name, :business_matching_host_label,
